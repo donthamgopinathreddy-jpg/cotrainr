@@ -271,7 +271,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: const Color(0xFFF7F7FB),
       body: SafeArea(
         child: CustomScrollView(
           controller: _scrollController,
@@ -433,12 +433,23 @@ class _DiscoverHeaderRow extends StatelessWidget {
                 child: child,
               );
             },
-            child: _GlassCard(
-              radius: 20,
-              padding: const EdgeInsets.all(8),
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
               child: Icon(
                 Icons.explore_rounded,
-                size: 24,
+                size: 22,
                 color: accentColor,
               ),
             ),
@@ -611,60 +622,62 @@ class _DiscoverSegmentTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _GlassCard(
-      radius: 22,
+    return Container(
       padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
       child: SizedBox(
         height: 44,
-        child: Stack(
-          children: [
-            AnimatedAlign(
-              duration: const Duration(milliseconds: 260),
-              curve: Curves.easeOutCubic,
-              alignment: Alignment(
-                -1 + (2 * (selectedIndex / (tabs.length - 1))),
-                0,
-              ),
-              child: Container(
-                width: (MediaQuery.of(context).size.width - 32 - 12) / tabs.length,
-                height: 36,
-                decoration: BoxDecoration(
-                  gradient: selectedGradient,
-                  borderRadius: BorderRadius.circular(22),
-                  boxShadow: [
-                    BoxShadow(
-                      color: selectedAccent.withOpacity(0.35),
-                      blurRadius: 16,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            Row(
-              children: List.generate(tabs.length, (index) {
-                final isSelected = index == selectedIndex;
-                return Expanded(
-                  child: GestureDetector(
-                    onTap: () => onTabChanged(index),
-                    child: AnimatedDefaultTextStyle(
-                      duration: const Duration(milliseconds: 180),
-                      curve: Curves.easeOutCubic,
+        child: Row(
+          children: List.generate(tabs.length, (index) {
+            final isSelected = index == selectedIndex;
+            final selectedColor =
+                index == 1 ? Colors.green : (index == 2 ? Colors.grey : AppColors.orange);
+            return Expanded(
+              child: GestureDetector(
+                onTap: () => onTabChanged(index),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOutCubic,
+                  margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: isSelected ? selectedColor : Colors.transparent,
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: isSelected
+                        ? [
+                            BoxShadow(
+                              color: selectedColor.withOpacity(0.35),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ]
+                        : [],
+                  ),
+                  child: Center(
+                    child: Text(
+                      tabs[index],
                       style: TextStyle(
                         fontSize: 14,
-                        fontWeight:
-                            isSelected ? FontWeight.w600 : FontWeight.w500,
+                        fontWeight: FontWeight.w600,
                         color: isSelected
                             ? Colors.white
-                            : AppColors.textSecondary,
+                            : Colors.black.withOpacity(0.55),
                       ),
-                      child: Center(child: Text(tabs[index])),
                     ),
                   ),
-                );
-              }),
-            ),
-          ],
+                ),
+              ),
+            );
+          }),
         ),
       ),
     );
@@ -706,9 +719,19 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
           highlightColor: highlight,
           onTap: widget.onTap,
           onHighlightChanged: (value) => setState(() => _pressed = value),
-          child: _GlassCard(
-            radius: 24,
+          child: Container(
             padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 12,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
             child: SizedBox(
               height: 108,
               child: Row(
@@ -718,15 +741,9 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                       Container(
                         width: 72,
                         height: 72,
-                        padding: const EdgeInsets.all(2),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              widget.accentColor,
-                              widget.accentColor.withOpacity(0.4),
-                            ],
-                          ),
+                        decoration: const BoxDecoration(
                           shape: BoxShape.circle,
+                          color: Color(0xFFF1F1F4),
                         ),
                         child: ClipOval(
                           child: widget.item.avatarUrl == null
@@ -745,12 +762,11 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                             width: 16,
                             height: 16,
                             decoration: BoxDecoration(
-                              color: widget.accentColor,
+                              color: AppColors.orange,
                               shape: BoxShape.circle,
                               boxShadow: [
                                 BoxShadow(
-                                  color:
-                                      widget.accentColor.withOpacity(0.4),
+                                  color: AppColors.orange.withOpacity(0.4),
                                   blurRadius: 6,
                                   offset: const Offset(0, 2),
                                 ),
@@ -775,7 +791,7 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                           style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary,
+                            color: Colors.black,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -783,10 +799,10 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                         const SizedBox(height: 4),
                         Text(
                           widget.item.subtitle,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
-                            color: AppColors.textSecondary,
+                            color: Colors.black.withOpacity(0.6),
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -804,7 +820,7 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                               '${widget.item.rating.toStringAsFixed(1)}',
                               style: const TextStyle(
                                 fontSize: 13,
-                                color: AppColors.textPrimary,
+                                color: Colors.black,
                               ),
                             ),
                             const SizedBox(width: 6),
@@ -812,16 +828,16 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                               width: 4,
                               height: 4,
                               decoration: BoxDecoration(
-                                color: AppColors.textSecondary,
+                                color: Colors.black.withOpacity(0.4),
                                 shape: BoxShape.circle,
                               ),
                             ),
                             const SizedBox(width: 6),
                             Text(
                               '${widget.item.distance.toStringAsFixed(1)} km',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 13,
-                                color: AppColors.textSecondary,
+                                color: Colors.black.withOpacity(0.55),
                               ),
                             ),
                           ],
@@ -832,15 +848,15 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                             Icon(
                               Icons.location_on_rounded,
                               size: 14,
-                              color: AppColors.textSecondary.withOpacity(0.85),
+                              color: Colors.black.withOpacity(0.5),
                             ),
                             const SizedBox(width: 4),
                             Expanded(
                               child: Text(
                                 widget.item.location,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 13,
-                                  color: AppColors.textSecondary,
+                                  color: Colors.black.withOpacity(0.55),
                                 ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -852,10 +868,10 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                     ),
                   ),
                   const SizedBox(width: 8),
-                  const Icon(
+                  Icon(
                     Icons.chevron_right_rounded,
                     size: 18,
-                    color: AppColors.textSecondary,
+                    color: Colors.black.withOpacity(0.4),
                   ),
                 ],
               ),
@@ -1042,7 +1058,6 @@ class _DiscoverFilterSheetState extends State<_DiscoverFilterSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final dividerColor = DesignTokens.borderColorOf(context).withValues(alpha: 51);
     final selectedRating = _minRating ?? 'Any';
 
     return Container(
@@ -1051,9 +1066,15 @@ class _DiscoverFilterSheetState extends State<_DiscoverFilterSheet> {
       ),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: DesignTokens.surfaceOf(context),
+        color: Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-        boxShadow: DesignTokens.cardShadowOf(context),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.12),
+            blurRadius: 20,
+            offset: const Offset(0, -4),
+          ),
+        ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1075,20 +1096,20 @@ class _DiscoverFilterSheetState extends State<_DiscoverFilterSheet> {
                 style: TextStyle(
                   fontSize: 26,
                   fontWeight: FontWeight.w900,
-                  color: DesignTokens.textPrimaryOf(context),
+                  color: Colors.black,
                 ),
               ),
               IconButton(
                 onPressed: () => Navigator.pop(context),
                 icon: Icon(
                   Icons.close_rounded,
-                  color: DesignTokens.textSecondaryOf(context),
+                  color: Colors.black.withOpacity(0.5),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          Divider(color: dividerColor, height: 1),
+          Divider(color: Colors.black.withOpacity(0.08), height: 1),
           const SizedBox(height: 16),
           _FilterSectionHeader(
             icon: Icons.map_outlined,
@@ -1100,9 +1121,8 @@ class _DiscoverFilterSheetState extends State<_DiscoverFilterSheet> {
           SliderTheme(
             data: SliderTheme.of(context).copyWith(
               trackHeight: 6,
-              activeTrackColor: DesignTokens.accentOrange,
-              inactiveTrackColor:
-                  DesignTokens.textSecondaryOf(context).withValues(alpha: 38),
+              activeTrackColor: AppColors.orange,
+              inactiveTrackColor: Colors.black.withOpacity(0.1),
               rangeThumbShape: const RoundRangeSliderThumbShape(
                 enabledThumbRadius: 14,
               ),
@@ -1116,7 +1136,7 @@ class _DiscoverFilterSheetState extends State<_DiscoverFilterSheet> {
             ),
           ),
           const SizedBox(height: 16),
-          Divider(color: dividerColor, height: 1),
+          Divider(color: Colors.black.withOpacity(0.08), height: 1),
           const SizedBox(height: 16),
           _FilterChipSection(
             title: 'Minimum Rating',
@@ -1124,7 +1144,7 @@ class _DiscoverFilterSheetState extends State<_DiscoverFilterSheet> {
             selected: selectedRating,
             onChanged: (value) =>
                 setState(() => _minRating = value == 'Any' ? null : value),
-            selectedColor: DesignTokens.accentOrange,
+            selectedColor: AppColors.orange,
           ),
           const SizedBox(height: 16),
           _CategoryChips(
@@ -1187,10 +1207,10 @@ class _FilterSectionHeader extends StatelessWidget {
           width: 40,
           height: 40,
           decoration: BoxDecoration(
-            color: accentColor.withValues(alpha: 31),
+            color: AppColors.orange.withOpacity(0.15),
             borderRadius: BorderRadius.circular(20),
           ),
-          child: Icon(icon, size: 20, color: accentColor),
+          child: Icon(icon, size: 20, color: AppColors.orange),
         ),
         const SizedBox(width: 12),
         Text(
@@ -1198,7 +1218,7 @@ class _FilterSectionHeader extends StatelessWidget {
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w800,
-            color: DesignTokens.textPrimaryOf(context),
+            color: Colors.black,
           ),
         ),
         const Spacer(),
@@ -1206,7 +1226,7 @@ class _FilterSectionHeader extends StatelessWidget {
           value,
           style: TextStyle(
             fontSize: 16,
-            color: DesignTokens.textSecondaryOf(context),
+            color: Colors.black.withOpacity(0.5),
           ),
         ),
       ],
@@ -1237,30 +1257,30 @@ class _FilterChipSection extends StatelessWidget {
         Text(
           title,
           style: TextStyle(
-            fontSize: 18,
+            fontSize: 16,
             fontWeight: FontWeight.w800,
-            color: DesignTokens.textPrimaryOf(context),
+            color: Colors.black,
           ),
         ),
         const SizedBox(height: 12),
         Wrap(
-          spacing: 12,
-          runSpacing: 12,
+          spacing: 10,
+          runSpacing: 10,
           children: options.map((option) {
             final isSelected = option == selected;
             return GestureDetector(
               onTap: () => onChanged(isSelected ? null : option),
               child: Container(
-                height: 44,
-                padding: const EdgeInsets.symmetric(horizontal: 18),
+                height: 40,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: isSelected ? selectedColor : Colors.transparent,
-                  borderRadius:
-                      BorderRadius.circular(DesignTokens.radiusChipSmall),
+                  color: isSelected ? selectedColor : Colors.white,
+                  borderRadius: BorderRadius.circular(24),
                   border: Border.all(
-                    color: DesignTokens.borderColorOf(context)
-                        .withValues(alpha: 51),
+                    color: isSelected
+                        ? selectedColor
+                        : Colors.black.withOpacity(0.08),
                   ),
                 ),
                 child: Text(
@@ -1270,7 +1290,7 @@ class _FilterChipSection extends StatelessWidget {
                     fontWeight: FontWeight.w800,
                     color: isSelected
                         ? Colors.white
-                        : DesignTokens.textSecondaryOf(context),
+                        : Colors.black.withOpacity(0.6),
                   ),
                 ),
               ),
@@ -1298,25 +1318,25 @@ class _CategoryChips extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Wrap(
-      spacing: 12,
-      runSpacing: 12,
+      spacing: 10,
+      runSpacing: 10,
       children: categories.map((category) {
         final isSelected = selected.contains(category);
         return GestureDetector(
           onTap: () => onToggle(category),
           child: Container(
-            height: 40,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            height: 38,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: isSelected
-                  ? accentColor.withValues(alpha: 41)
-                  : DesignTokens.backgroundOf(context).withValues(alpha: 153),
+                  ? accentColor
+                  : const Color(0xFFF1F1F4),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 color: isSelected
-                    ? accentColor.withValues(alpha: 89)
-                    : DesignTokens.borderColorOf(context).withValues(alpha: 51),
+                    ? accentColor
+                    : Colors.black.withOpacity(0.06),
               ),
             ),
             child: Text(
@@ -1325,8 +1345,8 @@ class _CategoryChips extends StatelessWidget {
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
                 color: isSelected
-                    ? accentColor
-                    : DesignTokens.textSecondaryOf(context),
+                    ? Colors.white
+                    : Colors.black.withOpacity(0.6),
               ),
             ),
           ),
@@ -1353,16 +1373,22 @@ class _PrimaryActionButton extends StatelessWidget {
         height: 56,
         width: double.infinity,
         decoration: BoxDecoration(
-          gradient: DesignTokens.primaryGradient,
+          color: AppColors.orange,
           borderRadius: BorderRadius.circular(28),
-          boxShadow: DesignTokens.glowShadowOf(context),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.orange.withOpacity(0.35),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
+            ),
+          ],
         ),
         child: Center(
           child: Text(
             label,
             style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
               color: Colors.white,
             ),
           ),
@@ -1389,19 +1415,19 @@ class _SecondaryActionButton extends StatelessWidget {
         height: 56,
         width: double.infinity,
         decoration: BoxDecoration(
-          color: Colors.transparent,
+          color: Colors.white,
           borderRadius: BorderRadius.circular(28),
           border: Border.all(
-            color: DesignTokens.borderColorOf(context).withValues(alpha: 64),
+            color: Colors.black.withOpacity(0.08),
           ),
         ),
         child: Center(
           child: Text(
             label,
             style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: DesignTokens.textPrimaryOf(context),
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: Colors.black.withOpacity(0.7),
             ),
           ),
         ),

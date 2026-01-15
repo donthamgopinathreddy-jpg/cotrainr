@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:intl/intl.dart';
 import '../../theme/design_tokens.dart';
-import '../common/pill_chip.dart';
+import '../../theme/app_colors.dart';
 
 class CocircleFeedCard extends StatefulWidget {
   final dynamic post; // CocircleFeedPost
@@ -56,30 +55,20 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
     });
   }
 
-  String _formatTimestamp(DateTime timestamp) {
-    final now = DateTime.now();
-    final difference = now.difference(timestamp);
-
-    if (difference.inMinutes < 1) {
-      return 'Just now';
-    } else if (difference.inHours < 1) {
-      return '${difference.inMinutes}m ago';
-    } else if (difference.inDays < 1) {
-      return '${difference.inHours}h ago';
-    } else if (difference.inDays < 7) {
-      return '${difference.inDays}d ago';
-    } else {
-      return DateFormat('MMM d').format(timestamp);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: DesignTokens.spacing16),
+      margin: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
       decoration: BoxDecoration(
-        color: DesignTokens.surface,
-        boxShadow: DesignTokens.cardShadow,
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -91,22 +80,21 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
               children: [
                 // Avatar
                 Container(
-                  width: 48,
-                  height: 48,
+                  width: 44,
+                  height: 44,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: widget.post.avatarUrl == null
-                        ? DesignTokens.primaryGradient
-                        : null,
+                    border: Border.all(color: const Color(0xFFFF5C00), width: 2),
                     image: widget.post.avatarUrl != null
                         ? DecorationImage(
-                            image: CachedNetworkImageProvider(widget.post.avatarUrl!),
+                            image:
+                                CachedNetworkImageProvider(widget.post.avatarUrl!),
                             fit: BoxFit.cover,
                           )
                         : null,
                   ),
                   child: widget.post.avatarUrl == null
-                      ? const Icon(Icons.person, color: Colors.white, size: 24)
+                      ? const Icon(Icons.person, color: Colors.black54, size: 22)
                       : null,
                 ),
                 const SizedBox(width: DesignTokens.spacing12),
@@ -118,10 +106,10 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
                     children: [
                       Text(
                         widget.post.userName,
-                        style: TextStyle(
-                          fontSize: DesignTokens.fontSizeBody,
+                        style: const TextStyle(
+                          fontSize: 16,
                           fontWeight: FontWeight.w700,
-                          color: DesignTokens.textPrimary,
+                          color: Colors.black,
                         ),
                       ),
                       Row(
@@ -130,30 +118,40 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
                             child: Text(
                               '@${widget.post.userId}',
                               style: TextStyle(
-                                fontSize: DesignTokens.fontSizeMeta,
-                                color: DesignTokens.textSecondary,
+                                fontSize: 12,
+                                color: Colors.black.withOpacity(0.5),
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          const SizedBox(width: DesignTokens.spacing8),
-                          PillChip(
-                            label: widget.post.userRole,
-                            fontSize: 10,
+                          const SizedBox(width: 6),
+                          Container(
+                            width: 4,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.3),
+                              shape: BoxShape.circle,
+                            ),
                           ),
-                          const SizedBox(width: DesignTokens.spacing8),
+                          const SizedBox(width: 6),
                           Text(
-                            '· ${_formatTimestamp(widget.post.timestamp)}',
-                            style: TextStyle(
-                              fontSize: DesignTokens.fontSizeMeta,
-                              color: DesignTokens.textSecondary,
+                            widget.post.userRole,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.blue,
+                              letterSpacing: 0.2,
                             ),
                           ),
                         ],
                       ),
                     ],
                   ),
+                ),
+                Icon(
+                  Icons.more_horiz,
+                  color: Colors.black.withOpacity(0.4),
                 ),
               ],
             ),
@@ -171,8 +169,8 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
               child: Text(
                 widget.post.caption,
                 style: TextStyle(
-                  fontSize: DesignTokens.fontSizeBody,
-                  color: DesignTokens.textPrimary,
+                  fontSize: 14,
+                  color: Colors.black.withOpacity(0.7),
                 ),
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
@@ -189,19 +187,25 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  Container(
-                    width: double.infinity,
-                    height: 300,
-                    decoration: BoxDecoration(
-                      gradient: widget.post.mediaUrl == null
-                          ? DesignTokens.primaryGradient
-                          : null,
-                      image: widget.post.mediaUrl != null
-                          ? DecorationImage(
-                              image: CachedNetworkImageProvider(widget.post.mediaUrl!),
-                              fit: BoxFit.cover,
-                            )
-                          : null,
+                  ClipRRect(
+                    borderRadius: const BorderRadius.vertical(
+                      bottom: Radius.circular(18),
+                    ),
+                    child: Container(
+                      width: double.infinity,
+                      height: 300,
+                      decoration: BoxDecoration(
+                        gradient: widget.post.mediaUrl == null
+                            ? DesignTokens.primaryGradient
+                            : null,
+                        image: widget.post.mediaUrl != null
+                            ? DecorationImage(
+                                image:
+                                    CachedNetworkImageProvider(widget.post.mediaUrl!),
+                                fit: BoxFit.cover,
+                              )
+                            : null,
+                      ),
                     ),
                   ),
                   if (_showHeart)
@@ -248,7 +252,7 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
                 const Spacer(),
                 IconButton(
                   icon: const Icon(Icons.bookmark_border),
-                  color: DesignTokens.textSecondary,
+                  color: Colors.black.withOpacity(0.45),
                   onPressed: () {},
                 ),
               ],
@@ -271,15 +275,15 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
         children: [
           Icon(
             icon,
-            color: isActive ? Colors.red : DesignTokens.textSecondary,
-            size: 24,
+            color: isActive ? AppColors.orange : Colors.black.withOpacity(0.45),
+            size: 20,
           ),
           const SizedBox(width: DesignTokens.spacing8),
           Text(
             count.toString(),
             style: TextStyle(
-              fontSize: DesignTokens.fontSizeBody,
-              color: isActive ? Colors.red : DesignTokens.textSecondary,
+              fontSize: 13,
+              color: isActive ? AppColors.orange : Colors.black.withOpacity(0.45),
               fontWeight: FontWeight.w600,
             ),
           ),
