@@ -5,6 +5,8 @@ import '../../pages/auth/login_page.dart';
 import '../../pages/auth/signup_page.dart';
 import '../../pages/splash_page.dart';
 import '../../pages/home/home_shell_page.dart';
+import '../../pages/notifications/notification_page.dart';
+import '../../pages/insights/insights_detail_page.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: '/splash',
@@ -33,53 +35,122 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/splash',
       name: 'splash',
-      builder: (context, state) => const SplashPage(),
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const SplashPage(),
+        state: state,
+      ),
     ),
     GoRoute(
       path: '/auth/login',
       name: 'login',
-      builder: (context, state) => const LoginPage(),
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const LoginPage(),
+        state: state,
+      ),
     ),
     GoRoute(
       path: '/auth/signup',
       name: 'signup',
-      builder: (context, state) => const SignupPage(),
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const SignupPage(),
+        state: state,
+      ),
     ),
     GoRoute(
       path: '/home',
       name: 'home',
-      builder: (context, state) => const HomeShellPage(),
-      routes: [
-        GoRoute(
-          path: 'discover',
-          name: 'discover',
-          builder: (context, state) => const Scaffold(
-            body: Center(child: Text('Discover Page')),
-          ),
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const HomeShellPage(),
+        state: state,
+      ),
+    ),
+    GoRoute(
+      path: '/notifications',
+      name: 'notifications',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const NotificationPage(),
+        state: state,
+      ),
+    ),
+    GoRoute(
+      path: '/insights/steps',
+      name: 'insightsSteps',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: InsightsDetailPage(
+          args: (state.extra as InsightArgs?) ??
+              InsightArgs(MetricType.steps, const [6, 7, 8, 7, 9, 8, 7],
+                  goal: 10000),
         ),
-        GoRoute(
-          path: 'quest',
-          name: 'quest',
-          builder: (context, state) => const Scaffold(
-            body: Center(child: Text('Quest Page')),
-          ),
+        state: state,
+      ),
+    ),
+    GoRoute(
+      path: '/insights/water',
+      name: 'insightsWater',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: InsightsDetailPage(
+          args: (state.extra as InsightArgs?) ??
+              InsightArgs(MetricType.water, const [1.2, 1.6, 1.4, 1.8, 1.5, 1.7, 1.6],
+                  goal: 2.5),
         ),
-        GoRoute(
-          path: 'cocircle',
-          name: 'cocircle',
-          builder: (context, state) => const Scaffold(
-            body: Center(child: Text('Cocircle Page')),
-          ),
+        state: state,
+      ),
+    ),
+    GoRoute(
+      path: '/insights/calories',
+      name: 'insightsCalories',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: InsightsDetailPage(
+          args: (state.extra as InsightArgs?) ??
+              InsightArgs(MetricType.calories, const [1800, 2000, 1900, 2100, 1700, 1950, 1850]),
         ),
-        GoRoute(
-          path: 'profile',
-          name: 'profile',
-          builder: (context, state) => const Scaffold(
-            body: Center(child: Text('Profile Page')),
-          ),
+        state: state,
+      ),
+    ),
+    GoRoute(
+      path: '/insights/distance',
+      name: 'insightsDistance',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: InsightsDetailPage(
+          args: (state.extra as InsightArgs?) ??
+              InsightArgs(MetricType.distance, const [3.8, 4.2, 4.0, 4.5, 4.6, 4.1, 4.4]),
         ),
-      ],
+        state: state,
+      ),
     ),
   ],
 );
+
+CustomTransitionPage<void> _fadeSlidePage({
+  required Widget child,
+  required GoRouterState state,
+}) {
+  return CustomTransitionPage<void>(
+    key: state.pageKey,
+    child: child,
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+      );
+      return FadeTransition(
+        opacity: curved,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: const Offset(0, 0.18),
+            end: Offset.zero,
+          ).animate(curved),
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.98, end: 1.0).animate(curved),
+            child: child,
+          ),
+        ),
+      );
+    },
+  );
+}
+
+
+
+
 

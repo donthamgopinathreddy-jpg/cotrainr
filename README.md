@@ -1,6 +1,10 @@
 # Cotrainr Flutter App
 
-A modern fitness app built with Flutter, Supabase, and Riverpod.
+A modern fitness and wellness mobile app that helps users improve their fitness consistency and lifestyle through tracking, guidance, and community.
+
+**Core Purpose**: Helps users improve their fitness consistency and lifestyle through tracking, guidance, and community.
+
+**Target Users**: Clients, Trainers, and Nutritionists
 
 ## Tech Stack
 

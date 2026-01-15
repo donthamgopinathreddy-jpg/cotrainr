@@ -166,3 +166,7 @@ If Supabase connection fails:
 - Ensure your Supabase project is active
 - Check network connectivity
 
+
+
+
+

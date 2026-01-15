@@ -1,5 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
+import 'package:flutter/services.dart';
+import '../../theme/design_tokens.dart';
+import 'home_page_v3.dart';
+import '../discover/discover_page.dart';
+import '../quest/quest_page.dart';
+import '../cocircle/cocircle_page.dart';
+import '../profile/profile_page.dart';
 
 class HomeShellPage extends StatefulWidget {
   const HomeShellPage({super.key});
@@ -17,30 +23,55 @@ class _HomeShellPageState extends State<HomeShellPage> {
       activeIcon: Icons.home,
       label: 'Home',
       route: '/home',
+      gradient: LinearGradient(
+        colors: [DesignTokens.accentOrange, DesignTokens.accentAmber],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
     ),
     NavigationItem(
       icon: Icons.explore_outlined,
       activeIcon: Icons.explore,
       label: 'Discover',
       route: '/home/discover',
+      gradient: LinearGradient(
+        colors: [DesignTokens.accentGreen, DesignTokens.accentGreen.withValues(alpha: 204)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
     ),
     NavigationItem(
       icon: Icons.emoji_events_outlined,
       activeIcon: Icons.emoji_events,
       label: 'Quest',
       route: '/home/quest',
+      gradient: LinearGradient(
+        colors: [DesignTokens.accentYellow, DesignTokens.accentYellow.withValues(alpha: 204)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
     ),
     NavigationItem(
       icon: Icons.people_outline,
       activeIcon: Icons.people,
       label: 'Cocircle',
       route: '/home/cocircle',
+      gradient: LinearGradient(
+        colors: [DesignTokens.accentBlue, DesignTokens.accentBlueLight],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
     ),
     NavigationItem(
       icon: Icons.person_outline,
       activeIcon: Icons.person,
       label: 'Profile',
       route: '/home/profile',
+      gradient: LinearGradient(
+        colors: [DesignTokens.accentRed, DesignTokens.accentRed.withValues(alpha: 204)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
     ),
   ];
 
@@ -49,43 +80,35 @@ class _HomeShellPageState extends State<HomeShellPage> {
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
-        children: [
-          const Scaffold(
-            body: Center(child: Text('Home Page')),
-          ),
-          const Scaffold(
-            body: Center(child: Text('Discover Page')),
-          ),
-          const Scaffold(
-            body: Center(child: Text('Quest Page')),
-          ),
-          const Scaffold(
-            body: Center(child: Text('Cocircle Page')),
-          ),
-          const Scaffold(
-            body: Center(child: Text('Profile Page')),
-          ),
+        children: const [
+          HomePageV3(),
+          DiscoverPage(),
+          QuestPage(),
+          CocirclePage(),
+          ProfilePage(),
         ],
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
+          color: DesignTokens.darkBackground,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 10,
+              color: Colors.black.withValues(alpha: 0.2),
+              blurRadius: 12,
               offset: const Offset(0, -2),
             ),
           ],
         ),
         child: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: List.generate(
                 _navigationItems.length,
-                (index) => _buildNavItem(index),
+                (index) => Expanded(
+                  child: _buildNavItem(index),
+                ),
               ),
             ),
           ),
@@ -100,35 +123,25 @@ class _HomeShellPageState extends State<HomeShellPage> {
 
     return GestureDetector(
       onTap: () {
+        HapticFeedback.lightImpact();
         setState(() => _currentIndex = index);
-        context.go(item.route);
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+        margin: const EdgeInsets.symmetric(horizontal: 2),
         decoration: BoxDecoration(
-          gradient: isActive
-              ? const LinearGradient(
-                  colors: [Color(0xFFFF6B35), Color(0xFFFFB627)],
-                )
-              : null,
-          borderRadius: BorderRadius.circular(20),
+          gradient: isActive ? item.gradient : null,
+          borderRadius: BorderRadius.circular(16),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               isActive ? item.activeIcon : item.icon,
-              color: isActive ? Colors.white : Colors.grey[600],
-              size: 24,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              item.label,
-              style: TextStyle(
-                fontSize: 12,
-                color: isActive ? Colors.white : Colors.grey[600],
-                fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
-              ),
+              color: isActive
+                  ? Colors.white
+                  : Colors.white.withOpacity(0.6),
+              size: 26,
             ),
           ],
         ),
@@ -142,12 +155,13 @@ class NavigationItem {
   final IconData activeIcon;
   final String label;
   final String route;
+  final LinearGradient gradient;
 
   NavigationItem({
     required this.icon,
     required this.activeIcon,
     required this.label,
     required this.route,
+    required this.gradient,
   });
 }
-
