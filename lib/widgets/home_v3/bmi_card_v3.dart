@@ -48,7 +48,7 @@ class BmiCardV3 extends StatelessWidget {
               const SizedBox(width: 10),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
+                children: [
                   Text(
                     'BMI',
                     style: TextStyle(
@@ -93,7 +93,7 @@ class BmiCardV3 extends StatelessWidget {
             children: [
               Text(
                 bmi.toStringAsFixed(1),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 34,
                   fontWeight: FontWeight.w800,
                   color: titleColor,

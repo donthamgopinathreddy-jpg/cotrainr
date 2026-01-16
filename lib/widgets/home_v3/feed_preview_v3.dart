@@ -89,13 +89,15 @@ class FeedPreviewV3 extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Row(
-                children: const [
-                  Icon(Icons.favorite_border, color: AppColors.textPrimary),
-                  SizedBox(width: 12),
-                  Icon(Icons.mode_comment_outlined,
+                children: [
+                  const Icon(Icons.favorite_border,
                       color: AppColors.textPrimary),
-                  Spacer(),
-                  Icon(Icons.bookmark_border, color: AppColors.textPrimary),
+                  const SizedBox(width: 12),
+                  const Icon(Icons.mode_comment_outlined,
+                      color: AppColors.textPrimary),
+                  const Spacer(),
+                  const Icon(Icons.bookmark_border,
+                      color: AppColors.textPrimary),
                 ],
               ),
             ],

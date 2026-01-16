@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../theme/app_colors.dart';
@@ -83,16 +84,40 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
             right: 0,
             top: 0,
             height: coverHeight,
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: AppColors.heroGradient,
-                image: widget.coverImageUrl != null &&
-                        widget.coverImageUrl!.isNotEmpty
-                    ? DecorationImage(
-                        image: NetworkImage(widget.coverImageUrl!),
-                        fit: BoxFit.cover,
-                      )
-                    : null,
+            child: ClipRRect(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: AppColors.heroGradient,
+                ),
+                child: Stack(
+                  children: [
+                    if (widget.coverImageUrl != null &&
+                        widget.coverImageUrl!.isNotEmpty)
+                      Positioned.fill(
+                        child: ImageFiltered(
+                          imageFilter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                          child: Image(
+                            image: NetworkImage(widget.coverImageUrl!),
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                    // Gradient overlay for better text readability
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.black.withOpacity(0.3),
+                            Colors.black.withOpacity(0.1),
+                            Colors.transparent,
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

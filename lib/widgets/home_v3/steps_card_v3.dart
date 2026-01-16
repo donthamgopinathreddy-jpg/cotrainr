@@ -36,7 +36,7 @@ class StepsCardV3 extends StatelessWidget {
                 width: 30,
                 height: 30,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withOpacity(0.22),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(

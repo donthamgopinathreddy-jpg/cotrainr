@@ -16,6 +16,7 @@ class HomeShellPage extends StatefulWidget {
 
 class _HomeShellPageState extends State<HomeShellPage> {
   int _currentIndex = 0;
+  late final PageController _pageController;
 
   final List<NavigationItem> _navigationItems = [
     NavigationItem(
@@ -34,8 +35,8 @@ class _HomeShellPageState extends State<HomeShellPage> {
       activeIcon: Icons.explore,
       label: 'Discover',
       route: '/home/discover',
-      gradient: LinearGradient(
-        colors: [DesignTokens.accentGreen, DesignTokens.accentGreen.withValues(alpha: 204)],
+      gradient: const LinearGradient(
+        colors: [Color(0xFF3ED598), Color(0xFF4DA3FF)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
@@ -45,8 +46,8 @@ class _HomeShellPageState extends State<HomeShellPage> {
       activeIcon: Icons.emoji_events,
       label: 'Quest',
       route: '/home/quest',
-      gradient: LinearGradient(
-        colors: [DesignTokens.accentYellow, DesignTokens.accentYellow.withValues(alpha: 204)],
+      gradient: const LinearGradient(
+        colors: [Color(0xFFFFD93D), Color(0xFFFF5A5A)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
@@ -56,8 +57,8 @@ class _HomeShellPageState extends State<HomeShellPage> {
       activeIcon: Icons.people,
       label: 'Cocircle',
       route: '/home/cocircle',
-      gradient: LinearGradient(
-        colors: [DesignTokens.accentBlue, DesignTokens.accentBlueLight],
+      gradient: const LinearGradient(
+        colors: [Color(0xFF4DA3FF), Color(0xFF8B5CF6)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
@@ -67,8 +68,8 @@ class _HomeShellPageState extends State<HomeShellPage> {
       activeIcon: Icons.person,
       label: 'Profile',
       route: '/home/profile',
-      gradient: LinearGradient(
-        colors: [DesignTokens.accentRed, DesignTokens.accentRed.withValues(alpha: 204)],
+      gradient: const LinearGradient(
+        colors: [Color(0xFFFF5A5A), Color(0xFFFF8A7A)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
@@ -76,24 +77,65 @@ class _HomeShellPageState extends State<HomeShellPage> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(initialPage: _currentIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: const [
-          HomePageV3(),
-          DiscoverPage(),
-          QuestPage(),
-          CocirclePage(),
-          ProfilePage(),
-        ],
+      body: PageView.builder(
+        controller: _pageController,
+        physics: const BouncingScrollPhysics(),
+        onPageChanged: (index) => setState(() => _currentIndex = index),
+        itemCount: _navigationItems.length,
+        itemBuilder: (context, index) {
+          final pages = const [
+            HomePageV3(),
+            DiscoverPage(),
+            QuestPage(),
+            CocirclePage(),
+            ProfilePage(),
+          ];
+          return AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            transitionBuilder: (child, animation) {
+              return FadeTransition(
+                opacity: animation,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0.1, 0),
+                    end: Offset.zero,
+                  ).animate(CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeOutCubic,
+                  )),
+                  child: child,
+                ),
+              );
+            },
+            child: Container(
+              key: ValueKey(index),
+              child: pages[index],
+            ),
+          );
+        },
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-          color: DesignTokens.darkBackground,
+          color: colorScheme.surface,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.2),
+              color: Colors.black.withValues(alpha: 0.12),
               blurRadius: 12,
               offset: const Offset(0, -2),
             ),
@@ -118,6 +160,7 @@ class _HomeShellPageState extends State<HomeShellPage> {
   }
 
   Widget _buildNavItem(int index) {
+    final colorScheme = Theme.of(context).colorScheme;
     final item = _navigationItems[index];
     final isActive = _currentIndex == index;
 
@@ -125,6 +168,11 @@ class _HomeShellPageState extends State<HomeShellPage> {
       onTap: () {
         HapticFeedback.lightImpact();
         setState(() => _currentIndex = index);
+        _pageController.animateToPage(
+          index,
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+        );
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
@@ -140,7 +188,7 @@ class _HomeShellPageState extends State<HomeShellPage> {
               isActive ? item.activeIcon : item.icon,
               color: isActive
                   ? Colors.white
-                  : Colors.white.withOpacity(0.6),
+                  : colorScheme.onSurface.withOpacity(0.6),
               size: 26,
             ),
           ],

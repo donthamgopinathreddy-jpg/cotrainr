@@ -1,26 +1,27 @@
 import 'package:flutter/material.dart';
-import '../../theme/app_colors.dart';
 
 class CocircleProfilePage extends StatelessWidget {
   const CocircleProfilePage({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F7FB),
+      backgroundColor: colorScheme.background,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFF7F7FB),
+        backgroundColor: colorScheme.background,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
+          icon: Icon(Icons.arrow_back, color: colorScheme.onBackground),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
+        title: Text(
           'gopinath',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w700,
-            color: Colors.black,
+            color: colorScheme.onBackground,
           ),
         ),
       ),
@@ -44,23 +45,24 @@ class CocircleProfilePage extends StatelessWidget {
                       ),
                     ],
                   ),
-                  child: const Icon(Icons.person, color: Colors.black54, size: 40),
+                  child: Icon(Icons.person,
+                      color: colorScheme.onSurface.withOpacity(0.6), size: 40),
                 ),
                 const SizedBox(height: 10),
-                const Text(
+                Text(
                   'gopinath',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
-                    color: Colors.black,
+                    color: colorScheme.onSurface,
                   ),
                 ),
                 const SizedBox(height: 4),
-                const Text(
+                Text(
                   '@alexjohnson',
                   style: TextStyle(
                     fontSize: 13,
-                    color: Colors.black45,
+                    color: colorScheme.onSurface.withOpacity(0.55),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -68,7 +70,7 @@ class CocircleProfilePage extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: colorScheme.surface,
                     borderRadius: BorderRadius.circular(18),
                     boxShadow: [
                       BoxShadow(
@@ -78,12 +80,12 @@ class CocircleProfilePage extends StatelessWidget {
                       ),
                     ],
                   ),
-                  child: const Text(
+                  child: Text(
                     'Level 12',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
-                      color: Colors.black87,
+                      color: colorScheme.onSurface.withOpacity(0.85),
                     ),
                   ),
                 ),
@@ -95,22 +97,15 @@ class CocircleProfilePage extends StatelessWidget {
                       'Fitness enthusiast on a journey to better health',
                       style: TextStyle(
                         fontSize: 13,
-                        color: Colors.black.withOpacity(0.6),
+                        color: colorScheme.onSurface.withOpacity(0.6),
                       ),
                     ),
                     const SizedBox(width: 6),
-                    Icon(Icons.edit, size: 14, color: Colors.black.withOpacity(0.4)),
+                    Icon(Icons.edit,
+                        size: 14, color: colorScheme.onSurface.withOpacity(0.4)),
                   ],
                 ),
                 const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: const [
-                    _ProfileStat(label: 'Posts', value: '1'),
-                    _ProfileStat(label: 'Followers', value: '3'),
-                    _ProfileStat(label: 'Following', value: '0'),
-                  ],
-                ),
               ],
             ),
           ),
@@ -118,7 +113,7 @@ class CocircleProfilePage extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: colorScheme.surface,
               borderRadius: BorderRadius.circular(24),
               boxShadow: [
                 BoxShadow(
@@ -130,9 +125,9 @@ class CocircleProfilePage extends StatelessWidget {
             ),
             child: Row(
               children: const [
-                _ProfileTab(label: 'Posts', isActive: true),
-                _ProfileTab(label: 'Followers'),
-                _ProfileTab(label: 'Following'),
+                _ProfileTab(label: 'Posts 1', isActive: true),
+                _ProfileTab(label: 'Followers 3'),
+                _ProfileTab(label: 'Following 0'),
               ],
             ),
           ),
@@ -141,14 +136,15 @@ class CocircleProfilePage extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
             child: Container(
               height: 80,
-              color: Colors.white,
+              color: colorScheme.surface,
               child: Row(
                 children: [
                   Container(
                     width: 80,
                     height: 80,
-                    color: const Color(0xFFE5E5EA),
-                    child: const Icon(Icons.image, color: Colors.black45),
+                    color: colorScheme.surfaceVariant,
+                    child: Icon(Icons.image,
+                        color: colorScheme.onSurface.withOpacity(0.45)),
                   ),
                 ],
               ),
@@ -156,37 +152,6 @@ class CocircleProfilePage extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _ProfileStat extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _ProfileStat({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: Colors.black,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.black.withOpacity(0.5),
-          ),
-        ),
-      ],
     );
   }
 }
@@ -199,11 +164,13 @@ class _ProfileTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Expanded(
       child: Container(
         height: 40,
         decoration: BoxDecoration(
-          color: isActive ? AppColors.blue : Colors.transparent,
+          color: isActive ? colorScheme.primary : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Center(
@@ -212,7 +179,9 @@ class _ProfileTab extends StatelessWidget {
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
-              color: isActive ? Colors.white : Colors.black.withOpacity(0.6),
+              color: isActive
+                  ? Colors.white
+                  : colorScheme.onSurface.withOpacity(0.6),
             ),
           ),
         ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../theme/app_colors.dart';
+import '../../utils/page_transitions.dart';
 import 'settings_page.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -10,53 +11,123 @@ class ProfilePage extends StatefulWidget {
   State<ProfilePage> createState() => _ProfilePageState();
 }
 
-class _ProfilePageState extends State<ProfilePage> {
+class _ProfilePageState extends State<ProfilePage>
+    with SingleTickerProviderStateMixin {
   int _tabIndex = 0;
   final String _username = 'John Doe';
   final String _handle = '@fitness_john';
   final String _role = 'client';
-  final int _level = 12;
   final String _bio =
       'Fitness enthusiast on a journey to better health and strength.';
   final int _postsCount = 42;
   final int _followersCount = 1280;
   final int _followingCount = 356;
   final bool _isSubscribed = false;
+  final String? _coverImageUrl = null;
+  final String? _avatarUrl = null;
+  late AnimationController _fadeController;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _fadeController,
+      curve: Curves.easeOut,
+    );
+    _fadeController.forward();
+  }
+
+  @override
+  void dispose() {
+    _fadeController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0F1020),
-      body: CustomScrollView(
+      backgroundColor: colorScheme.background,
+      body: FadeTransition(
+        opacity: _fadeAnimation,
+        child: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
           SliverToBoxAdapter(
-            child: _ProfileHeader(
-              username: _username,
-              handle: _handle,
-              role: _role,
-              level: _level,
-              bio: _bio,
-              posts: _postsCount,
-              followers: _followersCount,
-              following: _followingCount,
-              isSubscribed: _isSubscribed,
-              onSettings: () {
-                HapticFeedback.lightImpact();
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const SettingsPage(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _ProfileCoverHeader(
+                  coverImageUrl: _coverImageUrl,
+                  avatarUrl: _avatarUrl,
+                  onSettings: () {
+                    HapticFeedback.lightImpact();
+                    Navigator.push(
+                      context,
+                      PageTransitions.slideRoute(
+                        const SettingsPage(),
+                        beginOffset: const Offset(0, 0.05),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _IdentityRow(
+                    username: _username,
+                    handle: _handle,
+                    role: _role,
                   ),
-                );
-              },
-              onTabChanged: (index) => setState(() => _tabIndex = index),
-              tabIndex: _tabIndex,
+                ),
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Text(
+                    _bio,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: colorScheme.onBackground.withOpacity(0.7),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _QuickActionsRow(
+                    role: _role,
+                    isSubscribed: _isSubscribed,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _StatsCard(
+                    posts: _postsCount,
+                    followers: _followersCount,
+                    following: _followingCount,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _ProfileTabs(
+                    index: _tabIndex,
+                    onChanged: (index) => setState(() => _tabIndex = index),
+                  ),
+                ),
+              ],
             ),
           ),
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 140, 16, 20),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
               child: Column(
                 children: const [
                   _ProfileSectionCard(title: 'About Me'),
@@ -73,207 +144,164 @@ class _ProfilePageState extends State<ProfilePage> {
           const SliverToBoxAdapter(child: SizedBox(height: 90)),
         ],
       ),
+        ),
     );
   }
 }
 
-class _ProfileHeader extends StatelessWidget {
-  final String username;
-  final String handle;
-  final String role;
-  final int level;
-  final String bio;
-  final int posts;
-  final int followers;
-  final int following;
-  final bool isSubscribed;
+class _ProfileCoverHeader extends StatelessWidget {
+  final String? coverImageUrl;
+  final String? avatarUrl;
   final VoidCallback onSettings;
-  final int tabIndex;
-  final ValueChanged<int> onTabChanged;
 
-  const _ProfileHeader({
-    required this.username,
-    required this.handle,
-    required this.role,
-    required this.level,
-    required this.bio,
-    required this.posts,
-    required this.followers,
-    required this.following,
-    required this.isSubscribed,
+  const _ProfileCoverHeader({
+    required this.coverImageUrl,
+    required this.avatarUrl,
     required this.onSettings,
-    required this.tabIndex,
-    required this.onTabChanged,
   });
 
   @override
   Widget build(BuildContext context) {
-    final gradient = const LinearGradient(
-      colors: [Color(0xFFFF7A00), Color(0xFFFF4F9A), Color(0xFF6C63FF)],
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-    );
+    const double coverHeight = 220;
+    const double avatarSize = 96;
+    final double safeTop = MediaQuery.of(context).padding.top;
+    final colorScheme = Theme.of(context).colorScheme;
+
     return SizedBox(
-      height: 360,
+      height: coverHeight + avatarSize / 2 + 8,
       child: Stack(
-        clipBehavior: Clip.none,
         children: [
-          Container(
-            height: 240,
-            decoration: BoxDecoration(gradient: gradient),
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 0,
+            height: coverHeight,
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.2),
+                gradient: AppColors.heroGradient,
+                image: coverImageUrl != null && coverImageUrl!.isNotEmpty
+                    ? DecorationImage(
+                        image: NetworkImage(coverImageUrl!),
+                        fit: BoxFit.cover,
+                      )
+                    : null,
               ),
             ),
           ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: [
-                  const Icon(Icons.arrow_back_ios_new_rounded,
-                      size: 18, color: Colors.white70),
-                  const Spacer(),
-                  GestureDetector(
-                    onTap: onSettings,
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.1),
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.2),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(Icons.settings,
-                          color: Colors.white70, size: 22),
-                    ),
-                  ),
-                ],
+          Positioned(
+            right: 16,
+            top: safeTop + 10,
+            child: IconButton(
+              onPressed: onSettings,
+              icon: Icon(Icons.settings_rounded,
+                  color: colorScheme.onSurface),
+              style: IconButton.styleFrom(
+                backgroundColor: colorScheme.surface,
               ),
             ),
           ),
           Positioned(
             left: 16,
-            bottom: 20,
+            top: coverHeight - avatarSize / 2,
             child: Container(
-              width: 92,
-              height: 92,
+              width: avatarSize,
+              height: avatarSize,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(color: Colors.white, width: 2),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
+                    color: Colors.black.withOpacity(0.25),
                     blurRadius: 12,
                     offset: const Offset(0, 6),
                   ),
                 ],
+                image: avatarUrl != null && avatarUrl!.isNotEmpty
+                    ? DecorationImage(
+                        image: NetworkImage(avatarUrl!),
+                        fit: BoxFit.cover,
+                      )
+                    : null,
+                color: avatarUrl == null || avatarUrl!.isEmpty
+                    ? colorScheme.surface
+                    : null,
               ),
-              child: const Icon(Icons.person, size: 36, color: Colors.white70),
-            ),
-          ),
-          Positioned(
-            left: 120,
-            bottom: 30,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  username,
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Text(
-                      handle,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.white.withOpacity(0.7),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      height: 24,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      decoration: BoxDecoration(
-                        color: role == 'trainer'
-                            ? AppColors.orange.withOpacity(0.35)
-                            : Colors.white.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Center(
-                        child: Text(
-                          role == 'trainer' ? 'TRAINER' : 'CLIENT',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: role == 'trainer'
-                                ? Colors.white
-                                : Colors.white.withOpacity(0.8),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: -20,
-            child: _QuickActionsRow(
-              role: role,
-              isSubscribed: isSubscribed,
-            ),
-          ),
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: -92,
-            child: _StatsCard(
-              posts: posts,
-              followers: followers,
-              following: following,
-            ),
-          ),
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: -156,
-            child: _ProfileTabs(
-              index: tabIndex,
-              onChanged: onTabChanged,
-            ),
-          ),
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: -210,
-            child: Text(
-              bio,
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.white.withOpacity(0.7),
-              ),
+              child: avatarUrl == null || avatarUrl!.isEmpty
+                  ? Icon(Icons.person,
+                      size: 36, color: colorScheme.onSurface)
+                  : null,
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _IdentityRow extends StatelessWidget {
+  final String username;
+  final String handle;
+  final String role;
+
+  const _IdentityRow({
+    required this.username,
+    required this.handle,
+    required this.role,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                username,
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  color: colorScheme.onBackground,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                handle,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: colorScheme.onBackground.withOpacity(0.6),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Container(
+          height: 28,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: role == 'trainer'
+                ? colorScheme.primary.withOpacity(0.15)
+                : colorScheme.surfaceVariant,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Center(
+            child: Text(
+              role == 'trainer' ? 'TRAINER' : 'CLIENT',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: role == 'trainer'
+                    ? colorScheme.primary
+                    : colorScheme.onSurface.withOpacity(0.8),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -325,19 +353,21 @@ class _QuickActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return GestureDetector(
       onTap: () => HapticFeedback.lightImpact(),
       child: Container(
         height: 44,
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.12),
+          color: colorScheme.surface,
           borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: Colors.white.withOpacity(0.08)),
+          border: Border.all(color: colorScheme.outline.withOpacity(0.18)),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 16, color: Colors.white.withOpacity(0.8)),
+            Icon(icon, size: 16, color: colorScheme.onSurface.withOpacity(0.8)),
             const SizedBox(width: 6),
             Flexible(
               child: Text(
@@ -345,7 +375,7 @@ class _QuickActionButton extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: Colors.white.withOpacity(0.85),
+                  color: colorScheme.onSurface.withOpacity(0.9),
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -371,12 +401,14 @@ class _StatsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.12),
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withOpacity(0.08)),
+        border: Border.all(color: colorScheme.outline.withOpacity(0.18)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -398,14 +430,16 @@ class _StatItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Column(
       children: [
         Text(
           value,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w700,
-            color: Colors.white,
+            color: colorScheme.onSurface,
           ),
         ),
         const SizedBox(height: 4),
@@ -413,7 +447,7 @@ class _StatItem extends StatelessWidget {
           label,
           style: TextStyle(
             fontSize: 12,
-            color: Colors.white.withOpacity(0.6),
+            color: colorScheme.onSurface.withOpacity(0.6),
           ),
         ),
       ],
@@ -430,12 +464,14 @@ class _ProfileTabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const labels = ['Posts', 'Achievements', 'Progress'];
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Container(
       padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
+        color: colorScheme.surfaceVariant,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withOpacity(0.08)),
+        border: Border.all(color: colorScheme.outline.withOpacity(0.12)),
       ),
       child: Row(
         children: List.generate(labels.length, (i) {
@@ -448,11 +484,7 @@ class _ProfileTabs extends StatelessWidget {
                 curve: Curves.easeOutCubic,
                 height: 38,
                 decoration: BoxDecoration(
-                  gradient: isSelected
-                      ? const LinearGradient(
-                          colors: [Color(0xFFFF7A00), Color(0xFFFF4F9A)],
-                        )
-                      : null,
+                  color: isSelected ? colorScheme.primary : Colors.transparent,
                   borderRadius: BorderRadius.circular(18),
                 ),
                 child: Center(
@@ -463,7 +495,7 @@ class _ProfileTabs extends StatelessWidget {
                       fontWeight: FontWeight.w700,
                       color: isSelected
                           ? Colors.white
-                          : Colors.white.withOpacity(0.6),
+                          : colorScheme.onSurface.withOpacity(0.7),
                     ),
                   ),
                 ),
@@ -483,25 +515,28 @@ class _ProfileSectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.12),
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withOpacity(0.08)),
+        border: Border.all(color: colorScheme.outline.withOpacity(0.18)),
       ),
       child: Row(
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w700,
-              color: Colors.white,
+              color: colorScheme.onSurface,
             ),
           ),
           const Spacer(),
-          Icon(Icons.edit, color: Colors.white.withOpacity(0.6), size: 18),
+          Icon(Icons.edit,
+              color: colorScheme.onSurface.withOpacity(0.6), size: 18),
         ],
       ),
     );

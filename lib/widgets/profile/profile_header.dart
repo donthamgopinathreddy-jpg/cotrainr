@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../theme/design_tokens.dart';
@@ -38,24 +39,52 @@ class ProfileHeader extends StatelessWidget {
       child: Column(
         children: [
           // Cover Image
-          Container(
-            height: 180,
-            decoration: BoxDecoration(
-              gradient: coverImageUrl == null
-                  ? LinearGradient(
-                      colors: [DesignTokens.accentRed, DesignTokens.accentRed.withValues(alpha: 204)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    )
-                  : null,
-              image: coverImageUrl != null
-                  ? DecorationImage(
-                      image: CachedNetworkImageProvider(coverImageUrl!),
-                      fit: BoxFit.cover,
-                    )
-                  : null,
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(DesignTokens.radiusCard),
+          ClipRRect(
+            borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(DesignTokens.radiusCard),
+            ),
+            child: Container(
+              height: 180,
+              decoration: BoxDecoration(
+                gradient: coverImageUrl == null
+                    ? LinearGradient(
+                        colors: [DesignTokens.accentRed, DesignTokens.accentRed.withValues(alpha: 204)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      )
+                    : null,
+                border: Border.all(
+                  color: DesignTokens.surfaceOf(context).withOpacity(0.3),
+                  width: 1,
+                ),
+              ),
+              child: Stack(
+                children: [
+                  if (coverImageUrl != null)
+                    Positioned.fill(
+                      child: ImageFiltered(
+                        imageFilter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                        child: Image(
+                          image: CachedNetworkImageProvider(coverImageUrl!),
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
+                  // Gradient overlay
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black.withOpacity(0.3),
+                          Colors.black.withOpacity(0.1),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

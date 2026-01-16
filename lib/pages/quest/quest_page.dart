@@ -2,7 +2,10 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/design_tokens.dart';
+import '../../utils/page_transitions.dart';
 
 class QuestPage extends StatefulWidget {
   const QuestPage({super.key});
@@ -11,9 +14,12 @@ class QuestPage extends StatefulWidget {
   State<QuestPage> createState() => _QuestPageState();
 }
 
-class _QuestPageState extends State<QuestPage> {
+class _QuestPageState extends State<QuestPage>
+    with SingleTickerProviderStateMixin {
   int _tabIndex = 0;
   late final PageController _tabController;
+  late AnimationController _fadeController;
+  late Animation<double> _fadeAnimation;
 
   final int _currentXP = 250;
   final int _level = 4;
@@ -34,6 +40,15 @@ class _QuestPageState extends State<QuestPage> {
   @override
   void initState() {
     super.initState();
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _fadeController,
+      curve: Curves.easeOut,
+    );
+    _fadeController.forward();
     _tabController = PageController(viewportFraction: 1.0);
     _levels = _buildLevels();
     _daily = [
@@ -112,29 +127,35 @@ class _QuestPageState extends State<QuestPage> {
 
   void _openLevelsPage() {
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => LevelsPage(
+      PageTransitions.slideRoute(
+        LevelsPage(
           currentXP: _currentXP,
           levels: _levels,
         ),
+        beginOffset: const Offset(0, 0.05),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
-      backgroundColor: AppColors.bg,
-      body: SafeArea(
-        child: Column(
+      backgroundColor: colorScheme.background,
+      body: FadeTransition(
+        opacity: _fadeAnimation,
+        child: SafeArea(
+          child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
               child: _HeaderRow(
                 onHelpTap: () => HapticFeedback.selectionClick(),
                 currentXP: _currentXP,
               ),
             ),
+            const SizedBox(height: DesignTokens.spacing16),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: _XpHero(
@@ -182,6 +203,7 @@ class _QuestPageState extends State<QuestPage> {
             ),
           ],
         ),
+        ),
       ),
     );
   }
@@ -196,14 +218,34 @@ class _HeaderRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final questGradient = const LinearGradient(
+      colors: [Color(0xFFFFD93D), Color(0xFFFF5A5A)],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    );
+
     return Row(
       children: [
-        const Text(
-          'QUESTS',
-          style: TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.w600,
+        ShaderMask(
+          shaderCallback: (rect) => questGradient.createShader(rect),
+          child: Icon(
+            Icons.emoji_events_outlined,
+            size: 26,
             color: Colors.white,
+          ),
+        ),
+        const SizedBox(width: 12),
+        ShaderMask(
+          shaderCallback: (rect) => questGradient.createShader(rect),
+          child: Text(
+            'QUESTS',
+            style: GoogleFonts.montserrat(
+              fontSize: 30,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.2,
+              color: Colors.white,
+            ),
           ),
         ),
         const Spacer(),
@@ -212,23 +254,23 @@ class _HeaderRow extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: AppColors.surfaceSoft,
+              color: colorScheme.surface,
               borderRadius: BorderRadius.circular(999),
             ),
             child: Row(
               children: [
                 const Icon(
                   Icons.bolt_rounded,
-                  color: Colors.white,
+                  color: AppColors.orange,
                   size: 16,
                 ),
                 const SizedBox(width: 6),
                 Text(
                   '$currentXP XP',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: Colors.white,
+                    color: colorScheme.onSurface,
                   ),
                 ),
               ],
@@ -386,6 +428,7 @@ class _QuestTabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const tabs = ['Daily', 'Weekly', 'Leaderboard', 'Achievements'];
+    final colorScheme = Theme.of(context).colorScheme;
     final gradients = [
       const LinearGradient(colors: [Color(0xFFFF7A00), Color(0xFFFFC300)]),
       const LinearGradient(colors: [Color(0xFF6C63FF), Color(0xFF3B82F6)]),
@@ -397,8 +440,9 @@ class _QuestTabs extends StatelessWidget {
       height: 44,
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: AppColors.surfaceSoft,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: colorScheme.outline.withOpacity(0.16)),
       ),
       child: Container(
         height: 36,
@@ -576,6 +620,8 @@ class _LeaderboardPodiumItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     if (entry == null) {
       return const SizedBox.shrink();
     }
@@ -589,7 +635,7 @@ class _LeaderboardPodiumItem extends StatelessWidget {
               width: size + 18,
               height: size + 18,
               decoration: BoxDecoration(
-                color: AppColors.surfaceSoft,
+                color: colorScheme.surface,
                 shape: BoxShape.circle,
                 boxShadow: AppColors.cardShadow,
               ),
@@ -622,10 +668,10 @@ class _LeaderboardPodiumItem extends StatelessWidget {
         const SizedBox(height: 8),
         Text(
           entry!.name,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: Colors.white,
+            color: colorScheme.onSurface,
           ),
         ),
         const SizedBox(height: 2),
@@ -634,7 +680,7 @@ class _LeaderboardPodiumItem extends StatelessWidget {
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w600,
-            color: Colors.white.withOpacity(0.7),
+            color: colorScheme.onSurface.withOpacity(0.7),
           ),
         ),
       ],
@@ -681,6 +727,7 @@ class LevelsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     final currentIndex = _currentLevelIndex(levels, currentXP);
     final currentLevel = levels[currentIndex];
     final nextLevel =
@@ -696,11 +743,16 @@ class LevelsPage extends StatelessWidget {
       }
     }
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: colorScheme.background,
       appBar: AppBar(
-        backgroundColor: AppColors.bg,
+        backgroundColor: colorScheme.background,
         elevation: 0,
-        title: const Text('Levels'),
+        title: Text(
+          'Levels',
+          style: TextStyle(
+            color: colorScheme.onBackground,
+          ),
+        ),
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
@@ -812,6 +864,7 @@ class _LevelRowLarge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     final unlocked = currentXP >= level.xpRequired;
     final needed = (level.xpRequired - currentXP).clamp(0, level.xpRequired);
     return Container(
@@ -836,10 +889,10 @@ class _LevelRowLarge extends StatelessWidget {
               children: [
                 Text(
                   'Level ${level.level} · ${level.name}',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
-                    color: Colors.white,
+                    color: colorScheme.onSurface,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -848,7 +901,7 @@ class _LevelRowLarge extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: Colors.white.withOpacity(0.75),
+                    color: colorScheme.onSurface.withOpacity(0.7),
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -857,7 +910,7 @@ class _LevelRowLarge extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    color: Colors.white.withOpacity(0.7),
+                    color: colorScheme.onSurface.withOpacity(0.65),
                   ),
                 ),
               ],
@@ -868,7 +921,7 @@ class _LevelRowLarge extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
-              color: Colors.white.withOpacity(0.85),
+              color: colorScheme.onSurface.withOpacity(0.8),
             ),
           ),
         ],
@@ -886,10 +939,12 @@ class _QuestCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surfaceSoft,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
         boxShadow: AppColors.cardShadow,
       ),
@@ -903,10 +958,10 @@ class _QuestCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   quest.title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
-                    color: Colors.white,
+                    color: colorScheme.onSurface,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -921,7 +976,7 @@ class _QuestCard extends StatelessWidget {
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w500,
-              color: Colors.white.withOpacity(0.75),
+              color: colorScheme.onSurface.withOpacity(0.7),
             ),
           ),
           const SizedBox(height: 12),
@@ -947,10 +1002,12 @@ class _WeeklyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.surfaceSoft,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(22),
         boxShadow: AppColors.cardShadow,
       ),
@@ -961,10 +1018,10 @@ class _WeeklyCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             quest.title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
-              color: Colors.white,
+              color: colorScheme.onSurface,
             ),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
@@ -979,7 +1036,7 @@ class _WeeklyCard extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: Colors.white.withOpacity(0.8),
+                  color: colorScheme.onSurface.withOpacity(0.75),
                 ),
               ),
             ],
@@ -997,10 +1054,12 @@ class _LeaderboardCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.surfaceSoft,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(22),
         boxShadow: AppColors.cardShadow,
       ),
@@ -1008,10 +1067,10 @@ class _LeaderboardCard extends StatelessWidget {
         children: [
           Text(
             '#${entry.rank}',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w700,
-              color: Colors.white,
+              color: colorScheme.onSurface,
             ),
           ),
           const SizedBox(width: 12),
@@ -1020,10 +1079,10 @@ class _LeaderboardCard extends StatelessWidget {
           Expanded(
             child: Text(
               entry.name,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: Colors.white,
+                color: colorScheme.onSurface,
               ),
             ),
           ),
@@ -1032,7 +1091,7 @@ class _LeaderboardCard extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: Colors.white.withOpacity(0.8),
+              color: colorScheme.onSurface.withOpacity(0.75),
             ),
           ),
         ],
@@ -1048,10 +1107,12 @@ class _AchievementCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.surfaceSoft,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(22),
         boxShadow: AppColors.cardShadow,
       ),
@@ -1062,10 +1123,10 @@ class _AchievementCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             item.title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
-              color: Colors.white,
+              color: colorScheme.onSurface,
             ),
           ),
           const Spacer(),
@@ -1180,13 +1241,15 @@ class _ProgressBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return SizedBox(
       height: 8,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(8),
         child: Stack(
           children: [
-            Container(color: Colors.white.withOpacity(0.12)),
+            Container(color: colorScheme.outline.withOpacity(0.2)),
             FractionallySizedBox(
               widthFactor: progress.clamp(0.0, 1.0),
               child: Container(decoration: BoxDecoration(gradient: gradient)),
@@ -1205,14 +1268,16 @@ class _MiniRing extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return SizedBox(
       width: 28,
       height: 28,
       child: CircularProgressIndicator(
         value: progress,
         strokeWidth: 4,
-        valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
-        backgroundColor: Colors.white.withOpacity(0.2),
+        valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
+        backgroundColor: colorScheme.outline.withOpacity(0.2),
       ),
     );
   }
@@ -1231,14 +1296,16 @@ class _IconBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.12),
+        color: colorScheme.surfaceVariant,
         shape: BoxShape.circle,
       ),
-      child: Icon(icon, color: Colors.white, size: iconSize),
+      child: Icon(icon, color: colorScheme.onSurface, size: iconSize),
     );
   }
 }
@@ -1250,18 +1317,20 @@ class _Chip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.12),
+        color: colorScheme.surfaceVariant,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
         text,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w600,
-          color: Colors.white,
+          color: colorScheme.onSurface,
         ),
       ),
     );

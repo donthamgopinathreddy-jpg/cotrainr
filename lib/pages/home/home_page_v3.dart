@@ -18,8 +18,11 @@ class HomePageV3 extends StatefulWidget {
   State<HomePageV3> createState() => _HomePageV3State();
 }
 
-class _HomePageV3State extends State<HomePageV3> {
+class _HomePageV3State extends State<HomePageV3>
+    with SingleTickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
+  late AnimationController _fadeController;
+  late Animation<double> _fadeAnimation;
 
   // Mock data
   final String _username = 'John Doe';
@@ -42,25 +45,25 @@ class _HomePageV3State extends State<HomePageV3> {
   @override
   void initState() {
     super.initState();
-    ErrorWidget.builder = (details) {
-      return Container(
-        color: AppColors.bg,
-        padding: const EdgeInsets.all(16),
-        child: Text(
-          'UI error: ${details.exception}',
-          style: const TextStyle(color: Colors.white),
-        ),
-      );
-    };
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _fadeController,
+      curve: Curves.easeOut,
+    );
+    _fadeController.forward();
   }
 
   @override
   void dispose() {
     _scrollController.dispose();
+    _fadeController.dispose();
     super.dispose();
   }
 
-  Widget _safeSection(Widget child) {
+  Widget _safeSection(BuildContext context, Widget child) {
     try {
       return child;
     } catch (e) {
@@ -97,9 +100,11 @@ class _HomePageV3State extends State<HomePageV3> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.bg,
-      body: CustomScrollView(
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: Scaffold(
+        backgroundColor: AppColors.bg,
+        body: CustomScrollView(
         controller: _scrollController,
         physics: const BouncingScrollPhysics(),
         slivers: [
@@ -124,6 +129,7 @@ class _HomePageV3State extends State<HomePageV3> {
                 Transform.translate(
                   offset: const Offset(0, -8),
                   child: _safeSection(
+                    context,
                     StepsCardV3(
                       steps: _currentSteps,
                       goal: _goalSteps,
@@ -150,6 +156,7 @@ class _HomePageV3State extends State<HomePageV3> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: _animated(
                 _safeSection(
+                  context,
                   MacroRowV3(
                     calories: _currentCalories,
                     water: _currentWater,
@@ -192,7 +199,7 @@ class _HomePageV3State extends State<HomePageV3> {
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: _animated(
-                _safeSection(BmiCardV3(bmi: _bmi, status: _bmiStatus)),
+                _safeSection(context, BmiCardV3(bmi: _bmi, status: _bmiStatus)),
                 180,
               ),
             ),
@@ -201,25 +208,29 @@ class _HomePageV3State extends State<HomePageV3> {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _animated(_safeSection(const QuickAccessV3()), 220),
+              child:
+                  _animated(_safeSection(context, const QuickAccessV3()), 220),
             ),
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 20)),
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _animated(_safeSection(const FeedPreviewV3()), 260),
+              child:
+                  _animated(_safeSection(context, const FeedPreviewV3()), 260),
             ),
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 20)),
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _animated(_safeSection(const NearbyPreviewV3()), 300),
+              child:
+                  _animated(_safeSection(context, const NearbyPreviewV3()), 300),
             ),
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 96)),
         ],
+      ),
       ),
     );
   }

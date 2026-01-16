@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/config/supabase_config.dart';
 import 'router/app_router.dart';
 import 'theme/app_theme.dart';
+import 'theme/theme_mode_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,24 +15,22 @@ void main() async {
     anonKey: SupabaseConfig.supabaseAnonKey,
   );
 
-  runApp(
-    const ProviderScope(
-      child: MyApp(),
-    ),
-  );
+  runApp(const ProviderScope(child: MyApp()));
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends ConsumerWidget {
   const MyApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeModeProvider);
+
     return MaterialApp.router(
       title: 'Cotrainr',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
-      themeMode: AppTheme.themeMode,
+      themeMode: themeMode,
       routerConfig: appRouter,
     );
   }

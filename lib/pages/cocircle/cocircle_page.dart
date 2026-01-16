@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../theme/design_tokens.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/cocircle/cocircle_feed_card.dart';
+import '../../utils/page_transitions.dart';
 import 'cocircle_create_post_page.dart';
 import 'cocircle_profile_page.dart';
 
@@ -13,19 +15,111 @@ class CocirclePage extends StatefulWidget {
   State<CocirclePage> createState() => _CocirclePageState();
 }
 
-class _CocirclePageState extends State<CocirclePage> {
+class _CocircleSearchBar extends StatefulWidget {
+  final String hintText;
+
+  const _CocircleSearchBar({required this.hintText});
+
+  @override
+  State<_CocircleSearchBar> createState() => _CocircleSearchBarState();
+}
+
+class _CocircleSearchBarState extends State<_CocircleSearchBar> {
+  final FocusNode _focusNode = FocusNode();
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      height: 52,
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(26),
+        boxShadow: [
+          BoxShadow(
+            color: isDark
+                ? Colors.black.withOpacity(0.4)
+                : Colors.black.withOpacity(0.15),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+            spreadRadius: 0,
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(26),
+        child: TextField(
+        controller: _controller,
+        focusNode: _focusNode,
+        style: TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w500,
+          color: colorScheme.onSurface,
+        ),
+        decoration: InputDecoration(
+          filled: true,
+          fillColor: Colors.transparent,
+          hintText: widget.hintText,
+          hintStyle: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w400,
+            color: colorScheme.onSurface.withOpacity(0.4),
+          ),
+          prefixIcon: Icon(
+            Icons.search_rounded,
+            size: 22,
+            color: colorScheme.onSurface.withOpacity(0.5),
+          ),
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          disabledBorder: InputBorder.none,
+          errorBorder: InputBorder.none,
+          focusedErrorBorder: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CocirclePageState extends State<CocirclePage>
+    with SingleTickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
   final List<CocircleFeedPost> _posts = [];
+  late AnimationController _fadeController;
+  late Animation<double> _fadeAnimation;
 
   @override
   void initState() {
     super.initState();
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _fadeController,
+      curve: Curves.easeOut,
+    );
+    _fadeController.forward();
     _loadMockData();
   }
 
   @override
   void dispose() {
     _scrollController.dispose();
+    _fadeController.dispose();
     super.dispose();
   }
 
@@ -86,27 +180,37 @@ class _CocirclePageState extends State<CocirclePage> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Container(
-      color: const Color(0xFFF7F7FB),
-      child: RefreshIndicator(
-        onRefresh: _onRefresh,
-        color: AppColors.orange,
-        child: CustomScrollView(
-          controller: _scrollController,
-          physics: const BouncingScrollPhysics(),
-          slivers: [
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                child: Column(
-                  children: [
-                    _CocircleHeaderRow(
+      color: colorScheme.background,
+      child: FadeTransition(
+        opacity: _fadeAnimation,
+        child: SafeArea(
+          child: RefreshIndicator(
+          onRefresh: _onRefresh,
+          color: AppColors.orange,
+          child: CustomScrollView(
+            controller: _scrollController,
+            physics: const BouncingScrollPhysics(),
+            slivers: [
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.only(
+                    left: DesignTokens.spacing16,
+                    right: DesignTokens.spacing16,
+                    top: DesignTokens.spacing12,
+                  ),
+                  child: Column(
+                    children: [
+                      _CocircleHeaderRow(
                       onAddTap: () {
                       HapticFeedback.selectionClick();
                       Navigator.push(
                         context,
-                        MaterialPageRoute(
-                          builder: (_) => const CocircleCreatePostPage(),
+                        PageTransitions.slideRoute(
+                          const CocircleCreatePostPage(),
+                          beginOffset: const Offset(0, 0.05),
                         ),
                       );
                       },
@@ -114,14 +218,15 @@ class _CocirclePageState extends State<CocirclePage> {
                         HapticFeedback.selectionClick();
                         Navigator.push(
                           context,
-                          MaterialPageRoute(
-                            builder: (_) => const CocircleProfilePage(),
+                          PageTransitions.slideRoute(
+                            const CocircleProfilePage(),
+                            beginOffset: const Offset(0, 0.05),
                           ),
                         );
                       },
                     ),
-                    const SizedBox(height: 12),
-                    _CocircleSearchBar(
+                    const SizedBox(height: DesignTokens.spacing16),
+                    const _CocircleSearchBar(
                       hintText: 'Search by User ID or name...',
                     ),
                     const SizedBox(height: 8),
@@ -151,6 +256,8 @@ class _CocirclePageState extends State<CocirclePage> {
               child: SizedBox(height: 100),
             ),
           ],
+        ),
+        ),
         ),
       ),
     );
@@ -230,88 +337,59 @@ class _CocircleHeaderRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cocircleGradient = const LinearGradient(
+      colors: [Color(0xFF4DA3FF), Color(0xFF8B5CF6)],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    );
+
     return Row(
       children: [
-        const Icon(
-          Icons.group_outlined,
-          size: 22,
-          color: AppColors.blue,
+        ShaderMask(
+          shaderCallback: (rect) => cocircleGradient.createShader(rect),
+          child: Icon(
+            Icons.people_outline,
+            size: 26,
+            color: Colors.white,
+          ),
         ),
-        const SizedBox(width: 8),
-        const Text(
-          'COCIRCLE',
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w700,
-            color: AppColors.blue,
-            letterSpacing: 0.4,
+        const SizedBox(width: 12),
+        ShaderMask(
+          shaderCallback: (rect) => cocircleGradient.createShader(rect),
+          child: Text(
+            'COCIRCLE',
+            style: GoogleFonts.montserrat(
+              fontSize: 30,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.2,
+              color: Colors.white,
+            ),
           ),
         ),
         const Spacer(),
         IconButton(
           onPressed: onProfileTap,
-          icon: const Icon(Icons.person_outline_rounded),
-          color: AppColors.purple,
-        ),
-        Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: AppColors.orange.withOpacity(0.15),
-            shape: BoxShape.circle,
+          icon: ShaderMask(
+            shaderCallback: (rect) => cocircleGradient.createShader(rect),
+            child: Icon(
+              Icons.person_outline_rounded,
+              color: Colors.white,
+              size: 26,
+            ),
           ),
-          child: IconButton(
-            onPressed: onAddTap,
-            icon: const Icon(Icons.add),
-            color: AppColors.orange,
-            iconSize: 20,
+        ),
+        IconButton(
+          onPressed: onAddTap,
+          icon: ShaderMask(
+            shaderCallback: (rect) => cocircleGradient.createShader(rect),
+            child: Icon(
+              Icons.add,
+              color: Colors.white,
+              size: 26,
+            ),
           ),
         ),
       ],
-    );
-  }
-}
-
-class _CocircleSearchBar extends StatelessWidget {
-  final String hintText;
-
-  const _CocircleSearchBar({required this.hintText});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 44,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF0F0F4),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: hintText,
-                hintStyle: TextStyle(
-                  color: Colors.black.withOpacity(0.45),
-                  fontSize: 13,
-                ),
-                border: InputBorder.none,
-              ),
-              style: const TextStyle(fontSize: 13, color: Colors.black),
-            ),
-          ),
-          const SizedBox(width: 8),
-          const Icon(Icons.search_rounded, size: 18, color: Colors.black45),
-        ],
-      ),
     );
   }
 }

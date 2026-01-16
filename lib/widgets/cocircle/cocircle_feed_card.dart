@@ -57,16 +57,18 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Container(
       margin: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
+            color: Color(0x14000000),
+            blurRadius: 18,
+            offset: Offset(0, 10),
           ),
         ],
       ),
@@ -94,7 +96,9 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
                         : null,
                   ),
                   child: widget.post.avatarUrl == null
-                      ? const Icon(Icons.person, color: Colors.black54, size: 22)
+                      ? Icon(Icons.person,
+                          color: colorScheme.onSurface.withOpacity(0.6),
+                          size: 22)
                       : null,
                 ),
                 const SizedBox(width: DesignTokens.spacing12),
@@ -106,10 +110,10 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
                     children: [
                       Text(
                         widget.post.userName,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
-                          color: Colors.black,
+                          color: colorScheme.onSurface,
                         ),
                       ),
                       Row(
@@ -119,7 +123,7 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
                               '@${widget.post.userId}',
                               style: TextStyle(
                                 fontSize: 12,
-                                color: Colors.black.withOpacity(0.5),
+                                color: colorScheme.onSurface.withOpacity(0.5),
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -130,7 +134,7 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
                             width: 4,
                             height: 4,
                             decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.3),
+                              color: colorScheme.onSurface.withOpacity(0.3),
                               shape: BoxShape.circle,
                             ),
                           ),
@@ -151,7 +155,7 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
                 ),
                 Icon(
                   Icons.more_horiz,
-                  color: Colors.black.withOpacity(0.4),
+                  color: colorScheme.onSurface.withOpacity(0.4),
                 ),
               ],
             ),
@@ -170,7 +174,7 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
                 widget.post.caption,
                 style: TextStyle(
                   fontSize: 14,
-                  color: Colors.black.withOpacity(0.7),
+                  color: colorScheme.onSurface.withOpacity(0.7),
                 ),
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
@@ -252,7 +256,7 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
                 const Spacer(),
                 IconButton(
                   icon: const Icon(Icons.bookmark_border),
-                  color: Colors.black.withOpacity(0.45),
+                  color: colorScheme.onSurface.withOpacity(0.45),
                   onPressed: () {},
                 ),
               ],
@@ -269,13 +273,17 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
     VoidCallback? onTap,
     bool isActive = false,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return GestureDetector(
       onTap: onTap,
       child: Row(
         children: [
           Icon(
             icon,
-            color: isActive ? AppColors.orange : Colors.black.withOpacity(0.45),
+            color: isActive
+                ? AppColors.orange
+                : colorScheme.onSurface.withOpacity(0.45),
             size: 20,
           ),
           const SizedBox(width: DesignTokens.spacing8),
@@ -283,7 +291,9 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
             count.toString(),
             style: TextStyle(
               fontSize: 13,
-              color: isActive ? AppColors.orange : Colors.black.withOpacity(0.45),
+              color: isActive
+                  ? AppColors.orange
+                  : colorScheme.onSurface.withOpacity(0.45),
               fontWeight: FontWeight.w600,
             ),
           ),

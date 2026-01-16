@@ -1,7 +1,6 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../theme/design_tokens.dart';
 import '../../theme/app_colors.dart';
 
@@ -12,20 +11,17 @@ class DiscoverPage extends StatefulWidget {
   State<DiscoverPage> createState() => _DiscoverPageState();
 }
 
-class _DiscoverPageState extends State<DiscoverPage> {
+class _DiscoverPageState extends State<DiscoverPage>
+    with SingleTickerProviderStateMixin {
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
+  late AnimationController _fadeController;
+  late Animation<double> _fadeAnimation;
 
   int _selectedTabIndex = 0;
-  bool _isSearchFocused = false;
-  bool _isFilterPressed = false;
   bool _isLoading = false;
 
-  // Filter state
-  RangeValues _distance = const RangeValues(0, 50);
-  String? _minRating;
-  Set<String> _selectedCategories = {};
 
   // Mock data
   final List<DiscoverItem> _trainers = [];
@@ -35,9 +31,15 @@ class _DiscoverPageState extends State<DiscoverPage> {
   @override
   void initState() {
     super.initState();
-    _searchFocusNode.addListener(() {
-      setState(() => _isSearchFocused = _searchFocusNode.hasFocus);
-    });
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _fadeController,
+      curve: Curves.easeOut,
+    );
+    _fadeController.forward();
     _loadMockData();
   }
 
@@ -46,6 +48,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
     _searchController.dispose();
     _searchFocusNode.dispose();
     _scrollController.dispose();
+    _fadeController.dispose();
     super.dispose();
   }
 
@@ -172,25 +175,13 @@ class _DiscoverPageState extends State<DiscoverPage> {
     }
   }
 
-  String get _currentTabName {
-    switch (_selectedTabIndex) {
-      case 0:
-        return 'trainers';
-      case 1:
-        return 'nutritionists';
-      case 2:
-        return 'centers';
-      default:
-        return 'trainers';
-    }
-  }
 
   LinearGradient _tabGradient(int index) {
     if (index == 1) {
-      return LinearGradient(
+      return const LinearGradient(
         colors: [
-          DesignTokens.accentGreen,
-          DesignTokens.accentGreen.withValues(alpha: 204),
+          Color(0xFF3ED598),
+          Color(0xFF4DA3FF),
         ],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
@@ -211,72 +202,35 @@ class _DiscoverPageState extends State<DiscoverPage> {
   }
 
   Color _tabAccent(int index) {
-    if (index == 1) return DesignTokens.accentGreen;
-    if (index == 2) return DesignTokens.accentPurple;
-    return DesignTokens.accentOrange;
+    if (index == 1) return const Color(0xFF3ED598); // Green for Nutritionists
+    if (index == 2) return const Color(0xFF8B5CF6); // Purple for Centers
+    return const Color(0xFFFF8A00); // Orange for Trainers
   }
 
-  List<String> _categoriesForTab() {
-    switch (_selectedTabIndex) {
-      case 0:
-        return ['Strength', 'Yoga', 'Cardio', 'Boxing', 'HIIT'];
-      case 1:
-        return [
-          'Weight Loss',
-          'Sports Nutrition',
-          'Clinical',
-          'Plant-Based',
-          'Lifestyle',
-        ];
-      case 2:
-        return ['Gym', 'Yoga Studio', 'CrossFit', 'Pilates', 'Martial Arts'];
-      default:
-        return ['Strength', 'Yoga', 'Cardio'];
-    }
-  }
-
-  void _openFilterSheet() {
-    HapticFeedback.selectionClick();
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
-        return _DiscoverFilterSheet(
-          title: 'Filter ${_currentTabName[0].toUpperCase()}${_currentTabName.substring(1)}',
-          accentColor: _tabAccent(_selectedTabIndex),
-          categories: _categoriesForTab(),
-          distance: _distance,
-          minRating: _minRating,
-          selectedCategories: _selectedCategories,
-          onApply: (distance, minRating, categories) {
-            setState(() {
-              _distance = distance;
-              _minRating = minRating;
-              _selectedCategories = categories;
-            });
-          },
-          onReset: () {
-            setState(() {
-              _distance = const RangeValues(0, 50);
-              _minRating = null;
-              _selectedCategories = {};
-            });
-          },
-        );
-      },
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F7FB),
-      body: SafeArea(
-        child: CustomScrollView(
-          controller: _scrollController,
-          physics: const BouncingScrollPhysics(),
-          slivers: [
+      backgroundColor: colorScheme.background,
+      body: FadeTransition(
+        opacity: _fadeAnimation,
+        child: SafeArea(
+          child: RefreshIndicator(
+          onRefresh: () async {
+            HapticFeedback.mediumImpact();
+            setState(() => _isLoading = true);
+            await Future.delayed(const Duration(seconds: 1));
+            setState(() => _isLoading = false);
+          },
+          color: DesignTokens.accentGreen,
+          child: CustomScrollView(
+            controller: _scrollController,
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
+            slivers: [
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.only(
@@ -287,20 +241,13 @@ class _DiscoverPageState extends State<DiscoverPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _DiscoverHeaderRow(accentColor: AppColors.purple),
+                    const _DiscoverHeaderRow(),
                     const SizedBox(height: DesignTokens.spacing16),
                     _DiscoverSearchBar(
                       controller: _searchController,
                       focusNode: _searchFocusNode,
-                      isFocused: _isSearchFocused,
-                      hintText: 'Search $_currentTabName...',
-                      isFilterPressed: _isFilterPressed,
-                      onFilterTap: () async {
-                        setState(() => _isFilterPressed = true);
-                        await Future.delayed(const Duration(milliseconds: 120));
-                        setState(() => _isFilterPressed = false);
-                        _openFilterSheet();
-                      },
+                      hintText: 'Search trainers...',
+                      onFilterTap: () => HapticFeedback.selectionClick(),
                     ),
                     const SizedBox(height: DesignTokens.spacing16),
                     _DiscoverSegmentTabs(
@@ -373,6 +320,8 @@ class _DiscoverPageState extends State<DiscoverPage> {
             const SliverToBoxAdapter(child: SizedBox(height: 80)),
           ],
         ),
+        ),
+        ),
       ),
     );
   }
@@ -413,12 +362,16 @@ class _DiscoverPageState extends State<DiscoverPage> {
 }
 
 class _DiscoverHeaderRow extends StatelessWidget {
-  final Color accentColor;
-
-  const _DiscoverHeaderRow({required this.accentColor});
+  const _DiscoverHeaderRow();
 
   @override
   Widget build(BuildContext context) {
+    final discoverGradient = const LinearGradient(
+      colors: [Color(0xFF3ED598), Color(0xFF4DA3FF)],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    );
+    
     return SizedBox(
       height: 56,
       child: Row(
@@ -433,24 +386,12 @@ class _DiscoverHeaderRow extends StatelessWidget {
                 child: child,
               );
             },
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.08),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
+            child: ShaderMask(
+              shaderCallback: (rect) => discoverGradient.createShader(rect),
               child: Icon(
-                Icons.explore_rounded,
-                size: 22,
-                color: accentColor,
+                Icons.explore_outlined,
+                size: 26,
+                color: Colors.white,
               ),
             ),
           ),
@@ -469,15 +410,13 @@ class _DiscoverHeaderRow extends StatelessWidget {
               );
             },
             child: ShaderMask(
-              shaderCallback: (rect) => const LinearGradient(
-                colors: [AppColors.purple, AppColors.blue],
-              ).createShader(rect),
-              child: const Text(
+              shaderCallback: (rect) => discoverGradient.createShader(rect),
+              child: Text(
                 'DISCOVER',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.4,
+                style: GoogleFonts.montserrat(
+                  fontSize: 30,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.2,
                   color: Colors.white,
                 ),
               ),
@@ -489,121 +428,100 @@ class _DiscoverHeaderRow extends StatelessWidget {
   }
 }
 
-class _DiscoverSearchBar extends StatelessWidget {
+class _DiscoverSearchBar extends StatefulWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
-  final bool isFocused;
   final String hintText;
-  final bool isFilterPressed;
   final VoidCallback onFilterTap;
 
   const _DiscoverSearchBar({
     required this.controller,
     required this.focusNode,
-    required this.isFocused,
     required this.hintText,
-    required this.isFilterPressed,
     required this.onFilterTap,
   });
 
   @override
+  State<_DiscoverSearchBar> createState() => _DiscoverSearchBarState();
+}
+
+class _DiscoverSearchBarState extends State<_DiscoverSearchBar> {
+  @override
   Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      height: 54,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
+    final colorScheme = Theme.of(context).colorScheme;
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Container(
+      height: 52,
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(28),
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(26),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.12),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
+            color: isDark
+                ? Colors.black.withOpacity(0.4)
+                : Colors.black.withOpacity(0.15),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+            spreadRadius: 0,
           ),
         ],
-        border: Border.all(
-          color: isFocused
-              ? AppColors.orange.withOpacity(0.6)
-              : Colors.black.withOpacity(0.06),
-        ),
       ),
-      child: Row(
-        children: [
-          Icon(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(26),
+        child: TextField(
+        controller: widget.controller,
+        focusNode: widget.focusNode,
+        style: TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w500,
+          color: colorScheme.onSurface,
+        ),
+        decoration: InputDecoration(
+          filled: true,
+          fillColor: Colors.transparent,
+          hintText: widget.hintText,
+          hintStyle: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w400,
+            color: colorScheme.onSurface.withOpacity(0.4),
+          ),
+          prefixIcon: Icon(
             Icons.search_rounded,
-            size: 20,
-            color: Colors.black.withOpacity(0.6),
+            size: 22,
+            color: colorScheme.onSurface.withOpacity(0.5),
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: TextField(
-              controller: controller,
-              focusNode: focusNode,
-              style: const TextStyle(
-                fontSize: 14,
-                color: Colors.black,
+          suffixIcon: GestureDetector(
+            onTap: widget.onFilterTap,
+            child: Container(
+              margin: const EdgeInsets.all(6),
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                shape: BoxShape.circle,
               ),
-              cursorColor: AppColors.orange,
-              decoration: InputDecoration(
-                hintText: hintText,
-                hintStyle: TextStyle(
-                  fontSize: 14,
-                  color: Colors.black.withOpacity(0.4),
-                ),
-                border: InputBorder.none,
+              child: Icon(
+                Icons.tune_rounded,
+                size: 18,
+                color: colorScheme.onSurface.withOpacity(0.7),
               ),
             ),
           ),
-          ValueListenableBuilder<TextEditingValue>(
-            valueListenable: controller,
-            builder: (context, value, child) {
-              if (value.text.isEmpty) {
-                return const SizedBox.shrink();
-              }
-              return GestureDetector(
-                onTap: controller.clear,
-                child: Icon(
-                  Icons.close_rounded,
-                  size: 18,
-                  color: Colors.black.withOpacity(0.5),
-                ),
-              );
-            },
-          ),
-          const SizedBox(width: 10),
-          GestureDetector(
-            onTap: onFilterTap,
-            child: AnimatedScale(
-              scale: isFilterPressed ? 0.98 : 1.0,
-              duration: const Duration(milliseconds: 120),
-              child: Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: AppColors.orange,
-                  borderRadius: BorderRadius.circular(18),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.orange.withOpacity(0.4),
-                      blurRadius: 12,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.tune_rounded,
-                  size: 18,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ),
-        ],
+          border: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          disabledBorder: InputBorder.none,
+          errorBorder: InputBorder.none,
+          focusedErrorBorder: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        ),
+        ),
       ),
     );
   }
 }
+
 
 class _DiscoverSegmentTabs extends StatelessWidget {
   final List<String> tabs;
@@ -622,64 +540,69 @@ class _DiscoverSegmentTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 14,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: SizedBox(
-        height: 44,
-        child: Row(
-          children: List.generate(tabs.length, (index) {
-            final isSelected = index == selectedIndex;
-            final selectedColor =
-                index == 1 ? Colors.green : (index == 2 ? Colors.grey : AppColors.orange);
-            return Expanded(
-              child: GestureDetector(
-                onTap: () => onTabChanged(index),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  curve: Curves.easeOutCubic,
-                  margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final tabWidth = constraints.maxWidth / tabs.length;
+        final pillWidth = tabWidth - 8;
+        
+        return SizedBox(
+          height: 44,
+          child: Stack(
+            children: [
+              // Sliding pill background
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOutCubic,
+                left: (selectedIndex * tabWidth) + 4,
+                top: 4,
+                bottom: 4,
+                width: pillWidth,
+                child: Container(
                   decoration: BoxDecoration(
-                    color: isSelected ? selectedColor : Colors.transparent,
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: isSelected
-                        ? [
-                            BoxShadow(
-                              color: selectedColor.withOpacity(0.35),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            ),
-                          ]
-                        : [],
-                  ),
-                  child: Center(
-                    child: Text(
-                      tabs[index],
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: isSelected
-                            ? Colors.white
-                            : Colors.black.withOpacity(0.55),
+                    gradient: selectedGradient,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: selectedAccent.withOpacity(0.35),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
                       ),
-                    ),
+                    ],
                   ),
                 ),
               ),
-            );
-          }),
-        ),
-      ),
+              // Tabs
+              Row(
+                children: List.generate(tabs.length, (index) {
+                  final isSelected = index == selectedIndex;
+                  return Expanded(
+                    child: GestureDetector(
+                      onTap: () => onTabChanged(index),
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                        child: Center(
+                          child: Text(
+                            tabs[index],
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                              color: isSelected
+                                  ? Colors.white
+                                  : colorScheme.onSurface.withOpacity(0.85),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -707,6 +630,7 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
   Widget build(BuildContext context) {
     final splash = widget.accentColor.withValues(alpha: 20);
     final highlight = widget.accentColor.withValues(alpha: 10);
+    final colorScheme = Theme.of(context).colorScheme;
 
     return AnimatedScale(
       scale: _pressed ? 0.99 : 1.0,
@@ -722,13 +646,13 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: colorScheme.surface,
               borderRadius: BorderRadius.circular(24),
-              boxShadow: [
+              boxShadow: const [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
-                  blurRadius: 12,
-                  offset: const Offset(0, 6),
+                  color: Color(0x14000000),
+                  blurRadius: 18,
+                  offset: Offset(0, 10),
                 ),
               ],
             ),
@@ -741,9 +665,9 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                       Container(
                         width: 72,
                         height: 72,
-                        decoration: const BoxDecoration(
+                        decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: Color(0xFFF1F1F4),
+                          color: colorScheme.surfaceVariant,
                         ),
                         child: ClipOval(
                           child: widget.item.avatarUrl == null
@@ -788,10 +712,10 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                       children: [
                         Text(
                           widget.item.name,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
-                            color: Colors.black,
+                            color: colorScheme.onSurface,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -802,7 +726,7 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
-                            color: Colors.black.withOpacity(0.6),
+                            color: colorScheme.onSurface.withOpacity(0.6),
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -818,9 +742,9 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                             const SizedBox(width: 4),
                             Text(
                               '${widget.item.rating.toStringAsFixed(1)}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 13,
-                                color: Colors.black,
+                                color: colorScheme.onSurface,
                               ),
                             ),
                             const SizedBox(width: 6),
@@ -828,7 +752,7 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                               width: 4,
                               height: 4,
                               decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.4),
+                                color: colorScheme.onSurface.withOpacity(0.4),
                                 shape: BoxShape.circle,
                               ),
                             ),
@@ -837,7 +761,7 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                               '${widget.item.distance.toStringAsFixed(1)} km',
                               style: TextStyle(
                                 fontSize: 13,
-                                color: Colors.black.withOpacity(0.55),
+                                color: colorScheme.onSurface.withOpacity(0.55),
                               ),
                             ),
                           ],
@@ -848,7 +772,7 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                             Icon(
                               Icons.location_on_rounded,
                               size: 14,
-                              color: Colors.black.withOpacity(0.5),
+                              color: colorScheme.onSurface.withOpacity(0.5),
                             ),
                             const SizedBox(width: 4),
                             Expanded(
@@ -856,7 +780,7 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                                 widget.item.location,
                                 style: TextStyle(
                                   fontSize: 13,
-                                  color: Colors.black.withOpacity(0.55),
+                                  color: colorScheme.onSurface.withOpacity(0.55),
                                 ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
@@ -871,7 +795,7 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                   Icon(
                     Icons.chevron_right_rounded,
                     size: 18,
-                    color: Colors.black.withOpacity(0.4),
+                    color: colorScheme.onSurface.withOpacity(0.4),
                   ),
                 ],
               ),
@@ -931,25 +855,24 @@ class _GlassCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          padding: padding,
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.12),
-            borderRadius: BorderRadius.circular(radius),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.18),
-                blurRadius: 20,
-                spreadRadius: -2,
-              ),
-            ],
-          ),
-          child: child,
+      child: Container(
+        padding: padding,
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          borderRadius: BorderRadius.circular(radius),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.12),
+              blurRadius: 20,
+              spreadRadius: -2,
+            ),
+          ],
         ),
+        child: child,
       ),
     );
   }
@@ -1059,6 +982,7 @@ class _DiscoverFilterSheetState extends State<_DiscoverFilterSheet> {
   @override
   Widget build(BuildContext context) {
     final selectedRating = _minRating ?? 'Any';
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
       margin: EdgeInsets.only(
@@ -1066,7 +990,7 @@ class _DiscoverFilterSheetState extends State<_DiscoverFilterSheet> {
       ),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
         boxShadow: [
           BoxShadow(
@@ -1096,20 +1020,20 @@ class _DiscoverFilterSheetState extends State<_DiscoverFilterSheet> {
                 style: TextStyle(
                   fontSize: 26,
                   fontWeight: FontWeight.w900,
-                  color: Colors.black,
+                  color: colorScheme.onSurface,
                 ),
               ),
               IconButton(
                 onPressed: () => Navigator.pop(context),
                 icon: Icon(
                   Icons.close_rounded,
-                  color: Colors.black.withOpacity(0.5),
+                  color: colorScheme.onSurface.withOpacity(0.5),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 16),
-          Divider(color: Colors.black.withOpacity(0.08), height: 1),
+          Divider(color: colorScheme.outline.withOpacity(0.2), height: 1),
           const SizedBox(height: 16),
           _FilterSectionHeader(
             icon: Icons.map_outlined,
@@ -1121,8 +1045,8 @@ class _DiscoverFilterSheetState extends State<_DiscoverFilterSheet> {
           SliderTheme(
             data: SliderTheme.of(context).copyWith(
               trackHeight: 6,
-              activeTrackColor: AppColors.orange,
-              inactiveTrackColor: Colors.black.withOpacity(0.1),
+              activeTrackColor: widget.accentColor,
+              inactiveTrackColor: colorScheme.outline.withOpacity(0.3),
               rangeThumbShape: const RoundRangeSliderThumbShape(
                 enabledThumbRadius: 14,
               ),
@@ -1136,7 +1060,7 @@ class _DiscoverFilterSheetState extends State<_DiscoverFilterSheet> {
             ),
           ),
           const SizedBox(height: 16),
-          Divider(color: Colors.black.withOpacity(0.08), height: 1),
+          Divider(color: colorScheme.outline.withOpacity(0.2), height: 1),
           const SizedBox(height: 16),
           _FilterChipSection(
             title: 'Minimum Rating',
@@ -1144,7 +1068,7 @@ class _DiscoverFilterSheetState extends State<_DiscoverFilterSheet> {
             selected: selectedRating,
             onChanged: (value) =>
                 setState(() => _minRating = value == 'Any' ? null : value),
-            selectedColor: AppColors.orange,
+            selectedColor: widget.accentColor,
           ),
           const SizedBox(height: 16),
           _CategoryChips(
@@ -1201,16 +1125,18 @@ class _FilterSectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Row(
       children: [
         Container(
           width: 40,
           height: 40,
           decoration: BoxDecoration(
-            color: AppColors.orange.withOpacity(0.15),
+            color: accentColor.withOpacity(0.15),
             borderRadius: BorderRadius.circular(20),
           ),
-          child: Icon(icon, size: 20, color: AppColors.orange),
+          child: Icon(icon, size: 20, color: accentColor),
         ),
         const SizedBox(width: 12),
         Text(
@@ -1218,7 +1144,7 @@ class _FilterSectionHeader extends StatelessWidget {
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w800,
-            color: Colors.black,
+            color: colorScheme.onSurface,
           ),
         ),
         const Spacer(),
@@ -1226,7 +1152,7 @@ class _FilterSectionHeader extends StatelessWidget {
           value,
           style: TextStyle(
             fontSize: 16,
-            color: Colors.black.withOpacity(0.5),
+            color: colorScheme.onSurface.withOpacity(0.5),
           ),
         ),
       ],
@@ -1251,6 +1177,8 @@ class _FilterChipSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1259,7 +1187,7 @@ class _FilterChipSection extends StatelessWidget {
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w800,
-            color: Colors.black,
+            color: colorScheme.onSurface,
           ),
         ),
         const SizedBox(height: 12),
@@ -1275,12 +1203,12 @@ class _FilterChipSection extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: isSelected ? selectedColor : Colors.white,
+                  color: isSelected ? selectedColor : colorScheme.surfaceVariant,
                   borderRadius: BorderRadius.circular(24),
                   border: Border.all(
                     color: isSelected
                         ? selectedColor
-                        : Colors.black.withOpacity(0.08),
+                        : colorScheme.outline.withOpacity(0.2),
                   ),
                 ),
                 child: Text(
@@ -1290,7 +1218,7 @@ class _FilterChipSection extends StatelessWidget {
                     fontWeight: FontWeight.w800,
                     color: isSelected
                         ? Colors.white
-                        : Colors.black.withOpacity(0.6),
+                        : colorScheme.onSurface.withOpacity(0.6),
                   ),
                 ),
               ),
@@ -1317,6 +1245,8 @@ class _CategoryChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Wrap(
       spacing: 10,
       runSpacing: 10,
@@ -1331,12 +1261,12 @@ class _CategoryChips extends StatelessWidget {
             decoration: BoxDecoration(
               color: isSelected
                   ? accentColor
-                  : const Color(0xFFF1F1F4),
+                  : colorScheme.surfaceVariant,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 color: isSelected
                     ? accentColor
-                    : Colors.black.withOpacity(0.06),
+                    : colorScheme.outline.withOpacity(0.16),
               ),
             ),
             child: Text(
@@ -1346,7 +1276,7 @@ class _CategoryChips extends StatelessWidget {
                 fontWeight: FontWeight.w700,
                 color: isSelected
                     ? Colors.white
-                    : Colors.black.withOpacity(0.6),
+                    : colorScheme.onSurface.withOpacity(0.6),
               ),
             ),
           ),
@@ -1367,17 +1297,19 @@ class _PrimaryActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
         height: 56,
         width: double.infinity,
         decoration: BoxDecoration(
-          color: AppColors.orange,
+          color: colorScheme.primary,
           borderRadius: BorderRadius.circular(28),
           boxShadow: [
             BoxShadow(
-              color: AppColors.orange.withOpacity(0.35),
+              color: colorScheme.primary.withOpacity(0.35),
               blurRadius: 14,
               offset: const Offset(0, 6),
             ),
@@ -1409,16 +1341,18 @@ class _SecondaryActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
         height: 56,
         width: double.infinity,
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: colorScheme.surfaceVariant,
           borderRadius: BorderRadius.circular(28),
           border: Border.all(
-            color: Colors.black.withOpacity(0.08),
+            color: colorScheme.outline.withOpacity(0.2),
           ),
         ),
         child: Center(
@@ -1427,7 +1361,7 @@ class _SecondaryActionButton extends StatelessWidget {
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w700,
-              color: Colors.black.withOpacity(0.7),
+              color: colorScheme.onSurface.withOpacity(0.7),
             ),
           ),
         ),

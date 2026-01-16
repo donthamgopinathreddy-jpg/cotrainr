@@ -107,6 +107,7 @@ class _WaterCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final progress = (waterGoal <= 0) ? 0.0 : (water / waterGoal);
+
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
