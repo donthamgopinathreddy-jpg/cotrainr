@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../theme/design_tokens.dart';
 import '../../theme/app_colors.dart';
+import '../cocircle/cocircle_profile_page.dart';
 
 class DiscoverPage extends StatefulWidget {
   const DiscoverPage({super.key});
@@ -307,7 +308,17 @@ class _DiscoverPageState extends State<DiscoverPage>
                             accentColor: _tabAccent(_selectedTabIndex),
                             onTap: () {
                               HapticFeedback.lightImpact();
-                              // TODO: Navigate to detail page
+                              // Navigate to profile page
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => CocircleProfilePage(
+                                    userId: item.id,
+                                    userName: item.name,
+                                    isOwnProfile: false,
+                                  ),
+                                ),
+                              );
                             },
                           ),
                         ),

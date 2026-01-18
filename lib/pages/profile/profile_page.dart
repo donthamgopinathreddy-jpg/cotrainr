@@ -1,7 +1,9 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/page_transitions.dart';
+import '../../widgets/common/pressable_card.dart';
 import 'settings_page.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -13,15 +15,11 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage>
     with SingleTickerProviderStateMixin {
-  int _tabIndex = 0;
   final String _username = 'John Doe';
   final String _handle = '@fitness_john';
   final String _role = 'client';
   final String _bio =
       'Fitness enthusiast on a journey to better health and strength.';
-  final int _postsCount = 42;
-  final int _followersCount = 1280;
-  final int _followingCount = 356;
   final bool _isSubscribed = false;
   final String? _coverImageUrl = null;
   final String? _avatarUrl = null;
@@ -66,16 +64,7 @@ class _ProfilePageState extends State<ProfilePage>
                 _ProfileCoverHeader(
                   coverImageUrl: _coverImageUrl,
                   avatarUrl: _avatarUrl,
-                  onSettings: () {
-                    HapticFeedback.lightImpact();
-                    Navigator.push(
-                      context,
-                      PageTransitions.slideRoute(
-                        const SettingsPage(),
-                        beginOffset: const Offset(0, 0.05),
-                      ),
-                    );
-                  },
+                  role: _role,
                 ),
                 const SizedBox(height: 12),
                 Padding(
@@ -83,7 +72,6 @@ class _ProfilePageState extends State<ProfilePage>
                   child: _IdentityRow(
                     username: _username,
                     handle: _handle,
-                    role: _role,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -100,45 +88,58 @@ class _ProfilePageState extends State<ProfilePage>
                 const SizedBox(height: 16),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: _QuickActionsRow(
-                    role: _role,
-                    isSubscribed: _isSubscribed,
+                  child: _FullLengthButton(
+                    label: 'Settings',
+                    icon: Icons.settings_rounded,
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      Navigator.push(
+                        context,
+                        PageTransitions.slideRoute(
+                          const SettingsPage(),
+                          beginOffset: const Offset(0, 0.05),
+                        ),
+                      );
+                    },
                   ),
                 ),
                 const SizedBox(height: 12),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: _StatsCard(
-                    posts: _postsCount,
-                    followers: _followersCount,
-                    following: _followingCount,
+                  child: _FullLengthButton(
+                    label: 'Refer a Friend',
+                    icon: Icons.person_add_rounded,
+                    iconGradient: const LinearGradient(
+                      colors: [AppColors.green, AppColors.cyan],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    onTap: () => HapticFeedback.lightImpact(),
                   ),
                 ),
                 const SizedBox(height: 12),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: _ProfileTabs(
-                    index: _tabIndex,
-                    onChanged: (index) => setState(() => _tabIndex = index),
+                  child: _FullLengthButton(
+                    label: _isSubscribed ? 'My Subscription' : 'Subscription',
+                    icon: Icons.star_rounded,
+                    iconGradient: AppColors.stepsGradient,
+                    onTap: () => HapticFeedback.lightImpact(),
                   ),
                 ),
-              ],
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
-              child: Column(
-                children: const [
-                  _ProfileSectionCard(title: 'About Me'),
-                  SizedBox(height: 12),
-                  _ProfileSectionCard(title: 'Goals'),
-                  SizedBox(height: 12),
-                  _ProfileSectionCard(title: 'Recent Activity'),
-                  SizedBox(height: 12),
-                  _ProfileSectionCard(title: 'Badges'),
+                if (_role == 'client') ...[
+                  const SizedBox(height: 12),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: _FullLengthButton(
+                      label: 'Become a Trainer',
+                      icon: Icons.school_rounded,
+                      iconGradient: AppColors.distanceGradient,
+                      onTap: () => HapticFeedback.lightImpact(),
+                    ),
+                  ),
                 ],
-              ),
+              ],
             ),
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 90)),
@@ -152,20 +153,41 @@ class _ProfilePageState extends State<ProfilePage>
 class _ProfileCoverHeader extends StatelessWidget {
   final String? coverImageUrl;
   final String? avatarUrl;
-  final VoidCallback onSettings;
+  final String role;
 
   const _ProfileCoverHeader({
     required this.coverImageUrl,
     required this.avatarUrl,
-    required this.onSettings,
+    required this.role,
   });
 
   @override
   Widget build(BuildContext context) {
     const double coverHeight = 220;
     const double avatarSize = 96;
-    final double safeTop = MediaQuery.of(context).padding.top;
+    const double badgeOverlap = 12;
     final colorScheme = Theme.of(context).colorScheme;
+    final Color bgColor = Theme.of(context).colorScheme.background;
+
+    // Badge: below avatar, overlapping its bottom edge
+    final String label = role == 'trainer'
+        ? 'TRAINER'
+        : role == 'nutritionist'
+            ? 'NUTRITIONIST'
+            : 'CLIENT';
+    final Color bgColorBadge = role == 'trainer'
+        ? colorScheme.primary.withValues(alpha: 0.2)
+        : role == 'nutritionist'
+            ? AppColors.green.withValues(alpha: 0.2)
+            : colorScheme.surfaceVariant;
+    final Color textColorBadge = role == 'trainer'
+        ? colorScheme.primary
+        : role == 'nutritionist'
+            ? AppColors.green
+            : colorScheme.onSurface.withValues(alpha: 0.9);
+
+    final double avatarBottom = coverHeight - avatarSize / 2 + avatarSize;
+    final double badgeTop = avatarBottom - badgeOverlap;
 
     return SizedBox(
       height: coverHeight + avatarSize / 2 + 8,
@@ -177,26 +199,28 @@ class _ProfileCoverHeader extends StatelessWidget {
             top: 0,
             height: coverHeight,
             child: Container(
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 gradient: AppColors.heroGradient,
-                image: coverImageUrl != null && coverImageUrl!.isNotEmpty
-                    ? DecorationImage(
-                        image: NetworkImage(coverImageUrl!),
-                        fit: BoxFit.cover,
-                      )
-                    : null,
               ),
-            ),
-          ),
-          Positioned(
-            right: 16,
-            top: safeTop + 10,
-            child: IconButton(
-              onPressed: onSettings,
-              icon: Icon(Icons.settings_rounded,
-                  color: colorScheme.onSurface),
-              style: IconButton.styleFrom(
-                backgroundColor: colorScheme.surface,
+              child: Stack(
+                children: [
+                  if (coverImageUrl != null && coverImageUrl!.isNotEmpty)
+                    Positioned.fill(
+                      child: ImageFiltered(
+                        imageFilter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                        child: Image(
+                          image: NetworkImage(coverImageUrl!),
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
+                  // Smooth blend into content below (shared with home)
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: AppColors.coverBlendGradient(bgColor),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -232,6 +256,43 @@ class _ProfileCoverHeader extends StatelessWidget {
                   : null,
             ),
           ),
+          // Badge below profile picture, overlapping bottom
+          Positioned(
+            left: 16,
+            top: badgeTop,
+            child: SizedBox(
+              width: avatarSize,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: bgColorBadge,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: colorScheme.surface.withValues(alpha: 0.9),
+                      width: 1,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.15),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: textColorBadge,
+                      letterSpacing: 0.3,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -241,213 +302,34 @@ class _ProfileCoverHeader extends StatelessWidget {
 class _IdentityRow extends StatelessWidget {
   final String username;
   final String handle;
-  final String role;
 
   const _IdentityRow({
     required this.username,
     required this.handle,
-    required this.role,
   });
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                username,
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  color: colorScheme.onBackground,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                handle,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: colorScheme.onBackground.withOpacity(0.6),
-                ),
-              ),
-            ],
-          ),
-        ),
-        Container(
-          height: 28,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: role == 'trainer'
-                ? colorScheme.primary.withOpacity(0.15)
-                : colorScheme.surfaceVariant,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Center(
-            child: Text(
-              role == 'trainer' ? 'TRAINER' : 'CLIENT',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: role == 'trainer'
-                    ? colorScheme.primary
-                    : colorScheme.onSurface.withOpacity(0.8),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _QuickActionsRow extends StatelessWidget {
-  final String role;
-  final bool isSubscribed;
-
-  const _QuickActionsRow({required this.role, required this.isSubscribed});
-
-  @override
-  Widget build(BuildContext context) {
-    final actions = <_QuickActionButton>[
-      const _QuickActionButton(label: 'Refer a Friend', icon: Icons.card_giftcard),
-      _QuickActionButton(
-        label: isSubscribed ? 'Manage Subscription' : 'Subscribe',
-        icon: Icons.star_rounded,
-      ),
-      if (role == 'client')
-        const _QuickActionButton(
-          label: 'Become a Trainer',
-          icon: Icons.school_rounded,
-        )
-      else
-        const _QuickActionButton(
-          label: 'Trainer Dashboard',
-          icon: Icons.dashboard_rounded,
-        ),
-    ];
-
-    return Row(
-      children: actions
-          .map((action) => Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: action,
-                ),
-              ))
-          .toList(),
-    );
-  }
-}
-
-class _QuickActionButton extends StatelessWidget {
-  final String label;
-  final IconData icon;
-
-  const _QuickActionButton({required this.label, required this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return GestureDetector(
-      onTap: () => HapticFeedback.lightImpact(),
-      child: Container(
-        height: 44,
-        decoration: BoxDecoration(
-          color: colorScheme.surface,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: colorScheme.outline.withOpacity(0.18)),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 16, color: colorScheme.onSurface.withOpacity(0.8)),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: colorScheme.onSurface.withOpacity(0.9),
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _StatsCard extends StatelessWidget {
-  final int posts;
-  final int followers;
-  final int following;
-
-  const _StatsCard({
-    required this.posts,
-    required this.followers,
-    required this.following,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: colorScheme.outline.withOpacity(0.18)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _StatItem(label: 'Posts', value: posts.toString()),
-          _StatItem(label: 'Followers', value: followers.toString()),
-          _StatItem(label: 'Following', value: following.toString()),
-        ],
-      ),
-    );
-  }
-}
-
-class _StatItem extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _StatItem({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          value,
+          username,
           style: TextStyle(
-            fontSize: 18,
+            fontSize: 22,
             fontWeight: FontWeight.w700,
-            color: colorScheme.onSurface,
+            color: colorScheme.onBackground,
           ),
         ),
         const SizedBox(height: 4),
         Text(
-          label,
+          handle,
           style: TextStyle(
-            fontSize: 12,
-            color: colorScheme.onSurface.withOpacity(0.6),
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            color: colorScheme.onBackground.withOpacity(0.6),
           ),
         ),
       ],
@@ -455,89 +337,74 @@ class _StatItem extends StatelessWidget {
   }
 }
 
-class _ProfileTabs extends StatelessWidget {
-  final int index;
-  final ValueChanged<int> onChanged;
+class _FullLengthButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+  final LinearGradient? iconGradient;
 
-  const _ProfileTabs({required this.index, required this.onChanged});
+  const _FullLengthButton({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+    this.iconGradient,
+  });
 
   @override
   Widget build(BuildContext context) {
-    const labels = ['Posts', 'Achievements', 'Progress'];
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Container(
-      padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceVariant,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: colorScheme.outline.withOpacity(0.12)),
-      ),
-      child: Row(
-        children: List.generate(labels.length, (i) {
-          final isSelected = i == index;
-          return Expanded(
-            child: GestureDetector(
-              onTap: () => onChanged(i),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 160),
-                curve: Curves.easeOutCubic,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: isSelected ? colorScheme.primary : Colors.transparent,
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: Center(
-                  child: Text(
-                    labels[i],
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: isSelected
-                          ? Colors.white
-                          : colorScheme.onSurface.withOpacity(0.7),
-                    ),
-                  ),
-                ),
+    Widget iconWidget = Icon(
+      icon,
+      size: 20,
+      color: iconGradient == null
+          ? colorScheme.onSurface.withOpacity(0.8)
+          : Colors.white,
+    );
+    if (iconGradient != null) {
+      iconWidget = ShaderMask(
+        blendMode: BlendMode.srcIn,
+        shaderCallback: (bounds) => iconGradient!.createShader(bounds),
+        child: iconWidget,
+      );
+    }
+
+    return PressableCard(
+      onTap: onTap,
+      borderRadius: 24,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: Theme.of(context).brightness == Brightness.dark
+                  ? Colors.black.withValues(alpha: 0.35)
+                  : Colors.black.withValues(alpha: 0.06),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            iconWidget,
+            const SizedBox(width: 12),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: colorScheme.onSurface,
               ),
             ),
-          );
-        }),
-      ),
-    );
-  }
-}
-
-class _ProfileSectionCard extends StatelessWidget {
-  final String title;
-
-  const _ProfileSectionCard({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: colorScheme.outline.withOpacity(0.18)),
-      ),
-      child: Row(
-        children: [
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: colorScheme.onSurface,
-            ),
-          ),
-          const Spacer(),
-          Icon(Icons.edit,
-              color: colorScheme.onSurface.withOpacity(0.6), size: 18),
-        ],
+            const Spacer(),
+            Icon(Icons.chevron_right,
+                color: colorScheme.onSurface.withValues(alpha: 0.5), size: 22),
+          ],
+        ),
       ),
     );
   }

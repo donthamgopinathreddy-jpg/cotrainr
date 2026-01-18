@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:image_cropper/image_cropper.dart';
 import '../../widgets/common/modern_input_box.dart';
 
 class CocircleCreatePostPage extends StatefulWidget {
@@ -17,8 +16,12 @@ class _CocircleCreatePostPageState extends State<CocircleCreatePostPage> {
   final ImagePicker _imagePicker = ImagePicker();
   XFile? _selectedMedia;
   bool _isImage = false;
+  bool _isProcessing = false;
 
   Future<void> _openGallery() async {
+    if (!mounted || _isProcessing) return;
+    
+    _isProcessing = true;
     HapticFeedback.lightImpact();
     
     try {
@@ -29,92 +32,86 @@ class _CocircleCreatePostPageState extends State<CocircleCreatePostPage> {
         builder: (context) => _buildMediaSourceSheet(),
       );
 
-      if (source == null) return;
+      if (source == null || !mounted) return;
 
       XFile? pickedFile;
       
-      if (source == ImageSource.gallery) {
-        // First try to pick image, then video if user cancels image picker
-        pickedFile = await _imagePicker.pickImage(
-          source: source,
-          imageQuality: 85,
-        );
-        
-        if (pickedFile != null) {
-          _isImage = true;
-        } else {
-          // If no image selected, try video
-          pickedFile = await _imagePicker.pickVideo(source: source);
+      try {
+        if (source == ImageSource.gallery) {
+          // Pick image from gallery
+          pickedFile = await _imagePicker.pickImage(
+            source: source,
+            imageQuality: 85,
+            maxWidth: 1920,
+            maxHeight: 1920,
+          );
+          
           if (pickedFile != null) {
-            _isImage = false;
+            _isImage = true;
+          }
+        } else {
+          // Camera source
+          pickedFile = await _imagePicker.pickImage(
+            source: source,
+            imageQuality: 85,
+            maxWidth: 1920,
+            maxHeight: 1920,
+          );
+          if (pickedFile != null) {
+            _isImage = true;
           }
         }
-      } else {
-        // Camera source
-        pickedFile = await _imagePicker.pickImage(
-          source: source,
-          imageQuality: 85,
-        );
-        if (pickedFile != null) {
-          _isImage = true;
+      } catch (pickerError) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error picking image: ${pickerError.toString()}'),
+              duration: const Duration(seconds: 3),
+            ),
+          );
         }
+        return;
       }
 
-      if (pickedFile != null) {
-        // If it's an image, open cropper
-        if (_isImage) {
-          final croppedFile = await _cropImage(File(pickedFile.path));
-          if (croppedFile != null) {
-            setState(() {
-              _selectedMedia = XFile(croppedFile.path);
-            });
+      if (pickedFile != null && mounted) {
+        final filePath = pickedFile.path;
+        
+        // Verify file exists
+        final file = File(filePath);
+        if (!await file.exists()) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Selected file does not exist')),
+            );
           }
-        } else {
-          // For video, just set it
+          return;
+        }
+
+        // Use the picked image/video directly at original size (no cropping)
+        if (mounted) {
           setState(() {
             _selectedMedia = pickedFile;
           });
         }
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       if (mounted) {
+        debugPrint('Error in _openGallery: $e');
+        debugPrint('Stack trace: $stackTrace');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error selecting media: $e')),
+          SnackBar(
+            content: Text('Error selecting media: ${e.toString()}'),
+            duration: const Duration(seconds: 3),
+          ),
         );
+      }
+    } finally {
+      if (mounted) {
+        _isProcessing = false;
       }
     }
   }
 
-  Future<CroppedFile?> _cropImage(File imageFile) async {
-    final cropper = ImageCropper();
-    
-    return await cropper.cropImage(
-      sourcePath: imageFile.path,
-      uiSettings: [
-        AndroidUiSettings(
-          toolbarTitle: 'Crop Image',
-          toolbarColor: const Color(0xFF4DA3FF),
-          toolbarWidgetColor: Colors.white,
-          initAspectRatio: CropAspectRatioPreset.original,
-          lockAspectRatio: false,
-          aspectRatioPresets: [
-            CropAspectRatioPreset.original,
-            CropAspectRatioPreset.square,
-            CropAspectRatioPreset.ratio3x2,
-            CropAspectRatioPreset.ratio4x3,
-            CropAspectRatioPreset.ratio16x9,
-          ],
-        ),
-        IOSUiSettings(
-          title: 'Crop Image',
-          aspectRatioLockEnabled: false,
-          resetAspectRatioEnabled: true,
-        ),
-      ],
-      compressFormat: ImageCompressFormat.jpg,
-      compressQuality: 85,
-    );
-  }
 
   Widget _buildMediaSourceSheet() {
     final colorScheme = Theme.of(context).colorScheme;
@@ -393,6 +390,7 @@ class _CocircleCreatePostPageState extends State<CocircleCreatePostPage> {
     super.dispose();
   }
 }
+
 
 class _TagChip extends StatelessWidget {
   final String label;

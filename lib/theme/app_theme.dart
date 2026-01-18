@@ -75,10 +75,10 @@ class AppTheme {
       // Scaffold
       scaffoldBackgroundColor: DesignTokens.lightBackground,
       
-      // Cards - Rounded, soft shadows
+      // Cards - Rounded, shadows only (no borders)
       cardTheme: CardThemeData(
-        elevation: 0,
-        shadowColor: Colors.transparent,
+        elevation: 2,
+        shadowColor: Colors.black.withValues(alpha: 0.08),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
         ),
@@ -122,7 +122,7 @@ class AppTheme {
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
           borderSide: BorderSide(
-            color: DesignTokens.borderColorLight.withValues(alpha: 0.5),
+            color: DesignTokens.borderColorLight,
             width: 1,
           ),
         ),
@@ -247,10 +247,10 @@ class AppTheme {
       // Scaffold
       scaffoldBackgroundColor: DesignTokens.darkBackground,
       
-      // Cards - Rounded, soft shadows
+      // Cards - Rounded, shadows only (no borders)
       cardTheme: CardThemeData(
-        elevation: 0,
-        shadowColor: Colors.transparent,
+        elevation: 2,
+        shadowColor: Colors.black.withValues(alpha: 0.35),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
         ),
@@ -294,7 +294,7 @@ class AppTheme {
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
           borderSide: BorderSide(
-            color: DesignTokens.borderColorLight.withValues(alpha: 0.5),
+            color: Colors.white.withValues(alpha: 0.12),
             width: 1,
           ),
         ),
@@ -346,7 +346,7 @@ class AppTheme {
       
       // Divider
       dividerTheme: DividerThemeData(
-        color: DesignTokens.borderColorLight,
+        color: Colors.white.withValues(alpha: 0.12),
         thickness: 1,
         space: 1,
       ),

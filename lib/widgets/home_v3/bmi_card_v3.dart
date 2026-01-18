@@ -13,9 +13,9 @@ class BmiCardV3 extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const Color titleColor = AppColors.textPrimary;
-    const Color subtitleColor = AppColors.textSecondary;
-    const Color cardBg = AppColors.surfaceSoft;
+    final titleColor = AppColors.textPrimaryOf(context);
+    final subtitleColor = AppColors.textSecondaryOf(context);
+    final cardBg = AppColors.surfaceSoftOf(context);
     final progress = ((bmi - 14) / (40 - 14)).clamp(0.0, 1.0);
 
     return Container(
@@ -23,9 +23,8 @@ class BmiCardV3 extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: cardBg,
-        border: Border.all(color: AppColors.border),
         borderRadius: BorderRadius.circular(28),
-        boxShadow: AppColors.cardShadow,
+        boxShadow: AppColors.cardShadowOf(context),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -71,16 +70,15 @@ class BmiCardV3 extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.06),
+                  color: titleColor.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: Colors.white.withOpacity(0.08)),
                 ),
-                child: const Text(
+                child: Text(
                   'BMI',
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
+                    color: titleColor,
                     letterSpacing: 0.3,
                   ),
                 ),

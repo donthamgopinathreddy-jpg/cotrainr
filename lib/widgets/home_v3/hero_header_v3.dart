@@ -74,6 +74,7 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
     const double avatarOverlap = 24;
     final double avatarTop = coverHeight - avatarSize + avatarOverlap;
     final double safeTop = MediaQuery.of(context).padding.top;
+    final Color bgColor = Theme.of(context).colorScheme.surface;
 
     return SizedBox(
       height: coverHeight + avatarOverlap,
@@ -102,18 +103,10 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
                           ),
                         ),
                       ),
-                    // Gradient overlay for better text readability
+                    // Smooth blend into content below (shared with profile)
                     Container(
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.black.withOpacity(0.3),
-                            Colors.black.withOpacity(0.1),
-                            Colors.transparent,
-                          ],
-                        ),
+                        gradient: AppColors.coverBlendGradient(bgColor),
                       ),
                     ),
                   ],

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
-import '../../theme/app_colors.dart';
+import '../../theme/design_tokens.dart';
 import '../../widgets/home_v3/hero_header_v3.dart';
 import '../../widgets/home_v3/steps_card_v3.dart';
 import '../../widgets/home_v3/macro_row_v3.dart';
@@ -64,18 +63,20 @@ class _HomePageV3State extends State<HomePageV3>
   }
 
   Widget _safeSection(BuildContext context, Widget child) {
+    final cs = Theme.of(context).colorScheme;
     try {
       return child;
     } catch (e) {
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppColors.surface,
+          color: cs.surface,
           borderRadius: BorderRadius.circular(24),
+          boxShadow: DesignTokens.cardShadowOf(context),
         ),
-        child: const Text(
+        child: Text(
           'Section failed to render',
-          style: TextStyle(color: AppColors.textSecondary),
+          style: TextStyle(color: cs.onSurfaceVariant),
         ),
       );
     }
@@ -90,8 +91,12 @@ class _HomePageV3State extends State<HomePageV3>
         return Opacity(
           opacity: value,
           child: Transform.translate(
-            offset: Offset(0, 12 * (1 - value)),
-            child: child,
+            offset: Offset(0, 10 * (1 - value)),
+            child: Transform.scale(
+              scale: 0.99 + 0.01 * value,
+              alignment: Alignment.topCenter,
+              child: child,
+            ),
           ),
         );
       },
@@ -100,10 +105,11 @@ class _HomePageV3State extends State<HomePageV3>
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return FadeTransition(
       opacity: _fadeAnimation,
       child: Scaffold(
-        backgroundColor: AppColors.bg,
+        backgroundColor: cs.surface,
         body: CustomScrollView(
         controller: _scrollController,
         physics: const BouncingScrollPhysics(),

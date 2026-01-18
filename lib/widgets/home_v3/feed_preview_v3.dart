@@ -1,37 +1,55 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/design_tokens.dart';
+import '../common/pressable_card.dart';
 
-class FeedPreviewV3 extends StatelessWidget {
+class FeedPreviewV3 extends StatefulWidget {
   const FeedPreviewV3({super.key});
 
   @override
+  State<FeedPreviewV3> createState() => _FeedPreviewV3State();
+}
+
+class _FeedPreviewV3State extends State<FeedPreviewV3> {
+  bool _isFollowing = false;
+
+  static const _feedGradient = LinearGradient(
+    colors: [Color(0xFF4DA3FF), Color(0xFF8B5CF6)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            const Text(
+            Text(
               'Community Feed',
               style: TextStyle(
-                fontSize: 18,
+                fontSize: DesignTokens.fontSizeSection,
                 fontWeight: FontWeight.w800,
-                color: AppColors.textPrimary,
+                color: cs.onSurface,
               ),
             ),
             const Spacer(),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: AppColors.surfaceSoft,
+                color: cs.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: const Text(
+              child: Text(
                 'View All',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
+                  color: cs.onSurface,
                 ),
               ),
             ),
@@ -41,9 +59,9 @@ class FeedPreviewV3 extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: AppColors.surface,
+            color: cs.surface,
             borderRadius: BorderRadius.circular(24),
-            boxShadow: AppColors.cardShadow,
+            boxShadow: AppColors.cardShadowOf(context),
           ),
           child: Column(
             children: [
@@ -63,19 +81,42 @@ class FeedPreviewV3 extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       'fitness_john • 2h ago',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.textSecondary,
+                        color: cs.onSurfaceVariant,
                       ),
                     ),
                   ),
-                  const Icon(
+                  PressableCard(
+                    onTap: () => setState(() => _isFollowing = !_isFollowing),
+                    borderRadius: 16,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        gradient: _isFollowing ? null : _feedGradient,
+                        color: _isFollowing ? cs.surfaceContainerHighest : null,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Text(
+                        _isFollowing ? 'Following' : 'Follow',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: _isFollowing
+                              ? cs.onSurface
+                              : Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
                     Icons.more_horiz,
-                    color: AppColors.textSecondary,
+                    color: cs.onSurfaceVariant,
                   ),
                 ],
               ),
@@ -90,14 +131,11 @@ class FeedPreviewV3 extends StatelessWidget {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  const Icon(Icons.favorite_border,
-                      color: AppColors.textPrimary),
+                  Icon(Icons.favorite_border, color: cs.onSurface),
                   const SizedBox(width: 12),
-                  const Icon(Icons.mode_comment_outlined,
-                      color: AppColors.textPrimary),
+                  Icon(Icons.mode_comment_outlined, color: cs.onSurface),
                   const Spacer(),
-                  const Icon(Icons.bookmark_border,
-                      color: AppColors.textPrimary),
+                  Icon(Icons.bookmark_border, color: cs.onSurface),
                 ],
               ),
             ],

@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/design_tokens.dart';
+import '../common/pressable_card.dart';
 
 class QuickAccessV3 extends StatelessWidget {
   const QuickAccessV3({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final items = [
       _QuickTileData('MEAL TRACKER', Icons.restaurant_rounded,
           const LinearGradient(colors: [AppColors.green, Color(0xFF65E6B3)])),
@@ -23,12 +25,12 @@ class QuickAccessV3 extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
+        Text(
           'Quick Actions',
           style: TextStyle(
-            fontSize: 18,
+            fontSize: DesignTokens.fontSizeSection,
             fontWeight: FontWeight.w800,
-            color: AppColors.textPrimary,
+            color: cs.onSurface,
           ),
         ),
         const SizedBox(height: 12),
@@ -40,7 +42,7 @@ class QuickAccessV3 extends StatelessWidget {
             separatorBuilder: (_, __) => const SizedBox(width: 12),
             itemBuilder: (context, index) {
               final item = items[index];
-              return _QuickTile(item: item);
+              return _QuickTile(item: item, onTap: () {});
             },
           ),
         ),
@@ -57,66 +59,52 @@ class _QuickTileData {
   _QuickTileData(this.title, this.icon, this.gradient);
 }
 
-class _QuickTile extends StatefulWidget {
+class _QuickTile extends StatelessWidget {
   final _QuickTileData item;
+  final VoidCallback? onTap;
 
-  const _QuickTile({required this.item});
-
-  @override
-  State<_QuickTile> createState() => _QuickTileState();
-}
-
-class _QuickTileState extends State<_QuickTile> {
-  bool _pressed = false;
+  const _QuickTile({required this.item, this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) {
-        setState(() => _pressed = false);
-        HapticFeedback.lightImpact();
-      },
-      onTapCancel: () => setState(() => _pressed = false),
-      child: AnimatedScale(
-        scale: _pressed ? 0.98 : 1.0,
-        duration: const Duration(milliseconds: 120),
-        child: Container(
-          width: 150,
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            gradient: widget.item.gradient,
-            borderRadius: BorderRadius.circular(28),
-            boxShadow: AppColors.cardShadow,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  widget.item.icon,
-                  color: Colors.white,
-                  size: 20,
-                ),
+    return PressableCard(
+      onTap: onTap,
+      borderRadius: 28,
+      child: Container(
+        width: 150,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          gradient: item.gradient,
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: AppColors.cardShadowOf(context),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                shape: BoxShape.circle,
               ),
-              const Spacer(),
-              Text(
-                widget.item.title,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                  letterSpacing: 0.5,
-                ),
+              child: Icon(
+                item.icon,
+                color: Colors.white,
+                size: 20,
               ),
-            ],
-          ),
+            ),
+            const Spacer(),
+            Text(
+              item.title,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ],
         ),
       ),
     );

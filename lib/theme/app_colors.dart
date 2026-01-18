@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'design_tokens.dart';
+
 class AppColors {
-  // Base
+  // Base (dark-theme defaults; use *Of(context) for theme-aware)
   static const Color bg = Color(0xFF0B1220);
   static const Color surface = Color(0xFF121A2B);
   static const Color surfaceSoft = Color(0xFF1A2335);
@@ -9,6 +11,18 @@ class AppColors {
   static const Color textSecondary = Color(0xB3FFFFFF);
   static const Color textTertiary = Color(0x80FFFFFF);
   static const Color border = Color(0x1AFFFFFF);
+
+  /// Theme-aware; use for background to avoid black-on-black in light mode.
+  static Color bgOf(BuildContext context) => DesignTokens.backgroundOf(context);
+  static Color surfaceOf(BuildContext context) => DesignTokens.surfaceOf(context);
+  static Color surfaceSoftOf(BuildContext context) =>
+      DesignTokens.surfaceElevatedOf(context);
+  static Color textPrimaryOf(BuildContext context) =>
+      DesignTokens.textPrimaryOf(context);
+  static Color textSecondaryOf(BuildContext context) =>
+      DesignTokens.textSecondaryOf(context);
+  static List<BoxShadow> cardShadowOf(BuildContext context) =>
+      DesignTokens.cardShadowOf(context);
 
   // Accents
   static const Color orange = Color(0xFFFF8A00);
@@ -57,6 +71,27 @@ class AppColors {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
+
+  /// Smooth blend overlay: dark at top, transparent mid, fades to [bgColor]
+  /// at bottom. Use on cover/hero above the main content for a seamless
+  /// transition. Same curve on home and profile.
+  static LinearGradient coverBlendGradient(Color bgColor) {
+    return LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        Colors.black.withValues(alpha: 0.18),
+        Colors.black.withValues(alpha: 0.04),
+        Colors.transparent,
+        bgColor.withValues(alpha: 0.06),
+        bgColor.withValues(alpha: 0.26),
+        bgColor.withValues(alpha: 0.58),
+        bgColor.withValues(alpha: 0.84),
+        bgColor,
+      ],
+      stops: const [0.0, 0.18, 0.38, 0.50, 0.62, 0.76, 0.90, 1.0],
+    );
+  }
 
   static const List<BoxShadow> cardShadow = [
     BoxShadow(

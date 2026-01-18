@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
+import '../common/pressable_card.dart';
 
 class MacroRowV3 extends StatelessWidget {
   final int calories;
@@ -42,8 +43,9 @@ class MacroRowV3 extends StatelessWidget {
         Expanded(
           child: SizedBox(
             height: caloriesHeight,
-            child: GestureDetector(
+            child: PressableCard(
               onTap: onCaloriesTap,
+              borderRadius: 26,
               child: _wrapHero(
                 tag: caloriesHeroTag,
                 child: _CaloriesCard(
@@ -60,8 +62,9 @@ class MacroRowV3 extends StatelessWidget {
             children: [
               SizedBox(
                 height: waterHeight,
-                child: GestureDetector(
+                child: PressableCard(
                   onTap: onWaterTap,
+                  borderRadius: 26,
                   child: _wrapHero(
                     tag: waterHeroTag,
                     child: _WaterCard(
@@ -74,8 +77,9 @@ class MacroRowV3 extends StatelessWidget {
               const SizedBox(height: gap),
               SizedBox(
                 height: distanceHeight,
-                child: GestureDetector(
+                child: PressableCard(
                   onTap: onDistanceTap,
+                  borderRadius: 22,
                   child: _wrapHero(
                     tag: distanceHeroTag,
                     child: _DistanceCard(distanceKm: distanceKm),
@@ -113,7 +117,7 @@ class _WaterCard extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: AppColors.waterGradient,
         borderRadius: BorderRadius.circular(26),
-        boxShadow: AppColors.cardShadow,
+        boxShadow: AppColors.cardShadowOf(context),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -199,7 +203,7 @@ class _CaloriesCard extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: AppColors.caloriesGradient,
         borderRadius: BorderRadius.circular(26),
-        boxShadow: AppColors.cardShadow,
+        boxShadow: AppColors.cardShadowOf(context),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -272,7 +276,7 @@ class _DistanceCard extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: AppColors.distanceGradient,
         borderRadius: BorderRadius.circular(22),
-        boxShadow: AppColors.cardShadow,
+        boxShadow: AppColors.cardShadowOf(context),
       ),
       child: Row(
         children: [

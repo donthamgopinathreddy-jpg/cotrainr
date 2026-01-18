@@ -98,8 +98,10 @@ class _CocirclePageState extends State<CocirclePage>
     with SingleTickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
   final List<CocircleFeedPost> _posts = [];
+  final Set<String> _followingUserIds = {}; // Track who we follow
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
+  static const _currentUserId = 'fitness_john'; // Current user, hide Follow on own posts
 
   @override
   void initState() {
@@ -247,6 +249,10 @@ class _CocirclePageState extends State<CocirclePage>
                       onComment: () => _openComments(post.id),
                       onShare: () => _sharePost(post.id),
                       onDoubleTap: () => _handleDoubleTap(post.id),
+                      onFollow: () => _toggleFollow(post.userId),
+                      onProfileTap: () => _openProfile(post.userId, post.userName),
+                      isFollowing: _followingUserIds.contains(post.userId),
+                      isOwnPost: post.userId == _currentUserId,
                     );
                   },
                   childCount: _posts.length,
@@ -323,6 +329,32 @@ class _CocirclePageState extends State<CocirclePage>
     }
     HapticFeedback.mediumImpact();
     // TODO: Show heart burst animation
+  }
+
+  void _toggleFollow(String userId) {
+    setState(() {
+      if (_followingUserIds.contains(userId)) {
+        _followingUserIds.remove(userId);
+      } else {
+        _followingUserIds.add(userId);
+      }
+    });
+    HapticFeedback.lightImpact();
+  }
+
+  void _openProfile(String userId, String userName) {
+    HapticFeedback.lightImpact();
+    Navigator.push(
+      context,
+      PageTransitions.slideRoute(
+        CocircleProfilePage(
+          userId: userId,
+          userName: userName,
+          isOwnProfile: userId == _currentUserId,
+        ),
+        beginOffset: const Offset(0, 0.05),
+      ),
+    );
   }
 }
 

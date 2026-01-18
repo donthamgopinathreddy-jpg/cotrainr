@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../theme/design_tokens.dart';
 import '../../theme/app_colors.dart';
+import '../common/pressable_card.dart';
 
 class CocircleFeedCard extends StatefulWidget {
   final dynamic post; // CocircleFeedPost
@@ -9,6 +11,10 @@ class CocircleFeedCard extends StatefulWidget {
   final VoidCallback? onComment;
   final VoidCallback? onShare;
   final VoidCallback? onDoubleTap;
+  final VoidCallback? onFollow;
+  final VoidCallback? onProfileTap; // Callback when avatar/username is tapped
+  final bool isFollowing;
+  final bool isOwnPost; // Hide follow button for own posts
 
   const CocircleFeedCard({
     super.key,
@@ -17,6 +23,10 @@ class CocircleFeedCard extends StatefulWidget {
     this.onComment,
     this.onShare,
     this.onDoubleTap,
+    this.onFollow,
+    this.onProfileTap,
+    this.isFollowing = false,
+    this.isOwnPost = false,
   });
 
   @override
@@ -64,13 +74,7 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
       decoration: BoxDecoration(
         color: colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 18,
-            offset: Offset(0, 10),
-          ),
-        ],
+        boxShadow: AppColors.cardShadowOf(context),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -80,79 +84,94 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
             padding: const EdgeInsets.all(DesignTokens.spacing16),
             child: Row(
               children: [
-                // Avatar
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: const Color(0xFFFF5C00), width: 2),
-                    image: widget.post.avatarUrl != null
-                        ? DecorationImage(
-                            image:
-                                CachedNetworkImageProvider(widget.post.avatarUrl!),
-                            fit: BoxFit.cover,
-                          )
+                // Avatar (clickable)
+                GestureDetector(
+                  onTap: widget.onProfileTap,
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: const Color(0xFFFF5C00), width: 2),
+                      image: widget.post.avatarUrl != null
+                          ? DecorationImage(
+                              image:
+                                  CachedNetworkImageProvider(widget.post.avatarUrl!),
+                              fit: BoxFit.cover,
+                            )
+                          : null,
+                    ),
+                    child: widget.post.avatarUrl == null
+                        ? Icon(Icons.person,
+                            color: colorScheme.onSurface.withOpacity(0.6),
+                            size: 22)
                         : null,
                   ),
-                  child: widget.post.avatarUrl == null
-                      ? Icon(Icons.person,
-                          color: colorScheme.onSurface.withOpacity(0.6),
-                          size: 22)
-                      : null,
                 ),
                 const SizedBox(width: DesignTokens.spacing12),
 
-                // User Info
+                // User Info (clickable)
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.post.userName,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: colorScheme.onSurface,
+                  child: GestureDetector(
+                    onTap: widget.onProfileTap,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.post.userName,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: colorScheme.onSurface,
+                          ),
                         ),
-                      ),
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              '@${widget.post.userId}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: colorScheme.onSurface.withOpacity(0.5),
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                '@${widget.post.userId}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: colorScheme.onSurface.withOpacity(0.5),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
                             ),
-                          ),
-                          const SizedBox(width: 6),
-                          Container(
-                            width: 4,
-                            height: 4,
-                            decoration: BoxDecoration(
-                              color: colorScheme.onSurface.withOpacity(0.3),
-                              shape: BoxShape.circle,
+                            const SizedBox(width: 6),
+                            Container(
+                              width: 4,
+                              height: 4,
+                              decoration: BoxDecoration(
+                                color: colorScheme.onSurface.withOpacity(0.3),
+                                shape: BoxShape.circle,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            widget.post.userRole,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.blue,
-                              letterSpacing: 0.2,
+                            const SizedBox(width: 6),
+                            Text(
+                              widget.post.userRole,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.blue,
+                                letterSpacing: 0.2,
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ],
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
+                // Follow button (hidden for own posts)
+                if (!widget.isOwnPost) ...[
+                  _FollowButton(
+                    isFollowing: widget.isFollowing,
+                    onTap: widget.onFollow,
+                    useGradient: true,
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 Icon(
                   Icons.more_horiz,
                   color: colorScheme.onSurface.withOpacity(0.4),
@@ -303,3 +322,49 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
   }
 }
 
+class _FollowButton extends StatelessWidget {
+  final bool isFollowing;
+  final VoidCallback? onTap;
+  final bool useGradient;
+
+  const _FollowButton({
+    required this.isFollowing,
+    this.onTap,
+    this.useGradient = true,
+  });
+
+  static const _cocircleGradient = LinearGradient(
+    colors: [Color(0xFF4DA3FF), Color(0xFF8B5CF6)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return PressableCard(
+      onTap: onTap,
+      borderRadius: 18,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          gradient: isFollowing ? null : _cocircleGradient,
+          color: isFollowing ? colorScheme.surfaceContainerHighest : null,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Text(
+          isFollowing ? 'Following' : 'Follow',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: isFollowing
+                ? colorScheme.onSurface
+                : Colors.white,
+          ),
+        ),
+      ),
+    );
+  }
+}

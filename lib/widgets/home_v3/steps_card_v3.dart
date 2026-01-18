@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
+import '../common/pressable_card.dart';
 
 class StepsCardV3 extends StatelessWidget {
   final int steps;
@@ -25,7 +26,7 @@ class StepsCardV3 extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: AppColors.stepsGradient,
         borderRadius: BorderRadius.circular(28),
-        boxShadow: AppColors.cardShadow,
+        boxShadow: AppColors.cardShadowOf(context),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -74,8 +75,9 @@ class StepsCardV3 extends StatelessWidget {
       ),
     );
 
-    return GestureDetector(
+    return PressableCard(
       onTap: onTap,
+      borderRadius: 28,
       child: heroTag == null ? content : Hero(tag: heroTag!, child: content),
     );
   }

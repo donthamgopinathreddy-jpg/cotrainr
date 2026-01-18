@@ -236,6 +236,7 @@ class DesignTokens {
   static const double fontSizeH1 = 32.0; // Large titles
   static const double fontSizeH2 = 24.0; // Section headers
   static const double fontSizeH3 = 20.0; // Card titles
+  static const double fontSizeSection = 18.0; // Section titles (Quick Actions, etc.)
   static const double fontSizeBody = 16.0; // Body text
   static const double fontSizeBodySmall = 14.0; // Small body
   static const double fontSizeMeta = 12.0; // Metadata
@@ -269,6 +270,13 @@ class DesignTokens {
 
   static const Curve animationCurve = Curves.easeOutCubic;
   static const Curve animationCurveSpring = Curves.easeOutBack;
+
+  // ========== TOUCH / INTERACTION ==========
+  /// Scale on press for cards and buttons (0.97–0.99).
+  static const double interactionPressScale = 0.97;
+  /// Duration for press/release scale and micro-interactions.
+  static const Duration interactionDuration = Duration(milliseconds: 120);
+  static const Curve interactionCurve = Curves.easeOut;
 
   // ========== OPACITY ==========
   static const double opacityInactive = 0.50;
