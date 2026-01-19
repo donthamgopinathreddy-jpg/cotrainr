@@ -64,6 +64,213 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
     super.dispose();
   }
 
+  void _showGoalPicker(BuildContext context, double currentGoal) {
+    final commonGoals = [5000, 7500, 10000, 12000, 15000];
+    final TextEditingController customGoalController = TextEditingController(
+      text: !commonGoals.contains(currentGoal.toInt()) ? currentGoal.toInt().toString() : '',
+    );
+    
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) {
+          double? selectedGoal = currentGoal;
+          bool isCustom = !commonGoals.contains(currentGoal.toInt());
+          
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+            ),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              padding: const EdgeInsets.all(24),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Text(
+                  'Set Daily Steps Goal',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Common goals
+                ...commonGoals.map((goal) => ListTile(
+                  title: Text(
+                    '${goal.toStringAsFixed(0)} steps',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                  ),
+                  trailing: !isCustom && selectedGoal == goal
+                      ? Icon(
+                          Icons.check_rounded,
+                          color: Theme.of(context).colorScheme.primary,
+                        )
+                      : null,
+                  onTap: () {
+                    setModalState(() {
+                      selectedGoal = goal.toDouble();
+                      isCustom = false;
+                      customGoalController.clear();
+                    });
+                  },
+                )),
+                const SizedBox(height: 8),
+                // Custom input
+                Text(
+                  'Custom',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: customGoalController,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    hintText: 'Enter custom steps',
+                    hintStyle: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                    suffixIcon: customGoalController.text.isNotEmpty
+                        ? IconButton(
+                            icon: Icon(
+                              Icons.check_rounded,
+                              color: isCustom && selectedGoal != null
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                            onPressed: () {
+                              final value = double.tryParse(customGoalController.text);
+                              if (value != null && value > 0) {
+                                setModalState(() {
+                                  selectedGoal = value;
+                                  isCustom = true;
+                                });
+                              }
+                            },
+                          )
+                        : null,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: Theme.of(context).colorScheme.primary,
+                        width: 2,
+                      ),
+                    ),
+                  ),
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                  onChanged: (value) {
+                    setModalState(() {
+                      if (value.isEmpty) {
+                        isCustom = false;
+                      }
+                    });
+                  },
+                ),
+                const SizedBox(height: 24),
+                // Save and Cancel buttons
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () {
+                          customGoalController.dispose();
+                          Navigator.pop(context);
+                        },
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          side: BorderSide(
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: Text(
+                          'Cancel',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          final finalGoal = selectedGoal ?? currentGoal;
+                          customGoalController.dispose();
+                          Navigator.pop(context);
+                          // TODO: Save goal to state or backend
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Goal set to ${finalGoal.toInt()} steps'),
+                              duration: const Duration(seconds: 1),
+                            ),
+                          );
+                        },
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          backgroundColor: Theme.of(context).colorScheme.primary,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text(
+                          'Save',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final config = _MetricConfig.from(widget.args.t);
@@ -74,15 +281,13 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
     final total = data.fold<double>(0, (a, b) => a + b);
     final average = total / data.length;
     final peak = data.reduce((a, b) => a > b ? a : b);
+    final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
+      backgroundColor: cs.surface,
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFF0B1220), Color(0xFF111827)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
+        decoration: BoxDecoration(
+          color: cs.surface,
         ),
         child: SafeArea(
           child: CustomScrollView(
@@ -90,6 +295,16 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
               SliverAppBar(
                 pinned: true,
                 backgroundColor: Colors.transparent,
+                flexibleSpace: ClipRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: cs.surface.withOpacity(0.85),
+                      ),
+                    ),
+                  ),
+                ),
                 elevation: 0,
                 titleSpacing: 0,
                 title: Padding(
@@ -99,10 +314,10 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
                     children: [
                       Text(
                         config.title,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w700,
-                          color: Colors.white,
+                          color: cs.onSurface,
                         ),
                       ),
                       Text(
@@ -110,7 +325,7 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
-                          color: Colors.white.withOpacity(0.6),
+                          color: cs.onSurfaceVariant,
                         ),
                       ),
                     ],
@@ -119,13 +334,13 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
                 actions: [
                   if (config.type == MetricType.steps)
                     TextButton(
-                      onPressed: () {},
-                      child: const Text(
+                      onPressed: () => _showGoalPicker(context, goal ?? 10000),
+                      child: Text(
                         'Set goal',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: Colors.white,
+                          color: cs.onSurface,
                         ),
                       ),
                     ),
@@ -195,6 +410,13 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
                         _QuickAddRow(
                           onAdd: (value) {
                             HapticFeedback.lightImpact();
+                            // Show feedback - could add snackbar here
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Added ${value}ml water'),
+                                duration: const Duration(seconds: 1),
+                              ),
+                            );
                           },
                         ),
                       ],
@@ -371,26 +593,29 @@ class _RangeTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(2),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05),
+        color: isDark ? Colors.white.withOpacity(0.05) : cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(999),
       ),
       child: TabBar(
         controller: controller,
         indicator: BoxDecoration(
-          color: Colors.white.withOpacity(0.22),
+          color: isDark ? Colors.white.withOpacity(0.22) : cs.primary.withOpacity(0.2),
           borderRadius: BorderRadius.circular(999),
         ),
+        dividerColor: Colors.transparent,
         labelStyle: const TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w600,
         ),
         indicatorSize: TabBarIndicatorSize.tab,
         labelPadding: EdgeInsets.zero,
-        unselectedLabelColor: Colors.white.withOpacity(0.6),
-        labelColor: Colors.white,
+        unselectedLabelColor: isDark ? Colors.white.withOpacity(0.6) : cs.onSurfaceVariant,
+        labelColor: isDark ? Colors.white : cs.onSurface,
         tabs: const [
           Tab(text: 'Week'),
           Tab(text: 'Month'),
@@ -558,6 +783,8 @@ class _WeekdayRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return _GlassCard(
       radius: 22,
       child: Row(
@@ -566,6 +793,8 @@ class _WeekdayRow extends StatelessWidget {
           final isActive = index == highlightIndex;
           final date = dates[index];
           final weekday = _weekdayShort(date.weekday);
+          final activeColor = isDark ? Colors.white : cs.onSurface;
+          final inactiveColor = isDark ? Colors.white.withOpacity(0.6) : cs.onSurfaceVariant;
           return Column(
             children: [
               Text(
@@ -573,9 +802,7 @@ class _WeekdayRow extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: isActive
-                      ? Colors.white
-                      : Colors.white.withOpacity(0.6),
+                  color: isActive ? activeColor : inactiveColor,
                 ),
               ),
               const SizedBox(height: 2),
@@ -584,9 +811,7 @@ class _WeekdayRow extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: isActive
-                      ? Colors.white
-                      : Colors.white.withOpacity(0.6),
+                  color: isActive ? activeColor : inactiveColor,
                 ),
               ),
               const SizedBox(height: 6),
@@ -595,8 +820,8 @@ class _WeekdayRow extends StatelessWidget {
                 height: 32,
                 decoration: BoxDecoration(
                   color: isActive
-                      ? Colors.white
-                      : Colors.white.withOpacity(0.2),
+                      ? (isDark ? Colors.white : cs.primary)
+                      : (isDark ? Colors.white.withOpacity(0.2) : cs.surfaceContainerHighest),
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
@@ -621,22 +846,24 @@ class _RangeSummaryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return _GlassCard(
       radius: 22,
       child: Row(
         children: [
-          const Icon(
+          Icon(
             Icons.calendar_month_outlined,
-            color: Colors.white,
+            color: isDark ? Colors.white : cs.onSurface,
             size: 16,
           ),
           const SizedBox(width: 8),
           Text(
             '${start.day}/${start.month} - ${end.day}/${end.month}',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: Colors.white,
+              color: isDark ? Colors.white : cs.onSurface,
             ),
           ),
         ],
@@ -729,6 +956,8 @@ class _InsightStatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return _GlassCard(
       radius: 22,
       gradient: null,
@@ -738,7 +967,7 @@ class _InsightStatCard extends StatelessWidget {
           Icon(
             icon,
             size: 16,
-            color: Colors.white.withOpacity(0.8),
+            color: isDark ? Colors.white.withOpacity(0.8) : cs.onSurface.withOpacity(0.8),
           ),
           const SizedBox(height: 6),
           Text(
@@ -746,16 +975,16 @@ class _InsightStatCard extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w500,
-              color: Colors.white.withOpacity(0.6),
+              color: isDark ? Colors.white.withOpacity(0.6) : cs.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: 6),
           RichText(
             text: TextSpan(
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
-                color: Colors.white,
+                color: isDark ? Colors.white : cs.onSurface,
               ),
               children: [
                 TextSpan(text: value),
@@ -765,7 +994,7 @@ class _InsightStatCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: Colors.white.withOpacity(0.7),
+                      color: isDark ? Colors.white.withOpacity(0.7) : cs.onSurfaceVariant,
                     ),
                   ),
               ],
@@ -859,6 +1088,10 @@ class _QuickAddRow extends StatelessWidget {
         _QuickAddButton(label: '+250ml', onTap: () => onAdd(250)),
         const SizedBox(width: 12),
         _QuickAddButton(label: '+500ml', onTap: () => onAdd(500)),
+        const SizedBox(width: 12),
+        _QuickAddButton(label: '+750ml', onTap: () => onAdd(750)),
+        const SizedBox(width: 12),
+        _QuickAddButton(label: '+1000ml', onTap: () => onAdd(1000)),
       ],
     );
   }
@@ -896,9 +1129,9 @@ class _QuickAddButtonState extends State<_QuickAddButton> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.add_circle_outline,
-                    color: Colors.white,
+                    color: Colors.white, // Button is on gradient card, white is fine
                     size: 16,
                   ),
                   const SizedBox(width: 6),
@@ -907,7 +1140,7 @@ class _QuickAddButtonState extends State<_QuickAddButton> {
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: Colors.white,
+                      color: Colors.white, // Button is on gradient card, white is fine
                     ),
                   ),
                 ],
@@ -933,6 +1166,9 @@ class _GlassCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: BackdropFilter(
@@ -941,11 +1177,13 @@ class _GlassCard extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             gradient: gradient,
-            color: gradient == null ? Colors.white.withOpacity(0.12) : null,
+            color: gradient == null 
+                ? (isDark ? Colors.white.withOpacity(0.12) : cs.surfaceContainerHighest)
+                : null,
             borderRadius: BorderRadius.circular(radius),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.18),
+                color: Colors.black.withOpacity(isDark ? 0.18 : 0.08),
                 blurRadius: 20,
                 spreadRadius: -2,
               ),

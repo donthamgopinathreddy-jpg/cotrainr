@@ -115,17 +115,17 @@ class DesignTokens {
     return [
       BoxShadow(
         color: isDark
-            ? Colors.black.withValues(alpha: 0.4)
-            : Colors.black.withValues(alpha: 0.08),
-        blurRadius: 30,
-        offset: const Offset(0, 10),
-        spreadRadius: 0,
+            ? Colors.black.withValues(alpha: 0.8)
+            : Colors.black.withValues(alpha: 0.25),
+        blurRadius: 4,
+        offset: const Offset(0, 4),
+        spreadRadius: 1,
       ),
       if (!isDark)
         BoxShadow(
           color: Colors.white.withValues(alpha: 0.5),
-          blurRadius: 20,
-          offset: const Offset(0, -5),
+          blurRadius: 3,
+          offset: const Offset(0, -1),
           spreadRadius: 0,
         ),
     ];

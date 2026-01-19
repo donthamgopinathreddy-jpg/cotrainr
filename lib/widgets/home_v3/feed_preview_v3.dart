@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
 import '../common/pressable_card.dart';
 
 class FeedPreviewV3 extends StatefulWidget {
-  const FeedPreviewV3({super.key});
+  final VoidCallback? onViewAllTap;
+
+  const FeedPreviewV3({super.key, this.onViewAllTap});
 
   @override
   State<FeedPreviewV3> createState() => _FeedPreviewV3State();
@@ -38,18 +41,24 @@ class _FeedPreviewV3State extends State<FeedPreviewV3> {
               ),
             ),
             const Spacer(),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: cs.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                'View All',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: cs.onSurface,
+            GestureDetector(
+              onTap: () {
+                HapticFeedback.lightImpact();
+                widget.onViewAllTap?.call();
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  'View All',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: cs.onSurface,
+                  ),
                 ),
               ),
             ),

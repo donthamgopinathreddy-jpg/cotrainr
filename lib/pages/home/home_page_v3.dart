@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/design_tokens.dart';
+import '../../providers/profile_images_provider.dart';
 import '../../widgets/home_v3/hero_header_v3.dart';
 import '../../widgets/home_v3/steps_card_v3.dart';
 import '../../widgets/home_v3/macro_row_v3.dart';
@@ -10,14 +12,16 @@ import '../../widgets/home_v3/feed_preview_v3.dart';
 import '../../widgets/home_v3/nearby_preview_v3.dart';
 import '../insights/insights_detail_page.dart';
 
-class HomePageV3 extends StatefulWidget {
-  const HomePageV3({super.key});
+class HomePageV3 extends ConsumerStatefulWidget {
+  final VoidCallback? onNavigateToCocircle;
+
+  const HomePageV3({super.key, this.onNavigateToCocircle});
 
   @override
-  State<HomePageV3> createState() => _HomePageV3State();
+  ConsumerState<HomePageV3> createState() => _HomePageV3State();
 }
 
-class _HomePageV3State extends State<HomePageV3>
+class _HomePageV3State extends ConsumerState<HomePageV3>
     with SingleTickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
   late AnimationController _fadeController;
@@ -119,8 +123,8 @@ class _HomePageV3State extends State<HomePageV3>
               HeroHeaderV3(
                 username: _username,
                 notificationCount: _notificationCount,
-                coverImageUrl: null,
-                avatarUrl: null,
+                coverImageUrl: ref.watch(profileImagesProvider).coverImagePath,
+                avatarUrl: ref.watch(profileImagesProvider).profileImagePath,
                 streakDays: _streakDays,
                 onNotificationTap: () => context.push('/notifications'),
               ),
@@ -223,7 +227,7 @@ class _HomePageV3State extends State<HomePageV3>
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child:
-                  _animated(_safeSection(context, const FeedPreviewV3()), 260),
+                  _animated(_safeSection(context, FeedPreviewV3(onViewAllTap: widget.onNavigateToCocircle)), 260),
             ),
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 20)),

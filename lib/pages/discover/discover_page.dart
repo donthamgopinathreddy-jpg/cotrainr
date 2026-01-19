@@ -574,13 +574,6 @@ class _DiscoverSegmentTabs extends StatelessWidget {
                   decoration: BoxDecoration(
                     gradient: selectedGradient,
                     borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: selectedAccent.withOpacity(0.35),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
                   ),
                 ),
               ),

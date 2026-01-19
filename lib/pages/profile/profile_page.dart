@@ -1,19 +1,22 @@
 import 'dart:ui';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/page_transitions.dart';
 import '../../widgets/common/pressable_card.dart';
+import '../../providers/profile_images_provider.dart';
 import 'settings_page.dart';
 
-class ProfilePage extends StatefulWidget {
+class ProfilePage extends ConsumerStatefulWidget {
   const ProfilePage({super.key});
 
   @override
-  State<ProfilePage> createState() => _ProfilePageState();
+  ConsumerState<ProfilePage> createState() => _ProfilePageState();
 }
 
-class _ProfilePageState extends State<ProfilePage>
+class _ProfilePageState extends ConsumerState<ProfilePage>
     with SingleTickerProviderStateMixin {
   final String _username = 'John Doe';
   final String _handle = '@fitness_john';
@@ -21,8 +24,6 @@ class _ProfilePageState extends State<ProfilePage>
   final String _bio =
       'Fitness enthusiast on a journey to better health and strength.';
   final bool _isSubscribed = false;
-  final String? _coverImageUrl = null;
-  final String? _avatarUrl = null;
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
 
@@ -62,8 +63,8 @@ class _ProfilePageState extends State<ProfilePage>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _ProfileCoverHeader(
-                  coverImageUrl: _coverImageUrl,
-                  avatarUrl: _avatarUrl,
+                  coverImageUrl: ref.watch(profileImagesProvider).coverImagePath,
+                  avatarUrl: ref.watch(profileImagesProvider).profileImagePath,
                   role: _role,
                 ),
                 const SizedBox(height: 12),
@@ -206,14 +207,37 @@ class _ProfileCoverHeader extends StatelessWidget {
                 children: [
                   if (coverImageUrl != null && coverImageUrl!.isNotEmpty)
                     Positioned.fill(
-                      child: ImageFiltered(
-                        imageFilter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                        child: Image(
-                          image: NetworkImage(coverImageUrl!),
-                          fit: BoxFit.cover,
+                      child: Image(
+                        image: coverImageUrl!.startsWith('http')
+                            ? NetworkImage(coverImageUrl!)
+                            : FileImage(File(coverImageUrl!)) as ImageProvider,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  // Glassmorphism blur overlay at bottom
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: -24,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(28),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                          child: Container(
+                            height: 88,
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.30),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.12),
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
+                  ),
                   // Smooth blend into content below (shared with home)
                   Container(
                     decoration: BoxDecoration(
@@ -242,7 +266,9 @@ class _ProfileCoverHeader extends StatelessWidget {
                 ],
                 image: avatarUrl != null && avatarUrl!.isNotEmpty
                     ? DecorationImage(
-                        image: NetworkImage(avatarUrl!),
+                        image: avatarUrl!.startsWith('http')
+                            ? NetworkImage(avatarUrl!)
+                            : FileImage(File(avatarUrl!)) as ImageProvider,
                         fit: BoxFit.cover,
                       )
                     : null,

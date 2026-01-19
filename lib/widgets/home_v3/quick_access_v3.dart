@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
 import '../common/pressable_card.dart';
@@ -42,7 +43,11 @@ class QuickAccessV3 extends StatelessWidget {
             separatorBuilder: (_, __) => const SizedBox(width: 12),
             itemBuilder: (context, index) {
               final item = items[index];
-              return _QuickTile(item: item, onTap: () {});
+              VoidCallback? onTap;
+              if (item.title == 'MESSAGING') {
+                onTap = () => context.push('/messaging');
+              }
+              return _QuickTile(item: item, onTap: onTap);
             },
           ),
         ),
@@ -76,7 +81,6 @@ class _QuickTile extends StatelessWidget {
         decoration: BoxDecoration(
           gradient: item.gradient,
           borderRadius: BorderRadius.circular(28),
-          boxShadow: AppColors.cardShadowOf(context),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

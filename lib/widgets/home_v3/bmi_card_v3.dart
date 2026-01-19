@@ -241,35 +241,46 @@ class _MetricPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final titleColor = AppColors.textPrimaryOf(context);
+    final subtitleColor = AppColors.textSecondaryOf(context);
+    
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.06),
+          color: isDark 
+              ? Colors.white.withOpacity(0.06)
+              : cs.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withOpacity(0.08)),
+          border: Border.all(
+            color: isDark 
+                ? Colors.white.withOpacity(0.08)
+                : cs.surfaceContainerHighest,
+          ),
         ),
         child: Row(
           children: [
-            Icon(icon, color: AppColors.textSecondary, size: 16),
+            Icon(icon, color: subtitleColor, size: 16),
             const SizedBox(width: 6),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.textSecondary,
+                    color: subtitleColor,
                   ),
                 ),
                 Text(
                   value,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary,
+                    color: titleColor,
                   ),
                 ),
               ],

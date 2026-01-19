@@ -1,7 +1,12 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../theme/theme_mode_provider.dart';
+import '../../providers/profile_images_provider.dart';
+import '../../utils/page_transitions.dart';
+import 'edit_profile_page.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -17,11 +22,69 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   bool _communityNotifications = true;
   bool _reminderNotifications = true;
 
+  Future<void> _pickProfileImage(BuildContext context) async {
+    HapticFeedback.lightImpact();
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1024,
+      maxHeight: 1024,
+      imageQuality: 85,
+    );
+
+    if (image != null) {
+      ref.read(profileImagesProvider.notifier).updateProfileImage(image.path);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profile photo updated'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _pickCoverImage(BuildContext context) async {
+    HapticFeedback.lightImpact();
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1920,
+      maxHeight: 1080,
+      imageQuality: 85,
+    );
+
+    if (image != null) {
+      ref.read(profileImagesProvider.notifier).updateCoverImage(image.path);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Cover photo updated'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
+    }
+  }
+
+  void _navigateToEditProfile(BuildContext context) {
+    HapticFeedback.lightImpact();
+    Navigator.push(
+      context,
+      PageTransitions.slideRoute(
+        const EditProfilePage(),
+        beginOffset: const Offset(0, 0.05),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final themeMode = ref.watch(themeModeProvider);
+    final profileImages = ref.watch(profileImagesProvider);
 
     return Scaffold(
       backgroundColor: colorScheme.background,
@@ -44,32 +107,39 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
+          // Profile Section
+          _ProfileSection(
+            profileImagePath: profileImages.profileImagePath,
+            name: 'Gopinath Reddy',
+            username: '@gopi_5412',
+          ),
+          const SizedBox(height: 16),
           _SettingsGroup(
             title: 'Account',
             children: [
               _SettingsRow(
                 icon: Icons.edit,
                 title: 'Edit Profile',
-                onTap: () => HapticFeedback.lightImpact(),
-              ),
-              _SettingsRow(
-                icon: Icons.email_outlined,
-                title: 'Change Email',
-                onTap: () => HapticFeedback.lightImpact(),
+                onTap: () => _navigateToEditProfile(context),
               ),
               _SettingsRow(
                 icon: Icons.lock_outline,
-                title: 'Change Password',
+                title: 'Privacy',
+                onTap: () => HapticFeedback.lightImpact(),
+              ),
+              _SettingsRow(
+                icon: Icons.security,
+                title: 'Security',
                 onTap: () => HapticFeedback.lightImpact(),
               ),
             ],
           ),
           const SizedBox(height: 16),
           _SettingsGroup(
-            title: 'Appearance',
+            title: 'App',
             children: [
               _SegmentRow(
-                title: 'Theme Mode',
+                title: 'Appearance',
                 options: const ['System', 'Light', 'Dark'],
                 selectedIndex: _themeIndexFromMode(themeMode),
                 onChanged: (value) {
@@ -78,88 +148,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 },
               ),
               _SettingsRow(
-                icon: Icons.color_lens_outlined,
-                title: 'Accent Preview',
-                trailing: Container(
-                  width: 48,
-                  height: 20,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFFF7A00), Color(0xFFFF4F9A)],
-                    ),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _SettingsGroup(
-            title: 'Profile Media',
-            children: [
-              _SettingsRow(
-                icon: Icons.person_outline,
-                title: 'Change Profile Photo',
-                onTap: () => HapticFeedback.lightImpact(),
-              ),
-              _SettingsRow(
-                icon: Icons.image_outlined,
-                title: 'Change Cover Photo',
-                onTap: () => HapticFeedback.lightImpact(),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _SettingsGroup(
-            title: 'Privacy',
-            children: [
-              _ToggleRow(
-                icon: Icons.lock_outline,
-                title: 'Private Account',
-                value: _privateAccount,
-                onChanged: (value) => setState(() => _privateAccount = value),
-              ),
-              _ToggleRow(
-                icon: Icons.location_on_outlined,
-                title: 'Show Location',
-                value: _showLocation,
-                onChanged: (value) => setState(() => _showLocation = value),
-              ),
-              _SettingsRow(
-                icon: Icons.block,
-                title: 'Block List',
-                onTap: () => HapticFeedback.lightImpact(),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _SettingsGroup(
-            title: 'Notifications',
-            children: [
-              _ToggleRow(
                 icon: Icons.notifications_none,
-                title: 'Push Notifications',
-                value: _pushNotifications,
-                onChanged: (value) =>
-                    setState(() => _pushNotifications = value),
-              ),
-              _ToggleRow(
-                icon: Icons.people_outline,
-                title: 'Community',
-                value: _communityNotifications,
-                onChanged: (value) =>
-                    setState(() => _communityNotifications = value),
-              ),
-              _ToggleRow(
-                icon: Icons.alarm_outlined,
-                title: 'Reminders',
-                value: _reminderNotifications,
-                onChanged: (value) =>
-                    setState(() => _reminderNotifications = value),
+                title: 'Notifications',
+                onTap: () => HapticFeedback.lightImpact(),
               ),
               _SettingsRow(
-                icon: Icons.nightlight_outlined,
-                title: 'Quiet Hours',
+                icon: Icons.language,
+                title: 'Language',
                 onTap: () => HapticFeedback.lightImpact(),
               ),
             ],
@@ -174,14 +169,46 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 onTap: () => HapticFeedback.lightImpact(),
               ),
               _SettingsRow(
-                icon: Icons.bug_report_outlined,
-                title: 'Report Bug',
+                icon: Icons.help_outline,
+                title: 'FAQ',
+                onTap: () => HapticFeedback.lightImpact(),
+              ),
+              _SettingsRow(
+                icon: Icons.feedback_outlined,
+                title: 'Feedback',
+                onTap: () => HapticFeedback.lightImpact(),
+              ),
+              _SettingsRow(
+                icon: Icons.report_problem_outlined,
+                title: 'Report a Problem',
+                onTap: () => HapticFeedback.lightImpact(),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _SettingsGroup(
+            title: 'About',
+            children: [
+              _SettingsRow(
+                icon: Icons.description_outlined,
+                title: 'Terms of Service',
                 onTap: () => HapticFeedback.lightImpact(),
               ),
               _SettingsRow(
                 icon: Icons.privacy_tip_outlined,
-                title: 'Terms & Privacy',
+                title: 'Privacy Policy',
                 onTap: () => HapticFeedback.lightImpact(),
+              ),
+              _SettingsRow(
+                icon: Icons.info_outline,
+                title: 'App Version',
+                trailing: const Text(
+                  '1.0.0',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             ],
           ),
@@ -429,3 +456,80 @@ class _SegmentRow extends StatelessWidget {
     );
   }
 }
+
+class _ProfileSection extends StatelessWidget {
+  final String? profileImagePath;
+  final String name;
+  final String username;
+
+  const _ProfileSection({
+    required this.profileImagePath,
+    required this.name,
+    required this.username,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: colorScheme.outline.withOpacity(0.18)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              image: profileImagePath != null && profileImagePath!.isNotEmpty
+                  ? DecorationImage(
+                      image: profileImagePath!.startsWith('http')
+                          ? NetworkImage(profileImagePath!)
+                          : FileImage(File(profileImagePath!)) as ImageProvider,
+                      fit: BoxFit.cover,
+                    )
+                  : null,
+              color: profileImagePath == null || profileImagePath!.isEmpty
+                  ? colorScheme.surfaceContainerHighest
+                  : null,
+            ),
+            child: profileImagePath == null || profileImagePath!.isEmpty
+                ? Icon(Icons.person, size: 32, color: colorScheme.onSurface.withOpacity(0.5))
+                : null,
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  username,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: colorScheme.onSurface.withOpacity(0.7),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+

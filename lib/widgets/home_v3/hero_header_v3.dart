@@ -1,6 +1,8 @@
 import 'dart:ui';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../theme/app_colors.dart';
 
 class HeroHeaderV3 extends StatefulWidget {
@@ -75,6 +77,8 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
     final double avatarTop = coverHeight - avatarSize + avatarOverlap;
     final double safeTop = MediaQuery.of(context).padding.top;
     final Color bgColor = Theme.of(context).colorScheme.surface;
+    final bool isDark = Theme.of(context).brightness == Brightness.dark;
+    final Color textColor = isDark ? Colors.white : Colors.black;
 
     return SizedBox(
       height: coverHeight + avatarOverlap,
@@ -95,14 +99,37 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
                     if (widget.coverImageUrl != null &&
                         widget.coverImageUrl!.isNotEmpty)
                       Positioned.fill(
-                        child: ImageFiltered(
-                          imageFilter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                          child: Image(
-                            image: NetworkImage(widget.coverImageUrl!),
-                            fit: BoxFit.cover,
+                        child: Image(
+                          image: widget.coverImageUrl!.startsWith('http')
+                              ? NetworkImage(widget.coverImageUrl!)
+                              : FileImage(File(widget.coverImageUrl!)) as ImageProvider,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    // Glassmorphism blur overlay at bottom
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: -24,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(28),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                            child: Container(
+                              height: 88,
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.30),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.12),
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                       ),
+                    ),
                     // Smooth blend into content below (shared with profile)
                     Container(
                       decoration: BoxDecoration(
@@ -131,8 +158,8 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
                     children: [
                       const Icon(
                         Icons.notifications_none_rounded,
-                        color: AppColors.textPrimary,
-                        size: 26,
+                        color: Colors.white,
+                        size: 32,
                       ),
                       if (widget.notificationCount > 0)
                         Positioned(
@@ -182,7 +209,9 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
                         image: widget.avatarUrl != null &&
                                 widget.avatarUrl!.isNotEmpty
                             ? DecorationImage(
-                                image: NetworkImage(widget.avatarUrl!),
+                                image: widget.avatarUrl!.startsWith('http')
+                                    ? NetworkImage(widget.avatarUrl!)
+                                    : FileImage(File(widget.avatarUrl!)) as ImageProvider,
                                 fit: BoxFit.cover,
                               )
                             : null,
@@ -207,7 +236,7 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
           ),
           Positioned(
             left: 20 + avatarSize + 14,
-            top: avatarTop + 4,
+            top: avatarTop + 10,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -218,7 +247,7 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
                     style: TextStyle(
                       fontSize: 12,
                       letterSpacing: 0.2,
-                      color: AppColors.textSecondary.withOpacity(0.72),
+                      color: isDark ? Colors.white.withOpacity(0.85) : Colors.black.withOpacity(0.85),
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -228,11 +257,11 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
                   _animForDelay(70),
                   Text(
                     widget.username,
-                    style: const TextStyle(
+                    style: GoogleFonts.montserrat(
                       fontSize: 24,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w900,
                       letterSpacing: -0.2,
-                      color: AppColors.textPrimary,
+                      color: textColor,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -243,7 +272,7 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
           ),
           Positioned(
             right: 20,
-            top: avatarTop + 18,
+            top: avatarTop + 24,
             child: _fadeSlide(
               _animForDelay(110),
               GestureDetector(
@@ -276,7 +305,7 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary,
+                            color: Colors.white,
                           ),
                         ),
                       ],

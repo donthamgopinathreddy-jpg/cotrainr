@@ -7,6 +7,7 @@ import '../../pages/splash_page.dart';
 import '../../pages/home/home_shell_page.dart';
 import '../../pages/notifications/notification_page.dart';
 import '../../pages/insights/insights_detail_page.dart';
+import '../../pages/messaging/messaging_page.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: '/splash',
@@ -69,6 +70,14 @@ final GoRouter appRouter = GoRouter(
       name: 'notifications',
       pageBuilder: (context, state) => _fadeSlidePage(
         child: const NotificationPage(),
+        state: state,
+      ),
+    ),
+    GoRoute(
+      path: '/messaging',
+      name: 'messaging',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const MessagingPage(),
         state: state,
       ),
     ),

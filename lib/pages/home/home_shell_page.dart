@@ -99,12 +99,21 @@ class _HomeShellPageState extends State<HomeShellPage> {
         onPageChanged: (index) => setState(() => _currentIndex = index),
         itemCount: _navigationItems.length,
         itemBuilder: (context, index) {
-          final pages = const [
-            HomePageV3(),
-            DiscoverPage(),
-            QuestPage(),
-            CocirclePage(),
-            ProfilePage(),
+          final pages = [
+            HomePageV3(
+              onNavigateToCocircle: () {
+                _pageController.animateToPage(
+                  3, // Cocircle feed is at index 3
+                  duration: const Duration(milliseconds: 260),
+                  curve: Curves.easeOutCubic,
+                );
+                setState(() => _currentIndex = 3);
+              },
+            ),
+            const DiscoverPage(),
+            const QuestPage(),
+            const CocirclePage(),
+            const ProfilePage(),
           ];
           return AnimatedSwitcher(
             duration: const Duration(milliseconds: 300),
