@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/page_transitions.dart';
 import '../../widgets/common/pressable_card.dart';
+import '../../widgets/common/cover_with_blur_bridge.dart';
 import '../../providers/profile_images_provider.dart';
 import 'settings_page.dart';
 
@@ -66,16 +67,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                   coverImageUrl: ref.watch(profileImagesProvider).coverImagePath,
                   avatarUrl: ref.watch(profileImagesProvider).profileImagePath,
                   role: _role,
+                  username: _username,
+                  handle: _handle,
                 ),
-                const SizedBox(height: 12),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: _IdentityRow(
-                    username: _username,
-                    handle: _handle,
-                  ),
-                ),
-                const SizedBox(height: 8),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Text(
@@ -155,20 +149,22 @@ class _ProfileCoverHeader extends StatelessWidget {
   final String? coverImageUrl;
   final String? avatarUrl;
   final String role;
+  final String username;
+  final String handle;
 
   const _ProfileCoverHeader({
     required this.coverImageUrl,
     required this.avatarUrl,
     required this.role,
+    required this.username,
+    required this.handle,
   });
 
   @override
   Widget build(BuildContext context) {
     const double coverHeight = 220;
     const double avatarSize = 96;
-    const double badgeOverlap = 12;
     final colorScheme = Theme.of(context).colorScheme;
-    final Color bgColor = Theme.of(context).colorScheme.background;
 
     // Badge: below avatar, overlapping its bottom edge
     final String label = role == 'trainer'
@@ -176,148 +172,164 @@ class _ProfileCoverHeader extends StatelessWidget {
         : role == 'nutritionist'
             ? 'NUTRITIONIST'
             : 'CLIENT';
-    final Color bgColorBadge = role == 'trainer'
-        ? colorScheme.primary.withValues(alpha: 0.2)
+    final LinearGradient badgeGradient = role == 'trainer'
+        ? AppColors.stepsGradient
         : role == 'nutritionist'
-            ? AppColors.green.withValues(alpha: 0.2)
-            : colorScheme.surfaceVariant;
-    final Color textColorBadge = role == 'trainer'
-        ? colorScheme.primary
-        : role == 'nutritionist'
-            ? AppColors.green
-            : colorScheme.onSurface.withValues(alpha: 0.9);
+            ? const LinearGradient(
+                colors: [AppColors.green, AppColors.cyan],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
+            : AppColors.distanceGradient;
 
-    final double avatarBottom = coverHeight - avatarSize / 2 + avatarSize;
-    final double badgeTop = avatarBottom - badgeOverlap;
+    // Cover image widget
+    Widget coverWidget = Container(
+      decoration: const BoxDecoration(
+        gradient: AppColors.heroGradient,
+      ),
+      child: coverImageUrl != null && coverImageUrl!.isNotEmpty
+          ? Image(
+              image: coverImageUrl!.startsWith('http')
+                  ? NetworkImage(coverImageUrl!)
+                  : FileImage(File(coverImageUrl!)) as ImageProvider,
+              fit: BoxFit.cover,
+            )
+          : null,
+    );
+
+    // Overlay content (avatar on left, name/user ID/badge/level on right)
+    Widget overlayContent = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Profile picture on the left
+        Container(
+          width: avatarSize,
+          height: avatarSize,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.25),
+                blurRadius: 12,
+                offset: const Offset(0, 6),
+              ),
+            ],
+            image: avatarUrl != null && avatarUrl!.isNotEmpty
+                ? DecorationImage(
+                    image: avatarUrl!.startsWith('http')
+                        ? NetworkImage(avatarUrl!)
+                        : FileImage(File(avatarUrl!)) as ImageProvider,
+                    fit: BoxFit.cover,
+                  )
+                : null,
+            color: avatarUrl == null || avatarUrl!.isEmpty
+                ? colorScheme.surface
+                : null,
+          ),
+          child: avatarUrl == null || avatarUrl!.isEmpty
+              ? Icon(Icons.person, size: 36, color: colorScheme.onSurface)
+              : null,
+        ),
+        const SizedBox(width: 12),
+        // Name, user ID, badge and level on the right
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Name
+              Text(
+                username,
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 4),
+              // User ID below name
+              Text(
+                handle,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.white.withOpacity(0.8),
+                ),
+              ),
+              const SizedBox(height: 8),
+              // Badge and level horizontal
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      gradient: badgeGradient,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.2),
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.person,
+                          size: 12,
+                          color: Colors.white,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          label,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.2),
+                        width: 1,
+                      ),
+                    ),
+                    child: Text(
+                      'LVL 1 Beginner',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
 
     return SizedBox(
       height: coverHeight + avatarSize / 2 + 8,
       child: Stack(
         children: [
-          Positioned(
-            left: 0,
-            right: 0,
-            top: 0,
+          CoverWithBlurBridge(
             height: coverHeight,
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: AppColors.heroGradient,
-              ),
-              child: Stack(
-                children: [
-                  if (coverImageUrl != null && coverImageUrl!.isNotEmpty)
-                    Positioned.fill(
-                      child: Image(
-                        image: coverImageUrl!.startsWith('http')
-                            ? NetworkImage(coverImageUrl!)
-                            : FileImage(File(coverImageUrl!)) as ImageProvider,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                  // Glassmorphism blur overlay at bottom
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: -24,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(28),
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                          child: Container(
-                            height: 88,
-                            decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.30),
-                              border: Border.all(
-                                color: Colors.white.withOpacity(0.12),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  // Smooth blend into content below (shared with home)
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: AppColors.coverBlendGradient(bgColor),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Positioned(
-            left: 16,
-            top: coverHeight - avatarSize / 2,
-            child: Container(
-              width: avatarSize,
-              height: avatarSize,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 2),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.25),
-                    blurRadius: 12,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
-                image: avatarUrl != null && avatarUrl!.isNotEmpty
-                    ? DecorationImage(
-                        image: avatarUrl!.startsWith('http')
-                            ? NetworkImage(avatarUrl!)
-                            : FileImage(File(avatarUrl!)) as ImageProvider,
-                        fit: BoxFit.cover,
-                      )
-                    : null,
-                color: avatarUrl == null || avatarUrl!.isEmpty
-                    ? colorScheme.surface
-                    : null,
-              ),
-              child: avatarUrl == null || avatarUrl!.isEmpty
-                  ? Icon(Icons.person,
-                      size: 36, color: colorScheme.onSurface)
-                  : null,
-            ),
-          ),
-          // Badge below profile picture, overlapping bottom
-          Positioned(
-            left: 16,
-            top: badgeTop,
-            child: SizedBox(
-              width: avatarSize,
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: bgColorBadge,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: colorScheme.surface.withValues(alpha: 0.9),
-                      width: 1,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.15),
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: textColorBadge,
-                      letterSpacing: 0.3,
-                    ),
-                  ),
-                ),
-              ),
-            ),
+            cover: coverWidget,
+            overlayContent: overlayContent,
+            overlayBottom: 60, // Lower position - between cover and next section
           ),
         ],
       ),
@@ -325,43 +337,6 @@ class _ProfileCoverHeader extends StatelessWidget {
   }
 }
 
-class _IdentityRow extends StatelessWidget {
-  final String username;
-  final String handle;
-
-  const _IdentityRow({
-    required this.username,
-    required this.handle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          username,
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w700,
-            color: colorScheme.onBackground,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          handle,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-            color: colorScheme.onBackground.withOpacity(0.6),
-          ),
-        ),
-      ],
-    );
-  }
-}
 
 class _FullLengthButton extends StatelessWidget {
   final String label;

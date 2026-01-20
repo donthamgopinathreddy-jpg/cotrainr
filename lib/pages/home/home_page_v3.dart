@@ -131,13 +131,12 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
               0,
             ),
           ),
-          const SliverToBoxAdapter(child: SizedBox(height: 20)),
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: _animated(
                 Transform.translate(
-                  offset: const Offset(0, -8),
+                  offset: const Offset(0, -16),
                   child: _safeSection(
                     context,
                     StepsCardV3(

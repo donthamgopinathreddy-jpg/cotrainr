@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../theme/app_colors.dart';
+import '../common/cover_with_blur_bridge.dart';
 
 class HeroHeaderV3 extends StatefulWidget {
   final String username;
@@ -71,69 +72,149 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
 
   @override
   Widget build(BuildContext context) {
-    const double coverHeight = 230;
+    const double coverHeight = 320;
     const double avatarSize = 80;
     const double avatarOverlap = 24;
-    final double avatarTop = coverHeight - avatarSize + avatarOverlap;
     final double safeTop = MediaQuery.of(context).padding.top;
-    final Color bgColor = Theme.of(context).colorScheme.surface;
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final Color textColor = isDark ? Colors.white : Colors.black;
 
-    return SizedBox(
-      height: coverHeight + avatarOverlap,
-      child: Stack(
-        children: [
-          Positioned(
-            left: 0,
-            right: 0,
-            top: 0,
-            height: coverHeight,
-            child: ClipRRect(
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: AppColors.heroGradient,
-                ),
-                child: Stack(
-                  children: [
-                    if (widget.coverImageUrl != null &&
-                        widget.coverImageUrl!.isNotEmpty)
-                      Positioned.fill(
-                        child: Image(
-                          image: widget.coverImageUrl!.startsWith('http')
-                              ? NetworkImage(widget.coverImageUrl!)
-                              : FileImage(File(widget.coverImageUrl!)) as ImageProvider,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                    // Glassmorphism blur overlay at bottom
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: -24,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(28),
-                          child: BackdropFilter(
-                            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                            child: Container(
-                              height: 88,
-                              decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.30),
-                                border: Border.all(
-                                  color: Colors.white.withOpacity(0.12),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
+    // Cover image widget
+    Widget coverWidget = Container(
+      decoration: const BoxDecoration(
+        gradient: AppColors.heroGradient,
+      ),
+      child: widget.coverImageUrl != null && widget.coverImageUrl!.isNotEmpty
+          ? Image(
+              image: widget.coverImageUrl!.startsWith('http')
+                  ? NetworkImage(widget.coverImageUrl!)
+                  : FileImage(File(widget.coverImageUrl!)) as ImageProvider,
+              fit: BoxFit.cover,
+            )
+          : null,
+    );
+
+    // Overlay content (avatar + welcome text + streak)
+    Widget overlayContent = Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        _fadeSlide(
+          _animForDelay(0),
+          GestureDetector(
+            onTapDown: (_) => setState(() => _avatarPressed = true),
+            onTapUp: (_) => setState(() => _avatarPressed = false),
+            onTapCancel: () => setState(() => _avatarPressed = false),
+            child: AnimatedScale(
+              scale: _avatarPressed ? 0.98 : 1.0,
+              duration: const Duration(milliseconds: 90),
+              child: Material(
+                color: Colors.transparent,
+                elevation: 8,
+                shadowColor: Colors.black.withOpacity(0.3),
+                shape: const CircleBorder(),
+                child: Container(
+                  width: avatarSize,
+                  height: avatarSize,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.7),
+                      width: 1.5,
                     ),
-                    // Smooth blend into content below (shared with profile)
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: AppColors.coverBlendGradient(bgColor),
+                    image: widget.avatarUrl != null &&
+                            widget.avatarUrl!.isNotEmpty
+                        ? DecorationImage(
+                            image: widget.avatarUrl!.startsWith('http')
+                                ? NetworkImage(widget.avatarUrl!)
+                                : FileImage(File(widget.avatarUrl!)) as ImageProvider,
+                            fit: BoxFit.cover,
+                          )
+                        : null,
+                    color: widget.avatarUrl == null || widget.avatarUrl!.isEmpty
+                        ? AppColors.surfaceSoft
+                        : null,
+                  ),
+                  child: widget.avatarUrl == null || widget.avatarUrl!.isEmpty
+                      ? const Icon(
+                          Icons.person,
+                          color: AppColors.textPrimary,
+                          size: 32,
+                        )
+                      : null,
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _fadeSlide(
+                _animForDelay(40),
+                Text(
+                  'Welcome back,',
+                  style: TextStyle(
+                    color: isDark
+                        ? Colors.white.withOpacity(0.85)
+                        : Colors.black.withOpacity(0.85),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              _fadeSlide(
+                _animForDelay(70),
+                Text(
+                  widget.username,
+                  style: GoogleFonts.montserrat(
+                    color: textColor,
+                    fontSize: 30,
+                    fontWeight: FontWeight.w800,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+        _fadeSlide(
+          _animForDelay(110),
+          GestureDetector(
+            onTapDown: (_) => setState(() => _streakPressed = true),
+            onTapUp: (_) {
+              setState(() => _streakPressed = false);
+              HapticFeedback.lightImpact();
+            },
+            onTapCancel: () => setState(() => _streakPressed = false),
+            child: AnimatedScale(
+              scale: _streakPressed ? 0.98 : 1.0,
+              duration: const Duration(milliseconds: 90),
+              child: Container(
+                height: 36,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.35),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.local_fire_department_rounded,
+                      color: AppColors.orange,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '${widget.streakDays}',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
                       ),
                     ),
                   ],
@@ -141,6 +222,20 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
               ),
             ),
           ),
+        ),
+      ],
+    );
+
+    return SizedBox(
+      height: coverHeight + avatarOverlap,
+      child: Stack(
+        children: [
+          CoverWithBlurBridge(
+            height: coverHeight,
+            cover: coverWidget,
+            overlayContent: overlayContent,
+          ),
+          // Notification bell (positioned at top right)
           Positioned(
             right: 20,
             top: safeTop + 16,
@@ -175,141 +270,6 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
                           ),
                         ),
                     ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            left: 20,
-            top: avatarTop,
-            child: _fadeSlide(
-              _animForDelay(0),
-              GestureDetector(
-                onTapDown: (_) => setState(() => _avatarPressed = true),
-                onTapUp: (_) => setState(() => _avatarPressed = false),
-                onTapCancel: () => setState(() => _avatarPressed = false),
-                child: AnimatedScale(
-                  scale: _avatarPressed ? 0.98 : 1.0,
-                  duration: const Duration(milliseconds: 90),
-                  child: Material(
-                    color: Colors.transparent,
-                    elevation: 8,
-                    shadowColor: Colors.black.withOpacity(0.3),
-                    shape: const CircleBorder(),
-                    child: Container(
-                      width: avatarSize,
-                      height: avatarSize,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.7),
-                          width: 1.5,
-                        ),
-                        image: widget.avatarUrl != null &&
-                                widget.avatarUrl!.isNotEmpty
-                            ? DecorationImage(
-                                image: widget.avatarUrl!.startsWith('http')
-                                    ? NetworkImage(widget.avatarUrl!)
-                                    : FileImage(File(widget.avatarUrl!)) as ImageProvider,
-                                fit: BoxFit.cover,
-                              )
-                            : null,
-                        color:
-                            widget.avatarUrl == null || widget.avatarUrl!.isEmpty
-                                ? AppColors.surfaceSoft
-                                : null,
-                      ),
-                      child:
-                          widget.avatarUrl == null || widget.avatarUrl!.isEmpty
-                              ? const Icon(
-                                  Icons.person,
-                                  color: AppColors.textPrimary,
-                                  size: 32,
-                                )
-                              : null,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            left: 20 + avatarSize + 14,
-            top: avatarTop + 10,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _fadeSlide(
-                  _animForDelay(40),
-                  Text(
-                    'Welcome back,',
-                    style: TextStyle(
-                      fontSize: 12,
-                      letterSpacing: 0.2,
-                      color: isDark ? Colors.white.withOpacity(0.85) : Colors.black.withOpacity(0.85),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                _fadeSlide(
-                  _animForDelay(70),
-                  Text(
-                    widget.username,
-                    style: GoogleFonts.montserrat(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -0.2,
-                      color: textColor,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Positioned(
-            right: 20,
-            top: avatarTop + 24,
-            child: _fadeSlide(
-              _animForDelay(110),
-              GestureDetector(
-                onTapDown: (_) => setState(() => _streakPressed = true),
-                onTapUp: (_) {
-                  setState(() => _streakPressed = false);
-                  HapticFeedback.lightImpact();
-                },
-                onTapCancel: () => setState(() => _streakPressed = false),
-                child: AnimatedScale(
-                  scale: _streakPressed ? 0.98 : 1.0,
-                  duration: const Duration(milliseconds: 90),
-                  child: Container(
-                    height: 36,
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.35),
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.local_fire_department_rounded,
-                          color: AppColors.orange,
-                          size: 18,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          '${widget.streakDays}',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
                   ),
                 ),
               ),
