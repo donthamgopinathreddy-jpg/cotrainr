@@ -14,7 +14,7 @@ class DesignTokens {
   static const Color darkTextTertiary = Color(0x80FFFFFF); // 50% opacity
 
   // ========== LIGHT THEME COLORS ==========
-  static const Color lightBackground = Color(0xFFF6F7FB);
+  static const Color lightBackground = Color(0xFFF5F5F5); // Very light grey for better visual hierarchy
   static const Color lightSurface = Color(0xFFFFFFFF);
   static const Color lightSurfaceElevated = Color(0xFFFFFFFF);
   static const Color lightTextPrimary = Color(0xFF1A1A1A);

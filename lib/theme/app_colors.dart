@@ -66,6 +66,25 @@ class AppColors {
     end: Alignment.bottomRight,
   );
 
+  // Video Session Role Gradients
+  static const LinearGradient clientVideoGradient = LinearGradient(
+    colors: [Color(0xFFFF7A00), Color(0xFFFFC300)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static const LinearGradient trainerVideoGradient = LinearGradient(
+    colors: [Color(0xFFFF5A2A), Color(0xFFFFB300)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static const LinearGradient nutritionistVideoGradient = LinearGradient(
+    colors: [Color(0xFFFF8A00), Color(0xFFFFD54A)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
   static const LinearGradient bmiGradient = LinearGradient(
     colors: [Color(0xFF2BC88A), Color(0xFFB6F7D2)],
     begin: Alignment.topLeft,

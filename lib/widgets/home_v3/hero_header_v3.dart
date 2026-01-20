@@ -72,9 +72,9 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
 
   @override
   Widget build(BuildContext context) {
-    const double coverHeight = 320;
+    const double coverHeight = 380; // Increased from 320 to show more image
     const double avatarSize = 80;
-    const double avatarOverlap = 24;
+    const double avatarOverlap = 36; // Increased overlap to free vertical space
     final double safeTop = MediaQuery.of(context).padding.top;
     final bool isDark = Theme.of(context).brightness == Brightness.dark;
     final Color textColor = isDark ? Colors.white : Colors.black;
@@ -234,6 +234,7 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
             height: coverHeight,
             cover: coverWidget,
             overlayContent: overlayContent,
+            overlayBottom: 28, // Increased from default 22 to give breathing room
           ),
           // Notification bell (positioned at top right)
           Positioned(

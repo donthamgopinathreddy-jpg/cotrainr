@@ -113,7 +113,7 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
     return FadeTransition(
       opacity: _fadeAnimation,
       child: Scaffold(
-        backgroundColor: cs.surface,
+        backgroundColor: cs.background,
         body: CustomScrollView(
         controller: _scrollController,
         physics: const BouncingScrollPhysics(),
@@ -136,7 +136,7 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: _animated(
                 Transform.translate(
-                  offset: const Offset(0, -16),
+                  offset: const Offset(0, -20),
                   child: _safeSection(
                     context,
                     StepsCardV3(

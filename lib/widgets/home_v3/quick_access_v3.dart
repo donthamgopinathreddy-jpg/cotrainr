@@ -46,6 +46,10 @@ class QuickAccessV3 extends StatelessWidget {
               VoidCallback? onTap;
               if (item.title == 'MESSAGING') {
                 onTap = () => context.push('/messaging');
+              } else if (item.title == 'BECOME A TRAINER') {
+                onTap = () => context.push('/trainer/become');
+              } else if (item.title == 'VIDEO SESSIONS') {
+                onTap = () => context.push('/video?role=client');
               }
               return _QuickTile(item: item, onTap: onTap);
             },

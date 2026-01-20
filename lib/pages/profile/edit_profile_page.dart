@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
-import '../../utils/page_transitions.dart';
+import 'package:crop_your_image/crop_your_image.dart';
 import '../../providers/profile_images_provider.dart';
 
 class EditProfilePage extends ConsumerStatefulWidget {
@@ -47,19 +47,33 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
     final ImagePicker picker = ImagePicker();
     final XFile? image = await picker.pickImage(
       source: ImageSource.gallery,
-      maxWidth: 1024,
-      maxHeight: 1024,
-      imageQuality: 85,
+      imageQuality: 90,
     );
 
     if (image != null && mounted) {
-      ref.read(profileImagesProvider.notifier).updateProfileImage(image.path);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Profile photo updated'),
-          duration: Duration(seconds: 1),
-        ),
+      // Show cropping screen with square preset (1:1 aspect ratio for profile)
+      final croppedPath = await _showCropDialog(
+        context,
+        image.path,
+        aspectRatio: 1.0, // Square for profile picture
+        title: 'Crop Profile Picture',
       );
+      
+      if (croppedPath != null && mounted) {
+        ref.read(profileImagesProvider.notifier).updateProfileImage(croppedPath);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profile picture updated'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+        // Auto dismiss after 1 second and navigate back
+        Future.delayed(const Duration(seconds: 1), () {
+          if (mounted) {
+            Navigator.pop(context); // Go back to settings
+          }
+        });
+      }
     }
   }
 
@@ -68,20 +82,55 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
     final ImagePicker picker = ImagePicker();
     final XFile? image = await picker.pickImage(
       source: ImageSource.gallery,
-      maxWidth: 1920,
-      maxHeight: 1080,
-      imageQuality: 85,
+      imageQuality: 90,
     );
 
     if (image != null && mounted) {
-      ref.read(profileImagesProvider.notifier).updateCoverImage(image.path);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Cover photo updated'),
-          duration: Duration(seconds: 1),
-        ),
+      // Show cropping screen with cover preset (2:1 aspect ratio for cover - recommended)
+      final croppedPath = await _showCropDialog(
+        context,
+        image.path,
+        aspectRatio: 2.0, // 2:1 aspect ratio for cover image (recommended for better UX)
+        title: 'Crop Cover Picture',
       );
+      
+      if (croppedPath != null && mounted) {
+        ref.read(profileImagesProvider.notifier).updateCoverImage(croppedPath);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Cover picture updated'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+        // Auto dismiss after 1 second and navigate back
+        Future.delayed(const Duration(seconds: 1), () {
+          if (mounted) {
+            Navigator.pop(context); // Go back to settings
+          }
+        });
+      }
     }
+  }
+
+  Future<String?> _showCropDialog(
+    BuildContext context,
+    String imagePath, {
+    required double aspectRatio,
+    required String title,
+  }) async {
+    // Read image file as bytes
+    final imageFile = File(imagePath);
+    final imageBytes = await imageFile.readAsBytes();
+
+    return await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _CropDialog(
+        imageBytes: imageBytes,
+        aspectRatio: aspectRatio,
+        title: title,
+      ),
+    );
   }
 
   Future<void> _selectDate(BuildContext context) async {
@@ -107,7 +156,12 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
           duration: Duration(seconds: 1),
         ),
       );
-      Navigator.pop(context);
+      // Auto dismiss after 1 second and navigate back to settings
+      Future.delayed(const Duration(seconds: 1), () {
+        if (mounted) {
+          Navigator.pop(context); // Go back to settings
+        }
+      });
     }
   }
 
@@ -304,6 +358,165 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
               ],
             ),
             const SizedBox(height: 24),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CropDialog extends StatefulWidget {
+  final Uint8List imageBytes;
+  final double aspectRatio;
+  final String title;
+
+  const _CropDialog({
+    required this.imageBytes,
+    required this.aspectRatio,
+    required this.title,
+  });
+
+  @override
+  State<_CropDialog> createState() => _CropDialogState();
+}
+
+class _CropDialogState extends State<_CropDialog> {
+  final CropController _cropController = CropController();
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.all(16),
+      child: Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.8,
+          maxWidth: MediaQuery.of(context).size.width,
+        ),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(
+                      Icons.close,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
+            // Crop area
+            Flexible(
+              child: Container(
+                height: MediaQuery.of(context).size.height * 0.5,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: Crop(
+                    image: widget.imageBytes,
+                    controller: _cropController,
+                    aspectRatio: widget.aspectRatio,
+                    onCropped: (CropResult result) async {
+                      try {
+                        // In crop_your_image 2.0.0, CropResult is a sealed class
+                        // Use pattern matching to extract croppedImage from CropSuccess
+                        Uint8List? imageData;
+                        
+                        // Pattern match on CropResult variants
+                        if (result is CropSuccess) {
+                          // CropSuccess has croppedImage property
+                          final success = result as dynamic;
+                          imageData = success.croppedImage as Uint8List?;
+                        } else {
+                          // Handle error case
+                          final error = result as dynamic;
+                          throw Exception('Crop failed: ${error.error?.toString() ?? 'Unknown error'}');
+                        }
+                        
+                        if (imageData == null || imageData.isEmpty) {
+                          throw Exception('Invalid crop result: cropped image is empty.');
+                        }
+                        
+                        debugPrint('Successfully extracted ${imageData.length} bytes from crop result');
+                        
+                        // Save cropped image to temporary file
+                        final directory = Directory.systemTemp;
+                        final fileName = 'cropped_${DateTime.now().millisecondsSinceEpoch}.png';
+                        final file = File('${directory.path}/$fileName');
+                        await file.writeAsBytes(imageData);
+                        
+                        if (mounted) {
+                          Navigator.pop(context, file.path);
+                        }
+                      } catch (e) {
+                        debugPrint('Crop error: $e');
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Error cropping image: ${e.toString()}'),
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      }
+                    },
+                  ),
+                ),
+              ),
+            ),
+            // Buttons
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(context),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => _cropController.crop(),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text('Crop'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),

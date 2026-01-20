@@ -8,6 +8,13 @@ import '../../pages/home/home_shell_page.dart';
 import '../../pages/notifications/notification_page.dart';
 import '../../pages/insights/insights_detail_page.dart';
 import '../../pages/messaging/messaging_page.dart';
+import '../../pages/trainer/become_trainer_page.dart';
+import '../../pages/refer/refer_friend_page.dart';
+import '../../pages/video_sessions/video_sessions_page.dart';
+import '../../pages/video_sessions/create_meeting_page.dart';
+import '../../pages/video_sessions/join_meeting_page.dart';
+import '../../pages/video_sessions/meeting_room_page.dart';
+import '../../models/video_session_models.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: '/splash',
@@ -126,6 +133,69 @@ final GoRouter appRouter = GoRouter(
         ),
         state: state,
       ),
+    ),
+    GoRoute(
+      path: '/trainer/become',
+      name: 'becomeTrainer',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const BecomeTrainerPage(),
+        state: state,
+      ),
+    ),
+    GoRoute(
+      path: '/refer',
+      name: 'referFriend',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const ReferFriendPage(),
+        state: state,
+      ),
+    ),
+    GoRoute(
+      path: '/video',
+      name: 'videoSessions',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: VideoSessionsPage(
+          role: state.uri.queryParameters['role'] == 'trainer'
+              ? Role.trainer
+              : state.uri.queryParameters['role'] == 'nutritionist'
+                  ? Role.nutritionist
+                  : Role.client,
+        ),
+        state: state,
+      ),
+    ),
+    GoRoute(
+      path: '/video/create',
+      name: 'createMeeting',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: CreateMeetingPage(
+          userRole: state.uri.queryParameters['role'] == 'trainer'
+              ? Role.trainer
+              : state.uri.queryParameters['role'] == 'nutritionist'
+                  ? Role.nutritionist
+                  : Role.client,
+        ),
+        state: state,
+      ),
+    ),
+    GoRoute(
+      path: '/video/join',
+      name: 'joinMeeting',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const JoinMeetingPage(),
+        state: state,
+      ),
+    ),
+    GoRoute(
+      path: '/video/room/:meetingId',
+      name: 'meetingRoom',
+      pageBuilder: (context, state) {
+        final meetingId = state.pathParameters['meetingId'] ?? '';
+        return _fadeSlidePage(
+          child: MeetingRoomPage(meetingId: meetingId),
+          state: state,
+        );
+      },
     ),
   ],
 );

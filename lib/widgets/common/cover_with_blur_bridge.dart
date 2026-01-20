@@ -64,7 +64,9 @@ class CoverWithBlurBridge extends StatelessWidget {
               : Positioned(
                   left: 16,
                   right: 16,
-                  bottom: overlayBottom ?? 22,
+                  bottom:
+                      overlayBottom ??
+                      28, // Increased from 22 to give breathing room
                   child: overlayContent,
                 ),
         ],
@@ -105,7 +107,7 @@ class _BlurFeather extends StatelessWidget {
                 child: Container(color: Colors.transparent),
               ),
             ),
-            // Feather fade (into page bg)
+            // Feather fade (into page bg) - optimized gradient
             DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -114,7 +116,9 @@ class _BlurFeather extends StatelessWidget {
                   colors: [
                     pageBg.withOpacity(0.00),
                     pageBg.withOpacity(0.30),
-                    pageBg.withOpacity(0.75),
+                    pageBg.withOpacity(
+                      0.85,
+                    ), // Increased from 0.75 for smoother blend
                     pageBg,
                   ],
                 ),
