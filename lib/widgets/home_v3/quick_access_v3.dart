@@ -44,14 +44,16 @@ class QuickAccessV3 extends StatelessWidget {
             itemBuilder: (context, index) {
               final item = items[index];
               VoidCallback? onTap;
+              bool showBadge = false;
               if (item.title == 'MESSAGING') {
                 onTap = () => context.push('/messaging');
               } else if (item.title == 'BECOME A TRAINER') {
                 onTap = () => context.push('/trainer/become');
               } else if (item.title == 'VIDEO SESSIONS') {
                 onTap = () => context.push('/video?role=client');
+                // Red dot removed as requested
               }
-              return _QuickTile(item: item, onTap: onTap);
+              return _QuickTile(item: item, onTap: onTap, showBadge: showBadge);
             },
           ),
         ),
@@ -71,8 +73,9 @@ class _QuickTileData {
 class _QuickTile extends StatelessWidget {
   final _QuickTileData item;
   final VoidCallback? onTap;
+  final bool showBadge;
 
-  const _QuickTile({required this.item, this.onTap});
+  const _QuickTile({required this.item, this.onTap, this.showBadge = false});
 
   @override
   Widget build(BuildContext context) {
@@ -89,18 +92,35 @@ class _QuickTile extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.2),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                item.icon,
-                color: Colors.white,
-                size: 20,
-              ),
+            Stack(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    item.icon,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                ),
+                if (showBadge)
+                  Positioned(
+                    top: 0,
+                    right: 0,
+                    child: Container(
+                      width: 10,
+                      height: 10,
+                      decoration: const BoxDecoration(
+                        color: AppColors.red,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+              ],
             ),
             const Spacer(),
             Text(

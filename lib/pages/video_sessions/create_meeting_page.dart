@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../models/video_session_models.dart';
+import '../../services/meeting_storage_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
 
@@ -56,26 +57,27 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
   }
 
   void _generateMeetingDetails() {
-    final random = Random();
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    _generatedMeetingId = String.fromCharCodes(
-      Iterable.generate(8, (_) => chars.codeUnitAt(random.nextInt(chars.length))),
-    );
-    const digits = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    _generatedJoinCode = String.fromCharCodes(
-      Iterable.generate(6, (_) => digits.codeUnitAt(random.nextInt(digits.length))),
-    );
+    final random = Random.secure();
+    
+    // Generate Meeting ID: 6 digits (example: 483921)
+    _generatedMeetingId = random.nextInt(1000000).toString().padLeft(6, '0');
+    
+    // Generate Meeting Code: 6 uppercase chars excluding O, 0, I, 1 (example: Q7K9M2)
+    const codeChars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    final codeBuffer = StringBuffer();
+    for (var i = 0; i < 6; i++) {
+      codeBuffer.write(codeChars[random.nextInt(codeChars.length)]);
+    }
+    _generatedJoinCode = codeBuffer.toString();
   }
 
   LinearGradient get _roleGradient {
-    switch (widget.userRole) {
-      case Role.client:
-        return AppColors.clientVideoGradient;
-      case Role.trainer:
-        return AppColors.trainerVideoGradient;
-      case Role.nutritionist:
-        return AppColors.nutritionistVideoGradient;
-    }
+    // Use purple gradient for all video sessions
+    return const LinearGradient(
+      colors: [AppColors.purple, Color(0xFFB38CFF)],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    );
   }
 
   Future<void> _selectDate() async {
@@ -84,6 +86,19 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
       initialDate: DateTime.now().add(const Duration(days: 1)),
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: Theme.of(context).colorScheme.copyWith(
+              primary: AppColors.purple,
+              onPrimary: Colors.white,
+              surface: Theme.of(context).colorScheme.surface,
+              onSurface: AppColors.textPrimaryOf(context),
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
     if (picked != null) {
       setState(() => _selectedDate = picked);
@@ -94,6 +109,19 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
     final picked = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.now(),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: Theme.of(context).colorScheme.copyWith(
+              primary: AppColors.purple,
+              onPrimary: Colors.white,
+              surface: Theme.of(context).colorScheme.surface,
+              onSurface: AppColors.textPrimaryOf(context),
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
     if (picked != null) {
       setState(() => _selectedTime = picked);
@@ -129,7 +157,7 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
         _selectedTime!.minute,
       );
 
-      if (scheduledDateTime.isBefore(DateTime.now().add(const Duration(minutes: 5)))) {
+      if (scheduledDateTime.isBefore(DateTime.now())) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Scheduled time must be at least 5 minutes from now')),
         );
@@ -144,18 +172,252 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
       return;
     }
 
+    // Validate duration is selected
+    if (_selectedDuration == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a meeting duration')),
+      );
+      return;
+    }
+
     HapticFeedback.mediumImpact();
     
-    // Navigate to meeting room
-    context.push('/video/room/${_generatedMeetingId}');
+    // Regenerate meeting details to ensure uniqueness for each meeting
+    _generateMeetingDetails();
+    
+    // Ensure uniqueness by checking against existing meetings
+    final storageService = MeetingStorageService();
+    int attempts = 0;
+    while (attempts < 100) { // Max 100 attempts to find unique ID/code
+      final existingMeeting = storageService.getMeetingById(_generatedMeetingId!);
+      if (existingMeeting == null) {
+        // Check if shareKey is unique
+        final shareKey = '${_generatedMeetingId}-${_generatedJoinCode}';
+        final hasDuplicate = storageService.allMeetings.any(
+          (m) => m.shareKey == shareKey
+        );
+        if (!hasDuplicate) {
+          break; // Unique ID and code found
+        }
+      }
+      // Regenerate if duplicate found
+      _generateMeetingDetails();
+      attempts++;
+    }
+    
+    // Create meeting object
+    final now = DateTime.now();
+    final meeting = Meeting(
+      meetingId: _generatedMeetingId!,
+      title: _titleController.text.trim(),
+      hostUserId: 'current_user', // Replace with actual user ID
+      hostRole: widget.userRole,
+      createdAt: now,
+      scheduledFor: !_isInstant ? DateTime(
+        _selectedDate!.year,
+        _selectedDate!.month,
+        _selectedDate!.day,
+        _selectedTime!.hour,
+        _selectedTime!.minute,
+      ) : null,
+      startedAt: _isInstant ? now : null, // Set start time for instant meetings
+      durationMins: _selectedDuration,
+      isInstant: _isInstant,
+      joinCode: _generatedJoinCode!,
+      privacy: _privacy,
+      allowedRoles: _allowedRoles,
+      status: _isInstant ? MeetingStatus.live : MeetingStatus.upcoming,
+    );
+
+    // Save meeting locally (both instant and scheduled)
+    MeetingStorageService().addMeeting(meeting);
+    
+    // Show success sheet with ShareKey
+    _showMeetingDetails(meeting);
+    
+    // For instant meetings, navigation happens in the success sheet button
+  }
+
+  void _showMeetingDetails(Meeting meeting) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Text(
+              'Meeting Created!',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimaryOf(context),
+              ),
+            ),
+            const SizedBox(height: 20),
+            // ShareKey - Primary display
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: AppColors.purple.withOpacity(0.3),
+                  width: 2,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Share Key',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textSecondaryOf(context),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              meeting.shareKey,
+                              style: TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.w700,
+                                fontFamily: 'monospace',
+                                color: AppColors.purple,
+                                letterSpacing: 1.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () {
+                          Clipboard.setData(ClipboardData(text: meeting.shareKey));
+                          HapticFeedback.mediumImpact();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Share key copied!')),
+                          );
+                        },
+                        icon: const Icon(Icons.copy_rounded, color: AppColors.purple, size: 24),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  // Optional: Show ID and Code as small chips
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppColors.purple.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          'ID: ${meeting.meetingId}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppColors.purple,
+                            fontFamily: 'monospace',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppColors.purple.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          'Code: ${meeting.joinCode}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppColors.purple,
+                            fontFamily: 'monospace',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: _roleGradient,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    if (_isInstant) {
+                      // Navigate to meeting room for instant meetings using ShareKey
+                      context.push('/video/room/${meeting.shareKey}');
+                    } else {
+                      context.pop();
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    backgroundColor: Colors.transparent,
+                    shadowColor: Colors.transparent,
+                    elevation: 0,
+                  ),
+                  child: const Text(
+                    'Done',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: colorScheme.background,
+      backgroundColor: isDark
+          ? const Color(0xFF1A0F2E) // Purple-black mix background (not too dark)
+          : const Color(0xFFF0EBFF), // More vibrant light purple background
       appBar: AppBar(
         title: const Text(
           'Create Meeting',
@@ -171,44 +433,110 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Meeting Basics Card
-              _GlassCard(
+              // Title Field Card - Separate Box
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  borderRadius: BorderRadius.circular(22),
+                  boxShadow: DesignTokens.cardShadowOf(context),
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Meeting Basics',
+                      'Meeting Title',
                       style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
                         color: AppColors.textPrimaryOf(context),
                       ),
                     ),
-                    const SizedBox(height: 20),
-                    
-                    // Title
-                    TextFormField(
-                      controller: _titleController,
-                      maxLength: 40,
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter meeting title';
-                        }
-                        return null;
-                      },
-                      decoration: InputDecoration(
-                        labelText: 'Title',
-                        hintText: 'Enter meeting title',
-                        prefixIcon: const Icon(Icons.title_rounded, color: AppColors.orange),
-                        filled: true,
-                        fillColor: colorScheme.surface,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-                          borderSide: BorderSide.none,
+                    const SizedBox(height: 12),
+                    Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        gradient: const LinearGradient(
+                          colors: [AppColors.purple, Color(0xFFB38CFF)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                      ),
+                      padding: const EdgeInsets.all(2),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          color: colorScheme.surface,
+                        ),
+                        child: TextFormField(
+                          controller: _titleController,
+                          maxLength: 40,
+                          buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please enter meeting title';
+                            }
+                            return null;
+                          },
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w300,
+                            color: AppColors.textPrimaryOf(context),
+                          ),
+                          decoration: InputDecoration(
+                            hintText: 'Enter meeting title',
+                            hintStyle: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w300,
+                              color: AppColors.textSecondaryOf(context),
+                            ),
+                            filled: true,
+                            fillColor: Colors.transparent,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide.none,
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide.none,
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide.none,
+                            ),
+                            contentPadding: const EdgeInsets.all(16),
+                          ),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 6),
+                    ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: _titleController,
+                      builder: (context, value, child) {
+                        return Align(
+                          alignment: Alignment.centerRight,
+                          child: Text(
+                            '${value.text.length}/40',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w400,
+                              color: AppColors.textSecondaryOf(context),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              
+              // Main Form Card
+              _GlassCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 0),
                     
                     // Privacy Selector
                     Text(
@@ -363,48 +691,6 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
                   ],
                 ),
               ),
-              const SizedBox(height: 20),
-              
-              // Preview Card
-              _GlassCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Preview',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimaryOf(context),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    _PreviewField(
-                      label: 'Meeting ID',
-                      value: _generatedMeetingId ?? '',
-                      onCopy: () {
-                        Clipboard.setData(ClipboardData(text: _generatedMeetingId ?? ''));
-                        HapticFeedback.lightImpact();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Meeting ID copied!')),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    _PreviewField(
-                      label: 'Join Code',
-                      value: _generatedJoinCode ?? '',
-                      onCopy: () {
-                        Clipboard.setData(ClipboardData(text: _generatedJoinCode ?? ''));
-                        HapticFeedback.lightImpact();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Join code copied!')),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
               const SizedBox(height: 32),
             ],
           ),
@@ -470,17 +756,11 @@ class _GlassCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: colorScheme.surface.withOpacity(0.55),
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(22),
         boxShadow: DesignTokens.cardShadowOf(context),
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(22),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-          child: child,
-        ),
-      ),
+      child: child,
     );
   }
 }
@@ -508,7 +788,11 @@ class _PrivacyPill extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12),
           decoration: BoxDecoration(
-            gradient: isSelected ? AppColors.stepsGradient : null,
+            gradient: isSelected ? const LinearGradient(
+              colors: [AppColors.purple, Color(0xFFB38CFF)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ) : null,
             color: isSelected ? null : colorScheme.surface,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
@@ -567,7 +851,10 @@ class _DatePickerButton extends StatelessWidget {
             color: colorScheme.surface,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: DesignTokens.borderColorOf(context),
+              color: (date != null || time != null)
+                  ? AppColors.purple
+                  : DesignTokens.borderColorOf(context),
+              width: (date != null || time != null) ? 2 : 1,
             ),
           ),
           child: Row(
@@ -575,15 +862,18 @@ class _DatePickerButton extends StatelessWidget {
               Icon(
                 label == 'Date' ? Icons.calendar_today_rounded : Icons.access_time_rounded,
                 size: 18,
-                color: AppColors.orange,
+                color: AppColors.purple,
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   displayText,
                   style: TextStyle(
-                    color: AppColors.textPrimaryOf(context),
+                    color: (date != null || time != null)
+                        ? AppColors.purple
+                        : AppColors.textPrimaryOf(context),
                     fontSize: 14,
+                    fontWeight: (date != null || time != null) ? FontWeight.w600 : FontWeight.normal,
                   ),
                 ),
               ),
@@ -618,7 +908,11 @@ class _DurationChip extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           decoration: BoxDecoration(
-            gradient: isSelected ? AppColors.stepsGradient : null,
+            gradient: isSelected ? const LinearGradient(
+              colors: [AppColors.purple, Color(0xFFB38CFF)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ) : null,
             color: isSelected ? null : colorScheme.surface,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
@@ -655,17 +949,12 @@ class _RoleChipSelector extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final label = role.name.toUpperCase();
-    LinearGradient gradient;
-    switch (role) {
-      case Role.trainer:
-        gradient = AppColors.trainerVideoGradient;
-        break;
-      case Role.nutritionist:
-        gradient = AppColors.nutritionistVideoGradient;
-        break;
-      default:
-        gradient = AppColors.clientVideoGradient;
-    }
+    // Use purple gradient for all roles
+    const gradient = LinearGradient(
+      colors: [AppColors.purple, Color(0xFFB38CFF)],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    );
 
     return Material(
       color: Colors.transparent,
@@ -719,7 +1008,7 @@ class _PreviewField extends StatelessWidget {
         color: colorScheme.background,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: AppColors.orange.withOpacity(0.3),
+          color: AppColors.purple.withOpacity(0.3),
           width: 2,
         ),
       ),
@@ -743,7 +1032,7 @@ class _PreviewField extends StatelessWidget {
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
                     fontFamily: 'monospace',
-                    color: AppColors.orange,
+                    color: AppColors.purple,
                   ),
                 ),
               ],
@@ -751,7 +1040,7 @@ class _PreviewField extends StatelessWidget {
           ),
           IconButton(
             onPressed: onCopy,
-            icon: const Icon(Icons.copy_rounded, color: AppColors.orange),
+            icon: const Icon(Icons.copy_rounded, color: AppColors.purple),
           ),
         ],
       ),

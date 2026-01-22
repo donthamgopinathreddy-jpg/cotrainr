@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../theme/app_colors.dart';
+import '../../services/notification_service.dart';
+import '../../services/meeting_storage_service.dart';
 
 enum NotificationType {
   followRequest,
@@ -10,6 +12,7 @@ enum NotificationType {
   comment,
   achievement,
   message,
+  meeting,
 }
 
 class NotificationPage extends StatefulWidget {
@@ -20,86 +23,37 @@ class NotificationPage extends StatefulWidget {
 }
 
 class _NotificationPageState extends State<NotificationPage> {
-  final List<_NotificationData> _notifications = [
-    _NotificationData(
-      id: '1',
-      type: NotificationType.followRequest,
-      userName: 'attitude_bablu_28',
-      message: 'attitude_bablu_28 + 4 others requested to follow you',
-      time: 'Just now',
-      hasUnread: true,
-      canFollow: true,
-    ),
-    _NotificationData(
-      id: '2',
-      type: NotificationType.postLike,
-      userName: 'stylin_snazzy',
-      message: 'stylin_snazzy, alkaaxyz and 236 others liked your reel',
-      time: '2h',
-      hasUnread: false,
-      hasImage: true,
-    ),
-    _NotificationData(
-      id: '3',
-      type: NotificationType.following,
-      userName: 'rak_hi5',
-      message: 'rak_hi5 started following you',
-      time: '1d',
-      hasUnread: false,
-      canFollow: true,
-    ),
-    _NotificationData(
-      id: '4',
-      type: NotificationType.comment,
-      userName: 'fitness_coach',
-      message: 'fitness_coach commented: "Great form! Keep it up."',
-      time: '1d',
-      hasUnread: false,
-    ),
-    _NotificationData(
-      id: '5',
-      type: NotificationType.goalReached,
-      userName: null,
-      message: '🎉 Daily steps goal reached! 10,000 steps completed',
-      time: '2d',
-      hasUnread: true,
-    ),
-    _NotificationData(
-      id: '6',
-      type: NotificationType.postLike,
-      userName: 'stylin_snazzy',
-      message: 'stylin_snazzy, yashwanth_chippada and 174 others liked your reel',
-      time: '3d',
-      hasUnread: false,
-      hasImage: true,
-    ),
-    _NotificationData(
-      id: '7',
-      type: NotificationType.achievement,
-      userName: null,
-      message: '🏆 New achievement unlocked: 7 Day Streak!',
-      time: '4d',
-      hasUnread: true,
-    ),
-    _NotificationData(
-      id: '8',
-      type: NotificationType.following,
-      userName: 'gig_glygang',
-      message: 'gig_glygang started following you',
-      time: '5d',
-      hasUnread: false,
-      canFollow: true,
-    ),
-  ];
+  final NotificationService _notificationService = NotificationService();
+  List<NotificationData> _notifications = [];
 
-  _NotificationData? _deletedNotification;
+  @override
+  void initState() {
+    super.initState();
+    _loadNotifications();
+    _notificationService.addListener(_loadNotifications);
+  }
+
+  @override
+  void dispose() {
+    _notificationService.removeListener(_loadNotifications);
+    super.dispose();
+  }
+
+  void _loadNotifications() {
+    setState(() {
+      _notifications = _notificationService.notifications;
+    });
+  }
+
+  NotificationData? _deletedNotification;
   int? _deletedIndex;
 
   void _deleteNotification(int index) {
     setState(() {
       _deletedNotification = _notifications[index];
       _deletedIndex = index;
-      _notifications.removeAt(index);
+      _notificationService.removeNotification(_notifications[index].id);
+      _notifications = _notificationService.notifications;
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -111,7 +65,8 @@ class _NotificationPageState extends State<NotificationPage> {
           onPressed: () {
             if (_deletedNotification != null && _deletedIndex != null) {
               setState(() {
-                _notifications.insert(_deletedIndex!, _deletedNotification!);
+                _notificationService.addNotification(_deletedNotification!);
+                _notifications = _notificationService.notifications;
                 _deletedNotification = null;
                 _deletedIndex = null;
               });
@@ -200,7 +155,7 @@ class _NotificationPageState extends State<NotificationPage> {
   }
 }
 
-class _NotificationData {
+class NotificationData {
   final String id;
   final NotificationType type;
   final String? userName;
@@ -209,8 +164,9 @@ class _NotificationData {
   final bool hasUnread;
   final bool hasImage;
   final bool canFollow;
+  final String? meetingId;
 
-  _NotificationData({
+  NotificationData({
     required this.id,
     required this.type,
     this.userName,
@@ -219,11 +175,12 @@ class _NotificationData {
     this.hasUnread = false,
     this.hasImage = false,
     this.canFollow = false,
+    this.meetingId,
   });
 }
 
 class _NotificationTile extends StatelessWidget {
-  final _NotificationData notification;
+  final NotificationData notification;
   final VoidCallback onLongPress;
 
   const _NotificationTile({
@@ -247,6 +204,8 @@ class _NotificationTile extends StatelessWidget {
         return Icons.star_rounded;
       case NotificationType.message:
         return Icons.chat_bubble_rounded;
+      case NotificationType.meeting:
+        return Icons.video_call_rounded;
     }
   }
 
@@ -273,6 +232,12 @@ class _NotificationTile extends StatelessWidget {
         );
       case NotificationType.message:
         return AppColors.waterGradient;
+      case NotificationType.meeting:
+        return const LinearGradient(
+          colors: [AppColors.purple, Color(0xFFB38CFF)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        );
     }
   }
 
@@ -281,7 +246,16 @@ class _NotificationTile extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
 
     return InkWell(
-      onTap: () {},
+      onTap: () {
+        if (notification.type == NotificationType.meeting && notification.meetingId != null) {
+          // Navigate to meeting room if it's a meeting notification
+          final meetingStorage = MeetingStorageService();
+          final meeting = meetingStorage.getMeetingById(notification.meetingId!);
+          if (meeting != null) {
+            context.push('/video/room/${meeting.shareKey}');
+          }
+        }
+      },
       onLongPress: onLongPress,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),

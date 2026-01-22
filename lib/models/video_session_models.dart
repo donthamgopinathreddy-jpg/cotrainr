@@ -23,6 +23,7 @@ class Meeting {
   final Role hostRole;
   final DateTime createdAt;
   final DateTime? scheduledFor;
+  final DateTime? startedAt; // When the meeting actually started (for timer persistence)
   final int? durationMins;
   final int maxParticipants;
   final bool isInstant;
@@ -32,6 +33,11 @@ class Meeting {
   final MeetingPrivacy privacy;
   final List<Role> allowedRoles;
   final String? notes;
+  
+  // ShareKey format: "MeetingID-MeetingCode" (example: "483921-Q7K9M2")
+  String get shareKey {
+    return '$meetingId-$joinCode';
+  }
 
   Meeting({
     required this.meetingId,
@@ -40,6 +46,7 @@ class Meeting {
     required this.hostRole,
     required this.createdAt,
     this.scheduledFor,
+    this.startedAt,
     this.durationMins,
     this.maxParticipants = 10,
     this.isInstant = true,
