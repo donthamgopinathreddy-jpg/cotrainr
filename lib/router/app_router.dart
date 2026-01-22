@@ -14,6 +14,7 @@ import '../../pages/video_sessions/video_sessions_page.dart';
 import '../../pages/video_sessions/create_meeting_page.dart';
 import '../../pages/video_sessions/join_meeting_page.dart';
 import '../../pages/video_sessions/meeting_room_page.dart';
+import '../../pages/meal_tracker/meal_tracker_page_v2.dart';
 import '../../models/video_session_models.dart';
 
 final GoRouter appRouter = GoRouter(
@@ -85,6 +86,14 @@ final GoRouter appRouter = GoRouter(
       name: 'messaging',
       pageBuilder: (context, state) => _fadeSlidePage(
         child: const MessagingPage(),
+        state: state,
+      ),
+    ),
+    GoRoute(
+      path: '/meal-tracker',
+      name: 'mealTracker',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const MealTrackerPageV2(),
         state: state,
       ),
     ),

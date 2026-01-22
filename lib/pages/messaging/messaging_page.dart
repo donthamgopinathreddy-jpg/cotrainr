@@ -170,35 +170,44 @@ class _MessagingPageState extends State<MessagingPage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final lightBlueBg = isDark
+        ? Color.lerp(cs.surface, AppColors.blue, 0.15)!
+        : Color.lerp(cs.surface, AppColors.blue, 0.08)!;
 
     return Scaffold(
-      backgroundColor: cs.surface,
+      backgroundColor: lightBlueBg,
       body: SafeArea(
         child: Column(
           children: [
             // Header
-            Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [AppColors.blue, AppColors.cyan],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                child: Row(
-                  children: [
-                    IconButton(
-                      onPressed: () => context.pop(),
-                      icon: const Icon(
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              child: Row(
+                children: [
+                  IconButton(
+                    onPressed: () => context.pop(),
+                    icon: ShaderMask(
+                      shaderCallback: (bounds) => const LinearGradient(
+                        colors: [AppColors.blue, AppColors.cyan],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ).createShader(bounds),
+                      child: const Icon(
                         Icons.arrow_back_ios_new_rounded,
                         color: Colors.white,
                         size: 20,
                       ),
                     ),
-                    const SizedBox(width: 4),
-                    const Text(
+                  ),
+                  const SizedBox(width: 4),
+                  ShaderMask(
+                    shaderCallback: (bounds) => const LinearGradient(
+                      colors: [AppColors.blue, AppColors.cyan],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ).createShader(bounds),
+                    child: const Text(
                       'Messages',
                       style: TextStyle(
                         fontSize: 20,
@@ -206,58 +215,57 @@ class _MessagingPageState extends State<MessagingPage> {
                         color: Colors.white,
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
-            // Search bar with gradient
-            Container(
+            // Search bar
+            Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [AppColors.blue, AppColors.cyan],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+              child: TextField(
+                controller: _searchController,
+                cursorColor: AppColors.blue,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: cs.onSurface,
                 ),
-              ),
-              child: Container(
-                height: 44,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(22),
-                ),
-                child: TextField(
-                  controller: _searchController,
-                  style: const TextStyle(
+                decoration: InputDecoration(
+                  hintText: 'Search conversations...',
+                  hintStyle: TextStyle(
                     fontSize: 14,
-                    color: Colors.white,
+                    color: cs.onSurfaceVariant,
                   ),
-                  decoration: InputDecoration(
-                    hintText: 'Search conversations...',
-                    hintStyle: TextStyle(
-                      fontSize: 14,
-                      color: Colors.white.withOpacity(0.7),
-                    ),
-                    prefixIcon: Icon(
-                      Icons.search_rounded,
-                      color: Colors.white.withOpacity(0.9),
-                      size: 20,
-                    ),
-                    suffixIcon: _searchController.text.isNotEmpty
-                        ? IconButton(
-                            icon: Icon(
-                              Icons.clear_rounded,
-                              color: Colors.white.withOpacity(0.9),
-                              size: 20,
-                            ),
-                            onPressed: () {
-                              _searchController.clear();
-                            },
-                          )
-                        : null,
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  prefixIcon: Icon(
+                    Icons.search_rounded,
+                    color: cs.onSurfaceVariant,
+                    size: 20,
                   ),
+                  suffixIcon: _searchController.text.isNotEmpty
+                      ? IconButton(
+                          icon: Icon(
+                            Icons.clear_rounded,
+                            color: cs.onSurfaceVariant,
+                            size: 20,
+                          ),
+                          onPressed: () {
+                            _searchController.clear();
+                          },
+                        )
+                      : null,
+                  filled: false,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(22),
+                    borderSide: BorderSide(color: AppColors.blue.withOpacity(0.3)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(22),
+                    borderSide: BorderSide(color: AppColors.blue.withOpacity(0.3)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(22),
+                    borderSide: const BorderSide(color: AppColors.blue, width: 2),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 ),
               ),
             ),
@@ -268,14 +276,32 @@ class _MessagingPageState extends State<MessagingPage> {
                 separatorBuilder: (_, __) => Divider(
                   height: 1,
                   indent: 76,
-                  color: cs.surfaceContainerHighest,
+                  color: AppColors.blue.withOpacity(0.2),
                 ),
                 itemBuilder: (context, index) {
                   final item = _filteredConversations[index];
                   return _ConversationTile(
                     item: item,
-                    onTap: () {
-                      Navigator.push(
+                    onTap: () async {
+                      // Mark messages as read when opening chat
+                      final originalIndex = _allConversations.indexOf(item);
+                      if (originalIndex != -1 && _allConversations[originalIndex].unreadCount > 0) {
+                        setState(() {
+                          _allConversations[originalIndex] = _ConversationItem(
+                            id: _allConversations[originalIndex].id,
+                            name: _allConversations[originalIndex].name,
+                            lastMessage: _allConversations[originalIndex].lastMessage,
+                            time: _allConversations[originalIndex].time,
+                            unreadCount: 0,
+                            avatarGradient: _allConversations[originalIndex].avatarGradient,
+                            isOnline: _allConversations[originalIndex].isOnline,
+                            avatarUrl: _allConversations[originalIndex].avatarUrl,
+                          );
+                          _filterConversations();
+                        });
+                      }
+                      
+                      await Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (context) => ChatScreen(
@@ -283,6 +309,7 @@ class _MessagingPageState extends State<MessagingPage> {
                             userName: item.name,
                             avatarGradient: item.avatarGradient,
                             isOnline: item.isOnline,
+                            avatarUrl: item.avatarUrl,
                           ),
                         ),
                       );
@@ -327,19 +354,50 @@ class _ConversationTile extends StatelessWidget {
                   width: 56,
                   height: 56,
                   decoration: BoxDecoration(
-                    gradient: item.avatarGradient,
+                    gradient: item.avatarUrl == null
+                        ? const LinearGradient(
+                            colors: [AppColors.blue, AppColors.cyan],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          )
+                        : null,
                     shape: BoxShape.circle,
                   ),
-                  child: Center(
-                    child: Text(
-                      item.name.substring(0, 1).toUpperCase(),
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
+                  child: item.avatarUrl != null
+                      ? ClipOval(
+                          child: Image.network(
+                            item.avatarUrl!,
+                            width: 56,
+                            height: 56,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [AppColors.blue, AppColors.cyan],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Center(
+                                  child: Icon(
+                                    Icons.person_rounded,
+                                    color: Colors.white,
+                                    size: 28,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        )
+                      : const Center(
+                          child: Icon(
+                            Icons.person_rounded,
+                            color: Colors.white,
+                            size: 28,
+                          ),
+                        ),
                 ),
                 if (item.isOnline)
                   Positioned(
@@ -435,6 +493,7 @@ class _ConversationItem {
   final int unreadCount;
   final LinearGradient avatarGradient;
   final bool isOnline;
+  final String? avatarUrl;
 
   _ConversationItem({
     required this.id,
@@ -444,5 +503,6 @@ class _ConversationItem {
     required this.unreadCount,
     required this.avatarGradient,
     this.isOnline = false,
+    this.avatarUrl,
   });
 }

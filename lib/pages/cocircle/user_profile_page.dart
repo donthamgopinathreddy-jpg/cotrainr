@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../theme/app_colors.dart';
 
-class CocircleProfilePage extends StatefulWidget {
+class UserProfilePage extends StatefulWidget {
   final bool isOwnProfile;
   final String? userId; // User ID to show profile for
   final String? userName; // Username to display in header
   
-  const CocircleProfilePage({
+  const UserProfilePage({
     super.key,
     this.isOwnProfile = true,
     this.userId,
@@ -14,10 +15,10 @@ class CocircleProfilePage extends StatefulWidget {
   });
 
   @override
-  State<CocircleProfilePage> createState() => _CocircleProfilePageState();
+  State<UserProfilePage> createState() => _UserProfilePageState();
 }
 
-class _CocircleProfilePageState extends State<CocircleProfilePage> {
+class _UserProfilePageState extends State<UserProfilePage> {
   final TextEditingController _bioController = TextEditingController(
     text: 'Fitness enthusiast on a journey to better health',
   );
@@ -79,75 +80,208 @@ class _CocircleProfilePageState extends State<CocircleProfilePage> {
         ),
       ),
       body: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: EdgeInsets.zero,
         children: [
-          Center(
-            child: Column(
+          // Full width square cover image
+          Container(
+            width: double.infinity,
+            height: MediaQuery.of(context).size.width,
+            decoration: BoxDecoration(
+              gradient: cocircleGradient,
+            ),
+            child: Stack(
               children: [
-                ShaderMask(
-                  shaderCallback: (rect) => cocircleGradient.createShader(rect),
-                  child: Container(
-                    width: 88,
-                    height: 88,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 4),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFF4DA3FF).withOpacity(0.3),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: const Icon(Icons.person, color: Colors.white, size: 40),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                ShaderMask(
-                  shaderCallback: (rect) => cocircleGradient.createShader(rect),
-                  child: Text(
-                    widget.userName ?? 'gopinath',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '@alexjohnson',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: colorScheme.onSurface.withOpacity(0.55),
-                  ),
-                ),
-                const SizedBox(height: 8),
+                // Placeholder for actual image - replace with Image.network or Image.file when available
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                  decoration: BoxDecoration(
-                    gradient: cocircleGradient,
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF4DA3FF).withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
+                  width: double.infinity,
+                  height: double.infinity,
+                  color: Colors.transparent,
+                  child: const Icon(
+                    Icons.person,
+                    color: Colors.white,
+                    size: 80,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Profile info below cover image
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Left side: Username, user ID, level badge
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ShaderMask(
+                        shaderCallback: (rect) => cocircleGradient.createShader(rect),
+                        child: Text(
+                          widget.userName ?? 'gopinath',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '@alexjohnson',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: colorScheme.onSurface.withOpacity(0.55),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          gradient: cocircleGradient,
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF4DA3FF).withOpacity(0.3),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: const Text(
+                          'Level 12',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
                       ),
                     ],
                   ),
-                  child: const Text(
-                    'Level 12',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
+                ),
+                // Right side: Follow and Message buttons (only for other users)
+                if (!widget.isOwnProfile) ...[
+                  const SizedBox(width: 12),
+                  SizedBox(
+                    width: 140,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      children: [
+                        GestureDetector(
+                          onTap: () {
+                            HapticFeedback.lightImpact();
+                            setState(() {
+                              _isFollowing = !_isFollowing;
+                            });
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 24, vertical: 8),
+                            decoration: BoxDecoration(
+                              gradient: _isFollowing 
+                                  ? const LinearGradient(
+                                      colors: [
+                                        Color(0xFFE8D5FF),
+                                        Color(0xFFD4B3FF),
+                                      ],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    )
+                                  : cocircleGradient,
+                              borderRadius: BorderRadius.circular(20),
+                              border: _isFollowing
+                                  ? Border.all(
+                                      color: const Color(0xFF8B5CF6).withOpacity(0.3),
+                                      width: 1)
+                                  : null,
+                              boxShadow: _isFollowing
+                                  ? [
+                                      BoxShadow(
+                                        color: const Color(0xFF8B5CF6).withOpacity(0.2),
+                                        blurRadius: 6,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ]
+                                  : [
+                                      BoxShadow(
+                                        color: const Color(0xFF4DA3FF).withOpacity(0.3),
+                                        blurRadius: 8,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
+                            ),
+                            child: Text(
+                              _isFollowing ? 'Following' : 'Follow',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: _isFollowing
+                                    ? const Color(0xFF6B46C1)
+                                    : Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        GestureDetector(
+                          onTap: () {
+                            HapticFeedback.lightImpact();
+                            Navigator.pop(context);
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 24, vertical: 8),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [AppColors.blue, AppColors.cyan],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.blue.withOpacity(0.3),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(
+                              Icons.chat_bubble_outline_rounded,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
+                ],
+              ],
+            ),
+          ),
+          // Bio section
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 8),
+                // Bio heading
+                Text(
+                  'Bio',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    color: colorScheme.onSurface,
+                  ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 8),
                 // Bio with edit
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -213,71 +347,30 @@ class _CocircleProfilePageState extends State<CocircleProfilePage> {
                     ],
                   ),
                 ),
-                if (!widget.isOwnProfile) ...[
-                  const SizedBox(height: 16),
-                  // Follow button (only for other users)
-                  GestureDetector(
-                    onTap: () {
-                      HapticFeedback.lightImpact();
-                      setState(() {
-                        _isFollowing = !_isFollowing;
-                      });
-                    },
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 32, vertical: 12),
-                      decoration: BoxDecoration(
-                        gradient: _isFollowing ? null : cocircleGradient,
-                        color: _isFollowing
-                            ? colorScheme.surfaceVariant
-                            : null,
-                        borderRadius: BorderRadius.circular(24),
-                        border: _isFollowing
-                            ? Border.all(
-                                color: colorScheme.outline.withOpacity(0.2))
-                            : null,
-                        boxShadow: _isFollowing
-                            ? null
-                            : [
-                                BoxShadow(
-                                  color: const Color(0xFF4DA3FF).withOpacity(0.3),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                      ),
-                      child: Text(
-                        _isFollowing ? 'Following' : 'Follow',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: _isFollowing
-                              ? colorScheme.onSurface
-                              : Colors.white,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 16),
               ],
             ),
           ),
-          const SizedBox(height: 16),
-          // Tabs with slider
-          _ProfileTabsSlider(
-            selectedIndex: _selectedTabIndex,
-            onTabChanged: (index) {
-              setState(() {
-                _selectedTabIndex = index;
-              });
-            },
-            gradient: cocircleGradient,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Column(
+              children: [
+                const SizedBox(height: 8),
+                // Tabs with slider
+                _ProfileTabsSlider(
+                  selectedIndex: _selectedTabIndex,
+                  onTabChanged: (index) {
+                    setState(() {
+                      _selectedTabIndex = index;
+                    });
+                  },
+                  gradient: cocircleGradient,
+                ),
+                const SizedBox(height: 16),
+                // Content based on selected tab
+                _buildTabContent(_selectedTabIndex, colorScheme),
+              ],
+            ),
           ),
-          const SizedBox(height: 16),
-          // Content based on selected tab
-          _buildTabContent(_selectedTabIndex, colorScheme),
         ],
       ),
     );
@@ -302,8 +395,8 @@ class _CocircleProfilePageState extends State<CocircleProfilePage> {
       physics: const NeverScrollableScrollPhysics(),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
-        crossAxisSpacing: 4,
-        mainAxisSpacing: 4,
+        crossAxisSpacing: 8,
+        mainAxisSpacing: 8,
         childAspectRatio: 1,
       ),
       itemCount: 9,
@@ -311,7 +404,7 @@ class _CocircleProfilePageState extends State<CocircleProfilePage> {
         return Container(
           decoration: BoxDecoration(
             color: colorScheme.surface,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: colorScheme.outline.withOpacity(0.1),
             ),
@@ -336,9 +429,11 @@ class _CocircleProfilePageState extends State<CocircleProfilePage> {
     ];
 
     return Column(
-      children: followers.map((follower) {
+      children: followers.asMap().entries.map((entry) {
+        final index = entry.key;
+        final follower = entry.value;
         return Container(
-          margin: const EdgeInsets.only(bottom: 12),
+          margin: EdgeInsets.only(bottom: index < followers.length - 1 ? 12 : 0),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: colorScheme.surface,
@@ -401,9 +496,11 @@ class _CocircleProfilePageState extends State<CocircleProfilePage> {
     }
 
     return Column(
-      children: following.map((user) {
+      children: following.asMap().entries.map((entry) {
+        final index = entry.key;
+        final user = entry.value;
         return Container(
-          margin: const EdgeInsets.only(bottom: 12),
+          margin: EdgeInsets.only(bottom: index < following.length - 1 ? 12 : 0),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: colorScheme.surface,
@@ -482,84 +579,74 @@ class _ProfileTabsSliderState extends State<_ProfileTabsSlider>
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final tabs = ['Posts 1', 'Followers 3', 'Following 0'];
+    final tabIcons = [
+      Icons.grid_view_rounded,
+      Icons.people_rounded,
+      Icons.person_add_rounded,
+    ];
 
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(24),
-      ),
-      clipBehavior: Clip.none,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          // Calculate available width (total width minus padding)
-          final availableWidth = constraints.maxWidth - 6; // 3px left + 3px right
-          final tabWidth = availableWidth / 3;
-          
-          return Stack(
-            clipBehavior: Clip.none,
-            children: [
-              // Sliding pill background
-              AnimatedBuilder(
-                animation: _animation,
-                builder: (context, child) {
-                  // Calculate the left position of the pill
-                  // Start at padding (3) + offset based on selected index
-                  final targetOffset = widget.selectedIndex * tabWidth;
-                  final currentOffset = targetOffset * _animation.value;
-                  
-                  return Positioned(
-                    left: 3 + currentOffset,
-                    top: 3,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Calculate available width
+        final availableWidth = constraints.maxWidth;
+        final tabWidth = availableWidth / 3;
+        
+        return Stack(
+          clipBehavior: Clip.hardEdge,
+          children: [
+            // Sliding pill background - increased thickness
+            AnimatedBuilder(
+              animation: _animation,
+              builder: (context, child) {
+                // Calculate the left position of the pill
+                final targetOffset = widget.selectedIndex * tabWidth;
+                final currentOffset = targetOffset * _animation.value;
+                
+                return Positioned(
+                  left: currentOffset,
+                  top: 0,
+                  child: Container(
+                    width: tabWidth,
+                    height: 44, // Increased from 36 to 44 for thicker slider
+                    decoration: BoxDecoration(
+                      gradient: widget.gradient,
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                  ),
+                );
+              },
+            ),
+            // Tab buttons
+            Row(
+              children: List.generate(tabIcons.length, (index) {
+                final isSelected = index == widget.selectedIndex;
+                return Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      widget.onTabChanged(index);
+                    },
                     child: Container(
-                      width: tabWidth,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        gradient: widget.gradient,
-                        borderRadius: BorderRadius.circular(18),
+                      height: 44, // Increased to match slider
+                      decoration: const BoxDecoration(
+                        borderRadius: BorderRadius.all(Radius.circular(22)),
+                      ),
+                      alignment: Alignment.center,
+                      child: Icon(
+                        tabIcons[index],
+                        size: 22, // Slightly larger icon
+                        color: isSelected
+                            ? Colors.white
+                            : colorScheme.onSurface.withOpacity(0.6),
                       ),
                     ),
-                  );
-                },
-              ),
-              // Tab buttons
-              Row(
-                children: List.generate(tabs.length, (index) {
-                  final isSelected = index == widget.selectedIndex;
-                  return Expanded(
-                    child: GestureDetector(
-                      onTap: () {
-                        HapticFeedback.lightImpact();
-                        widget.onTabChanged(index);
-                      },
-                      child: Container(
-                        height: 36,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          tabs[index],
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            height: 1.0,
-                            color: isSelected
-                                ? Colors.white
-                                : colorScheme.onSurface.withOpacity(0.6),
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                }),
-              ),
-            ],
-          );
-        },
-      ),
+                  ),
+                );
+              }),
+            ),
+          ],
+        );
+      },
     );
   }
 }

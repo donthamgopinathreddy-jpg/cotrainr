@@ -6,7 +6,7 @@ import '../../theme/app_colors.dart';
 import '../../widgets/cocircle/cocircle_feed_card.dart';
 import '../../utils/page_transitions.dart';
 import 'cocircle_create_post_page.dart';
-import 'cocircle_profile_page.dart';
+import 'user_profile_page.dart';
 
 class CocirclePage extends StatefulWidget {
   const CocirclePage({super.key});
@@ -221,7 +221,7 @@ class _CocirclePageState extends State<CocirclePage>
                         Navigator.push(
                           context,
                           PageTransitions.slideRoute(
-                            const CocircleProfilePage(),
+                            const UserProfilePage(),
                             beginOffset: const Offset(0, 0.05),
                           ),
                         );
@@ -347,7 +347,7 @@ class _CocirclePageState extends State<CocirclePage>
     Navigator.push(
       context,
       PageTransitions.slideRoute(
-        CocircleProfilePage(
+        UserProfilePage(
           userId: userId,
           userName: userName,
           isOwnProfile: userId == _currentUserId,

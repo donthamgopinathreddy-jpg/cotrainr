@@ -45,7 +45,9 @@ class QuickAccessV3 extends StatelessWidget {
               final item = items[index];
               VoidCallback? onTap;
               bool showBadge = false;
-              if (item.title == 'MESSAGING') {
+              if (item.title == 'MEAL TRACKER') {
+                onTap = () => context.push('/meal-tracker');
+              } else if (item.title == 'MESSAGING') {
                 onTap = () => context.push('/messaging');
               } else if (item.title == 'BECOME A TRAINER') {
                 onTap = () => context.push('/trainer/become');

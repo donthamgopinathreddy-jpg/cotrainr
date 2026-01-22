@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../theme/design_tokens.dart';
 import '../../theme/app_colors.dart';
-import '../cocircle/cocircle_profile_page.dart';
+import '../cocircle/user_profile_page.dart';
 
 class DiscoverPage extends StatefulWidget {
   const DiscoverPage({super.key});
@@ -312,7 +312,7 @@ class _DiscoverPageState extends State<DiscoverPage>
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (context) => CocircleProfilePage(
+                                  builder: (context) => UserProfilePage(
                                     userId: item.id,
                                     userName: item.name,
                                     isOwnProfile: false,
