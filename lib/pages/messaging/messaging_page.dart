@@ -280,41 +280,54 @@ class _MessagingPageState extends State<MessagingPage> {
                 ),
                 itemBuilder: (context, index) {
                   final item = _filteredConversations[index];
-                  return _ConversationTile(
-                    item: item,
-                    onTap: () async {
-                      // Mark messages as read when opening chat
-                      final originalIndex = _allConversations.indexOf(item);
-                      if (originalIndex != -1 && _allConversations[originalIndex].unreadCount > 0) {
-                        setState(() {
-                          _allConversations[originalIndex] = _ConversationItem(
-                            id: _allConversations[originalIndex].id,
-                            name: _allConversations[originalIndex].name,
-                            lastMessage: _allConversations[originalIndex].lastMessage,
-                            time: _allConversations[originalIndex].time,
-                            unreadCount: 0,
-                            avatarGradient: _allConversations[originalIndex].avatarGradient,
-                            isOnline: _allConversations[originalIndex].isOnline,
-                            avatarUrl: _allConversations[originalIndex].avatarUrl,
-                          );
-                          _filterConversations();
-                        });
-                      }
-                      
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => ChatScreen(
-                            conversationId: item.id,
-                            userName: item.name,
-                            avatarGradient: item.avatarGradient,
-                            isOnline: item.isOnline,
-                            avatarUrl: item.avatarUrl,
+                  return TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0.0, end: 1.0),
+                    duration: Duration(milliseconds: 200 + (index * 30)),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, value, _) {
+                      return Opacity(
+                        opacity: value,
+                        child: Transform.translate(
+                          offset: Offset(0, 8 * (1 - value)),
+                          child: _ConversationTile(
+                            item: item,
+                            onTap: () async {
+                              // Mark messages as read when opening chat
+                              final originalIndex = _allConversations.indexOf(item);
+                              if (originalIndex != -1 && _allConversations[originalIndex].unreadCount > 0) {
+                                setState(() {
+                                  _allConversations[originalIndex] = _ConversationItem(
+                                    id: _allConversations[originalIndex].id,
+                                    name: _allConversations[originalIndex].name,
+                                    lastMessage: _allConversations[originalIndex].lastMessage,
+                                    time: _allConversations[originalIndex].time,
+                                    unreadCount: 0,
+                                    avatarGradient: _allConversations[originalIndex].avatarGradient,
+                                    isOnline: _allConversations[originalIndex].isOnline,
+                                    avatarUrl: _allConversations[originalIndex].avatarUrl,
+                                  );
+                                  _filterConversations();
+                                });
+                              }
+                              
+                              await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => ChatScreen(
+                                    conversationId: item.id,
+                                    userName: item.name,
+                                    avatarGradient: item.avatarGradient,
+                                    isOnline: item.isOnline,
+                                    avatarUrl: item.avatarUrl,
+                                  ),
+                                ),
+                              );
+                            },
+                            onLongPress: () => _deleteConversation(index),
                           ),
                         ),
                       );
                     },
-                    onLongPress: () => _deleteConversation(index),
                   );
                 },
               ),

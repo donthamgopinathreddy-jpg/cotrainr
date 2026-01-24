@@ -127,11 +127,11 @@ class _QuickTile extends StatelessWidget {
             const Spacer(),
             Text(
               item.title,
-              style: TextStyle(
-                fontSize: item.title == 'MESSAGING' ? 20 : 12,
+              style: const TextStyle(
+                fontSize: 12,
                 fontWeight: FontWeight.w800,
                 color: Colors.white,
-                letterSpacing: item.title == 'MESSAGING' ? 0 : 0.5,
+                letterSpacing: 0.5,
               ),
             ),
           ],

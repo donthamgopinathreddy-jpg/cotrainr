@@ -50,9 +50,14 @@ class _PressableCardState extends State<PressableCard> {
         containedInkWell: true,
         child: AnimatedScale(
           scale: _pressed ? widget.pressScale : 1.0,
-          duration: DesignTokens.interactionDuration,
-          curve: DesignTokens.interactionCurve,
-          child: widget.child,
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOutCubic,
+          child: AnimatedOpacity(
+            opacity: _pressed ? 0.85 : 1.0,
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOutCubic,
+            child: widget.child,
+          ),
         ),
       ),
     );

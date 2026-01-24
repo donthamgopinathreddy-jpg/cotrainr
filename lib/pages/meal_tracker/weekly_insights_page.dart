@@ -744,9 +744,6 @@ class _WeeklySummaryTile extends StatelessWidget {
               decoration: BoxDecoration(
                 color: MealTrackerTokens.accent.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(999),
-                border: Border.all(
-                  color: MealTrackerTokens.accent.withValues(alpha: 0.18),
-                ),
               ),
               child: Text(
                 '$goalDays/7 on goal',

@@ -212,7 +212,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 14),
               foregroundColor: colorScheme.error,
-              side: BorderSide(color: colorScheme.error.withOpacity(0.6)),
+              side: BorderSide.none,
+              backgroundColor: colorScheme.error.withOpacity(0.1),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),

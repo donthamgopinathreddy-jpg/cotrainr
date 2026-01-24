@@ -216,7 +216,7 @@ class _BmiCategoryLabels extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 9,
                   fontWeight: FontWeight.w600,
-                  color: Colors.white.withOpacity(0.65),
+                  color: AppColors.textSecondaryOf(context).withOpacity(0.7),
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -254,11 +254,6 @@ class _MetricPill extends StatelessWidget {
               ? Colors.white.withOpacity(0.06)
               : cs.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isDark 
-                ? Colors.white.withOpacity(0.08)
-                : cs.surfaceContainerHighest,
-          ),
         ),
         child: Row(
           children: [
