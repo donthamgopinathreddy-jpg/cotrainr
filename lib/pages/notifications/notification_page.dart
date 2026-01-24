@@ -97,39 +97,28 @@ class _NotificationPageState extends State<NotificationPage> {
 
     return Scaffold(
       backgroundColor: cs.surface,
+      appBar: AppBar(
+        backgroundColor: cs.surface,
+        elevation: 0,
+        leading: IconButton(
+          onPressed: () => context.pop(),
+          icon: Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: cs.onSurface,
+            size: 20,
+          ),
+        ),
+        title: const Text(
+          'Notifications',
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
       body: SafeArea(
         child: Column(
           children: [
-            // Orange gradient header
-            Container(
-              decoration: BoxDecoration(
-                gradient: AppColors.stepsGradient,
-              ),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                child: Row(
-                  children: [
-                    IconButton(
-                      onPressed: () => context.pop(),
-                      icon: const Icon(
-                        Icons.arrow_back_ios_new_rounded,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    const Text(
-                      'Notifications',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
             Expanded(
               child: ListView.separated(
                 padding: EdgeInsets.zero,
@@ -293,24 +282,31 @@ class _NotificationTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  RichText(
-                    text: TextSpan(
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: notification.hasUnread ? FontWeight.w600 : FontWeight.w400,
-                        color: cs.onSurface,
+                  ShaderMask(
+                    shaderCallback: (bounds) => const LinearGradient(
+                      colors: [AppColors.orange, AppColors.yellow],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ).createShader(bounds),
+                    child: RichText(
+                      text: TextSpan(
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
+                        children: [
+                          if (notification.userName != null)
+                            TextSpan(
+                              text: notification.userName,
+                              style: const TextStyle(fontWeight: FontWeight.w800),
+                            ),
+                          if (notification.userName != null && notification.message.isNotEmpty)
+                            TextSpan(text: ' ${notification.message}')
+                          else
+                            TextSpan(text: notification.message),
+                        ],
                       ),
-                      children: [
-                        if (notification.userName != null)
-                          TextSpan(
-                            text: notification.userName,
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                        if (notification.userName != null && notification.message.isNotEmpty)
-                          TextSpan(text: ' ${notification.message}')
-                        else
-                          TextSpan(text: notification.message),
-                      ],
                     ),
                   ),
                   const SizedBox(height: 4),
