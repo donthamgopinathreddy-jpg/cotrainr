@@ -2,11 +2,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
 import '../../theme/theme_mode_provider.dart';
 import '../../providers/profile_images_provider.dart';
 import '../../utils/page_transitions.dart';
 import 'edit_profile_page.dart';
+import 'settings/info_pages.dart';
+import 'settings/notifications_page.dart';
+import 'settings/privacy_security_page.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -22,51 +24,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   bool _communityNotifications = true;
   bool _reminderNotifications = true;
 
-  Future<void> _pickProfileImage(BuildContext context) async {
-    HapticFeedback.lightImpact();
-    final ImagePicker picker = ImagePicker();
-    final XFile? image = await picker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1024,
-      maxHeight: 1024,
-      imageQuality: 85,
-    );
-
-    if (image != null) {
-      ref.read(profileImagesProvider.notifier).updateProfileImage(image.path);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Profile photo updated'),
-            duration: Duration(seconds: 1),
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _pickCoverImage(BuildContext context) async {
-    HapticFeedback.lightImpact();
-    final ImagePicker picker = ImagePicker();
-    final XFile? image = await picker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1920,
-      maxHeight: 1080,
-      imageQuality: 85,
-    );
-
-    if (image != null) {
-      ref.read(profileImagesProvider.notifier).updateCoverImage(image.path);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Cover photo updated'),
-            duration: Duration(seconds: 1),
-          ),
-        );
-      }
-    }
-  }
+  // (Image picking previously lived here; removed since it's not used in current Settings UI.)
 
   void _navigateToEditProfile(BuildContext context) {
     HapticFeedback.lightImpact();
@@ -79,17 +37,67 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
   }
 
+  Future<void> _openPrivacySecurity(BuildContext context) async {
+    HapticFeedback.lightImpact();
+    final result = await Navigator.push<PrivacySecurityResult>(
+      context,
+      PageTransitions.slideRoute(
+        PrivacySecurityPage(
+          privateAccount: _privateAccount,
+          showLocation: _showLocation,
+        ),
+        beginOffset: const Offset(0, 0.05),
+      ),
+    );
+    if (!mounted || result == null) return;
+    setState(() {
+      _privateAccount = result.privateAccount;
+      _showLocation = result.showLocation;
+    });
+  }
+
+  Future<void> _openNotifications(BuildContext context) async {
+    HapticFeedback.lightImpact();
+    final result = await Navigator.push<NotificationsResult>(
+      context,
+      PageTransitions.slideRoute(
+        NotificationsPage(
+          pushNotifications: _pushNotifications,
+          communityNotifications: _communityNotifications,
+          reminderNotifications: _reminderNotifications,
+        ),
+        beginOffset: const Offset(0, 0.05),
+      ),
+    );
+    if (!mounted || result == null) return;
+    setState(() {
+      _pushNotifications = result.push;
+      _communityNotifications = result.community;
+      _reminderNotifications = result.reminders;
+    });
+  }
+
+  void _openInfoPage(BuildContext context, Widget page) {
+    HapticFeedback.lightImpact();
+    Navigator.push(
+      context,
+      PageTransitions.slideRoute(page, beginOffset: const Offset(0, 0.05)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final themeMode = ref.watch(themeModeProvider);
     final profileImages = ref.watch(profileImagesProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? colorScheme.surface : const Color(0xFFFFF3E0);
 
     return Scaffold(
-      backgroundColor: colorScheme.background,
+      backgroundColor: bg,
       appBar: AppBar(
-        backgroundColor: colorScheme.background,
+        backgroundColor: bg,
         elevation: 0,
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: colorScheme.onBackground),
@@ -123,14 +131,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 onTap: () => _navigateToEditProfile(context),
               ),
               _SettingsRow(
-                icon: Icons.lock_outline,
-                title: 'Privacy',
-                onTap: () => HapticFeedback.lightImpact(),
-              ),
-              _SettingsRow(
                 icon: Icons.security,
-                title: 'Security',
-                onTap: () => HapticFeedback.lightImpact(),
+                title: 'Privacy & Security',
+                onTap: () => _openPrivacySecurity(context),
               ),
             ],
           ),
@@ -138,24 +141,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           _SettingsGroup(
             title: 'App',
             children: [
-              _SegmentRow(
-                title: 'Appearance',
-                options: const ['System', 'Light', 'Dark'],
-                selectedIndex: _themeIndexFromMode(themeMode),
-                onChanged: (value) {
-                  ref.read(themeModeProvider.notifier).state =
-                      _themeModeFromIndex(value);
-                },
+              _AppearanceRow(
+                themeMode: themeMode,
+                onChanged: (mode) =>
+                    ref.read(themeModeProvider.notifier).state = mode,
               ),
               _SettingsRow(
                 icon: Icons.notifications_none,
                 title: 'Notifications',
-                onTap: () => HapticFeedback.lightImpact(),
-              ),
-              _SettingsRow(
-                icon: Icons.language,
-                title: 'Language',
-                onTap: () => HapticFeedback.lightImpact(),
+                onTap: () => _openNotifications(context),
               ),
             ],
           ),
@@ -166,22 +160,22 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               _SettingsRow(
                 icon: Icons.help_outline,
                 title: 'Help Center',
-                onTap: () => HapticFeedback.lightImpact(),
+                onTap: () => _openInfoPage(context, const HelpCenterPage()),
               ),
               _SettingsRow(
-                icon: Icons.help_outline,
+                icon: Icons.quiz_outlined,
                 title: 'FAQ',
-                onTap: () => HapticFeedback.lightImpact(),
+                onTap: () => _openInfoPage(context, const FaqPage()),
               ),
               _SettingsRow(
                 icon: Icons.feedback_outlined,
                 title: 'Feedback',
-                onTap: () => HapticFeedback.lightImpact(),
+                onTap: () => _openInfoPage(context, const FeedbackPage()),
               ),
               _SettingsRow(
                 icon: Icons.report_problem_outlined,
                 title: 'Report a Problem',
-                onTap: () => HapticFeedback.lightImpact(),
+                onTap: () => _openInfoPage(context, const ReportProblemPage()),
               ),
             ],
           ),
@@ -192,12 +186,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               _SettingsRow(
                 icon: Icons.description_outlined,
                 title: 'Terms of Service',
-                onTap: () => HapticFeedback.lightImpact(),
+                onTap: () => _openInfoPage(context, const TermsOfServicePage()),
               ),
               _SettingsRow(
                 icon: Icons.privacy_tip_outlined,
                 title: 'Privacy Policy',
-                onTap: () => HapticFeedback.lightImpact(),
+                onTap: () => _openInfoPage(context, const PrivacyPolicyPage()),
               ),
               _SettingsRow(
                 icon: Icons.info_outline,
@@ -235,28 +229,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 }
 
-int _themeIndexFromMode(ThemeMode mode) {
-  switch (mode) {
-    case ThemeMode.light:
-      return 1;
-    case ThemeMode.dark:
-      return 2;
-    case ThemeMode.system:
-      return 0;
-  }
-}
-
-ThemeMode _themeModeFromIndex(int index) {
-  switch (index) {
-    case 1:
-      return ThemeMode.light;
-    case 2:
-      return ThemeMode.dark;
-    case 0:
-    default:
-      return ThemeMode.system;
-  }
-}
+// (_themeIndexFromMode / _themeModeFromIndex removed; Appearance uses icon selector.)
 
 class _SettingsGroup extends StatelessWidget {
   final String title;
@@ -273,7 +246,6 @@ class _SettingsGroup extends StatelessWidget {
       decoration: BoxDecoration(
         color: colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: colorScheme.outline.withOpacity(0.18)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -341,115 +313,96 @@ class _SettingsRow extends StatelessWidget {
   }
 }
 
-class _ToggleRow extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final bool value;
-  final ValueChanged<bool> onChanged;
+// (_ToggleRow removed; notification/privacy toggles are now on dedicated pages.)
 
-  const _ToggleRow({
-    required this.icon,
-    required this.title,
-    required this.value,
+// (_SegmentRow removed; Appearance uses icon selector.)
+
+class _AppearanceRow extends StatelessWidget {
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onChanged;
+
+  const _AppearanceRow({
+    required this.themeMode,
     required this.onChanged,
   });
 
+  int _indexFromMode(ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.system:
+        return 0;
+      case ThemeMode.light:
+        return 1;
+      case ThemeMode.dark:
+        return 2;
+    }
+  }
+
+  ThemeMode _modeFromIndex(int index) {
+    switch (index) {
+      case 1:
+        return ThemeMode.light;
+      case 2:
+        return ThemeMode.dark;
+      case 0:
+      default:
+        return ThemeMode.system;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final cs = Theme.of(context).colorScheme;
+    final selected = _indexFromMode(themeMode);
+    const bg = Color(0xFFFFE0B2); // light orange
 
-    return SizedBox(
-      height: 56,
-      child: Row(
-        children: [
-          Icon(icon, color: colorScheme.onSurface.withOpacity(0.7), size: 22),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              title,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: colorScheme.onSurface,
+    Widget seg(int index, IconData icon) {
+      final isSelected = index == selected;
+      return Expanded(
+        child: GestureDetector(
+          onTap: () => onChanged(_modeFromIndex(index)),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            margin: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: isSelected ? cs.primary : Colors.transparent,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Center(
+              child: Icon(
+                icon,
+                size: 18,
+                color: isSelected ? Colors.white : cs.onSurface,
               ),
             ),
           ),
-          Switch(
-            value: value,
-            onChanged: onChanged,
-            activeColor: colorScheme.primary,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SegmentRow extends StatelessWidget {
-  final String title;
-  final List<String> options;
-  final int selectedIndex;
-  final ValueChanged<int> onChanged;
-
-  const _SegmentRow({
-    required this.title,
-    required this.options,
-    required this.selectedIndex,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+        ),
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          title,
+          'Appearance',
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w600,
-            color: colorScheme.onSurface,
+            color: cs.onSurface,
           ),
         ),
         const SizedBox(height: 10),
         Container(
-          height: 40,
+          height: 44,
           decoration: BoxDecoration(
-            color: colorScheme.surfaceVariant,
-            borderRadius: BorderRadius.circular(20),
+            color: bg,
+            borderRadius: BorderRadius.circular(22),
           ),
           child: Row(
-            children: List.generate(options.length, (index) {
-              final isSelected = index == selectedIndex;
-              return Expanded(
-                child: GestureDetector(
-                  onTap: () => onChanged(index),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 160),
-                    margin: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? colorScheme.primary
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Center(
-                      child: Text(
-                        options[index],
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color:
-                              isSelected ? Colors.white : colorScheme.onSurface,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }),
+            children: [
+              seg(0, Icons.brightness_auto_rounded),
+              seg(1, Icons.light_mode_rounded),
+              seg(2, Icons.dark_mode_rounded),
+            ],
           ),
         ),
       ],
@@ -477,7 +430,6 @@ class _ProfileSection extends StatelessWidget {
       decoration: BoxDecoration(
         color: colorScheme.surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: colorScheme.outline.withOpacity(0.18)),
       ),
       child: Row(
         children: [

@@ -3,8 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
-import '../cocircle/image_crop_page.dart';
 import 'weekly_insights_page.dart';
+import '../../theme/meal_tracker_tokens.dart';
 
 class MealTrackerPageV2 extends StatefulWidget {
   const MealTrackerPageV2({super.key});
@@ -22,19 +22,28 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
   late Animation<double> _fadeAnimation;
   late Animation<double> _ringAnimation;
 
-  int _selectedDayIndex = 6; // Today is index 6 (7 days, 0-6)
+  late DateTime _selectedDate;
+  late DateTime _weekStart; // Monday
+  final Map<String, String?> _mealPhotoPath = {
+    'Breakfast': null,
+    'Lunch': null,
+    'Dinner': null,
+    'Snacks': null,
+  };
 
   // Daily goals
   int goalCalories = 2000;
   int goalProtein = 150; // grams
   int goalCarbs = 200; // grams
   int goalFats = 65; // grams
+  int goalFiber = 30; // grams
 
   // Current totals
   int calories = 1260;
   int protein = 92;
   int carbs = 140;
   int fats = 38;
+  int fiber = 18;
 
   // Meal data
   final Map<String, List<FoodItem>> _meals = {
@@ -43,23 +52,31 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
     'Dinner': [],
     'Snacks': [],
   };
+  late final List<String> _mealOrder = [
+    'Breakfast',
+    'Lunch',
+    'Dinner',
+    'Snacks',
+  ];
 
   // Recent foods for quick add
   final List<FoodItem> _recentFoods = [];
   final List<FoodItem> _commonFoods = [
-    FoodItem(name: 'Chicken Breast', calories: 165, protein: 31, carbs: 0, fats: 3.6, unit: '100g'),
-    FoodItem(name: 'Brown Rice', calories: 111, protein: 2.6, carbs: 23, fats: 0.9, unit: '100g'),
-    FoodItem(name: 'Salmon', calories: 208, protein: 20, carbs: 0, fats: 13, unit: '100g'),
-    FoodItem(name: 'Eggs', calories: 155, protein: 13, carbs: 1.1, fats: 11, unit: '100g'),
-    FoodItem(name: 'Banana', calories: 89, protein: 1.1, carbs: 23, fats: 0.3, unit: '1 medium'),
-    FoodItem(name: 'Greek Yogurt', calories: 100, protein: 10, carbs: 3.6, fats: 5, unit: '100g'),
-    FoodItem(name: 'Oatmeal', calories: 68, protein: 2.4, carbs: 12, fats: 1.4, unit: '100g'),
-    FoodItem(name: 'Almonds', calories: 579, protein: 21, carbs: 22, fats: 50, unit: '100g'),
+    FoodItem(name: 'Chicken Breast', calories: 165, protein: 31, carbs: 0, fats: 3.6, fiber: 0, unit: '100g'),
+    FoodItem(name: 'Brown Rice', calories: 111, protein: 2.6, carbs: 23, fats: 0.9, fiber: 1.8, unit: '100g'),
+    FoodItem(name: 'Salmon', calories: 208, protein: 20, carbs: 0, fats: 13, fiber: 0, unit: '100g'),
+    FoodItem(name: 'Eggs', calories: 155, protein: 13, carbs: 1.1, fats: 11, fiber: 0, unit: '100g'),
+    FoodItem(name: 'Banana', calories: 89, protein: 1.1, carbs: 23, fats: 0.3, fiber: 2.6, unit: '1 medium'),
+    FoodItem(name: 'Greek Yogurt', calories: 100, protein: 10, carbs: 3.6, fats: 5, fiber: 0, unit: '100g'),
+    FoodItem(name: 'Oatmeal', calories: 68, protein: 2.4, carbs: 12, fats: 1.4, fiber: 1.7, unit: '100g'),
+    FoodItem(name: 'Almonds', calories: 579, protein: 21, carbs: 22, fats: 50, fiber: 12.5, unit: '100g'),
   ];
 
   @override
   void initState() {
     super.initState();
+    _selectedDate = _dateOnly(DateTime.now());
+    _weekStart = _startOfWeek(_selectedDate);
     _fadeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 180),
@@ -80,6 +97,71 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
     _ringController.forward();
   }
 
+  void _recomputeTotals() {
+    int cals = 0;
+    double p = 0, c = 0, f = 0, fi = 0;
+    for (final meal in _meals.values) {
+      for (final food in meal) {
+        cals += food.totalCalories;
+        p += food.totalProtein;
+        c += food.totalCarbs;
+        f += food.totalFats;
+        fi += food.totalFiber;
+      }
+    }
+    calories = cals;
+    protein = p.round();
+    carbs = c.round();
+    fats = f.round();
+    fiber = fi.round();
+  }
+
+  Future<void> _addCustomMeal() async {
+    HapticFeedback.lightImpact();
+    final controller = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        final textPrimary = _getTextPrimary(context);
+        return AlertDialog(
+          title: const Text('Add Meal'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            textInputAction: TextInputAction.done,
+            decoration: const InputDecoration(hintText: 'e.g. Pre-workout'),
+            onSubmitted: (_) => Navigator.pop(context, controller.text),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Cancel', style: TextStyle(color: textPrimary)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, controller.text),
+              child: Text('Add', style: TextStyle(color: textPrimary)),
+            ),
+          ],
+        );
+      },
+    );
+    if (!mounted) return;
+    final trimmed = (name ?? '').trim();
+    if (trimmed.isEmpty) return;
+    if (_meals.containsKey(trimmed)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Meal already exists')),
+      );
+      return;
+    }
+    setState(() {
+      _meals[trimmed] = [];
+      _mealPhotoPath[trimmed] = null;
+      _mealOrder.add(trimmed);
+    });
+    HapticFeedback.mediumImpact();
+  }
+
   @override
   void dispose() {
     _fadeController.dispose();
@@ -88,61 +170,185 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
     super.dispose();
   }
 
-  // Theme-aware colors
-  Color _getPageBg(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return isDark
-        ? const Color(0xFF07130E) // Dark mode start
-        : const Color(0xFFEAFBF0); // Light mode mint
+  Color _getPageBg(BuildContext context) => MealTrackerTokens.pageBgOf(context);
+  Color _getSurface(BuildContext context) => MealTrackerTokens.cardBgOf(context);
+  Color _getTextPrimary(BuildContext context) =>
+      MealTrackerTokens.textPrimaryOf(context);
+  Color _getTextSecondary(BuildContext context) =>
+      MealTrackerTokens.textSecondaryOf(context);
+
+  LinearGradient get _primaryGradient => MealTrackerTokens.primaryGradient;
+
+  LinearGradient _mealGradientFor(String mealType) {
+    // Distinct colors per meal (still modern + consistent).
+    switch (mealType) {
+      case 'Breakfast':
+        return const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFF59E0B), Color(0xFFFDE68A)], // amber -> light amber
+        );
+      case 'Lunch':
+        return const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF14B8A6), Color(0xFF99F6E4)], // teal -> mint
+        );
+      case 'Dinner':
+        return const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF8B5CF6), Color(0xFFC4B5FD)], // violet -> lavender
+        );
+      case 'Snacks':
+        return const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFFB7185), Color(0xFFFDA4AF)], // rose -> light rose
+        );
+      default:
+        // Custom meals: default to primary green gradient.
+        return _primaryGradient;
+    }
   }
 
-  Color _getSurface(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return isDark
-        ? const Color(0xFF0B1510).withOpacity(0.72)
-        : Colors.white.withOpacity(0.78);
+
+  DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  DateTime _startOfWeek(DateTime d) {
+    // DateTime.weekday: Mon=1..Sun=7
+    return _dateOnly(d).subtract(Duration(days: d.weekday - DateTime.monday));
   }
 
-  Color _getTextPrimary(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return isDark ? const Color(0xFFEFFFF5) : const Color(0xFF0B1B12);
+  List<DateTime> _weekDays() {
+    return List.generate(7, (i) => _weekStart.add(Duration(days: i)));
   }
 
-  Color _getTextSecondary(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return isDark
-        ? const Color(0xFFBFE8D1).withOpacity(0.75)
-        : const Color(0xFF2E5A42).withOpacity(0.75);
-  }
-
-  // Green gradients
-  LinearGradient get _primaryGradient => const LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [Color(0xFF19C37D), Color(0xFF0FA35F)],
-      );
-
-
-  // Get days for strip
-  List<DateTime> _getDays() {
-    final today = DateTime.now();
-    return List.generate(7, (index) {
-      return today.subtract(Duration(days: 6 - index));
-    });
-  }
-
-  void _onDaySelected(int index) {
+  void _selectDate(DateTime date) {
     HapticFeedback.selectionClick();
-      setState(() {
-        _selectedDayIndex = index;
-        // Reset totals for selected day (in real app, load from storage)
-        calories = 1260;
-        protein = 92;
-        carbs = 140;
-        fats = 38;
-      });
-    _ringController.reset();
-    _ringController.forward();
+    setState(() {
+      _selectedDate = _dateOnly(date);
+      _weekStart = _startOfWeek(_selectedDate);
+      // Reset totals for selected day (in real app, load from storage)
+      calories = 1260;
+      protein = 92;
+      carbs = 140;
+      fats = 38;
+      fiber = 18;
+    });
+    _ringController
+      ..reset()
+      ..forward();
+  }
+
+  Future<void> _openCalendar() async {
+    HapticFeedback.lightImpact();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020, 1, 1),
+      lastDate: DateTime(2100, 12, 31),
+      builder: (context, child) {
+        // Force green calendar styling for Meal Tracker.
+        final base = Theme.of(context);
+        final greenScheme = base.colorScheme.copyWith(
+          primary: MealTrackerTokens.accent,
+          secondary: MealTrackerTokens.accent2,
+          surface: base.colorScheme.surface,
+          onPrimary: Colors.white,
+          onSurface: base.colorScheme.onSurface,
+        );
+        return Theme(
+          data: base.copyWith(
+            colorScheme: greenScheme,
+            datePickerTheme: base.datePickerTheme.copyWith(
+              backgroundColor: base.colorScheme.surface,
+              headerBackgroundColor: MealTrackerTokens.accent,
+              headerForegroundColor: Colors.white,
+              dayForegroundColor:
+                  WidgetStatePropertyAll(base.colorScheme.onSurface),
+              // Ensure "today" stays readable when it's filled/selected (green bg).
+              todayForegroundColor: const WidgetStatePropertyAll(Colors.white),
+              todayBackgroundColor:
+                  const WidgetStatePropertyAll(MealTrackerTokens.accent),
+              todayBorder: const BorderSide(color: MealTrackerTokens.accent),
+              dayOverlayColor: WidgetStatePropertyAll(
+                MealTrackerTokens.accent.withValues(alpha: 0.12),
+              ),
+              yearOverlayColor: WidgetStatePropertyAll(
+                MealTrackerTokens.accent.withValues(alpha: 0.12),
+              ),
+            ),
+          ),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
+    );
+    if (!mounted || picked == null) return;
+    _selectDate(picked);
+  }
+
+  Future<void> _openEditGoals() async {
+    HapticFeedback.lightImpact();
+    final calC = TextEditingController(text: goalCalories.toString());
+    final pC = TextEditingController(text: goalProtein.toString());
+    final cC = TextEditingController(text: goalCarbs.toString());
+    final fC = TextEditingController(text: goalFats.toString());
+    final fiC = TextEditingController(text: goalFiber.toString());
+
+    int? parseInt(TextEditingController c) =>
+        int.tryParse(c.text.trim().replaceAll(',', ''));
+
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return _EditGoalsSheet(
+          caloriesController: calC,
+          proteinController: pC,
+          carbsController: cC,
+          fatsController: fC,
+          fiberController: fiC,
+        );
+      },
+    );
+
+    if (!mounted || saved != true) return;
+
+    final nextCalories = parseInt(calC);
+    final nextP = parseInt(pC);
+    final nextC = parseInt(cC);
+    final nextF = parseInt(fC);
+    final nextFi = parseInt(fiC);
+
+    if (nextCalories == null ||
+        nextP == null ||
+        nextC == null ||
+        nextF == null ||
+        nextFi == null ||
+        nextCalories <= 0 ||
+        nextP <= 0 ||
+        nextC <= 0 ||
+        nextF <= 0 ||
+        nextFi <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter valid goal numbers')),
+      );
+      return;
+    }
+
+    setState(() {
+      goalCalories = nextCalories;
+      goalProtein = nextP;
+      goalCarbs = nextC;
+      goalFats = nextF;
+      goalFiber = nextFi;
+    });
+    HapticFeedback.mediumImpact();
+    _ringController
+      ..reset()
+      ..forward();
   }
 
   Future<void> _openAddFood({String? mealType}) async {
@@ -153,13 +359,11 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
       backgroundColor: Colors.transparent,
       builder: (context) => _AddFoodSheet(
         mealType: mealType,
+        mealOptions: List<String>.from(_mealOrder),
         onFoodAdded: (food, meal) {
           setState(() {
             _meals[meal]!.add(food);
-            calories += food.calories;
-            protein += food.protein.toInt();
-            carbs += food.carbs.toInt();
-            fats += food.fats.toInt();
+            _recomputeTotals();
             if (!_recentFoods.contains(food)) {
               _recentFoods.insert(0, food);
               if (_recentFoods.length > 5) _recentFoods.removeLast();
@@ -195,14 +399,22 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
         onFoodDeleted: (food) {
           setState(() {
             _meals[mealType]!.remove(food);
-            calories -= food.calories;
-            protein -= food.protein.toInt();
-            carbs -= food.carbs.toInt();
-            fats -= food.fats.toInt();
+            _recomputeTotals();
           });
           _ringController.reset();
           _ringController.forward();
           HapticFeedback.mediumImpact();
+        },
+        onFoodUpdated: (oldFood, updated) {
+          setState(() {
+            final idx = _meals[mealType]!.indexOf(oldFood);
+            if (idx >= 0) _meals[mealType]![idx] = updated;
+            _recomputeTotals();
+          });
+          _ringController
+            ..reset()
+            ..forward();
+          HapticFeedback.selectionClick();
         },
         onAddFood: () => _openAddFood(mealType: mealType),
       ),
@@ -215,7 +427,38 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
       context,
       PageRouteBuilder(
         pageBuilder: (context, animation, secondaryAnimation) =>
-            WeeklyInsightsPage(gradient: _primaryGradient),
+            WeeklyInsightsPage(
+              gradient: _primaryGradient,
+              selectedDate: _selectedDate,
+              goalCalories: goalCalories,
+              goalProtein: goalProtein,
+              goalCarbs: goalCarbs,
+              goalFats: goalFats,
+              commonFoods: _commonFoods
+                  .map(
+                    (f) => WeeklyFood(
+                      name: f.name,
+                      calories: f.calories,
+                      protein: f.protein,
+                      carbs: f.carbs,
+                      fats: f.fats,
+                      unit: f.unit,
+                    ),
+                  )
+                  .toList(growable: false),
+              recentFoods: _recentFoods
+                  .map(
+                    (f) => WeeklyFood(
+                      name: f.name,
+                      calories: f.calories,
+                      protein: f.protein,
+                      carbs: f.carbs,
+                      fats: f.fats,
+                      unit: f.unit,
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return FadeTransition(
             opacity: animation,
@@ -242,45 +485,37 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark
-          ? null
-          : pageBg, // Use gradient for dark mode
+      backgroundColor: pageBg,
       body: Container(
         decoration: isDark
-            ? BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    const Color(0xFF07130E),
-                    const Color(0xFF05080A),
-                  ],
-                ),
+            ? const BoxDecoration(
+                color: MealTrackerTokens.darkBackground,
               )
             : null,
         child: SafeArea(
-          bottom: false,
+          bottom: true,
           child: FadeTransition(
             opacity: _fadeAnimation,
             child: CustomScrollView(
               controller: _scrollController,
               physics: const BouncingScrollPhysics(),
               slivers: [
-                // App Bar
-                SliverToBoxAdapter(
-                  child: _MealTrackerAppBar(
-                    onCalendar: () {},
-                    onInsights: _openWeeklyInsights,
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _MealTrackerHeaderDelegate(
+                    onCalendar: _openCalendar,
+                    title: 'Meal Tracker',
                     textPrimary: _getTextPrimary(context),
+                    bgColor: pageBg,
                   ),
                 ),
                 // Day Strip
                 SliverPersistentHeader(
                   pinned: true,
                   delegate: _DayStripDelegate(
-                    days: _getDays(),
-                    selectedIndex: _selectedDayIndex,
-                    onDaySelected: _onDaySelected,
+                    days: _weekDays(),
+                    selectedDate: _selectedDate,
+                    onDaySelected: _selectDate,
                     primaryGradient: _primaryGradient,
                     surface: _getSurface(context),
                     textPrimary: _getTextPrimary(context),
@@ -293,6 +528,8 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
                     child: _DailySummaryCard(
                       calories: calories,
                       goalCalories: goalCalories,
+                      fiber: fiber,
+                      goalFiber: goalFiber,
                       protein: protein,
                       goalProtein: goalProtein,
                       carbs: carbs,
@@ -305,156 +542,84 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
                       textSecondary: _getTextSecondary(context),
                       ringAnimation: _ringAnimation,
                       onInsightsTap: _openWeeklyInsights,
+                      onEditGoals: _openEditGoals,
                     ),
                   ),
                 ),
-                // Meal Tiles Grid
+                // Meals (touch-hold to reorder)
                 SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-                  sliver: SliverGrid(
-                    delegate: SliverChildListDelegate([
-                      _MealTile(
-                        mealType: 'Breakfast',
-                        icon: Icons.breakfast_dining_rounded,
-                        itemCount: _meals['Breakfast']!.length,
-                        calories: _meals['Breakfast']!
-                            .fold(0, (sum, f) => sum + f.calories),
-                        protein: _meals['Breakfast']!
-                            .fold(0.0, (sum, f) => sum + f.protein),
-                        carbs: _meals['Breakfast']!
-                            .fold(0.0, (sum, f) => sum + f.carbs),
-                        fats: _meals['Breakfast']!
-                            .fold(0.0, (sum, f) => sum + f.fats),
-                        gradient: _primaryGradient,
-                        surface: _getSurface(context),
-                        textPrimary: _getTextPrimary(context),
-                        textSecondary: _getTextSecondary(context),
-                        onTap: () => _openMealDetail('Breakfast'),
-                        onAddFood: () => _openAddFood(mealType: 'Breakfast'),
-                        onAddPhoto: () async {
-                          final image = await _imagePicker.pickImage(
-                            source: ImageSource.gallery,
-                          );
-                          if (image != null && mounted) {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ImageCropPage(
-                                  imageFile: File(image.path),
-                                ),
-                              ),
-                            );
-                          }
-                        },
-                      ),
-                      _MealTile(
-                        mealType: 'Lunch',
-                        icon: Icons.lunch_dining_rounded,
-                        itemCount: _meals['Lunch']!.length,
-                        calories: _meals['Lunch']!
-                            .fold(0, (sum, f) => sum + f.calories),
-                        protein: _meals['Lunch']!
-                            .fold(0.0, (sum, f) => sum + f.protein),
-                        carbs: _meals['Lunch']!
-                            .fold(0.0, (sum, f) => sum + f.carbs),
-                        fats: _meals['Lunch']!
-                            .fold(0.0, (sum, f) => sum + f.fats),
-                        gradient: _primaryGradient,
-                        surface: _getSurface(context),
-                        textPrimary: _getTextPrimary(context),
-                        textSecondary: _getTextSecondary(context),
-                        onTap: () => _openMealDetail('Lunch'),
-                        onAddFood: () => _openAddFood(mealType: 'Lunch'),
-                        onAddPhoto: () async {
-                          final image = await _imagePicker.pickImage(
-                            source: ImageSource.gallery,
-                          );
-                          if (image != null && mounted) {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ImageCropPage(
-                                  imageFile: File(image.path),
-                                ),
-                              ),
-                            );
-                          }
-                        },
-                      ),
-                      _MealTile(
-                        mealType: 'Dinner',
-                        icon: Icons.dinner_dining_rounded,
-                        itemCount: _meals['Dinner']!.length,
-                        calories: _meals['Dinner']!
-                            .fold(0, (sum, f) => sum + f.calories),
-                        protein: _meals['Dinner']!
-                            .fold(0.0, (sum, f) => sum + f.protein),
-                        carbs: _meals['Dinner']!
-                            .fold(0.0, (sum, f) => sum + f.carbs),
-                        fats: _meals['Dinner']!
-                            .fold(0.0, (sum, f) => sum + f.fats),
-                        gradient: _primaryGradient,
-                        surface: _getSurface(context),
-                        textPrimary: _getTextPrimary(context),
-                        textSecondary: _getTextSecondary(context),
-                        onTap: () => _openMealDetail('Dinner'),
-                        onAddFood: () => _openAddFood(mealType: 'Dinner'),
-                        onAddPhoto: () async {
-                          final image = await _imagePicker.pickImage(
-                            source: ImageSource.gallery,
-                          );
-                          if (image != null && mounted) {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ImageCropPage(
-                                  imageFile: File(image.path),
-                                ),
-                              ),
-                            );
-                          }
-                        },
-                      ),
-                      _MealTile(
-                        mealType: 'Snacks',
-                        icon: Icons.cookie_rounded,
-                        itemCount: _meals['Snacks']!.length,
-                        calories: _meals['Snacks']!
-                            .fold(0, (sum, f) => sum + f.calories),
-                        protein: _meals['Snacks']!
-                            .fold(0.0, (sum, f) => sum + f.protein),
-                        carbs: _meals['Snacks']!
-                            .fold(0.0, (sum, f) => sum + f.carbs),
-                        fats: _meals['Snacks']!
-                            .fold(0.0, (sum, f) => sum + f.fats),
-                        gradient: _primaryGradient,
-                        surface: _getSurface(context),
-                        textPrimary: _getTextPrimary(context),
-                        textSecondary: _getTextSecondary(context),
-                        onTap: () => _openMealDetail('Snacks'),
-                        onAddFood: () => _openAddFood(mealType: 'Snacks'),
-                        onAddPhoto: () async {
-                          final image = await _imagePicker.pickImage(
-                            source: ImageSource.gallery,
-                          );
-                          if (image != null && mounted) {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => ImageCropPage(
-                                  imageFile: File(image.path),
-                                ),
-                              ),
-                            );
-                          }
-                        },
-                      ),
-                    ]),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 12,
-                      crossAxisSpacing: 12,
-                      childAspectRatio: 0.85,
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  sliver: SliverReorderableList(
+                    itemCount: _mealOrder.length,
+                    onReorder: (oldIndex, newIndex) {
+                      setState(() {
+                        if (newIndex > oldIndex) newIndex -= 1;
+                        final item = _mealOrder.removeAt(oldIndex);
+                        _mealOrder.insert(newIndex, item);
+                      });
+                      HapticFeedback.selectionClick();
+                    },
+                    itemBuilder: (context, index) {
+                      final mealType = _mealOrder[index];
+                      final foods = _meals[mealType] ?? const <FoodItem>[];
+                      final mealCalories =
+                          foods.fold(0, (sum, f) => sum + f.totalCalories);
+                      final mealProtein =
+                          foods.fold(0.0, (sum, f) => sum + f.totalProtein);
+                      final mealCarbs =
+                          foods.fold(0.0, (sum, f) => sum + f.totalCarbs);
+                      final mealFats =
+                          foods.fold(0.0, (sum, f) => sum + f.totalFats);
+                      final icon = switch (mealType) {
+                        'Breakfast' => Icons.breakfast_dining_rounded,
+                        'Lunch' => Icons.lunch_dining_rounded,
+                        'Dinner' => Icons.dinner_dining_rounded,
+                        'Snacks' => Icons.cookie_rounded,
+                        _ => Icons.restaurant_rounded,
+                      };
+                      return Padding(
+                        key: ValueKey('meal-$mealType'),
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: ReorderableDelayedDragStartListener(
+                          index: index,
+                          child: _MealTile(
+                            mealType: mealType,
+                            icon: icon,
+                            itemCount: foods.length,
+                            calories: mealCalories,
+                            protein: mealProtein,
+                            carbs: mealCarbs,
+                            fats: mealFats,
+                            gradient: _mealGradientFor(mealType),
+                            surface: _getSurface(context),
+                            textPrimary: _getTextPrimary(context),
+                            textSecondary: _getTextSecondary(context),
+                            photoPath: _mealPhotoPath[mealType],
+                            onTap: () => _openMealDetail(mealType),
+                            onAddFood: () => _openAddFood(mealType: mealType),
+                            onAddPhoto: () async {
+                              final image = await _imagePicker.pickImage(
+                                source: ImageSource.gallery,
+                              );
+                              if (image != null && mounted) {
+                                setState(() => _mealPhotoPath[mealType] = image.path);
+                                HapticFeedback.mediumImpact();
+                              }
+                            },
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 140),
+                  sliver: SliverToBoxAdapter(
+                    child: _AddMealTile(
+                      onTap: _addCustomMeal,
+                      surface: _getSurface(context),
+                      textPrimary: _getTextPrimary(context),
+                      textSecondary: _getTextSecondary(context),
                     ),
                   ),
                 ),
@@ -463,11 +628,7 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
           ),
         ),
       ),
-      floatingActionButton: _QuickAddFab(
-        gradient: _primaryGradient,
-        onTap: () => _openAddFood(),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      // Floating add button removed (meals tiles already provide Add actions).
     );
   }
 }
@@ -479,8 +640,12 @@ class FoodItem {
   final double protein;
   final double carbs;
   final double fats;
+  final double fiber;
   final String unit;
-  final double quantity;
+  /// Amount of this food consumed.
+  /// - If [unit] encodes grams (e.g. "100g"), this is **grams**.
+  /// - Otherwise this is a **multiplier** of the base unit (e.g. "1 medium").
+  final double amount;
 
   FoodItem({
     required this.name,
@@ -488,9 +653,29 @@ class FoodItem {
     required this.protein,
     required this.carbs,
     required this.fats,
+    this.fiber = 0,
     required this.unit,
-    this.quantity = 1.0,
-  });
+    double? amount,
+  }) : amount = amount ?? _defaultAmountForUnit(unit);
+
+  static double _defaultAmountForUnit(String unit) {
+    final base = _baseGramsFromUnit(unit);
+    return base?.toDouble() ?? 1.0;
+  }
+
+  static int? _baseGramsFromUnit(String unit) {
+    final m = RegExp(r'(\d+)\s*g', caseSensitive: false).firstMatch(unit);
+    if (m == null) return null;
+    return int.tryParse(m.group(1) ?? '');
+  }
+
+  int? get baseGrams => _baseGramsFromUnit(unit);
+
+  double get factor {
+    final base = baseGrams;
+    if (base == null) return amount;
+    return amount / base;
+  }
 
   FoodItem copyWith({
     String? name,
@@ -498,8 +683,9 @@ class FoodItem {
     double? protein,
     double? carbs,
     double? fats,
+    double? fiber,
     String? unit,
-    double? quantity,
+    double? amount,
   }) {
     return FoodItem(
       name: name ?? this.name,
@@ -507,78 +693,140 @@ class FoodItem {
       protein: protein ?? this.protein,
       carbs: carbs ?? this.carbs,
       fats: fats ?? this.fats,
+      fiber: fiber ?? this.fiber,
       unit: unit ?? this.unit,
-      quantity: quantity ?? this.quantity,
+      amount: amount ?? this.amount,
     );
   }
 
-  // Calculate totals based on quantity
-  int get totalCalories => (calories * quantity).round();
-  double get totalProtein => protein * quantity;
-  double get totalCarbs => carbs * quantity;
-  double get totalFats => fats * quantity;
+  // Calculate totals based on factor
+  int get totalCalories => (calories * factor).round();
+  double get totalProtein => protein * factor;
+  double get totalCarbs => carbs * factor;
+  double get totalFats => fats * factor;
+  double get totalFiber => fiber * factor;
 }
 
-// App Bar
-class _MealTrackerAppBar extends StatelessWidget {
+class _MealTrackerHeaderDelegate extends SliverPersistentHeaderDelegate {
   final VoidCallback onCalendar;
-  final VoidCallback onInsights;
+  final String title;
   final Color textPrimary;
+  final Color bgColor;
 
-  const _MealTrackerAppBar({
+  _MealTrackerHeaderDelegate({
     required this.onCalendar,
-    required this.onInsights,
+    required this.title,
     required this.textPrimary,
+    required this.bgColor,
   });
 
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-      child: Row(
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    final denom = (maxExtent - minExtent);
+    final t = denom == 0
+        ? (overlapsContent ? 1.0 : 0.0)
+        : (shrinkOffset / denom).clamp(0.0, 1.0);
+    // No glass/blur: just become slightly elevated on scroll.
+    final bgAlpha = _lerpDouble(1.0, 1.0, t);
+    final slideUp = _lerpDouble(6.0, 0.0, t);
+
+    return ClipRect(
+      child: Stack(
+        fit: StackFit.expand,
         children: [
-          IconButton(
-            onPressed: () => Navigator.maybePop(context),
-            icon: Icon(Icons.arrow_back_rounded, color: textPrimary),
-          ),
-          Expanded(
-            child: Center(
-              child: Text(
-                'Meal Tracker',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  color: textPrimary,
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: bgColor.withValues(alpha: bgAlpha),
+              boxShadow: t > 0.05
+                  ? [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.08),
+                        blurRadius: 16,
+                        offset: const Offset(0, 8),
+                      ),
+                    ]
+                  : null,
+              border: Border(
+                bottom: BorderSide(
+                  color: textPrimary.withValues(alpha: 0.06),
+                  width: 1,
                 ),
               ),
             ),
           ),
-          IconButton(
-            onPressed: onCalendar,
-            icon: Icon(Icons.calendar_month_rounded, color: textPrimary),
-          ),
-          IconButton(
-            onPressed: onInsights,
-            icon: Icon(Icons.show_chart_rounded, color: textPrimary),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: SizedBox(
+              height: maxExtent,
+              child: Row(
+                children: [
+                  IconButton(
+                    onPressed: () => Navigator.maybePop(context),
+                    icon: Icon(Icons.arrow_back_rounded, color: textPrimary),
+                  ),
+                  Expanded(
+                    child: Center(
+                      child: Transform.translate(
+                        offset: Offset(0, -slideUp),
+                        child: Opacity(
+                          opacity: (0.45 + (1 - t) * 0.55).clamp(0.0, 1.0),
+                          child: Text(
+                            title,
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                              color: textPrimary,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: onCalendar,
+                    icon: const Icon(
+                      Icons.calendar_month_rounded,
+                      color: MealTrackerTokens.accent,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                ],
+              ),
+            ),
           ),
         ],
       ),
     );
+  }
+
+  double _lerpDouble(double a, double b, double t) => a + (b - a) * t;
+
+  @override
+  double get maxExtent => 72;
+
+  @override
+  double get minExtent => 72;
+
+  @override
+  bool shouldRebuild(covariant _MealTrackerHeaderDelegate oldDelegate) {
+    return oldDelegate.textPrimary != textPrimary ||
+        oldDelegate.bgColor != bgColor ||
+        oldDelegate.title != title;
   }
 }
 
 // Day Strip Delegate
 class _DayStripDelegate extends SliverPersistentHeaderDelegate {
   final List<DateTime> days;
-  final int selectedIndex;
-  final ValueChanged<int> onDaySelected;
+  final DateTime selectedDate;
+  final ValueChanged<DateTime> onDaySelected;
   final LinearGradient primaryGradient;
   final Color surface;
   final Color textPrimary;
 
   _DayStripDelegate({
     required this.days,
-    required this.selectedIndex,
+    required this.selectedDate,
     required this.onDaySelected,
     required this.primaryGradient,
     required this.surface,
@@ -588,78 +836,96 @@ class _DayStripDelegate extends SliverPersistentHeaderDelegate {
   @override
   Widget build(
       BuildContext context, double shrinkOffset, bool overlapsContent) {
-    return Container(
-      color: surface,
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Row(
-          children: List.generate(days.length, (index) {
-            final day = days[index];
-            final isSelected = index == selectedIndex;
-            final isToday = day.day == DateTime.now().day &&
-                day.month == DateTime.now().month &&
-                day.year == DateTime.now().year;
+    // IMPORTANT: force the header child to fill the sliver extent.
+    // Otherwise the child may measure slightly smaller and cause:
+    // "layoutExtent exceeds paintExtent" for pinned persistent headers.
+    return SizedBox.expand(
+      child: Container(
+        color: surface,
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: List.generate(days.length, (index) {
+              final day = days[index];
+              final isSelected = day.year == selectedDate.year &&
+                  day.month == selectedDate.month &&
+                  day.day == selectedDate.day;
+              final now = DateTime.now();
+              final isToday = day.year == now.year &&
+                  day.month == now.month &&
+                  day.day == now.day;
 
-            return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: GestureDetector(
-                onTap: () => onDaySelected(index),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    gradient: isSelected ? primaryGradient : null,
-                    color: isSelected
-                        ? null
-                        : surface.withOpacity(0.6),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: isSelected
-                        ? [
-                            BoxShadow(
-                              color: const Color(0xFF19C37D).withOpacity(0.3),
-                              blurRadius: 8,
-                              offset: const Offset(0, 4),
-                            ),
-                          ]
-                        : null,
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _getDayName(day.weekday),
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: isSelected
-                              ? Colors.white
-                              : textPrimary.withOpacity(0.6),
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: GestureDetector(
+                  onTap: () => onDaySelected(day),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: isSelected ? primaryGradient : null,
+                      color: isSelected ? null : surface,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: isSelected
+                          ? [
+                              BoxShadow(
+                                color: MealTrackerTokens.accent
+                                    .withValues(alpha: 0.18),
+                                blurRadius: 8,
+                                offset: const Offset(0, 4),
+                              ),
+                            ]
+                          : null,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _getDayName(day.weekday),
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: isSelected
+                                ? Colors.white
+                                : textPrimary.withOpacity(0.6),
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${day.day}',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w900,
-                          color: isSelected
-                              ? Colors.white
-                              : isToday
-                                  ? textPrimary
-                                  : textPrimary.withOpacity(0.7),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${day.day}',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                            color: isSelected
+                                ? Colors.white
+                                : isToday
+                                    ? textPrimary
+                                    : textPrimary.withOpacity(0.7),
+                          ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 1),
+                        Text(
+                          _getMonthShort(day.month),
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            color: isSelected
+                                ? Colors.white.withValues(alpha: 0.90)
+                                : textPrimary.withValues(alpha: 0.55),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            );
-          }),
+              );
+            }),
+          ),
         ),
       ),
     );
@@ -670,15 +936,33 @@ class _DayStripDelegate extends SliverPersistentHeaderDelegate {
     return days[weekday - 1];
   }
 
-  @override
-  double get maxExtent => 80;
+  String _getMonthShort(int month) {
+    const m = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return m[month - 1];
+  }
 
   @override
-  double get minExtent => 80;
+  double get maxExtent => 92;
+
+  @override
+  double get minExtent => 92;
 
   @override
   bool shouldRebuild(covariant _DayStripDelegate oldDelegate) {
-    return oldDelegate.selectedIndex != selectedIndex;
+    return oldDelegate.selectedDate != selectedDate || oldDelegate.days != days;
   }
 }
 
@@ -686,6 +970,8 @@ class _DayStripDelegate extends SliverPersistentHeaderDelegate {
 class _DailySummaryCard extends StatelessWidget {
   final int calories;
   final int goalCalories;
+  final int fiber;
+  final int goalFiber;
   final int protein;
   final int goalProtein;
   final int carbs;
@@ -698,10 +984,13 @@ class _DailySummaryCard extends StatelessWidget {
   final Color textSecondary;
   final Animation<double> ringAnimation;
   final VoidCallback onInsightsTap;
+  final VoidCallback onEditGoals;
 
   const _DailySummaryCard({
     required this.calories,
     required this.goalCalories,
+    required this.fiber,
+    required this.goalFiber,
     required this.protein,
     required this.goalProtein,
     required this.carbs,
@@ -714,6 +1003,7 @@ class _DailySummaryCard extends StatelessWidget {
     required this.textSecondary,
     required this.ringAnimation,
     required this.onInsightsTap,
+    required this.onEditGoals,
   });
 
   @override
@@ -728,57 +1018,79 @@ class _DailySummaryCard extends StatelessWidget {
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: surface,
-          borderRadius: BorderRadius.circular(28),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.08),
-              blurRadius: 20,
-              offset: const Offset(0, 8),
-            ),
-          ],
+          borderRadius: BorderRadius.circular(MealTrackerTokens.radiusCard),
+          boxShadow: MealTrackerTokens.cardShadowOf(context),
+          border: Border.all(color: textPrimary.withValues(alpha: 0.08)),
         ),
         child: Stack(
           children: [
-            // Gradient overlay
-            Positioned.fill(
-              child: Opacity(
-                opacity: 0.08,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: primaryGradient,
-                    borderRadius: BorderRadius.circular(28),
-                  ),
-                ),
-              ),
-            ),
             Column(
               children: [
-                // Top row: Calories + Rings
+                // Top row: Today's intake + Rings
                 Row(
                   children: [
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Total Calories',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: textSecondary,
-                            ),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'Today’s Intake',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: MealTrackerTokens.accent2,
+                                  ),
+                                ),
+                              ),
+                              _PressScale(
+                                onTap: onEditGoals,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: MealTrackerTokens.accent
+                                        .withValues(alpha: 0.10),
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(
+                                      color: MealTrackerTokens.accent
+                                          .withValues(alpha: 0.18),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.edit_rounded,
+                                          size: 14,
+                                          color: MealTrackerTokens.accent2),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'Goals',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w900,
+                                          color: MealTrackerTokens.accent2,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 6),
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
-                              Text(
-                                '$calories',
-                                style: TextStyle(
+                              _AnimatedIntText(
+                                value: calories,
+                                style: const TextStyle(
                                   fontSize: 36,
                                   fontWeight: FontWeight.w900,
-                                  color: textPrimary,
+                                  color: MealTrackerTokens.accent, // green
                                 ),
+                                duration: const Duration(milliseconds: 450),
                               ),
                               const SizedBox(width: 8),
                               Padding(
@@ -788,7 +1100,7 @@ class _DailySummaryCard extends StatelessWidget {
                                   style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w800,
-                                    color: textSecondary,
+                                    color: MealTrackerTokens.accent2,
                                   ),
                                 ),
                               ),
@@ -806,7 +1118,8 @@ class _DailySummaryCard extends StatelessWidget {
                                 goal: goalProtein,
                                 gradient: primaryGradient,
                                 surface: surface,
-                                textPrimary: textPrimary,
+                                textPrimary: MealTrackerTokens.accent2,
+                                dotColor: MealTrackerTokens.macroProtein,
                               ),
                               _MacroChip(
                                 label: 'C',
@@ -814,7 +1127,8 @@ class _DailySummaryCard extends StatelessWidget {
                                 goal: goalCarbs,
                                 gradient: primaryGradient,
                                 surface: surface,
-                                textPrimary: textPrimary,
+                                textPrimary: MealTrackerTokens.accent2,
+                                dotColor: MealTrackerTokens.macroCarbs,
                               ),
                               _MacroChip(
                                 label: 'F',
@@ -822,7 +1136,8 @@ class _DailySummaryCard extends StatelessWidget {
                                 goal: goalFats,
                                 gradient: primaryGradient,
                                 surface: surface,
-                                textPrimary: textPrimary,
+                                textPrimary: MealTrackerTokens.accent2,
+                                dotColor: MealTrackerTokens.macroFats,
                               ),
                             ],
                           ),
@@ -830,14 +1145,12 @@ class _DailySummaryCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 16),
-                    // Triple Ring Progress
                     _TripleRingProgress(
                       proteinProgress: pProgress,
                       carbsProgress: cProgress,
                       fatsProgress: fProgress,
-                      gradient: primaryGradient,
-                      textPrimary: textPrimary,
-                      textSecondary: textSecondary,
+                      textPrimary: MealTrackerTokens.accent2,
+                      textSecondary: MealTrackerTokens.accent2.withValues(alpha: 0.70),
                       animation: ringAnimation,
                     ),
                   ],
@@ -850,10 +1163,10 @@ class _DailySummaryCard extends StatelessWidget {
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     decoration: BoxDecoration(
-                      color: surface.withOpacity(0.6),
+                      color: MealTrackerTokens.accent.withValues(alpha: 0.10),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: textPrimary.withOpacity(0.1),
+                        color: MealTrackerTokens.accent.withValues(alpha: 0.18),
                       ),
                     ),
                     child: Row(
@@ -862,7 +1175,7 @@ class _DailySummaryCard extends StatelessWidget {
                         Icon(
                           Icons.show_chart_rounded,
                           size: 18,
-                          color: textPrimary.withOpacity(0.8),
+                          color: MealTrackerTokens.accent2,
                         ),
                         const SizedBox(width: 8),
                         Text(
@@ -870,7 +1183,7 @@ class _DailySummaryCard extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w800,
-                            color: textPrimary,
+                            color: MealTrackerTokens.accent2,
                           ),
                         ),
                       ],
@@ -886,12 +1199,10 @@ class _DailySummaryCard extends StatelessWidget {
   }
 }
 
-// Triple Ring Progress
 class _TripleRingProgress extends StatelessWidget {
   final double proteinProgress;
   final double carbsProgress;
   final double fatsProgress;
-  final LinearGradient gradient;
   final Color textPrimary;
   final Color textSecondary;
   final Animation<double> animation;
@@ -900,7 +1211,6 @@ class _TripleRingProgress extends StatelessWidget {
     required this.proteinProgress,
     required this.carbsProgress,
     required this.fatsProgress,
-    required this.gradient,
     required this.textPrimary,
     required this.textSecondary,
     required this.animation,
@@ -913,7 +1223,6 @@ class _TripleRingProgress extends StatelessWidget {
       height: 90,
       child: Stack(
         children: [
-          // Outer ring (Fats)
           AnimatedBuilder(
             animation: animation,
             builder: (context, child) {
@@ -923,12 +1232,11 @@ class _TripleRingProgress extends StatelessWidget {
                   progress: fatsProgress * animation.value,
                   strokeWidth: 6,
                   startAngle: -pi / 2,
-                  color: const Color(0xFF38D9A9),
+                  color: MealTrackerTokens.macroFats,
                 ),
               );
             },
           ),
-          // Middle ring (Carbs)
           AnimatedBuilder(
             animation: animation,
             builder: (context, child) {
@@ -937,13 +1245,12 @@ class _TripleRingProgress extends StatelessWidget {
                 painter: _RingPainter(
                   progress: carbsProgress * animation.value,
                   strokeWidth: 6,
-                  startAngle: -pi / 2 + (fatsProgress * 2 * pi),
-                  color: const Color(0xFF1FBF77),
+                  startAngle: -pi / 2,
+                  color: MealTrackerTokens.macroCarbs,
                 ),
               );
             },
           ),
-          // Inner ring (Protein)
           AnimatedBuilder(
             animation: animation,
             builder: (context, child) {
@@ -952,13 +1259,12 @@ class _TripleRingProgress extends StatelessWidget {
                 painter: _RingPainter(
                   progress: proteinProgress * animation.value,
                   strokeWidth: 6,
-                  startAngle: -pi / 2 + ((fatsProgress + carbsProgress) * 2 * pi),
-                  color: const Color(0xFF19C37D),
+                  startAngle: -pi / 2,
+                  color: MealTrackerTokens.macroProtein,
                 ),
               );
             },
           ),
-          // Center label
           Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -966,10 +1272,8 @@ class _TripleRingProgress extends StatelessWidget {
                 AnimatedBuilder(
                   animation: animation,
                   builder: (context, child) {
-                    final avgProgress = (proteinProgress +
-                            carbsProgress +
-                            fatsProgress) /
-                        3;
+                    final avgProgress =
+                        (proteinProgress + carbsProgress + fatsProgress) / 3;
                     return Text(
                       '${(avgProgress * 100 * animation.value).round()}%',
                       style: TextStyle(
@@ -997,7 +1301,6 @@ class _TripleRingProgress extends StatelessWidget {
   }
 }
 
-// Ring Painter
 class _RingPainter extends CustomPainter {
   final double progress;
   final double strokeWidth;
@@ -1016,15 +1319,13 @@ class _RingPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = (size.width / 2) - strokeWidth / 2 - 2;
 
-    // Background ring
     final bgPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = strokeWidth
-      ..color = Colors.white.withOpacity(0.1)
+      ..color = const Color(0xFFE5E7EB) // light gray
       ..strokeCap = StrokeCap.round;
     canvas.drawCircle(center, radius, bgPaint);
 
-    // Progress ring
     if (progress > 0) {
       final progressPaint = Paint()
         ..style = PaintingStyle.stroke
@@ -1034,7 +1335,7 @@ class _RingPainter extends CustomPainter {
       canvas.drawArc(
         Rect.fromCircle(center: center, radius: radius),
         startAngle,
-        2 * pi * progress,
+        2 * pi * progress.clamp(0.0, 1.0),
         false,
         progressPaint,
       );
@@ -1043,9 +1344,14 @@ class _RingPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _RingPainter oldDelegate) {
-    return oldDelegate.progress != progress;
+    return oldDelegate.progress != progress ||
+        oldDelegate.strokeWidth != strokeWidth ||
+        oldDelegate.startAngle != startAngle ||
+        oldDelegate.color != color;
   }
 }
+
+// calories/fiber ring removed (reverted to macro triple ring)
 
 // Macro Chip
 class _MacroChip extends StatelessWidget {
@@ -1055,6 +1361,7 @@ class _MacroChip extends StatelessWidget {
   final LinearGradient gradient;
   final Color surface;
   final Color textPrimary;
+  final Color? dotColor;
 
   const _MacroChip({
     required this.label,
@@ -1063,6 +1370,7 @@ class _MacroChip extends StatelessWidget {
     required this.gradient,
     required this.surface,
     required this.textPrimary,
+    this.dotColor,
   });
 
   @override
@@ -1070,8 +1378,9 @@ class _MacroChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: surface.withOpacity(0.5),
+        color: surface,
         borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: textPrimary.withValues(alpha: 0.08)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1080,7 +1389,7 @@ class _MacroChip extends StatelessWidget {
             width: 8,
             height: 8,
             decoration: BoxDecoration(
-              gradient: gradient,
+              color: dotColor ?? Colors.white,
               shape: BoxShape.circle,
             ),
           ),
@@ -1108,6 +1417,51 @@ class _MacroChip extends StatelessWidget {
   }
 }
 
+class _AnimatedIntText extends StatefulWidget {
+  final int value;
+  final TextStyle style;
+  final Duration duration;
+
+  const _AnimatedIntText({
+    required this.value,
+    required this.style,
+    this.duration = const Duration(milliseconds: 350),
+  });
+
+  @override
+  State<_AnimatedIntText> createState() => _AnimatedIntTextState();
+}
+
+class _AnimatedIntTextState extends State<_AnimatedIntText> {
+  late int _from;
+
+  @override
+  void initState() {
+    super.initState();
+    _from = widget.value;
+  }
+
+  @override
+  void didUpdateWidget(covariant _AnimatedIntText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.value != widget.value) {
+      _from = oldWidget.value;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: _from.toDouble(), end: widget.value.toDouble()),
+      duration: widget.duration,
+      curve: Curves.easeOutCubic,
+      builder: (context, v, _) {
+        return Text(v.round().toString(), style: widget.style);
+      },
+    );
+  }
+}
+
 // Meal Tile
 class _MealTile extends StatelessWidget {
   final String mealType;
@@ -1124,6 +1478,7 @@ class _MealTile extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onAddFood;
   final VoidCallback onAddPhoto;
+  final String? photoPath;
 
   const _MealTile({
     required this.mealType,
@@ -1140,11 +1495,12 @@ class _MealTile extends StatelessWidget {
     required this.onTap,
     required this.onAddFood,
     required this.onAddPhoto,
+    this.photoPath,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return _PressScale(
       onTap: () {
         HapticFeedback.lightImpact();
         onTap();
@@ -1152,65 +1508,264 @@ class _MealTile extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           color: surface,
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(MealTrackerTokens.radiusCard),
+          boxShadow: MealTrackerTokens.cardShadowOf(context),
+          border: Border.all(color: textPrimary.withValues(alpha: 0.08)),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(MealTrackerTokens.radiusCard),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Top accent strip (same green gradient)
+              Container(height: 6, decoration: BoxDecoration(gradient: gradient)),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+                child: Column(
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 54,
+                          height: 54,
+                          decoration: BoxDecoration(
+                            gradient: gradient,
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          child: Icon(icon, color: Colors.white, size: 26),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      mealType,
+                                      style: TextStyle(
+                                        fontSize: 17,
+                                        fontWeight: FontWeight.w900,
+                                        color: textPrimary,
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: MealTrackerTokens.accent
+                                          .withValues(alpha: 0.10),
+                                      borderRadius: BorderRadius.circular(999),
+                                      border: Border.all(
+                                        color: MealTrackerTokens.accent
+                                            .withValues(alpha: 0.18),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      '$calories kcal',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w900,
+                                        color: MealTrackerTokens.accent2,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                '$itemCount ${itemCount == 1 ? 'item' : 'items'}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  color: textSecondary,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  _MiniMacroPill(
+                                    'P',
+                                    protein,
+                                    MealTrackerTokens.macroProtein,
+                                    textSecondary,
+                                  ),
+                                  _MiniMacroPill(
+                                    'C',
+                                    carbs,
+                                    MealTrackerTokens.macroCarbs,
+                                    textSecondary,
+                                  ),
+                                  _MiniMacroPill(
+                                    'F',
+                                    fats,
+                                    MealTrackerTokens.macroFats,
+                                    textSecondary,
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        if (photoPath != null)
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: Image.file(
+                              File(photoPath!),
+                              width: 68,
+                              height: 68,
+                              fit: BoxFit.cover,
+                            ),
+                          )
+                        else
+                          Container(
+                            width: 68,
+                            height: 68,
+                            decoration: BoxDecoration(
+                              color: surface,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: textPrimary.withOpacity(0.08),
+                              ),
+                            ),
+                            child: Icon(
+                              Icons.photo_outlined,
+                              color: textPrimary.withOpacity(0.45),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _PressScale(
+                            onTap: () {
+                              HapticFeedback.lightImpact();
+                              onAddFood();
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              decoration: BoxDecoration(
+                                gradient: gradient,
+                                borderRadius: BorderRadius.circular(18),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: MealTrackerTokens.accent
+                                        .withValues(alpha: 0.18),
+                                    blurRadius: 18,
+                                    offset: const Offset(0, 10),
+                                  ),
+                                ],
+                              ),
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.add_rounded,
+                                      color: Colors.white, size: 20),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Add Food',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        _PressScale(
+                          onTap: () {
+                            HapticFeedback.lightImpact();
+                            onAddPhoto();
+                          },
+                          child: Container(
+                            width: 58,
+                            height: 58,
+                            decoration: BoxDecoration(
+                              gradient: gradient,
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            child: const Icon(Icons.camera_alt_rounded,
+                                color: Colors.white),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AddMealTile extends StatelessWidget {
+  final VoidCallback onTap;
+  final Color surface;
+  final Color textPrimary;
+  final Color textSecondary;
+
+  const _AddMealTile({
+    required this.onTap,
+    required this.surface,
+    required this.textPrimary,
+    required this.textSecondary,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _PressScale(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        onTap();
+      },
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: surface,
+          borderRadius: BorderRadius.circular(MealTrackerTokens.radiusCard),
+          border: Border.all(color: textPrimary.withValues(alpha: 0.08)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.06),
-              blurRadius: 16,
-              offset: const Offset(0, 8),
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 18,
+              offset: const Offset(0, 10),
             ),
           ],
         ),
-        child: Stack(
+        child: Row(
           children: [
-            // Gradient tint overlay
-            Positioned.fill(
-              child: Opacity(
-                opacity: 0.08,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: gradient,
-                    borderRadius: BorderRadius.circular(22),
-                  ),
-                ),
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                gradient: MealTrackerTokens.primaryGradient,
+                borderRadius: BorderRadius.circular(16),
               ),
+              child: const Icon(Icons.add_rounded, color: Colors.white),
             ),
-            Padding(
-              padding: const EdgeInsets.all(14),
+            const SizedBox(width: 12),
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Header row
-                  Row(
-                    children: [
-                      Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          gradient: gradient,
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFF19C37D).withOpacity(0.3),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Icon(icon, color: Colors.white, size: 20),
-                      ),
-                      const Spacer(),
-                      Icon(
-                        Icons.chevron_right_rounded,
-                        color: textPrimary.withOpacity(0.4),
-                        size: 20,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  // Title
                   Text(
-                    mealType,
+                    'Add Meal',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w900,
@@ -1219,118 +1774,275 @@ class _MealTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '$itemCount ${itemCount == 1 ? 'item' : 'items'}',
+                    'Custom tile • Long-press meals to reorder',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                       color: textSecondary,
                     ),
                   ),
-                  const Spacer(),
-                  // Calories
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        '$calories',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w900,
-                          color: textPrimary,
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 4, left: 4),
-                        child: Text(
-                          'kcal',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: textSecondary,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  // Mini macro row
-                  Row(
-                    children: [
-                      _MiniMacroPill('P', protein, textPrimary, textSecondary),
-                      const SizedBox(width: 6),
-                      _MiniMacroPill('C', carbs, textPrimary, textSecondary),
-                      const SizedBox(width: 6),
-                      _MiniMacroPill('F', fats, textPrimary, textSecondary),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  // Action buttons
-                  Row(
-                    children: [
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () {
-                            HapticFeedback.lightImpact();
-                            onAddFood();
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            decoration: BoxDecoration(
-                              gradient: gradient,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(
-                                  Icons.add_rounded,
-                                  color: Colors.white,
-                                  size: 16,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'Food',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w800,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          onAddPhoto();
-                        },
-                        child: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: surface.withOpacity(0.6),
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: textPrimary.withOpacity(0.1),
-                            ),
-                          ),
-                          child: Icon(
-                            Icons.camera_alt_rounded,
-                            color: textPrimary.withOpacity(0.8),
-                            size: 18,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
                 ],
               ),
             ),
+            Icon(Icons.chevron_right_rounded,
+                color: textPrimary.withValues(alpha: 0.35)),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _EditGoalsSheet extends StatelessWidget {
+  final TextEditingController caloriesController;
+  final TextEditingController proteinController;
+  final TextEditingController carbsController;
+  final TextEditingController fatsController;
+  final TextEditingController fiberController;
+
+  const _EditGoalsSheet({
+    required this.caloriesController,
+    required this.proteinController,
+    required this.carbsController,
+    required this.fatsController,
+    required this.fiberController,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final surface = MealTrackerTokens.cardBgOf(context);
+    final textPrimary = MealTrackerTokens.textPrimaryOf(context);
+    final textSecondary = MealTrackerTokens.textSecondaryOf(context);
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: Container(
+        decoration: BoxDecoration(
+          color: surface,
+          borderRadius: const BorderRadius.vertical(
+            top: Radius.circular(MealTrackerTokens.radiusSheet),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.25),
+              blurRadius: 30,
+              offset: const Offset(0, -12),
+            ),
+          ],
+          border: Border.all(color: MealTrackerTokens.accent.withOpacity(0.10)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 10),
+              Container(
+                height: 4,
+                width: 44,
+                decoration: BoxDecoration(
+                  color: textPrimary.withOpacity(0.18),
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        gradient: MealTrackerTokens.primaryGradient,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Icon(Icons.tune_rounded, color: Colors.white),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Edit Goals',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              color: textPrimary,
+                            ),
+                          ),
+                          Text(
+                            'Set your daily targets',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      icon: Icon(Icons.close_rounded, color: textPrimary),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  child: Column(
+                    children: [
+                      _GreenGoalField(
+                        label: 'Calories',
+                        suffix: 'kcal',
+                        icon: Icons.local_fire_department_rounded,
+                        controller: caloriesController,
+                      ),
+                      const SizedBox(height: 12),
+                      _GreenGoalField(
+                        label: 'Protein',
+                        suffix: 'g',
+                        icon: Icons.fitness_center_rounded,
+                        controller: proteinController,
+                      ),
+                      const SizedBox(height: 12),
+                      _GreenGoalField(
+                        label: 'Carbs',
+                        suffix: 'g',
+                        icon: Icons.grain_rounded,
+                        controller: carbsController,
+                      ),
+                      const SizedBox(height: 12),
+                      _GreenGoalField(
+                        label: 'Fat',
+                        suffix: 'g',
+                        icon: Icons.water_drop_rounded,
+                        controller: fatsController,
+                      ),
+                      const SizedBox(height: 12),
+                      _GreenGoalField(
+                        label: 'Fiber',
+                        suffix: 'g',
+                        icon: Icons.eco_rounded,
+                        controller: fiberController,
+                      ),
+                      const SizedBox(height: 16),
+                      _PressScale(
+                        onTap: () => Navigator.pop(context, true),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          decoration: BoxDecoration(
+                            gradient: MealTrackerTokens.primaryGradient,
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: MealTrackerTokens.accent
+                                    .withValues(alpha: 0.28),
+                                blurRadius: 22,
+                                offset: const Offset(0, 12),
+                              ),
+                            ],
+                          ),
+                          child: const Text(
+                            'Save Goals',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Tip: long‑press a food in a meal to edit its amount.',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GreenGoalField extends StatelessWidget {
+  final String label;
+  final String suffix;
+  final IconData icon;
+  final TextEditingController controller;
+
+  const _GreenGoalField({
+    required this.label,
+    required this.suffix,
+    required this.icon,
+    required this.controller,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final surface = MealTrackerTokens.cardBgOf(context);
+    final textPrimary = MealTrackerTokens.textPrimaryOf(context);
+    final textSecondary = MealTrackerTokens.textSecondaryOf(context);
+
+    return TextField(
+      controller: controller,
+      keyboardType: TextInputType.number,
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: TextStyle(
+          color: textSecondary,
+          fontWeight: FontWeight.w800,
+        ),
+        prefixIcon: Icon(icon, color: MealTrackerTokens.accent2),
+        suffixText: suffix,
+        suffixStyle: TextStyle(
+          color: textSecondary,
+          fontWeight: FontWeight.w800,
+        ),
+        filled: true,
+        fillColor: surface,
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(
+            color: MealTrackerTokens.accent.withValues(alpha: 0.18),
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(
+            color: MealTrackerTokens.accent,
+            width: 2,
+          ),
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide.none,
+        ),
+        hintStyle: TextStyle(color: textSecondary),
+        floatingLabelStyle: TextStyle(
+          color: MealTrackerTokens.accent2,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+      style: TextStyle(
+        color: textPrimary,
+        fontWeight: FontWeight.w900,
       ),
     );
   }
@@ -1340,13 +2052,13 @@ class _MealTile extends StatelessWidget {
 class _MiniMacroPill extends StatelessWidget {
   final String label;
   final double value;
-  final Color textPrimary;
+  final Color chipColor;
   final Color textSecondary;
 
   const _MiniMacroPill(
     this.label,
     this.value,
-    this.textPrimary,
+    this.chipColor,
     this.textSecondary,
   );
 
@@ -1355,7 +2067,7 @@ class _MiniMacroPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       decoration: BoxDecoration(
-        color: textPrimary.withOpacity(0.08),
+        color: chipColor.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
@@ -1370,88 +2082,52 @@ class _MiniMacroPill extends StatelessWidget {
   }
 }
 
-// Quick Add FAB
-class _QuickAddFab extends StatefulWidget {
-  final LinearGradient gradient;
+class _PressScale extends StatefulWidget {
+  final Widget child;
   final VoidCallback onTap;
 
-  const _QuickAddFab({
-    required this.gradient,
-    required this.onTap,
-  });
+  const _PressScale({required this.child, required this.onTap});
 
   @override
-  State<_QuickAddFab> createState() => _QuickAddFabState();
+  State<_PressScale> createState() => _PressScaleState();
 }
 
-class _QuickAddFabState extends State<_QuickAddFab>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _scaleAnimation;
+class _PressScaleState extends State<_PressScale> {
+  double _scale = 1.0;
 
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 100),
-    );
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.96).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
+  void _down() => setState(() => _scale = 0.97);
+  void _up() => setState(() => _scale = 1.0);
 
   @override
   Widget build(BuildContext context) {
-    return ScaleTransition(
-      scale: _scaleAnimation,
-      child: GestureDetector(
-        onTapDown: (_) => _controller.forward(),
-        onTapUp: (_) {
-          _controller.reverse();
-          widget.onTap();
-        },
-        onTapCancel: () => _controller.reverse(),
-        child: Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            gradient: widget.gradient,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF19C37D).withOpacity(0.4),
-                blurRadius: 16,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: const Icon(
-            Icons.add_rounded,
-            color: Colors.white,
-            size: 28,
-          ),
-        ),
+    return GestureDetector(
+      onTap: widget.onTap,
+      onTapDown: (_) => _down(),
+      onTapUp: (_) => _up(),
+      onTapCancel: _up,
+      child: AnimatedScale(
+        scale: _scale,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
+        child: widget.child,
       ),
     );
   }
 }
 
-// Add Food Sheet (simplified for now - will be expanded)
+// (Quick Add FAB removed)
+
+// Add Food Sheet (redesigned)
 class _AddFoodSheet extends StatefulWidget {
   final String? mealType;
+  final List<String> mealOptions;
   final Function(FoodItem, String) onFoodAdded;
   final List<FoodItem> commonFoods;
   final List<FoodItem> recentFoods;
 
   const _AddFoodSheet({
     this.mealType,
+    required this.mealOptions,
     required this.onFoodAdded,
     required this.commonFoods,
     required this.recentFoods,
@@ -1462,429 +2138,853 @@ class _AddFoodSheet extends StatefulWidget {
 }
 
 class _AddFoodSheetState extends State<_AddFoodSheet> {
-  int _step = 0; // 0 = search, 1 = details
+  int _step = 0; // 0 = list, 1 = details
   FoodItem? _selectedFood;
-  double _quantity = 1.0;
+  double _amount = 0; // grams (if gram-based) or multiplier (otherwise)
   String _selectedMeal = 'Breakfast';
   final TextEditingController _searchController = TextEditingController();
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
+  final TextEditingController _amountController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    if (widget.mealType != null) {
-      _selectedMeal = widget.mealType!;
-    }
+    _selectedMeal = widget.mealType ?? (widget.mealOptions.isNotEmpty ? widget.mealOptions.first : 'Breakfast');
+    _searchController.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _amountController.dispose();
+    super.dispose();
+  }
+
+  List<FoodItem> _filteredFoods() {
+    final q = _searchController.text.trim().toLowerCase();
+    final all = <FoodItem>[...widget.recentFoods, ...widget.commonFoods];
+    if (q.isEmpty) return all;
+    return all.where((f) => f.name.toLowerCase().contains(q)).toList();
   }
 
   void _selectFood(FoodItem food) {
+    HapticFeedback.selectionClick();
+    final base = food.baseGrams;
     setState(() {
       _selectedFood = food;
+      _amount = base != null ? food.amount : food.amount;
+      _amountController.text = base != null ? _amount.round().toString() : _amount.toStringAsFixed(1);
       _step = 1;
     });
-    HapticFeedback.selectionClick();
   }
 
   void _addFood() {
-    if (_selectedFood == null) return;
-    final adjustedFood = _selectedFood!.copyWith(quantity: _quantity);
-    widget.onFoodAdded(adjustedFood, _selectedMeal);
+    final food = _selectedFood;
+    if (food == null) return;
+    HapticFeedback.mediumImpact();
+    widget.onFoodAdded(food.copyWith(amount: _amount), _selectedMeal);
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface = isDark
-        ? const Color(0xFF0B1510).withOpacity(0.72)
-        : Colors.white.withOpacity(0.78);
-    final textPrimary = isDark
-        ? const Color(0xFFEFFFF5)
-        : const Color(0xFF0B1B12);
+    final surface = MealTrackerTokens.cardBgOf(context);
+    final textPrimary = MealTrackerTokens.textPrimaryOf(context);
+    final textSecondary = MealTrackerTokens.textSecondaryOf(context);
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            blurRadius: 24,
-            offset: const Offset(0, -8),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 10),
-            Container(
-              height: 4,
-              width: 44,
-              decoration: BoxDecoration(
-                color: textPrimary.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(99),
-              ),
+    return DraggableScrollableSheet(
+      initialChildSize: 0.90,
+      minChildSize: 0.55,
+      maxChildSize: 0.95,
+      snap: true,
+      builder: (context, scrollController) {
+        return Padding(
+          padding: EdgeInsets.only(bottom: bottomInset),
+          child: ClipRRect(
+            borderRadius: const BorderRadius.vertical(
+              top: Radius.circular(MealTrackerTokens.radiusSheet),
             ),
-            const SizedBox(height: 16),
-            if (_step == 0) ...[
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: TextField(
-                  controller: _searchController,
-                  decoration: InputDecoration(
-                    hintText: 'Search food...',
-                    filled: true,
-                    fillColor: surface.withOpacity(0.5),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(18),
-                      borderSide: BorderSide.none,
-                    ),
-                    prefixIcon: Icon(Icons.search_rounded, color: textPrimary),
+            child: Container(
+              decoration: BoxDecoration(
+                color: surface,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(MealTrackerTokens.radiusSheet),
+                ),
+                border: Border.all(
+                  color: textPrimary.withValues(alpha: 0.08),
+                  width: 1,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.25),
+                    blurRadius: 30,
+                    offset: const Offset(0, -12),
                   ),
+                ],
+              ),
+              child: SafeArea(
+                top: false,
+                child: Column(
+                  children: [
+                    const SizedBox(height: 10),
+                    Container(
+                      height: 4,
+                      width: 44,
+                      decoration: BoxDecoration(
+                        color: textPrimary.withOpacity(0.18),
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 180),
+                      child: _step == 0
+                          ? _AddFoodHeader(
+                              key: const ValueKey('list'),
+                              title: 'Add Food',
+                              onClose: () => Navigator.pop(context),
+                              textPrimary: textPrimary,
+                            )
+                          : _AddFoodHeader(
+                              key: const ValueKey('details'),
+                              title: _selectedFood?.name ?? 'Food Details',
+                              onClose: () => setState(() => _step = 0),
+                              textPrimary: textPrimary,
+                              leadingIcon: Icons.arrow_back_rounded,
+                            ),
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: _step == 0
+                          ? _FoodPickerStep(
+                              controller: scrollController,
+                              searchController: _searchController,
+                              foods: _filteredFoods(),
+                              recentFoods: widget.recentFoods,
+                              onSelect: _selectFood,
+                              textPrimary: textPrimary,
+                              textSecondary: textSecondary,
+                              surface: surface,
+                            )
+                          : _FoodDetailsStep(
+                              controller: scrollController,
+                              food: _selectedFood!,
+                                amount: _amount,
+                                amountController: _amountController,
+                                onAmountChanged: (v) => setState(() => _amount = v),
+                                mealOptions: widget.mealOptions,
+                              selectedMeal: _selectedMeal,
+                              onMealChanged: (m) {
+                                HapticFeedback.selectionClick();
+                                setState(() => _selectedMeal = m);
+                              },
+                              onAdd: _addFood,
+                              textPrimary: textPrimary,
+                              textSecondary: textSecondary,
+                              surface: surface,
+                            ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 16),
-              if (widget.recentFoods.isNotEmpty) ...[
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      Text(
-                        'Recent',
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _AddFoodHeader extends StatelessWidget {
+  final String title;
+  final VoidCallback onClose;
+  final Color textPrimary;
+  final IconData leadingIcon;
+
+  const _AddFoodHeader({
+    super.key,
+    required this.title,
+    required this.onClose,
+    required this.textPrimary,
+    this.leadingIcon = Icons.close_rounded,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: onClose,
+            icon: Icon(leadingIcon, color: textPrimary),
+          ),
+          Expanded(
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                color: textPrimary,
+              ),
+            ),
+          ),
+          const SizedBox(width: 48),
+        ],
+      ),
+    );
+  }
+}
+
+class _FoodPickerStep extends StatelessWidget {
+  final ScrollController controller;
+  final TextEditingController searchController;
+  final List<FoodItem> foods;
+  final List<FoodItem> recentFoods;
+  final ValueChanged<FoodItem> onSelect;
+  final Color textPrimary;
+  final Color textSecondary;
+  final Color surface;
+
+  const _FoodPickerStep({
+    required this.controller,
+    required this.searchController,
+    required this.foods,
+    required this.recentFoods,
+    required this.onSelect,
+    required this.textPrimary,
+    required this.textSecondary,
+    required this.surface,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      controller: controller,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      children: [
+        TextField(
+          controller: searchController,
+          textInputAction: TextInputAction.search,
+          decoration: InputDecoration(
+            hintText: 'Search foods',
+            filled: true,
+            fillColor: surface,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(20),
+              borderSide: BorderSide.none,
+            ),
+            prefixIcon: Icon(Icons.search_rounded, color: textSecondary),
+          ),
+        ),
+        const SizedBox(height: 14),
+        if (recentFoods.isNotEmpty) ...[
+          Text(
+            'Recent',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: textPrimary,
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 38,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: recentFoods.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (context, i) {
+                final food = recentFoods[i];
+                return _PressScale(
+                  onTap: () => onSelect(food),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                        color: surface,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: textPrimary.withOpacity(0.08)),
+                    ),
+                    child: Text(
+                      food.name,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: textPrimary,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+        Text(
+          'Foods',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+            color: textPrimary,
+          ),
+        ),
+        const SizedBox(height: 10),
+        if (foods.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 28),
+            child: Center(
+              child: Text(
+                'No results',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: textSecondary,
+                ),
+              ),
+            ),
+          )
+        else
+          ...foods.map((food) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _PressScale(
+                onTap: () => onSelect(food),
+                child: _FoodCard(
+                  food: food,
+                  surface: surface,
+                  textPrimary: textPrimary,
+                  textSecondary: textSecondary,
+                ),
+              ),
+            );
+          }),
+      ],
+    );
+  }
+}
+
+class _FoodCard extends StatelessWidget {
+  final FoodItem food;
+  final Color surface;
+  final Color textPrimary;
+  final Color textSecondary;
+
+  const _FoodCard({
+    required this.food,
+    required this.surface,
+    required this.textPrimary,
+    required this.textSecondary,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: textPrimary.withOpacity(0.08)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              gradient: MealTrackerTokens.primaryGradient,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Center(
+              child: Text(
+                food.name.isNotEmpty ? food.name[0].toUpperCase() : 'F',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        food.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w800,
                           color: textPrimary,
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  height: 40,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: widget.recentFoods.length,
-                    itemBuilder: (context, index) {
-                      final food = widget.recentFoods[index];
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: GestureDetector(
-                          onTap: () => _selectFood(food),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            decoration: BoxDecoration(
-                              color: surface.withOpacity(0.6),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              food.name,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: textPrimary,
-                              ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: MealTrackerTokens.accent.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.verified_rounded,
+                            size: 14,
+                            color: MealTrackerTokens.accent.withValues(alpha: 0.9),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Verified',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              color:
+                                  MealTrackerTokens.accent.withValues(alpha: 0.9),
                             ),
                           ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: [
-                    Text(
-                      'Common Foods',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: textPrimary,
+                        ],
                       ),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 8,
-                    mainAxisSpacing: 8,
-                    childAspectRatio: 2.5,
+                const SizedBox(height: 4),
+                Text(
+                  '${food.calories} kcal • ${food.unit}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: textSecondary,
                   ),
-                  itemCount: widget.commonFoods.length,
-                  itemBuilder: (context, index) {
-                    final food = widget.commonFoods[index];
-                    return GestureDetector(
-                      onTap: () => _selectFood(food),
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: surface.withOpacity(0.6),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              food.name,
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w800,
-                                color: textPrimary,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              '${food.calories} kcal',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                                color: textPrimary.withOpacity(0.6),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
                 ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FoodDetailsStep extends StatelessWidget {
+  final ScrollController controller;
+  final FoodItem food;
+  final double amount;
+  final TextEditingController amountController;
+  final ValueChanged<double> onAmountChanged;
+  final List<String> mealOptions;
+  final String selectedMeal;
+  final ValueChanged<String> onMealChanged;
+  final VoidCallback onAdd;
+  final Color textPrimary;
+  final Color textSecondary;
+  final Color surface;
+
+  const _FoodDetailsStep({
+    required this.controller,
+    required this.food,
+    required this.amount,
+    required this.amountController,
+    required this.onAmountChanged,
+    required this.mealOptions,
+    required this.selectedMeal,
+    required this.onMealChanged,
+    required this.onAdd,
+    required this.textPrimary,
+    required this.textSecondary,
+    required this.surface,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final base = food.baseGrams;
+    final isGramBased = base != null;
+    final effectiveFood = food.copyWith(amount: amount);
+    final displayAmount = isGramBased ? '${amount.round()} g' : '${amount.toStringAsFixed(2)}×';
+    final calories = effectiveFood.totalCalories;
+
+    return ListView(
+      controller: controller,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+      children: [
+        Text(
+          'Amount',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w900,
+            color: textPrimary,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: surface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: textPrimary.withOpacity(0.08)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    isGramBased ? 'Amount (grams)' : 'Amount',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: textSecondary,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    displayAmount,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                      color: textPrimary,
+                    ),
+                  ),
+                ],
               ),
-            ] else ...[
-              // Step 2: Food Details
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        IconButton(
-                          icon: Icon(Icons.arrow_back_rounded, color: textPrimary),
-                          onPressed: () => setState(() => _step = 0),
-                        ),
-                        Expanded(
-                          child: Text(
-                            _selectedFood?.name ?? 'Food Details',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                              color: textPrimary,
-                            ),
-                          ),
-                        ),
-                      ],
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  _PressScale(
+                    onTap: () {
+                      final next = isGramBased
+                          ? (amount - 5).clamp(0, 2000)
+                          : (amount - 0.25).clamp(0, 100);
+                      onAmountChanged(next.toDouble());
+                    },
+                    child: _CircleIcon(
+                      icon: Icons.remove_rounded,
+                      surface: surface,
+                      textPrimary: textPrimary,
                     ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Serving Quantity',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: textPrimary.withOpacity(0.7),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      keyboardType: TextInputType.number,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: amountController,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      textInputAction: TextInputAction.done,
                       decoration: InputDecoration(
-                        hintText: '1.0',
+                        hintText: isGramBased ? 'e.g. 175' : 'e.g. 1.5',
                         filled: true,
-                        fillColor: surface.withOpacity(0.5),
+                        fillColor: surface,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(16),
                           borderSide: BorderSide.none,
                         ),
+                        suffixText: isGramBased ? 'g' : '×',
                       ),
-                      onChanged: (value) {
-                        setState(() {
-                          _quantity = double.tryParse(value) ?? 1.0;
-                        });
+                      onChanged: (v) {
+                        final parsed = double.tryParse(v.replaceAll(',', '.'));
+                        if (parsed == null) return;
+                        onAmountChanged(parsed);
                       },
                     ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Meal Type',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: textPrimary.withOpacity(0.7),
-                      ),
+                  ),
+                  const SizedBox(width: 12),
+                  _PressScale(
+                    onTap: () {
+                      final next = isGramBased
+                          ? (amount + 5).clamp(0, 2000)
+                          : (amount + 0.25).clamp(0, 100);
+                      onAmountChanged(next.toDouble());
+                    },
+                    child: _CircleIcon(
+                      icon: Icons.add_rounded,
+                      surface: surface,
+                      textPrimary: textPrimary,
                     ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      children: ['Breakfast', 'Lunch', 'Dinner', 'Snacks']
-                          .map((meal) {
-                        final isSelected = _selectedMeal == meal;
-                        return GestureDetector(
-                          onTap: () {
-                            setState(() => _selectedMeal = meal);
-                            HapticFeedback.selectionClick();
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 10,
-                            ),
-                            decoration: BoxDecoration(
-                              gradient: isSelected
-                                  ? const LinearGradient(
-                                      colors: [
-                                        Color(0xFF19C37D),
-                                        Color(0xFF0FA35F),
-                                      ],
-                                    )
-                                  : null,
-                              color: isSelected
-                                  ? null
-                                  : surface.withOpacity(0.6),
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              meal,
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w800,
-                                color: isSelected
-                                    ? Colors.white
-                                    : textPrimary,
-                              ),
-                            ),
-                          ),
-                        );
-                      }).toList(),
+                  ),
+                ],
+              ),
+              if (isGramBased) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    _QuickServingChip(
+                      label: '50g',
+                      onTap: () => onAmountChanged(50),
+                      surface: surface,
+                      textPrimary: textPrimary,
                     ),
-                    if (_selectedFood != null) ...[
-                      const SizedBox(height: 16),
-                      // Live Preview Card
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: surface.withOpacity(0.6),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Preview',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: textPrimary.withOpacity(0.7),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceAround,
-                              children: [
-                                _PreviewStat(
-                                  'Calories',
-                                  '${(_selectedFood!.calories * _quantity).round()}',
-                                  textPrimary,
-                                ),
-                                _PreviewStat(
-                                  'Protein',
-                                  '${(_selectedFood!.protein * _quantity).toStringAsFixed(1)}g',
-                                  textPrimary,
-                                ),
-                                _PreviewStat(
-                                  'Carbs',
-                                  '${(_selectedFood!.carbs * _quantity).toStringAsFixed(1)}g',
-                                  textPrimary,
-                                ),
-                                _PreviewStat(
-                                  'Fats',
-                                  '${(_selectedFood!.fats * _quantity).toStringAsFixed(1)}g',
-                                  textPrimary,
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 20),
-                    // Add Button
-                    GestureDetector(
-                      onTap: () {
-                        HapticFeedback.mediumImpact();
-                        _addFood();
-                      },
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF19C37D), Color(0xFF0FA35F)],
-                          ),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          'Add to $_selectedMeal',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
+                    const SizedBox(width: 8),
+                    _QuickServingChip(
+                      label: '100g',
+                      onTap: () => onAmountChanged(100),
+                      surface: surface,
+                      textPrimary: textPrimary,
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(width: 8),
+                    _QuickServingChip(
+                      label: '150g',
+                      onTap: () => onAmountChanged(150),
+                      surface: surface,
+                      textPrimary: textPrimary,
+                    ),
+                    const SizedBox(width: 8),
+                    _QuickServingChip(
+                      label: '200g',
+                      onTap: () => onAmountChanged(200),
+                      surface: surface,
+                      textPrimary: textPrimary,
+                    ),
                   ],
                 ),
+              ],
+              if (!isGramBased) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    _QuickServingChip(
+                      label: '0.5×',
+                      onTap: () => onAmountChanged(0.5),
+                      surface: surface,
+                      textPrimary: textPrimary,
+                    ),
+                    const SizedBox(width: 8),
+                    _QuickServingChip(
+                      label: '1×',
+                      onTap: () => onAmountChanged(1.0),
+                      surface: surface,
+                      textPrimary: textPrimary,
+                    ),
+                    const SizedBox(width: 8),
+                    _QuickServingChip(
+                      label: '1.5×',
+                      onTap: () => onAmountChanged(1.5),
+                      surface: surface,
+                      textPrimary: textPrimary,
+                    ),
+                    const SizedBox(width: 8),
+                    _QuickServingChip(
+                      label: '2×',
+                      onTap: () => onAmountChanged(2.0),
+                      surface: surface,
+                      textPrimary: textPrimary,
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        Text(
+          'Macros',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w900,
+            color: textPrimary,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: surface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: textPrimary.withOpacity(0.08)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _MacroStat(label: 'Calories', value: '$calories', color: textPrimary),
+              _MacroStat(
+                label: 'P',
+                value: '${effectiveFood.totalProtein.toStringAsFixed(1)}g',
+                color: MealTrackerTokens.macroProtein,
+              ),
+              _MacroStat(
+                label: 'C',
+                value: '${effectiveFood.totalCarbs.toStringAsFixed(1)}g',
+                color: MealTrackerTokens.macroCarbs,
+              ),
+              _MacroStat(
+                label: 'F',
+                value: '${effectiveFood.totalFats.toStringAsFixed(1)}g',
+                color: MealTrackerTokens.macroFats,
+              ),
+              _MacroStat(
+                label: 'Fi',
+                value: '${effectiveFood.totalFiber.toStringAsFixed(1)}g',
+                color: MealTrackerTokens.accent2,
               ),
             ],
-          ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        Text(
+          'Meal',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+            color: textPrimary,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: mealOptions.map((meal) {
+            final selected = meal == selectedMeal;
+            return _PressScale(
+              onTap: () => onMealChanged(meal),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  gradient: selected ? MealTrackerTokens.primaryGradient : null,
+                  color: selected ? null : surface,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: textPrimary.withOpacity(0.08)),
+                ),
+                child: Text(
+                  meal,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: selected ? Colors.white : textPrimary,
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 16),
+        _PressScale(
+          onTap: onAdd,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            decoration: BoxDecoration(
+              gradient: MealTrackerTokens.primaryGradient,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: MealTrackerTokens.accent.withValues(alpha: 0.30),
+                  blurRadius: 22,
+                  offset: const Offset(0, 12),
+                ),
+              ],
+            ),
+            child: Text(
+              'Add to $selectedMeal',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 18),
+      ],
+    );
+  }
+}
+
+class _CircleIcon extends StatelessWidget {
+  final IconData icon;
+  final Color surface;
+  final Color textPrimary;
+
+  const _CircleIcon({
+    required this.icon,
+    required this.surface,
+    required this.textPrimary,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 44,
+      height: 44,
+      decoration: BoxDecoration(
+        color: surface,
+        shape: BoxShape.circle,
+        border: Border.all(color: textPrimary.withOpacity(0.08)),
+      ),
+      child: Icon(icon, color: textPrimary.withOpacity(0.9)),
+    );
+  }
+}
+
+class _QuickServingChip extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+  final Color surface;
+  final Color textPrimary;
+
+  const _QuickServingChip({
+    required this.label,
+    required this.onTap,
+    required this.surface,
+    required this.textPrimary,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _PressScale(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: surface,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: textPrimary.withOpacity(0.08)),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+            color: textPrimary,
+          ),
         ),
       ),
     );
   }
 }
 
-// Preview Stat
-class _PreviewStat extends StatelessWidget {
+class _MacroStat extends StatelessWidget {
   final String label;
   final String value;
-  final Color textPrimary;
+  final Color color;
 
-  const _PreviewStat(this.label, this.value, this.textPrimary);
+  const _MacroStat({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           value,
           style: TextStyle(
-            fontSize: 16,
+            fontSize: 15,
             fontWeight: FontWeight.w900,
-            color: textPrimary,
+            color: color,
           ),
         ),
         const SizedBox(height: 4),
@@ -1892,8 +2992,8 @@ class _PreviewStat extends StatelessWidget {
           label,
           style: TextStyle(
             fontSize: 10,
-            fontWeight: FontWeight.w600,
-            color: textPrimary.withOpacity(0.6),
+            fontWeight: FontWeight.w700,
+            color: color.withOpacity(0.7),
           ),
         ),
       ],
@@ -1906,27 +3006,22 @@ class _MealDetailSheet extends StatelessWidget {
   final String mealType;
   final List<FoodItem> foods;
   final Function(FoodItem) onFoodDeleted;
+  final void Function(FoodItem oldFood, FoodItem updatedFood) onFoodUpdated;
   final VoidCallback onAddFood;
 
   const _MealDetailSheet({
     required this.mealType,
     required this.foods,
     required this.onFoodDeleted,
+    required this.onFoodUpdated,
     required this.onAddFood,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface = isDark
-        ? const Color(0xFF0B1510).withOpacity(0.72)
-        : Colors.white.withOpacity(0.78);
-    final textPrimary = isDark
-        ? const Color(0xFFEFFFF5)
-        : const Color(0xFF0B1B12);
-    final textSecondary = isDark
-        ? const Color(0xFFBFE8D1).withOpacity(0.75)
-        : const Color(0xFF2E5A42).withOpacity(0.75);
+    final surface = MealTrackerTokens.cardBgOf(context);
+    final textPrimary = MealTrackerTokens.textPrimaryOf(context);
+    final textSecondary = MealTrackerTokens.textSecondaryOf(context);
 
     final totalCalories = foods.fold(0, (sum, f) => sum + f.totalCalories);
     final totalProtein = foods.fold(0.0, (sum, f) => sum + f.totalProtein);
@@ -2024,6 +3119,7 @@ class _MealDetailSheet extends StatelessWidget {
               ...foods.map((food) => _FoodListItem(
                     food: food,
                     onDelete: () => onFoodDeleted(food),
+                    onUpdate: (updated) => onFoodUpdated(food, updated),
                     surface: surface,
                     textPrimary: textPrimary,
                     textSecondary: textSecondary,
@@ -2076,7 +3172,7 @@ class _MealDetailSheet extends StatelessWidget {
                       width: 50,
                       height: 50,
                       decoration: BoxDecoration(
-                        color: surface.withOpacity(0.6),
+                        color: surface,
                         shape: BoxShape.circle,
                         border: Border.all(
                           color: textPrimary.withOpacity(0.1),
@@ -2132,6 +3228,7 @@ class _MacroPill extends StatelessWidget {
 class _FoodListItem extends StatelessWidget {
   final FoodItem food;
   final VoidCallback onDelete;
+  final ValueChanged<FoodItem> onUpdate;
   final Color surface;
   final Color textPrimary;
   final Color textSecondary;
@@ -2139,10 +3236,56 @@ class _FoodListItem extends StatelessWidget {
   const _FoodListItem({
     required this.food,
     required this.onDelete,
+    required this.onUpdate,
     required this.surface,
     required this.textPrimary,
     required this.textSecondary,
   });
+
+  Future<void> _editAmount(BuildContext context) async {
+    HapticFeedback.lightImpact();
+    final isGramBased = food.baseGrams != null;
+    final controller = TextEditingController(
+      text: isGramBased ? food.amount.round().toString() : food.amount.toStringAsFixed(2),
+    );
+    final result = await showDialog<double>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(isGramBased ? 'Edit grams' : 'Edit quantity'),
+          content: TextField(
+            controller: controller,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              hintText: isGramBased ? 'e.g. 175' : 'e.g. 1.5',
+              suffixText: isGramBased ? 'g' : '×',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                final v = double.tryParse(controller.text.trim().replaceAll(',', '.'));
+                if (v == null) {
+                  Navigator.pop(context);
+                  return;
+                }
+                Navigator.pop(context, v);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+    if (result == null) return;
+    final clamped = result < 0 ? 0.0 : result;
+    HapticFeedback.selectionClick();
+    onUpdate(food.copyWith(amount: clamped));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2160,67 +3303,87 @@ class _FoodListItem extends StatelessWidget {
         child: const Icon(Icons.delete_rounded, color: Colors.red),
       ),
       onDismissed: (_) => onDelete(),
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: surface.withOpacity(0.6),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    food.name,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      color: textPrimary,
+      child: GestureDetector(
+        onLongPress: () => _editAmount(context),
+          child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: surface,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      food.name,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: textPrimary,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${food.quantity}x ${food.unit}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: textSecondary,
+                    const SizedBox(height: 4),
+                    Text(
+                      food.baseGrams != null
+                          ? '${food.amount.round()} g • ${food.unit}'
+                          : '${food.amount.toStringAsFixed(2)}× ${food.unit}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: textSecondary,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      _MiniMacroPill('P', food.totalProtein, textPrimary, textSecondary),
-                      const SizedBox(width: 6),
-                      _MiniMacroPill('C', food.totalCarbs, textPrimary, textSecondary),
-                      const SizedBox(width: 6),
-                      _MiniMacroPill('F', food.totalFats, textPrimary, textSecondary),
-                    ],
-                  ),
-                ],
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        _MiniMacroPill(
+                          'P',
+                          food.totalProtein,
+                          MealTrackerTokens.macroProtein,
+                          textSecondary,
+                        ),
+                        const SizedBox(width: 6),
+                        _MiniMacroPill(
+                          'C',
+                          food.totalCarbs,
+                          MealTrackerTokens.macroCarbs,
+                          textSecondary,
+                        ),
+                        const SizedBox(width: 6),
+                        _MiniMacroPill(
+                          'F',
+                          food.totalFats,
+                          MealTrackerTokens.macroFats,
+                          textSecondary,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-            Text(
-              '${food.totalCalories}',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-                color: textPrimary,
+              Text(
+                '${food.totalCalories}',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: textPrimary,
+                ),
               ),
-            ),
-            const SizedBox(width: 4),
-            Text(
-              'kcal',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: textSecondary,
+              const SizedBox(width: 4),
+              Text(
+                'kcal',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: textSecondary,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
