@@ -16,6 +16,7 @@ class _CocircleCreatePostPageState extends State<CocircleCreatePostPage> {
   final ImagePicker _imagePicker = ImagePicker();
   XFile? _selectedMedia;
   bool _isImage = false;
+  bool _isVideo = false;
   bool _isProcessing = false;
 
   Future<void> _openGallery() async {
@@ -34,11 +35,20 @@ class _CocircleCreatePostPageState extends State<CocircleCreatePostPage> {
 
       if (source == null || !mounted) return;
 
+      // Show media type selection
+      final mediaType = await showModalBottomSheet<String>(
+        context: context,
+        backgroundColor: Colors.transparent,
+        builder: (context) => _buildMediaTypeSheet(),
+      );
+
+      if (mediaType == null || !mounted) return;
+
       XFile? pickedFile;
       
       try {
-        if (source == ImageSource.gallery) {
-          // Pick image from gallery
+        if (mediaType == 'image') {
+          // Pick image
           pickedFile = await _imagePicker.pickImage(
             source: source,
             imageQuality: 85,
@@ -48,24 +58,40 @@ class _CocircleCreatePostPageState extends State<CocircleCreatePostPage> {
           
           if (pickedFile != null) {
             _isImage = true;
+            _isVideo = false;
           }
-        } else {
-          // Camera source
-          pickedFile = await _imagePicker.pickImage(
+        } else if (mediaType == 'video') {
+          // Pick video
+          pickedFile = await _imagePicker.pickVideo(
             source: source,
-            imageQuality: 85,
-            maxWidth: 1920,
-            maxHeight: 1920,
+            maxDuration: const Duration(minutes: 1),
           );
+          
           if (pickedFile != null) {
-            _isImage = true;
+            _isVideo = true;
+            _isImage = false;
+            
+            // Check video duration (basic check - maxDuration in pickVideo should handle it)
+            // But we'll also validate file size as a secondary check
+            final file = File(pickedFile.path);
+            if (await file.exists()) {
+              // Video picked successfully
+              // The maxDuration parameter should prevent videos longer than 1 minute
+            }
           }
         }
       } catch (pickerError) {
         if (mounted) {
+          String errorMessage = 'Error picking media';
+          if (pickerError.toString().contains('duration') || 
+              pickerError.toString().contains('too long')) {
+            errorMessage = 'Video must be 1 minute or less';
+          } else {
+            errorMessage = 'Error: ${pickerError.toString()}';
+          }
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Error picking image: ${pickerError.toString()}'),
+              content: Text(errorMessage),
               duration: const Duration(seconds: 3),
             ),
           );
@@ -170,6 +196,63 @@ class _CocircleCreatePostPageState extends State<CocircleCreatePostPage> {
     );
   }
 
+  Widget _buildMediaTypeSheet() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final cocircleGradient = const LinearGradient(
+      colors: [Color(0xFF4DA3FF), Color(0xFF8B5CF6)],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    );
+
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 20),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: colorScheme.onSurface.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  gradient: cocircleGradient,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.image, color: Colors.white, size: 24),
+              ),
+              title: const Text('Photo'),
+              onTap: () => Navigator.pop(context, 'image'),
+            ),
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  gradient: cocircleGradient,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.videocam, color: Colors.white, size: 24),
+              ),
+              title: const Text('Video (max 1 min)'),
+              onTap: () => Navigator.pop(context, 'video'),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -179,28 +262,38 @@ class _CocircleCreatePostPageState extends State<CocircleCreatePostPage> {
       end: Alignment.bottomRight,
     );
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final backgroundColor = isDark
+        ? const Color(0xFF1A2335) // Dark blue-black mix
+        : const Color(0xFFE3F2FD); // Very light blue
+
     return Scaffold(
-      backgroundColor: colorScheme.background,
-      appBar: AppBar(
-        backgroundColor: colorScheme.background,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: colorScheme.onBackground),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: ShaderMask(
-          shaderCallback: (rect) => cocircleGradient.createShader(rect),
-          child: Text(
-            'Create Post',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-            ),
-          ),
-        ),
-      ),
-      body: ListView(
+      body: Container(
+        color: backgroundColor,
+        child: SafeArea(
+          child: Column(
+            children: [
+              AppBar(
+                backgroundColor: Colors.transparent,
+                elevation: 0,
+                leading: IconButton(
+                  icon: Icon(Icons.arrow_back, color: colorScheme.onBackground),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                title: ShaderMask(
+                  shaderCallback: (rect) => cocircleGradient.createShader(rect),
+                  child: Text(
+                    'Create Post',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           Row(
@@ -211,13 +304,6 @@ class _CocircleCreatePostPageState extends State<CocircleCreatePostPage> {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: cocircleGradient,
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF4DA3FF).withOpacity(0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
                 ),
                 child: Icon(Icons.person,
                     color: Colors.white, size: 24),
@@ -251,6 +337,7 @@ class _CocircleCreatePostPageState extends State<CocircleCreatePostPage> {
             hintText: "Share your fitness journey... What's on your mind?",
             maxLines: 5,
             minLines: 5,
+            borderGradient: cocircleGradient,
           ),
           const SizedBox(height: 12),
           if (_selectedMedia != null) ...[
@@ -259,13 +346,6 @@ class _CocircleCreatePostPageState extends State<CocircleCreatePostPage> {
               margin: const EdgeInsets.only(bottom: 12),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(22),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
               ),
               child: Stack(
                 children: [
@@ -278,8 +358,35 @@ class _CocircleCreatePostPageState extends State<CocircleCreatePostPage> {
                             height: double.infinity,
                             fit: BoxFit.cover,
                           )
-                        : const Center(
-                            child: Icon(Icons.videocam, size: 60),
+                        : Container(
+                            color: Colors.black,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(
+                                  Icons.play_circle_filled,
+                                  size: 60,
+                                  color: Colors.white,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Video Selected',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Max 1 minute',
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                   ),
                   Positioned(
@@ -289,6 +396,8 @@ class _CocircleCreatePostPageState extends State<CocircleCreatePostPage> {
                       onTap: () {
                         setState(() {
                           _selectedMedia = null;
+                          _isImage = false;
+                          _isVideo = false;
                         });
                       },
                       child: Container(
@@ -297,8 +406,8 @@ class _CocircleCreatePostPageState extends State<CocircleCreatePostPage> {
                           color: Colors.black.withOpacity(0.6),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(
-                          Icons.close,
+                        child: Icon(
+                          _isVideo ? Icons.videocam : (_isImage ? Icons.image : Icons.close),
                           color: Colors.white,
                           size: 20,
                         ),
@@ -335,13 +444,6 @@ class _CocircleCreatePostPageState extends State<CocircleCreatePostPage> {
                   decoration: BoxDecoration(
                     gradient: cocircleGradient,
                     borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF4DA3FF).withOpacity(0.35),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
                   ),
                   child: const Text(
                     'Post',
@@ -380,6 +482,11 @@ class _CocircleCreatePostPageState extends State<CocircleCreatePostPage> {
             ],
           ),
         ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

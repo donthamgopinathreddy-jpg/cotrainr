@@ -18,6 +18,7 @@ class ModernInputBox extends StatefulWidget {
   final bool obscureText;
   final String? Function(String?)? validator;
   final FocusNode? focusNode;
+  final LinearGradient? borderGradient;
 
   const ModernInputBox({
     super.key,
@@ -36,6 +37,7 @@ class ModernInputBox extends StatefulWidget {
     this.obscureText = false,
     this.validator,
     this.focusNode,
+    this.borderGradient,
   });
 
   @override
@@ -68,6 +70,9 @@ class _ModernInputBoxState extends State<ModernInputBox> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final borderColor = widget.borderGradient != null && _isFocused
+        ? widget.borderGradient!.colors.first
+        : (_isFocused ? AppColors.orange : null);
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(22),
@@ -78,21 +83,48 @@ class _ModernInputBoxState extends State<ModernInputBox> {
           boxShadow: [
             BoxShadow(
               color: _isFocused
-                  ? AppColors.orange.withOpacity(0.15)
-                  : Colors.black.withOpacity(0.06),
+                  ? (widget.borderGradient?.colors.first ?? AppColors.orange)
+                      .withValues(alpha: 0.15)
+                  : Colors.black.withValues(alpha: 0.06),
               blurRadius: _isFocused ? 16 : 12,
               offset: Offset(0, _isFocused ? 8 : 6),
               spreadRadius: _isFocused ? 0.5 : 0,
             ),
           ],
-          border: _isFocused
-              ? Border.all(
-                  color: AppColors.orange.withOpacity(0.4),
-                  width: 1.5,
-                )
-              : null,
         ),
-        child: TextField(
+        child: _isFocused && widget.borderGradient != null
+            ? Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(22),
+                  gradient: widget.borderGradient,
+                ),
+                padding: const EdgeInsets.all(1.5),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: colorScheme.surface,
+                    borderRadius: BorderRadius.circular(20.5),
+                  ),
+                  child: _buildTextField(colorScheme),
+                ),
+              )
+            : Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(22),
+                  border: borderColor != null
+                      ? Border.all(
+                          color: borderColor.withValues(alpha: 0.4),
+                          width: 1.5,
+                        )
+                      : null,
+                ),
+                child: _buildTextField(colorScheme),
+              ),
+      ),
+    );
+  }
+
+  Widget _buildTextField(ColorScheme colorScheme) {
+    return TextField(
         controller: widget.controller,
         focusNode: _focusNode,
         maxLines: widget.maxLines,
@@ -119,7 +151,7 @@ class _ModernInputBoxState extends State<ModernInputBox> {
           isDense: true,
           hintText: widget.hintText,
           hintStyle: TextStyle(
-            color: colorScheme.onSurface.withOpacity(0.45),
+            color: colorScheme.onSurface.withValues(alpha: 0.45),
             fontSize: 14,
           ),
           contentPadding: const EdgeInsets.symmetric(
@@ -154,8 +186,6 @@ class _ModernInputBoxState extends State<ModernInputBox> {
                   minHeight: 40,
                 ),
         ),
-        ),
-      ),
     );
   }
 
@@ -182,7 +212,7 @@ class _ModernInputBoxState extends State<ModernInputBox> {
               BoxShadow(
                 color: (widget.addButtonGradient?.colors.first ??
                         AppColors.orange)
-                    .withOpacity(0.3),
+                    .withValues(alpha: 0.3),
                 blurRadius: 8,
                 offset: const Offset(0, 3),
               ),

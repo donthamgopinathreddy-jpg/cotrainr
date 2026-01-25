@@ -82,9 +82,17 @@ class _ImageCropPageState extends State<ImageCropPage> {
         if (didPop || _hasNavigated) return;
         _handleBack();
       },
-      child: Scaffold(
-        backgroundColor: Colors.black,
-        extendBodyBehindAppBar: true,
+      child: Builder(
+        builder: (context) {
+          final isDark = Theme.of(context).brightness == Brightness.dark;
+          final backgroundColor = isDark
+              ? const Color(0xFF1A2335) // Dark blue-black mix
+              : const Color(0xFFE3F2FD); // Very light blue
+          return Container(
+            color: backgroundColor,
+            child: Scaffold(
+          backgroundColor: Colors.transparent,
+          extendBodyBehindAppBar: true,
         appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -288,6 +296,11 @@ class _ImageCropPageState extends State<ImageCropPage> {
           ),
         ],
       ),
+        ),
+      ),
+            ),
+          },
+        ),
       ),
     );
   }

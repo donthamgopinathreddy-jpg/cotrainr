@@ -33,42 +33,42 @@ class AppTheme {
         onError: Colors.white,
       ),
       
-      // Typography
+      // Typography - Use colorScheme for theme-aware colors
       textTheme: textTheme.copyWith(
         displayLarge: textTheme.displayLarge?.copyWith(
           fontSize: DesignTokens.fontSizeH1,
           fontWeight: DesignTokens.fontWeightBold,
-          color: DesignTokens.lightTextPrimary,
+          color: null, // Use default from colorScheme
         ),
         displayMedium: textTheme.displayMedium?.copyWith(
           fontSize: DesignTokens.fontSizeH2,
           fontWeight: DesignTokens.fontWeightBold,
-          color: DesignTokens.lightTextPrimary,
+          color: null, // Use default from colorScheme
         ),
         displaySmall: textTheme.displaySmall?.copyWith(
           fontSize: DesignTokens.fontSizeH3,
           fontWeight: DesignTokens.fontWeightSemiBold,
-          color: DesignTokens.lightTextPrimary,
+          color: null, // Use default from colorScheme
         ),
         bodyLarge: textTheme.bodyLarge?.copyWith(
           fontSize: DesignTokens.fontSizeBody,
           fontWeight: DesignTokens.fontWeightRegular,
-          color: DesignTokens.lightTextPrimary,
+          color: null, // Use default from colorScheme
         ),
         bodyMedium: textTheme.bodyMedium?.copyWith(
           fontSize: DesignTokens.fontSizeBodySmall,
           fontWeight: DesignTokens.fontWeightRegular,
-          color: DesignTokens.lightTextPrimary,
+          color: null, // Use default from colorScheme
         ),
         bodySmall: textTheme.bodySmall?.copyWith(
           fontSize: DesignTokens.fontSizeMeta,
           fontWeight: DesignTokens.fontWeightRegular,
-          color: DesignTokens.lightTextSecondary,
+          color: null, // Use default from colorScheme
         ),
         labelLarge: textTheme.labelLarge?.copyWith(
           fontSize: DesignTokens.fontSizeBody,
           fontWeight: DesignTokens.fontWeightSemiBold,
-          color: DesignTokens.lightTextPrimary,
+          color: null, // Use default from colorScheme
         ),
       ),
       
@@ -205,42 +205,42 @@ class AppTheme {
         onError: Colors.white,
       ),
       
-      // Typography
+      // Typography - Use colorScheme for theme-aware colors
       textTheme: textTheme.copyWith(
         displayLarge: textTheme.displayLarge?.copyWith(
           fontSize: DesignTokens.fontSizeH1,
           fontWeight: DesignTokens.fontWeightBold,
-          color: DesignTokens.darkTextPrimary,
+          color: null, // Use default from colorScheme
         ),
         displayMedium: textTheme.displayMedium?.copyWith(
           fontSize: DesignTokens.fontSizeH2,
           fontWeight: DesignTokens.fontWeightBold,
-          color: DesignTokens.darkTextPrimary,
+          color: null, // Use default from colorScheme
         ),
         displaySmall: textTheme.displaySmall?.copyWith(
           fontSize: DesignTokens.fontSizeH3,
           fontWeight: DesignTokens.fontWeightSemiBold,
-          color: DesignTokens.darkTextPrimary,
+          color: null, // Use default from colorScheme
         ),
         bodyLarge: textTheme.bodyLarge?.copyWith(
           fontSize: DesignTokens.fontSizeBody,
           fontWeight: DesignTokens.fontWeightRegular,
-          color: DesignTokens.darkTextPrimary,
+          color: null, // Use default from colorScheme
         ),
         bodyMedium: textTheme.bodyMedium?.copyWith(
           fontSize: DesignTokens.fontSizeBodySmall,
           fontWeight: DesignTokens.fontWeightRegular,
-          color: DesignTokens.darkTextPrimary,
+          color: null, // Use default from colorScheme
         ),
         bodySmall: textTheme.bodySmall?.copyWith(
           fontSize: DesignTokens.fontSizeMeta,
           fontWeight: DesignTokens.fontWeightRegular,
-          color: DesignTokens.darkTextSecondary,
+          color: null, // Use default from colorScheme
         ),
         labelLarge: textTheme.labelLarge?.copyWith(
           fontSize: DesignTokens.fontSizeBody,
           fontWeight: DesignTokens.fontWeightSemiBold,
-          color: DesignTokens.darkTextPrimary,
+          color: null, // Use default from colorScheme
         ),
       ),
       

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/common/follow_button.dart';
 
 class UserProfilePage extends StatefulWidget {
   final bool isOwnProfile;
@@ -54,9 +56,18 @@ class _UserProfilePageState extends State<UserProfilePage> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final backgroundColor = isDark
+        ? const Color(0xFF1A2335) // Dark blue-black mix
+        : const Color(0xFFE3F2FD); // Very light blue
 
     return Scaffold(
-      backgroundColor: colorScheme.background,
+      body: Container(
+        color: backgroundColor,
+        child: SafeArea(
+          bottom: false,
+          child: Scaffold(
+            backgroundColor: Colors.transparent,
       appBar: AppBar(
         backgroundColor: colorScheme.background,
         elevation: 0,
@@ -141,13 +152,6 @@ class _UserProfilePageState extends State<UserProfilePage> {
                         decoration: BoxDecoration(
                           gradient: cocircleGradient,
                           borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFF4DA3FF).withOpacity(0.3),
-                              blurRadius: 6,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
                         ),
                         child: const Text(
                           'Level 12',
@@ -170,68 +174,22 @@ class _UserProfilePageState extends State<UserProfilePage> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       mainAxisAlignment: MainAxisAlignment.start,
                       children: [
-                        GestureDetector(
+                        FollowButton(
+                          isFollowing: _isFollowing,
                           onTap: () {
                             HapticFeedback.lightImpact();
                             setState(() {
                               _isFollowing = !_isFollowing;
                             });
                           },
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 24, vertical: 8),
-                            decoration: BoxDecoration(
-                              gradient: _isFollowing 
-                                  ? const LinearGradient(
-                                      colors: [
-                                        Color(0xFFE8D5FF),
-                                        Color(0xFFD4B3FF),
-                                      ],
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                    )
-                                  : cocircleGradient,
-                              borderRadius: BorderRadius.circular(20),
-                              border: _isFollowing
-                                  ? Border.all(
-                                      color: const Color(0xFF8B5CF6).withOpacity(0.3),
-                                      width: 1)
-                                  : null,
-                              boxShadow: _isFollowing
-                                  ? [
-                                      BoxShadow(
-                                        color: const Color(0xFF8B5CF6).withOpacity(0.2),
-                                        blurRadius: 6,
-                                        offset: const Offset(0, 2),
-                                      ),
-                                    ]
-                                  : [
-                                      BoxShadow(
-                                        color: const Color(0xFF4DA3FF).withOpacity(0.3),
-                                        blurRadius: 8,
-                                        offset: const Offset(0, 4),
-                                      ),
-                                    ],
-                            ),
-                            child: Text(
-                              _isFollowing ? 'Following' : 'Follow',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: _isFollowing
-                                    ? const Color(0xFF6B46C1)
-                                    : Colors.white,
-                              ),
-                            ),
-                          ),
+                          width: 140,
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
                         ),
                         const SizedBox(height: 8),
                         GestureDetector(
                           onTap: () {
                             HapticFeedback.lightImpact();
-                            Navigator.pop(context);
+                            context.push('/messaging');
                           },
                           child: Container(
                             padding: const EdgeInsets.symmetric(
@@ -243,13 +201,6 @@ class _UserProfilePageState extends State<UserProfilePage> {
                                 end: Alignment.bottomRight,
                               ),
                               borderRadius: BorderRadius.circular(20),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.blue.withOpacity(0.3),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
                             ),
                             child: const Icon(
                               Icons.chat_bubble_outline_rounded,
@@ -372,6 +323,9 @@ class _UserProfilePageState extends State<UserProfilePage> {
             ),
           ),
         ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -423,9 +377,9 @@ class _UserProfilePageState extends State<UserProfilePage> {
 
   Widget _buildFollowersContent(ColorScheme colorScheme) {
     final followers = [
-      {'name': 'Sarah Johnson', 'handle': '@sarahfit', 'isFollowing': false},
-      {'name': 'Mike Chen', 'handle': '@mikegains', 'isFollowing': true},
-      {'name': 'Emma Wilson', 'handle': '@emmaworkout', 'isFollowing': false},
+      {'name': 'Sarah Johnson', 'handle': '@sarahfit', 'userId': 'sarahfit', 'isFollowing': false},
+      {'name': 'Mike Chen', 'handle': '@mikegains', 'userId': 'mikegains', 'isFollowing': true},
+      {'name': 'Emma Wilson', 'handle': '@emmaworkout', 'userId': 'emmaworkout', 'isFollowing': false},
     ];
 
     return Column(
@@ -439,19 +393,13 @@ class _UserProfilePageState extends State<UserProfilePage> {
             color: colorScheme.surface,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: colorScheme.outline.withOpacity(0.1),
+              color: colorScheme.outline.withValues(alpha: 0.1),
             ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.03),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
           ),
           child: _FollowerItem(
             name: follower['name'] as String,
             handle: follower['handle'] as String,
+            userId: follower['userId'] as String,
             gradient: cocircleGradient,
             isFollowing: follower['isFollowing'] as bool,
           ),
@@ -461,8 +409,8 @@ class _UserProfilePageState extends State<UserProfilePage> {
   }
 
   Widget _buildFollowingContent(ColorScheme colorScheme) {
-    final following = [
-      {'name': 'Alex Trainer', 'handle': '@alextrainer'},
+      final following = [
+      {'name': 'Alex Trainer', 'handle': '@alextrainer', 'userId': 'alextrainer'},
     ];
 
     if (following.isEmpty) {
@@ -506,19 +454,13 @@ class _UserProfilePageState extends State<UserProfilePage> {
             color: colorScheme.surface,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: colorScheme.outline.withOpacity(0.1),
+              color: colorScheme.outline.withValues(alpha: 0.1),
             ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.03),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
           ),
           child: _FollowingItem(
             name: user['name'] as String,
             handle: user['handle'] as String,
+            userId: user['userId'] as String,
             gradient: cocircleGradient,
           ),
         );
@@ -654,12 +596,14 @@ class _ProfileTabsSliderState extends State<_ProfileTabsSlider>
 class _FollowerItem extends StatefulWidget {
   final String name;
   final String handle;
+  final String userId;
   final LinearGradient gradient;
   final bool isFollowing;
 
   const _FollowerItem({
     required this.name,
     required this.handle,
+    required this.userId,
     required this.gradient,
     this.isFollowing = false,
   });
@@ -681,74 +625,69 @@ class _FollowerItemState extends State<_FollowerItem> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Row(
-      children: [
-        ShaderMask(
-          shaderCallback: (rect) => widget.gradient.createShader(rect),
-          child: Container(
-            width: 48,
-            height: 48,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => UserProfilePage(
+              isOwnProfile: false,
+              userId: widget.userId,
+              userName: widget.name,
             ),
-            child: const Icon(Icons.person, color: Colors.white, size: 28),
           ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                widget.name,
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: colorScheme.onSurface,
-                ),
+        );
+      },
+      child: Row(
+        children: [
+          ShaderMask(
+            shaderCallback: (rect) => widget.gradient.createShader(rect),
+            child: Container(
+              width: 48,
+              height: 48,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
               ),
-              const SizedBox(height: 2),
-              Text(
-                widget.handle,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: colorScheme.onSurface.withOpacity(0.6),
-                ),
-              ),
-            ],
+              child: const Icon(Icons.person, color: Colors.white, size: 28),
+            ),
           ),
-        ),
-        GestureDetector(
-          onTap: () {
-            HapticFeedback.lightImpact();
-            setState(() {
-              _isFollowing = !_isFollowing;
-            });
-          },
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.name,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  widget.handle,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colorScheme.onSurface.withOpacity(0.6),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          FollowButton(
+            isFollowing: _isFollowing,
+            onTap: () {
+              HapticFeedback.lightImpact();
+              setState(() {
+                _isFollowing = !_isFollowing;
+              });
+            },
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            decoration: BoxDecoration(
-              gradient: _isFollowing ? null : widget.gradient,
-              color: _isFollowing ? colorScheme.surfaceVariant : null,
-              borderRadius: BorderRadius.circular(20),
-              border: _isFollowing
-                  ? Border.all(color: colorScheme.outline.withOpacity(0.2))
-                  : null,
-            ),
-            child: Text(
-              _isFollowing ? 'Following' : 'Follow',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: _isFollowing
-                    ? colorScheme.onSurface
-                    : Colors.white,
-              ),
-            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -756,11 +695,13 @@ class _FollowerItemState extends State<_FollowerItem> {
 class _FollowingItem extends StatelessWidget {
   final String name;
   final String handle;
+  final String userId;
   final LinearGradient gradient;
 
   const _FollowingItem({
     required this.name,
     required this.handle,
+    required this.userId,
     required this.gradient,
   });
 
@@ -768,62 +709,66 @@ class _FollowingItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Row(
-      children: [
-        ShaderMask(
-          shaderCallback: (rect) => gradient.createShader(rect),
-          child: Container(
-            width: 48,
-            height: 48,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => UserProfilePage(
+              isOwnProfile: false,
+              userId: userId,
+              userName: name,
             ),
-            child: const Icon(Icons.person, color: Colors.white, size: 28),
           ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                name,
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: colorScheme.onSurface,
-                ),
+        );
+      },
+      child: Row(
+        children: [
+          ShaderMask(
+            shaderCallback: (rect) => gradient.createShader(rect),
+            child: Container(
+              width: 48,
+              height: 48,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
               ),
-              const SizedBox(height: 2),
-              Text(
-                handle,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: colorScheme.onSurface.withOpacity(0.6),
+              child: const Icon(Icons.person, color: Colors.white, size: 28),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: colorScheme.onSurface,
+                  ),
                 ),
-              ),
-            ],
-          ),
-        ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-          decoration: BoxDecoration(
-            color: colorScheme.surfaceVariant,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: colorScheme.outline.withOpacity(0.2),
+                const SizedBox(height: 2),
+                Text(
+                  handle,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colorScheme.onSurface.withOpacity(0.6),
+                  ),
+                ),
+              ],
             ),
           ),
-          child: Text(
-            'Following',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: colorScheme.onSurface,
-            ),
+          FollowButton(
+            isFollowing: true,
+            onTap: () {
+              // Already following, can add unfollow action if needed
+            },
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

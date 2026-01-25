@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/motion/motion.dart';
 import '../../pages/auth/login_page.dart';
-import '../../pages/auth/signup_page.dart';
+import '../../pages/auth/signup_wizard_page.dart';
 import '../../pages/splash_page.dart';
 import '../../pages/home/home_shell_page.dart';
 import '../../pages/notifications/notification_page.dart';
@@ -15,6 +16,7 @@ import '../../pages/video_sessions/create_meeting_page.dart';
 import '../../pages/video_sessions/join_meeting_page.dart';
 import '../../pages/video_sessions/meeting_room_page.dart';
 import '../../pages/meal_tracker/meal_tracker_page_v2.dart';
+import '../../pages/quest/quest_page.dart';
 import '../../models/video_session_models.dart';
 
 final GoRouter appRouter = GoRouter(
@@ -24,8 +26,13 @@ final GoRouter appRouter = GoRouter(
     final session = supabase.auth.currentSession;
     final isLoggedIn = session != null;
 
+    // Always allow splash page to show - it will handle its own navigation
+    if (state.matchedLocation == '/splash') {
+      return null;
+    }
+
     // Public routes that don't require auth
-    final publicRoutes = ['/splash', '/auth/login', '/auth/signup'];
+    final publicRoutes = ['/auth/login', '/auth/signup'];
     final isPublicRoute = publicRoutes.contains(state.matchedLocation);
 
     // If not logged in and trying to access protected route
@@ -33,8 +40,8 @@ final GoRouter appRouter = GoRouter(
       return '/auth/login';
     }
 
-    // If logged in and trying to access auth routes
-    if (isLoggedIn && isPublicRoute && state.matchedLocation != '/splash') {
+    // If logged in and trying to access auth routes, redirect to home
+    if (isLoggedIn && isPublicRoute) {
       return '/home';
     }
 
@@ -61,7 +68,7 @@ final GoRouter appRouter = GoRouter(
       path: '/auth/signup',
       name: 'signup',
       pageBuilder: (context, state) => _fadeSlidePage(
-        child: const SignupPage(),
+        child: const SignupWizardPage(),
         state: state,
       ),
     ),
@@ -206,9 +213,18 @@ final GoRouter appRouter = GoRouter(
         );
       },
     ),
+    GoRoute(
+      path: '/quest',
+      name: 'quest',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const QuestPage(),
+        state: state,
+      ),
+    ),
   ],
 );
 
+/// Standard page transition (fade + slight slide)
 CustomTransitionPage<void> _fadeSlidePage({
   required Widget child,
   required GoRouterState state,
@@ -216,24 +232,25 @@ CustomTransitionPage<void> _fadeSlidePage({
   return CustomTransitionPage<void>(
     key: state.pageKey,
     child: child,
-    transitionDuration: const Duration(milliseconds: 300),
-    reverseTransitionDuration: const Duration(milliseconds: 250),
-    transitionsBuilder: (context, animation, secondaryAnimation, child) {
-      final curved = CurvedAnimation(
-        parent: animation,
-        curve: Curves.easeOutCubic,
-      );
-      return FadeTransition(
-        opacity: curved,
-        child: SlideTransition(
-          position: Tween<Offset>(
-            begin: const Offset(0, 0.03),
-            end: Offset.zero,
-          ).animate(curved),
-          child: child,
-        ),
-      );
-    },
+    transitionDuration: Motion.pageTransitionDuration,
+    reverseTransitionDuration: Motion.pageTransitionReverseDuration,
+    transitionsBuilder: Motion.standardPageTransition(),
+  );
+}
+
+/// Modal page transition (slide up + fade, for modals and detail pages)
+/// Use this for modal-style pages like bottom sheets, detail views, etc.
+// ignore: unused_element
+CustomTransitionPage<void> _modalPage({
+  required Widget child,
+  required GoRouterState state,
+}) {
+  return CustomTransitionPage<void>(
+    key: state.pageKey,
+    child: child,
+    transitionDuration: Motion.modalDuration,
+    reverseTransitionDuration: Motion.pageTransitionReverseDuration,
+    transitionsBuilder: Motion.modalSlideUpTransition(),
   );
 }
 

@@ -6,7 +6,8 @@ import 'package:flutter/material.dart';
 /// Production-ready design system with full light/dark theme support
 class DesignTokens {
   // ========== DARK THEME COLORS ==========
-  static const Color darkBackground = Color(0xFF0B1220);
+  // Green + black blend background as specified
+  static const Color darkBackground = Color(0xFF0A1A12); // Green-black blend
   static const Color darkSurface = Color(0xFF121A2B);
   static const Color darkSurfaceElevated = Color(0xFF1A2335);
   static const Color darkTextPrimary = Color(0xFFFFFFFF);
@@ -14,7 +15,8 @@ class DesignTokens {
   static const Color darkTextTertiary = Color(0x80FFFFFF); // 50% opacity
 
   // ========== LIGHT THEME COLORS ==========
-  static const Color lightBackground = Color(0xFFF5F5F5); // Very light grey for better visual hierarchy
+  // Light green background as specified
+  static const Color lightBackground = Color(0xFFF0F8F4); // Light green tint
   static const Color lightSurface = Color(0xFFFFFFFF);
   static const Color lightSurfaceElevated = Color(0xFFFFFFFF);
   static const Color lightTextPrimary = Color(0xFF1A1A1A);
@@ -165,8 +167,15 @@ class DesignTokens {
     stops: [0.0, 1.0],
   );
 
-  // Success gradient - Green
+  // Success gradient - Green (consistent across screens)
   static const LinearGradient successGradient = LinearGradient(
+    colors: [accentGreen, Color(0xFF2BC88A)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  // Quick Access green gradient (consistent across all screens)
+  static const LinearGradient quickAccessGreenGradient = LinearGradient(
     colors: [accentGreen, Color(0xFF2BC88A)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,

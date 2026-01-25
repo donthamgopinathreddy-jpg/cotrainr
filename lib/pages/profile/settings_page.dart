@@ -2,11 +2,15 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/theme_mode_provider.dart';
 import '../../providers/profile_images_provider.dart';
 import '../../utils/page_transitions.dart';
 import 'edit_profile_page.dart';
 import 'settings/info_pages.dart';
+import '../../widgets/common/logout_confirmation_sheet.dart';
+import '../../pages/help/app_version_page.dart';
 import 'settings/notifications_page.dart';
 import 'settings/privacy_security_page.dart';
 
@@ -83,6 +87,28 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       context,
       PageTransitions.slideRoute(page, beginOffset: const Offset(0, 0.05)),
     );
+  }
+
+  Future<void> _handleLogout(BuildContext context) async {
+    HapticFeedback.mediumImpact();
+    
+    try {
+      // Sign out from Supabase
+      await Supabase.instance.client.auth.signOut();
+      
+      if (!mounted) return;
+      
+      // Navigate to splash (which will check session and go to login)
+      context.go('/splash');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Logout failed: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -196,19 +222,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               _SettingsRow(
                 icon: Icons.info_outline,
                 title: 'App Version',
-                trailing: const Text(
-                  '1.0.0',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                onTap: () => _openInfoPage(context, const AppVersionPage()),
               ),
             ],
           ),
           const SizedBox(height: 20),
           OutlinedButton.icon(
-            onPressed: () => HapticFeedback.mediumImpact(),
+            onPressed: () async {
+              HapticFeedback.lightImpact();
+              await LogoutConfirmationSheet.show(
+                context,
+                () => _handleLogout(context),
+              );
+            },
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 14),
               foregroundColor: colorScheme.error,

@@ -393,95 +393,83 @@ class _ProfileStatsStrip extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // Blue and purple gradient for light mode - vibrant
-    final lightGradient = LinearGradient(
-      colors: [
-        AppColors.blue.withOpacity(0.35),
-        AppColors.blue.withOpacity(0.45),
-        AppColors.cyan.withOpacity(0.50),
-        AppColors.purple.withOpacity(0.45),
-        AppColors.purple.withOpacity(0.35),
-      ],
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-    );
+    // Vibrant blue color - no gradient
+    final blueColor = isDark
+        ? AppColors.blue.withOpacity(0.8) // More vibrant blue
+        : AppColors.blue.withOpacity(0.6); // More vibrant blue
 
-    // Blue and purple gradient for dark mode - vibrant
-    final darkGradient = LinearGradient(
-      colors: [
-        AppColors.blue.withOpacity(0.45),
-        AppColors.blue.withOpacity(0.55),
-        AppColors.cyan.withOpacity(0.60),
-        AppColors.purple.withOpacity(0.55),
-        AppColors.purple.withOpacity(0.45),
-      ],
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-    );
-
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.lightImpact();
-        // Navigate to insights detail page (steps as default)
-        context.push(
-          '/insights/steps',
-          extra: InsightArgs(
-            MetricType.steps,
-            const [6, 7, 8, 7, 9, 8, 7],
-            goal: 10000,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: blueColor,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: isDark
+                ? Colors.black.withOpacity(0.3)
+                : Colors.black.withOpacity(0.08),
+            blurRadius: isDark ? 16 : 12,
+            offset: const Offset(0, 4),
           ),
-        );
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          gradient: isDark ? darkGradient : lightGradient,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
+          if (!isDark)
             BoxShadow(
-              color: isDark
-                  ? Colors.black.withOpacity(0.3)
-                  : Colors.black.withOpacity(0.08),
-              blurRadius: isDark ? 16 : 12,
-              offset: const Offset(0, 4),
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
             ),
-            if (!isDark)
-              BoxShadow(
-                color: Colors.black.withOpacity(0.04),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
-          ],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _StatItem(
-              icon: Icons.directions_walk_rounded,
-              label: 'Avg Steps',
-              value: _formatSteps(avgSteps),
-              iconColor: AppColors.orange,
-            ),
-            _StatItem(
-              icon: Icons.local_fire_department_rounded,
-              label: 'Streak',
-              value: '$streakDays days',
-              iconColor: AppColors.orange,
-            ),
-            _StatItem(
-              icon: Icons.emoji_events_rounded,
-              label: 'Level',
-              value: level.toString(),
-              iconColor: AppColors.yellow,
-            ),
-            _StatItem(
-              icon: Icons.star_rounded,
-              label: 'XP',
-              value: _formatXP(xp),
-              iconColor: AppColors.yellow,
-            ),
-          ],
-        ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _StatItem(
+            icon: Icons.directions_walk_rounded,
+            label: 'Avg Steps',
+            value: _formatSteps(avgSteps),
+            iconColor: AppColors.orange,
+            onTap: () {
+              HapticFeedback.lightImpact();
+              // Navigate to steps insights
+              context.push(
+                '/insights/steps',
+                extra: InsightArgs(
+                  MetricType.steps,
+                  const [6, 7, 8, 7, 9, 8, 7],
+                  goal: 10000,
+                ),
+              );
+            },
+          ),
+          _StatItem(
+            icon: Icons.local_fire_department_rounded,
+            label: 'Streak',
+            value: '$streakDays days',
+            iconColor: AppColors.orange,
+            onTap: null, // No action for streak
+          ),
+          _StatItem(
+            icon: Icons.emoji_events_rounded,
+            label: 'Level',
+            value: level.toString(),
+            iconColor: AppColors.yellow,
+            onTap: () {
+              HapticFeedback.lightImpact();
+              // Navigate to quest page
+              context.push('/quest');
+            },
+          ),
+          _StatItem(
+            icon: Icons.star_rounded,
+            label: 'XP',
+            value: _formatXP(xp),
+            iconColor: AppColors.yellow,
+            onTap: () {
+              HapticFeedback.lightImpact();
+              // Navigate to quest page
+              context.push('/quest');
+            },
+          ),
+        ],
       ),
     );
   }
@@ -492,51 +480,60 @@ class _StatItem extends StatelessWidget {
   final String label;
   final String value;
   final Color iconColor;
+  final VoidCallback? onTap;
 
   const _StatItem({
     required this.icon,
     required this.label,
     required this.value,
     required this.iconColor,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Expanded(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            size: 20,
-            color: iconColor,
+    Widget content = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          icon,
+          size: 20,
+          color: iconColor,
+        ),
+        const SizedBox(height: 6),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: colorScheme.onSurface,
           ),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: colorScheme.onSurface,
-            ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w500,
+            color: colorScheme.onSurface.withOpacity(0.6),
           ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w500,
-              color: colorScheme.onSurface.withOpacity(0.6),
-            ),
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
-      ),
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
     );
+
+    if (onTap != null) {
+      content = GestureDetector(
+        onTap: onTap,
+        child: content,
+      );
+    }
+
+    return Expanded(child: content);
   }
 }
 

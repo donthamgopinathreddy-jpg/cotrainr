@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../theme/design_tokens.dart';
-import '../../theme/app_colors.dart';
 import '../../widgets/cocircle/cocircle_feed_card.dart';
 import '../../utils/page_transitions.dart';
 import 'cocircle_create_post_page.dart';
@@ -27,67 +28,221 @@ class _CocircleSearchBar extends StatefulWidget {
 class _CocircleSearchBarState extends State<_CocircleSearchBar> {
   final FocusNode _focusNode = FocusNode();
   final TextEditingController _controller = TextEditingController();
+  final LayerLink _layerLink = LayerLink();
+  OverlayEntry? _overlayEntry;
+  List<Map<String, String>> _searchResults = [];
+  final List<Map<String, String>> _allUsers = [
+    {'userId': 'fitness_john', 'userName': 'John Doe'},
+    {'userId': 'trainer_sarah', 'userName': 'Sarah Johnson'},
+    {'userId': 'nutritionist_mike', 'userName': 'Dr. Mike Chen'},
+    {'userId': 'client_emma', 'userName': 'Emma Wilson'},
+    {'userId': 'trainer_alex', 'userName': 'Alex Martinez'},
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_onSearchChanged);
+    _focusNode.addListener(_onFocusChanged);
+  }
 
   @override
   void dispose() {
-    _focusNode.dispose();
+    _controller.removeListener(_onSearchChanged);
+    _focusNode.removeListener(_onFocusChanged);
     _controller.dispose();
+    _focusNode.dispose();
+    _removeOverlay();
     super.dispose();
+  }
+
+  void _onSearchChanged() {
+    final query = _controller.text.toLowerCase().trim();
+    if (query.isEmpty) {
+      setState(() {
+        _searchResults = [];
+      });
+      _removeOverlay();
+      return;
+    }
+
+    setState(() {
+      _searchResults = _allUsers.where((user) {
+        final userId = user['userId']!.toLowerCase();
+        final userName = user['userName']!.toLowerCase();
+        return userId.contains(query) || userName.contains(query);
+      }).toList();
+    });
+
+    if (_searchResults.isNotEmpty && _focusNode.hasFocus) {
+      _showOverlay();
+    } else {
+      _removeOverlay();
+    }
+  }
+
+  void _onFocusChanged() {
+    if (_focusNode.hasFocus && _searchResults.isNotEmpty) {
+      _showOverlay();
+    } else if (!_focusNode.hasFocus) {
+      Future.delayed(const Duration(milliseconds: 200), () {
+        if (!_focusNode.hasFocus) {
+          _removeOverlay();
+        }
+      });
+    }
+  }
+
+  void _showOverlay() {
+    _removeOverlay();
+    _overlayEntry = _createOverlayEntry();
+    Overlay.of(context).insert(_overlayEntry!);
+  }
+
+  void _removeOverlay() {
+    _overlayEntry?.remove();
+    _overlayEntry = null;
+  }
+
+  OverlayEntry _createOverlayEntry() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final renderBox = context.findRenderObject() as RenderBox;
+    final size = renderBox.size;
+
+    return OverlayEntry(
+      builder: (context) => Positioned(
+        width: size.width,
+        child: CompositedTransformFollower(
+          link: _layerLink,
+          showWhenUnlinked: false,
+          offset: Offset(0, size.height + 8),
+          child: Material(
+            elevation: 8,
+            borderRadius: BorderRadius.circular(16),
+            color: colorScheme.surface,
+            child: Container(
+              constraints: const BoxConstraints(maxHeight: 300),
+              decoration: BoxDecoration(
+                color: colorScheme.surface,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: _searchResults.isEmpty
+                  ? const SizedBox.shrink()
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemCount: _searchResults.length,
+                      itemBuilder: (context, index) {
+                        final user = _searchResults[index];
+                        return InkWell(
+                          onTap: () {
+                            _controller.text = user['userName']!;
+                            _focusNode.unfocus();
+                            _removeOverlay();
+                            // TODO: Navigate to user profile
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 12,
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 40,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: colorScheme.surfaceContainerHighest,
+                                  ),
+                                  child: Icon(
+                                    Icons.person,
+                                    color: colorScheme.onSurface.withValues(alpha: 0.6),
+                                    size: 20,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        user['userName']!,
+                                        style: TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w600,
+                                          color: colorScheme.onSurface,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        '@${user['userId']!}',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: colorScheme.onSurface.withValues(alpha: 0.6),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Container(
-      height: 52,
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(26),
-        boxShadow: [
-          BoxShadow(
-            color: isDark
-                ? Colors.black.withOpacity(0.4)
-                : Colors.black.withOpacity(0.15),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-            spreadRadius: 0,
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(26),
-        child: TextField(
-        controller: _controller,
-        focusNode: _focusNode,
-        style: TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w500,
-          color: colorScheme.onSurface,
+    return CompositedTransformTarget(
+      link: _layerLink,
+      child: Container(
+        height: 52,
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          borderRadius: BorderRadius.circular(26),
         ),
-        decoration: InputDecoration(
-          filled: true,
-          fillColor: Colors.transparent,
-          hintText: widget.hintText,
-          hintStyle: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w400,
-            color: colorScheme.onSurface.withOpacity(0.4),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(26),
+          child: TextField(
+            controller: _controller,
+            focusNode: _focusNode,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              color: colorScheme.onSurface,
+            ),
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: Colors.transparent,
+              hintText: widget.hintText,
+              hintStyle: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w400,
+                color: colorScheme.onSurface.withValues(alpha: 0.4),
+              ),
+              prefixIcon: Icon(
+                Icons.search_rounded,
+                size: 22,
+                color: colorScheme.onSurface.withValues(alpha: 0.5),
+              ),
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              disabledBorder: InputBorder.none,
+              errorBorder: InputBorder.none,
+              focusedErrorBorder: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+            ),
           ),
-          prefixIcon: Icon(
-            Icons.search_rounded,
-            size: 22,
-            color: colorScheme.onSurface.withOpacity(0.5),
-          ),
-          border: InputBorder.none,
-          enabledBorder: InputBorder.none,
-          focusedBorder: InputBorder.none,
-          disabledBorder: InputBorder.none,
-          errorBorder: InputBorder.none,
-          focusedErrorBorder: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-        ),
         ),
       ),
     );
@@ -182,16 +337,19 @@ class _CocirclePageState extends State<CocirclePage>
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final backgroundColor = isDark
+        ? const Color(0xFF1A2335) // Dark blue-black mix
+        : const Color(0xFFE3F2FD); // Very light blue
 
     return Container(
-      color: colorScheme.background,
+      color: backgroundColor,
       child: FadeTransition(
         opacity: _fadeAnimation,
         child: SafeArea(
           child: RefreshIndicator(
           onRefresh: _onRefresh,
-          color: AppColors.orange,
+          color: const Color(0xFF8B5CF6), // Purple from gradient
           child: CustomScrollView(
             controller: _scrollController,
             physics: const BouncingScrollPhysics(),
@@ -318,9 +476,34 @@ class _CocirclePageState extends State<CocirclePage>
     // TODO: Open comments bottom sheet
   }
 
-  void _sharePost(String postId) {
+  void _sharePost(String postId) async {
     HapticFeedback.lightImpact();
-    // TODO: Implement share
+    final post = _posts.firstWhere((p) => p.id == postId);
+    
+    try {
+      if (post.mediaUrl != null) {
+        // Share image with caption
+        await Share.shareXFiles(
+          [XFile(post.mediaUrl!)],
+          text: post.caption.isNotEmpty 
+              ? '${post.userName}: ${post.caption}' 
+              : 'Check out this post from ${post.userName} on Cocircle!',
+        );
+      } else {
+        // Share text only
+        await Share.share(
+          post.caption.isNotEmpty 
+              ? '${post.userName}: ${post.caption}\n\nShared from Cocircle'
+              : 'Check out ${post.userName}\'s post on Cocircle!',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error sharing: ${e.toString()}')),
+        );
+      }
+    }
   }
 
   void _handleDoubleTap(String postId) {

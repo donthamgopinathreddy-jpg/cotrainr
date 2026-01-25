@@ -1,36 +1,38 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/motion/motion.dart';
+import '../../theme/design_tokens.dart';
 
-/// Wraps [child] with:
-/// - Material + InkResponse for ripple/splash on tap
-/// - AnimatedScale on press (visual feedback)
-/// - HapticFeedback on tap
-///
-/// Use for cards, tiles, and list items. When [onTap] is null, [child] is
-/// returned as-is (no tap handling).
-class PressableCard extends StatefulWidget {
+/// Animated card with press feedback, haptics, and smooth animations
+/// Replaces InkWell with better press animations
+class AnimatedCard extends StatefulWidget {
   final Widget child;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
   final double borderRadius;
-  final double pressScale;
+  final EdgeInsetsGeometry? padding;
+  final EdgeInsetsGeometry? margin;
+  final Color? backgroundColor;
+  final List<BoxShadow>? boxShadow;
   final bool enableHaptic;
   final HapticFeedbackType hapticType;
 
-  const PressableCard({
+  const AnimatedCard({
     super.key,
     required this.child,
     this.onTap,
     this.onLongPress,
-    this.borderRadius = 20,
-    this.pressScale = Motion.pressScale,
+    this.borderRadius = DesignTokens.radiusCard,
+    this.padding,
+    this.margin,
+    this.backgroundColor,
+    this.boxShadow,
     this.enableHaptic = true,
     this.hapticType = HapticFeedbackType.lightImpact,
   });
 
   @override
-  State<PressableCard> createState() => _PressableCardState();
+  State<AnimatedCard> createState() => _AnimatedCardState();
 }
 
 enum HapticFeedbackType {
@@ -40,7 +42,7 @@ enum HapticFeedbackType {
   heavyImpact,
 }
 
-class _PressableCardState extends State<PressableCard> {
+class _AnimatedCardState extends State<AnimatedCard> {
   bool _pressed = false;
 
   void _triggerHaptic() {
@@ -64,35 +66,46 @@ class _PressableCardState extends State<PressableCard> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.onTap == null && widget.onLongPress == null) return widget.child;
+    final card = Container(
+      padding: widget.padding,
+      margin: widget.margin,
+      decoration: BoxDecoration(
+        color: widget.backgroundColor ?? DesignTokens.surfaceOf(context),
+        borderRadius: BorderRadius.circular(widget.borderRadius),
+        boxShadow: widget.boxShadow ?? DesignTokens.subtleShadowOf(context),
+      ),
+      child: widget.child,
+    );
+
+    if (widget.onTap == null && widget.onLongPress == null) {
+      return card;
+    }
 
     return Material(
       color: Colors.transparent,
-      child: InkResponse(
+      child: GestureDetector(
         onTapDown: (_) => setState(() => _pressed = true),
-        onTapUp: (_) => setState(() => _pressed = false),
-        onTapCancel: () => setState(() => _pressed = false),
-        onTap: () {
+        onTapUp: (_) {
+          setState(() => _pressed = false);
           _triggerHaptic();
           widget.onTap?.call();
         },
+        onTapCancel: () => setState(() => _pressed = false),
         onLongPress: widget.onLongPress != null
             ? () {
                 _triggerHaptic();
                 widget.onLongPress?.call();
               }
             : null,
-        borderRadius: BorderRadius.circular(widget.borderRadius),
-        containedInkWell: true,
         child: AnimatedScale(
-          scale: _pressed ? widget.pressScale : 1.0,
+          scale: _pressed ? Motion.pressScale : 1.0,
           duration: Motion.pressDuration,
           curve: Motion.pressCurve,
           child: AnimatedOpacity(
             opacity: _pressed ? 0.85 : 1.0,
             duration: Motion.pressDuration,
             curve: Motion.pressCurve,
-            child: widget.child,
+            child: card,
           ),
         ),
       ),

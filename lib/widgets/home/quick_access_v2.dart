@@ -113,9 +113,7 @@ class QuickAccessV2 extends StatelessWidget {
             label: 'Challenges',
             icon: Icons.emoji_events_outlined,
             route: '/home/challenges',
-            gradient: LinearGradient(
-              colors: [DesignTokens.accentGreen, DesignTokens.accentBlue],
-            ),
+            gradient: DesignTokens.quickAccessGreenGradient,
           ),
         ];
     }
@@ -137,14 +135,14 @@ class QuickAccessV2 extends StatelessWidget {
                 style: TextStyle(
                   fontSize: DesignTokens.fontSizeH2,
                   fontWeight: FontWeight.w700,
-                  color: DesignTokens.textPrimary,
+                  color: DesignTokens.textPrimaryOf(context),
                 ),
               ),
               SizedBox(width: DesignTokens.spacing8),
               Icon(
                 Icons.bolt_outlined,
                 size: DesignTokens.iconSizeTile,
-                color: DesignTokens.textSecondary,
+                color: DesignTokens.textSecondaryOf(context),
               ),
             ],
           ),
@@ -228,7 +226,7 @@ class _QuickAccessTileState extends State<_QuickAccessTile> {
                 style: TextStyle(
                   fontSize: DesignTokens.fontSizeBody,
                   fontWeight: FontWeight.w600,
-                  color: DesignTokens.textPrimary,
+                  color: DesignTokens.textPrimaryOf(context),
                 ),
                 textAlign: TextAlign.center,
                 maxLines: 2,
