@@ -4,7 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/motion/motion.dart';
 import '../../pages/auth/login_page.dart';
 import '../../pages/auth/signup_wizard_page.dart';
-import '../../pages/splash_page.dart';
+import '../../pages/auth/welcome_page.dart';
 import '../../pages/home/home_shell_page.dart';
 import '../../pages/notifications/notification_page.dart';
 import '../../pages/insights/insights_detail_page.dart';
@@ -20,24 +20,19 @@ import '../../pages/quest/quest_page.dart';
 import '../../models/video_session_models.dart';
 
 final GoRouter appRouter = GoRouter(
-  initialLocation: '/splash',
+  initialLocation: '/welcome',
   redirect: (BuildContext context, GoRouterState state) {
     final supabase = Supabase.instance.client;
     final session = supabase.auth.currentSession;
     final isLoggedIn = session != null;
 
-    // Always allow splash page to show - it will handle its own navigation
-    if (state.matchedLocation == '/splash') {
-      return null;
-    }
-
     // Public routes that don't require auth
-    final publicRoutes = ['/auth/login', '/auth/signup'];
+    final publicRoutes = ['/welcome', '/auth/login', '/auth/create-account'];
     final isPublicRoute = publicRoutes.contains(state.matchedLocation);
 
     // If not logged in and trying to access protected route
     if (!isLoggedIn && !isPublicRoute) {
-      return '/auth/login';
+      return '/welcome';
     }
 
     // If logged in and trying to access auth routes, redirect to home
@@ -49,10 +44,10 @@ final GoRouter appRouter = GoRouter(
   },
   routes: [
     GoRoute(
-      path: '/splash',
-      name: 'splash',
+      path: '/welcome',
+      name: 'welcome',
       pageBuilder: (context, state) => _fadeSlidePage(
-        child: const SplashPage(),
+        child: const WelcomePage(),
         state: state,
       ),
     ),
@@ -65,8 +60,8 @@ final GoRouter appRouter = GoRouter(
       ),
     ),
     GoRoute(
-      path: '/auth/signup',
-      name: 'signup',
+      path: '/auth/create-account',
+      name: 'createAccount',
       pageBuilder: (context, state) => _fadeSlidePage(
         child: const SignupWizardPage(),
         state: state,

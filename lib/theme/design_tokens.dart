@@ -6,10 +6,10 @@ import 'package:flutter/material.dart';
 /// Production-ready design system with full light/dark theme support
 class DesignTokens {
   // ========== DARK THEME COLORS ==========
-  // Green + black blend background as specified
-  static const Color darkBackground = Color(0xFF0A1A12); // Green-black blend
-  static const Color darkSurface = Color(0xFF121A2B);
-  static const Color darkSurfaceElevated = Color(0xFF1A2335);
+  // Pure dark black/grey - no color blend
+  static const Color darkBackground = Color(0xFF000000); // Pure black
+  static const Color darkSurface = Color(0xFF1A1A1A); // Dark grey
+  static const Color darkSurfaceElevated = Color(0xFF2A2A2A); // Lighter grey
   static const Color darkTextPrimary = Color(0xFFFFFFFF);
   static const Color darkTextSecondary = Color(0xB3FFFFFF); // 70% opacity
   static const Color darkTextTertiary = Color(0x80FFFFFF); // 50% opacity
@@ -52,14 +52,8 @@ class DesignTokens {
   static Color get borderColorDark => Colors.white.withValues(alpha: 0.10);
   static Color get borderColorLight => Colors.black.withValues(alpha: 0.08);
 
-  // Static shadow for backward compatibility
-  static List<BoxShadow> get cardShadow => [
-    BoxShadow(
-      color: Colors.black.withValues(alpha: 0.35),
-      blurRadius: 30,
-      offset: const Offset(0, 10),
-    ),
-  ];
+  // Static shadow for backward compatibility - removed
+  static List<BoxShadow> get cardShadow => [];
 
   static List<BoxShadow> get glowShadow => [
     BoxShadow(
@@ -113,24 +107,8 @@ class DesignTokens {
   }
 
   static List<BoxShadow> cardShadowOf(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return [
-      BoxShadow(
-        color: isDark
-            ? Colors.black.withValues(alpha: 0.8)
-            : Colors.black.withValues(alpha: 0.25),
-        blurRadius: 4,
-        offset: const Offset(0, 4),
-        spreadRadius: 1,
-      ),
-      if (!isDark)
-        BoxShadow(
-          color: Colors.white.withValues(alpha: 0.5),
-          blurRadius: 3,
-          offset: const Offset(0, -1),
-          spreadRadius: 0,
-        ),
-    ];
+    // No shadows for cards/tiles
+    return [];
   }
 
   static List<BoxShadow> glowShadowOf(BuildContext context) {
@@ -203,27 +181,11 @@ class DesignTokens {
   static const double radiusSmall = 12.0; // Small elements
 
   // ========== SHADOWS (Soft, Layered - Apple Style) ==========
-  static List<BoxShadow> get subtleShadow => [
-    BoxShadow(
-      color: Colors.black.withValues(alpha: 0.2),
-      blurRadius: 15,
-      offset: const Offset(0, 5),
-      spreadRadius: 0,
-    ),
-  ];
+  static List<BoxShadow> get subtleShadow => [];
 
   static List<BoxShadow> subtleShadowOf(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return [
-      BoxShadow(
-        color: isDark
-            ? Colors.black.withValues(alpha: 0.2)
-            : Colors.black.withValues(alpha: 0.05),
-        blurRadius: 15,
-        offset: const Offset(0, 5),
-        spreadRadius: 0,
-      ),
-    ];
+    // No shadows for cards/tiles
+    return [];
   }
 
   // ========== SPACING (8pt Grid System) ==========

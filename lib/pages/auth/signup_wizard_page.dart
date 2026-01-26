@@ -1,8 +1,10 @@
+import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../theme/design_tokens.dart';
 
 class SignupWizardPage extends StatefulWidget {
   const SignupWizardPage({super.key});
@@ -11,31 +13,37 @@ class SignupWizardPage extends StatefulWidget {
   State<SignupWizardPage> createState() => _SignupWizardPageState();
 }
 
-class _SignupWizardPageState extends State<SignupWizardPage> {
+class _SignupWizardPageState extends State<SignupWizardPage>
+    with TickerProviderStateMixin {
   final _page = PageController();
+  final _scrollController = ScrollController();
   int _step = 0;
 
   // Step 1
   final _userId = TextEditingController();
   final _email = TextEditingController();
   final _pass = TextEditingController();
+  final _confirmPass = TextEditingController();
+  String? _userIdAvailabilityStatus;
+  bool _isCheckingUserId = false;
 
   // Step 2
   final _first = TextEditingController();
   final _last = TextEditingController();
   final _phone = TextEditingController();
+  String _phoneCountryCode = '+91';
 
   // Step 3
   DateTime _dob = DateTime(2002, 1, 1);
   String _gender = 'Male';
 
   // Step 4
-  bool _heightInCm = true; // else ft/in
+  bool _heightInCm = true;
   double _heightCm = 170;
   int _feet = 5;
   int _inch = 7;
 
-  bool _weightInKg = true; // else lbs
+  bool _weightInKg = true;
   double _weightKg = 70;
   double _weightLbs = 154;
 
@@ -56,16 +64,55 @@ class _SignupWizardPageState extends State<SignupWizardPage> {
   String _role = 'Client';
 
   bool _isSubmitting = false;
+  
+  late final AnimationController _fadeController;
+  late final AnimationController _stepTransitionController;
+
+  @override
+  void initState() {
+    super.initState();
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    )..forward();
+    
+    _stepTransitionController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    
+    _stepTransitionController.forward();
+    
+    // Add listeners to text controllers to check completion
+    _userId.addListener(_checkAndScroll);
+    _email.addListener(_checkAndScroll);
+    _pass.addListener(_checkAndScroll);
+    _confirmPass.addListener(_checkAndScroll);
+    _first.addListener(_checkAndScroll);
+    _last.addListener(_checkAndScroll);
+    _phone.addListener(_checkAndScroll);
+  }
 
   @override
   void dispose() {
     _page.dispose();
+    _scrollController.dispose();
+    _userId.removeListener(_checkAndScroll);
+    _email.removeListener(_checkAndScroll);
+    _pass.removeListener(_checkAndScroll);
+    _confirmPass.removeListener(_checkAndScroll);
+    _first.removeListener(_checkAndScroll);
+    _last.removeListener(_checkAndScroll);
+    _phone.removeListener(_checkAndScroll);
     _userId.dispose();
     _email.dispose();
     _pass.dispose();
+    _confirmPass.dispose();
     _first.dispose();
     _last.dispose();
     _phone.dispose();
+    _fadeController.dispose();
+    _stepTransitionController.dispose();
     super.dispose();
   }
 
@@ -84,14 +131,128 @@ class _SignupWizardPageState extends State<SignupWizardPage> {
     return _weightKgResolved / (h * h);
   }
 
+  bool _validateStep1() {
+    final userIdText = _userId.text.trim();
+    if (userIdText.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('User ID is required')),
+      );
+      return false;
+    }
+    if (!RegExp(r'^[a-z0-9_]+$').hasMatch(userIdText)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('User ID can only contain lowercase letters, numbers, and underscore')),
+      );
+      return false;
+    }
+    if (_userIdAvailabilityStatus != 'available') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please ensure User ID is available')),
+      );
+      return false;
+    }
+
+    if (_email.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Email is required')),
+      );
+      return false;
+    }
+    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(_email.text.trim())) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid email')),
+      );
+      return false;
+    }
+
+    final pass = _pass.text;
+    if (pass.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Password is required')),
+      );
+      return false;
+    }
+    if (!_isValidPassword(pass)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Password must have 1 uppercase, 1 lowercase, 1 number, and 1 special character')),
+      );
+      return false;
+    }
+
+    if (_confirmPass.text != _pass.text) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Passwords do not match')),
+      );
+      return false;
+    }
+
+    return true;
+  }
+
+  bool _isValidPassword(String password) {
+    final hasUpper = RegExp(r'[A-Z]').hasMatch(password);
+    final hasLower = RegExp(r'[a-z]').hasMatch(password);
+    final hasNumber = RegExp(r'[0-9]').hasMatch(password);
+    final hasSpecial = RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(password);
+    return hasUpper && hasLower && hasNumber && hasSpecial;
+  }
+
+  Future<void> _checkUserIdAvailability(String userId) async {
+    if (userId.isEmpty || !RegExp(r'^[a-z0-9_]+$').hasMatch(userId)) {
+      setState(() {
+        _userIdAvailabilityStatus = null;
+        _isCheckingUserId = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _isCheckingUserId = true;
+      _userIdAvailabilityStatus = 'checking';
+    });
+
+    try {
+      final supabase = Supabase.instance.client;
+      final response = await supabase
+          .from('profiles')
+          .select('user_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      if (!mounted) return;
+
+      setState(() {
+        _isCheckingUserId = false;
+        _userIdAvailabilityStatus = response == null ? 'available' : 'taken';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isCheckingUserId = false;
+        _userIdAvailabilityStatus = 'available';
+      });
+    }
+  }
+
   void _next() {
     HapticFeedback.lightImpact();
+    
+    if (_step == 0 && !_validateStep1()) {
+      return;
+    }
+    
     if (_step < 4) {
+      // Reset scroll position for new step
+      _scrollController.jumpTo(0);
+      
+      // Animate step transition
+      _stepTransitionController.reset();
       setState(() => _step++);
       _page.nextPage(
-        duration: const Duration(milliseconds: 320),
-        curve: Curves.easeOutCubic,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
       );
+      _stepTransitionController.forward();
     } else {
       _submit();
     }
@@ -117,11 +278,9 @@ class _SignupWizardPageState extends State<SignupWizardPage> {
     try {
       final supabase = Supabase.instance.client;
 
-      // Convert height to cm and weight to kg for storage
       final heightCm = _heightInCm ? _heightCm : ((_feet * 30.48) + (_inch * 2.54));
       final weightKg = _weightInKg ? _weightKg : (_weightLbs * 0.45359237);
 
-      // Sign up with Supabase
       final response = await supabase.auth.signUp(
         email: _email.text.trim(),
         password: _pass.text,
@@ -129,7 +288,7 @@ class _SignupWizardPageState extends State<SignupWizardPage> {
           'user_id': _userId.text.trim(),
           'first_name': _first.text.trim(),
           'last_name': _last.text.trim(),
-          'phone': '+91${_phone.text.trim()}',
+          'phone': '${_phoneCountryCode}${_phone.text.trim()}',
           'dob': _dob.toIso8601String(),
           'gender': _gender,
           'height_cm': heightCm,
@@ -143,7 +302,6 @@ class _SignupWizardPageState extends State<SignupWizardPage> {
       if (!mounted) return;
 
       if (response.user != null) {
-        // Success - navigate to home
         context.go('/home');
       } else {
         throw Exception('Signup failed');
@@ -153,7 +311,11 @@ class _SignupWizardPageState extends State<SignupWizardPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Signup failed: ${e.toString()}'),
-          backgroundColor: Colors.red,
+          backgroundColor: DesignTokens.accentRed,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
+          ),
         ),
       );
     } finally {
@@ -163,74 +325,189 @@ class _SignupWizardPageState extends State<SignupWizardPage> {
     }
   }
 
+  Color _getStepColor(int step) {
+    // Different color for each step
+    switch (step) {
+      case 0:
+        return DesignTokens.accentOrange; // Step 1: Orange
+      case 1:
+        return DesignTokens.accentBlue; // Step 2: Blue
+      case 2:
+        return DesignTokens.accentPurple; // Step 3: Purple
+      case 3:
+        return DesignTokens.accentGreen; // Step 4: Green
+      case 4:
+        return DesignTokens.accentAmber; // Step 5: Amber
+      default:
+        return DesignTokens.accentOrange;
+    }
+  }
+
+  bool _isStepComplete(int step) {
+    switch (step) {
+      case 0: // Step 1: Credentials
+        final pass = _pass.text;
+        final hasValidPassword = pass.isNotEmpty && 
+          RegExp(r'[A-Z]').hasMatch(pass) &&
+          RegExp(r'[a-z]').hasMatch(pass) &&
+          RegExp(r'[0-9]').hasMatch(pass) &&
+          RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(pass);
+        return _userId.text.trim().isNotEmpty &&
+               _email.text.trim().isNotEmpty &&
+               hasValidPassword &&
+               _pass.text == _confirmPass.text &&
+               _confirmPass.text.isNotEmpty &&
+               _userIdAvailabilityStatus == 'available';
+      case 1: // Step 2: Personal Info
+        return _first.text.trim().isNotEmpty &&
+               _last.text.trim().isNotEmpty &&
+               _phone.text.trim().isNotEmpty;
+      case 2: // Step 3: DOB & Gender
+        return _gender.isNotEmpty;
+      case 3: // Step 4: Height & Weight
+        return true; // Always complete (has default values)
+      case 4: // Step 5: Goals & Role
+        return _selectedGoals.isNotEmpty && _role.isNotEmpty;
+      default:
+        return false;
+    }
+  }
+
+  void _checkAndScroll() {
+    if (_isStepComplete(_step)) {
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 400),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final bgColor = DesignTokens.backgroundOf(context);
     final progress = (_step + 1) / 5;
 
     return Scaffold(
+      backgroundColor: bgColor,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  IconButton(
-                    onPressed: _back,
-                    icon: const Icon(Icons.arrow_back),
-                  ),
-                  Expanded(
-                    child: Text(
-                      'Create account',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleLarge
-                          ?.copyWith(fontWeight: FontWeight.w800),
+        child: FadeTransition(
+          opacity: _fadeController,
+          child: SingleChildScrollView(
+            controller: _scrollController,
+            child: Column(
+              children: [
+              // Clean Header
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: DesignTokens.spacing24,
+                  vertical: DesignTokens.spacing20,
+                ),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: _back,
+                      icon: Icon(
+                        Icons.arrow_back_rounded,
+                        color: DesignTokens.textPrimaryOf(context),
+                      ),
                     ),
-                  ),
-                  Text(
-                    'Step ${_step + 1}/5',
-                    style: TextStyle(color: cs.onSurfaceVariant),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(99),
-                child: SizedBox(
-                  height: 10,
-                  child: Stack(
-                    children: [
-                      Container(color: cs.surfaceContainerHighest.withOpacity(0.35)),
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 260),
-                        curve: Curves.easeOutCubic,
-                        width: MediaQuery.of(context).size.width * progress,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [cs.primary, cs.primary.withOpacity(0.55)],
-                          ),
+                    Expanded(
+                      child: Text(
+                        'Create Account',
+                        style: TextStyle(
+                          fontSize: DesignTokens.fontSizeH2,
+                          fontWeight: DesignTokens.fontWeightBold,
+                          color: DesignTokens.textPrimaryOf(context),
                         ),
                       ),
-                    ],
+                    ),
+                    // Step count with different style
+                    Row(
+                      children: [
+                        Text(
+                          '${_step + 1}',
+                          style: TextStyle(
+                            color: _getStepColor(_step),
+                            fontWeight: DesignTokens.fontWeightBold,
+                            fontSize: DesignTokens.fontSizeH2,
+                          ),
+                        ),
+                        Text(
+                          '/5',
+                          style: TextStyle(
+                            color: DesignTokens.textSecondaryOf(context),
+                            fontWeight: DesignTokens.fontWeightMedium,
+                            fontSize: DesignTokens.fontSizeBody,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              
+              // Progress Bar with different colors for each step
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: DesignTokens.spacing24,
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: SizedBox(
+                    height: 4,
+                    child: Stack(
+                      children: [
+                        Container(
+                          color: DesignTokens.borderColorOf(context),
+                        ),
+                        AnimatedContainer(
+                          duration: DesignTokens.animationMedium,
+                          curve: DesignTokens.animationCurve,
+                          width: MediaQuery.of(context).size.width * progress,
+                          decoration: BoxDecoration(
+                            color: _getStepColor(_step),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
-              Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: cs.surface.withOpacity(0.55),
-                    borderRadius: BorderRadius.circular(22),
-                    border: Border.all(color: cs.outlineVariant.withOpacity(0.35)),
+              
+              const SizedBox(height: DesignTokens.spacing32),
+              
+              // Content
+              SizedBox(
+                height: MediaQuery.of(context).size.height * 0.5,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: DesignTokens.spacing24,
                   ),
-                  child: PageView(
-                    controller: _page,
-                    physics: const NeverScrollableScrollPhysics(),
-                    children: [
-                      _Step1(userId: _userId, email: _email, pass: _pass),
-                      _Step2(first: _first, last: _last, phone: _phone),
+                    child: PageView(
+                      controller: _page,
+                      physics: const NeverScrollableScrollPhysics(),
+                      children: [
+                      _Step1(
+                        userId: _userId,
+                        email: _email,
+                        pass: _pass,
+                        confirmPass: _confirmPass,
+                        userIdAvailabilityStatus: _userIdAvailabilityStatus,
+                        isCheckingUserId: _isCheckingUserId,
+                        onUserIdChanged: _checkUserIdAvailability,
+                      ),
+                      _Step2(
+                        first: _first,
+                        last: _last,
+                        phone: _phone,
+                        countryCode: _phoneCountryCode,
+                        onCountryCodeChanged: (code) => setState(() => _phoneCountryCode = code),
+                      ),
                       _Step3(
                         dob: _dob,
                         gender: _gender,
@@ -289,18 +566,23 @@ class _SignupWizardPageState extends State<SignupWizardPage> {
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
-              _PrimaryButton(
-                text: _step == 4 ? 'Submit' : 'Next',
-                onTap: _isSubmitting ? null : _next,
-                isLoading: _isSubmitting,
+              
+              const SizedBox(height: DesignTokens.spacing20),
+              
+              // Next/Submit Button
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: DesignTokens.spacing24,
+                  vertical: DesignTokens.spacing20,
+                ),
+                child: _CleanButton(
+                  text: _step == 4 ? 'Create Account' : 'Continue',
+                  onTap: _isSubmitting ? null : _next,
+                  isLoading: _isSubmitting,
+                ),
               ),
-              const SizedBox(height: 10),
-              Text(
-                'We email from noreply@cotrainr.com',
-                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -308,86 +590,246 @@ class _SignupWizardPageState extends State<SignupWizardPage> {
   }
 }
 
-class _Step1 extends StatelessWidget {
+// Step 1: Credentials
+class _Step1 extends StatefulWidget {
   final TextEditingController userId;
   final TextEditingController email;
   final TextEditingController pass;
+  final TextEditingController confirmPass;
+  final String? userIdAvailabilityStatus;
+  final bool isCheckingUserId;
+  final ValueChanged<String> onUserIdChanged;
 
-  const _Step1({required this.userId, required this.email, required this.pass});
+  const _Step1({
+    required this.userId,
+    required this.email,
+    required this.pass,
+    required this.confirmPass,
+    required this.userIdAvailabilityStatus,
+    required this.isCheckingUserId,
+    required this.onUserIdChanged,
+  });
 
   @override
-  Widget build(BuildContext context) {
-    return _StepShell(
-      title: 'Step 1: Credentials',
-      subtitle: 'Set your user id, email, and password.',
-      child: Column(
-        children: [
-          _Field(
-            label: 'User ID',
-            controller: userId,
-            keyboardType: TextInputType.text,
-            prefix: const Icon(Icons.alternate_email),
-          ),
-          const SizedBox(height: 12),
-          _Field(
-            label: 'Email',
-            controller: email,
-            keyboardType: TextInputType.emailAddress,
-            prefix: const Icon(Icons.mail_outline),
-          ),
-          const SizedBox(height: 12),
-          _Field(
-            label: 'Password',
-            controller: pass,
-            obscureText: true,
-            prefix: const Icon(Icons.lock_outline),
-          ),
-        ],
-      ),
-    );
-  }
+  State<_Step1> createState() => _Step1State();
 }
 
-class _Step2 extends StatelessWidget {
-  final TextEditingController first;
-  final TextEditingController last;
-  final TextEditingController phone;
+class _Step1State extends State<_Step1> {
+  bool _obscurePass = true;
+  bool _obscureConfirmPass = true;
 
-  const _Step2({required this.first, required this.last, required this.phone});
+  bool _isValidPassword(String password) {
+    final hasUpper = RegExp(r'[A-Z]').hasMatch(password);
+    final hasLower = RegExp(r'[a-z]').hasMatch(password);
+    final hasNumber = RegExp(r'[0-9]').hasMatch(password);
+    final hasSpecial = RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(password);
+    return hasUpper && hasLower && hasNumber && hasSpecial;
+  }
 
   @override
   Widget build(BuildContext context) {
+    final textPrimary = DesignTokens.textPrimaryOf(context);
+    final textSecondary = DesignTokens.textSecondaryOf(context);
+    final surfaceColor = DesignTokens.surfaceOf(context);
+    final borderColor = DesignTokens.borderColorOf(context);
+    final pass = widget.pass.text;
+    final hasValidPassword = pass.isNotEmpty && _isValidPassword(pass);
+    final passwordsMatch = widget.pass.text == widget.confirmPass.text && widget.confirmPass.text.isNotEmpty;
+
     return _StepShell(
-      title: 'Step 2: Profile',
-      subtitle: 'Your name and Indian phone number.',
+      title: 'Account Setup',
+      subtitle: 'Create your unique user ID and secure password',
       child: Column(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: _Field(
-                  label: 'First name',
-                  controller: first,
-                  prefix: const Icon(Icons.person_outline),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _Field(
-                  label: 'Last name',
-                  controller: last,
-                ),
-              ),
+          // User ID
+          TextFormField(
+            controller: widget.userId,
+            keyboardType: TextInputType.text,
+            textInputAction: TextInputAction.next,
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[a-z0-9_]')),
+              TextInputFormatter.withFunction((oldValue, newValue) {
+                return TextEditingValue(
+                  text: newValue.text.toLowerCase(),
+                  selection: newValue.selection,
+                );
+              }),
             ],
+            onChanged: (value) {
+              Future.delayed(const Duration(milliseconds: 500), () {
+                if (widget.userId.text == value) {
+                  widget.onUserIdChanged(value);
+                }
+              });
+            },
+            style: TextStyle(
+              color: textPrimary,
+              fontWeight: DesignTokens.fontWeightMedium,
+              fontSize: DesignTokens.fontSizeBody,
+            ),
+            decoration: InputDecoration(
+              labelText: 'User ID',
+              hintText: 'lowercase, numbers, _ only',
+              prefixIcon: Icon(Icons.alternate_email, color: textSecondary, size: 20),
+              suffixIcon: widget.isCheckingUserId
+                  ? SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(DesignTokens.accentOrange),
+                        ),
+                      ),
+                    )
+                  : widget.userIdAvailabilityStatus == 'available'
+                      ? Icon(Icons.check_circle, color: DesignTokens.accentGreen, size: 20)
+                      : widget.userIdAvailabilityStatus == 'taken'
+                          ? Icon(Icons.cancel, color: DesignTokens.accentRed, size: 20)
+                          : null,
+              filled: true,
+              fillColor: surfaceColor,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: borderColor, width: 1),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: borderColor, width: 1),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: DesignTokens.accentOrange, width: 2),
+              ),
+              helperText: widget.userIdAvailabilityStatus == 'available'
+                  ? 'User ID is available'
+                  : widget.userIdAvailabilityStatus == 'taken'
+                      ? 'User ID is already taken'
+                      : widget.userIdAvailabilityStatus == 'checking'
+                          ? 'Checking availability...'
+                          : 'Only lowercase letters, numbers, and underscore',
+              helperStyle: TextStyle(
+                color: widget.userIdAvailabilityStatus == 'available'
+                    ? DesignTokens.accentGreen
+                    : widget.userIdAvailabilityStatus == 'taken'
+                        ? DesignTokens.accentRed
+                        : textSecondary,
+                fontSize: DesignTokens.fontSizeMeta,
+              ),
+            ),
           ),
-          const SizedBox(height: 12),
-          _Field(
-            label: 'Phone (India)',
-            controller: phone,
-            keyboardType: TextInputType.phone,
-            prefix: const Padding(
-              padding: EdgeInsets.only(left: 12, right: 8),
-              child: Center(child: Text('+91')),
+          const SizedBox(height: DesignTokens.spacing16),
+          
+          // Email
+          _CleanField(
+            label: 'Email',
+            controller: widget.email,
+            keyboardType: TextInputType.emailAddress,
+            prefix: Icons.mail_outline_rounded,
+          ),
+          const SizedBox(height: DesignTokens.spacing16),
+          
+          // Password
+          TextFormField(
+            controller: widget.pass,
+            obscureText: _obscurePass,
+            textInputAction: TextInputAction.next,
+            onChanged: (_) => setState(() {}),
+            style: TextStyle(
+              color: textPrimary,
+              fontWeight: DesignTokens.fontWeightMedium,
+              fontSize: DesignTokens.fontSizeBody,
+            ),
+            decoration: InputDecoration(
+              labelText: 'Password',
+              prefixIcon: Icon(Icons.lock_outline_rounded, color: textSecondary, size: 20),
+              suffixIcon: IconButton(
+                onPressed: () {
+                  HapticFeedback.selectionClick();
+                  setState(() => _obscurePass = !_obscurePass);
+                },
+                icon: Icon(
+                  _obscurePass ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                  color: textSecondary,
+                  size: 20,
+                ),
+              ),
+              filled: true,
+              fillColor: surfaceColor,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: borderColor, width: 1),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: borderColor, width: 1),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: DesignTokens.accentOrange, width: 2),
+              ),
+              helperText: pass.isEmpty
+                  ? 'Must have: 1 uppercase, 1 lowercase, 1 number, 1 special'
+                  : hasValidPassword
+                      ? 'Password is valid'
+                      : 'Missing: ${!RegExp(r'[A-Z]').hasMatch(pass) ? "uppercase " : ""}${!RegExp(r'[a-z]').hasMatch(pass) ? "lowercase " : ""}${!RegExp(r'[0-9]').hasMatch(pass) ? "number " : ""}${!RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(pass) ? "special char" : ""}',
+              helperStyle: TextStyle(
+                color: hasValidPassword ? DesignTokens.accentGreen : DesignTokens.accentRed,
+                fontSize: DesignTokens.fontSizeMeta,
+              ),
+            ),
+          ),
+          const SizedBox(height: DesignTokens.spacing16),
+          
+          // Confirm Password
+          TextFormField(
+            controller: widget.confirmPass,
+            obscureText: _obscureConfirmPass,
+            textInputAction: TextInputAction.done,
+            onChanged: (_) => setState(() {}),
+            style: TextStyle(
+              color: textPrimary,
+              fontWeight: DesignTokens.fontWeightMedium,
+              fontSize: DesignTokens.fontSizeBody,
+            ),
+            decoration: InputDecoration(
+              labelText: 'Confirm Password',
+              prefixIcon: Icon(Icons.lock_outline_rounded, color: textSecondary, size: 20),
+              suffixIcon: IconButton(
+                onPressed: () {
+                  HapticFeedback.selectionClick();
+                  setState(() => _obscureConfirmPass = !_obscureConfirmPass);
+                },
+                icon: Icon(
+                  _obscureConfirmPass ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                  color: textSecondary,
+                  size: 20,
+                ),
+              ),
+              filled: true,
+              fillColor: surfaceColor,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: borderColor, width: 1),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: borderColor, width: 1),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: DesignTokens.accentOrange, width: 2),
+              ),
+              helperText: widget.confirmPass.text.isEmpty
+                  ? 'Re-enter your password'
+                  : passwordsMatch
+                      ? 'Passwords match'
+                      : 'Passwords do not match',
+              helperStyle: TextStyle(
+                color: passwordsMatch ? DesignTokens.accentGreen : DesignTokens.accentRed,
+                fontSize: DesignTokens.fontSizeMeta,
+              ),
             ),
           ),
         ],
@@ -396,6 +838,160 @@ class _Step2 extends StatelessWidget {
   }
 }
 
+// Step 2: Profile
+class _Step2 extends StatefulWidget {
+  final TextEditingController first;
+  final TextEditingController last;
+  final TextEditingController phone;
+  final String countryCode;
+  final ValueChanged<String> onCountryCodeChanged;
+
+  const _Step2({
+    required this.first,
+    required this.last,
+    required this.phone,
+    required this.countryCode,
+    required this.onCountryCodeChanged,
+  });
+
+  @override
+  State<_Step2> createState() => _Step2State();
+}
+
+class _Step2State extends State<_Step2> {
+  final Map<String, String> _countryCodes = {
+    'India': '+91',
+    'United States': '+1',
+    'United Kingdom': '+44',
+    'Canada': '+1',
+    'Australia': '+61',
+    'Germany': '+49',
+    'France': '+33',
+    'Japan': '+81',
+    'China': '+86',
+    'Brazil': '+55',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return _StepShell(
+      title: 'Personal Information',
+      subtitle: 'Tell us about yourself',
+      child: Column(
+        children: [
+          // First name - full width
+          _CleanField(
+            label: 'First name',
+            controller: widget.first,
+            prefix: Icons.person_outline_rounded,
+          ),
+          const SizedBox(height: DesignTokens.spacing16),
+          // Last name - full width
+          _CleanField(
+            label: 'Last name',
+            controller: widget.last,
+            prefix: Icons.person_outline_rounded,
+          ),
+          const SizedBox(height: DesignTokens.spacing16),
+          // Phone with country code
+          Row(
+            children: [
+              // Country code selector
+              Container(
+                width: 100,
+                decoration: BoxDecoration(
+                  color: DesignTokens.surfaceOf(context),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: DesignTokens.borderColorOf(context),
+                    width: 1,
+                  ),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: widget.countryCode,
+                    isExpanded: true,
+                    padding: const EdgeInsets.symmetric(horizontal: DesignTokens.spacing12),
+                    icon: Icon(
+                      Icons.arrow_drop_down,
+                      color: DesignTokens.textSecondaryOf(context),
+                    ),
+                    style: TextStyle(
+                      color: DesignTokens.textPrimaryOf(context),
+                      fontWeight: DesignTokens.fontWeightMedium,
+                      fontSize: DesignTokens.fontSizeBody,
+                    ),
+                    items: _countryCodes.entries.map((entry) {
+                      return DropdownMenuItem<String>(
+                        value: entry.value,
+                        child: Text(entry.value),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      if (value != null) {
+                        widget.onCountryCodeChanged(value);
+                      }
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(width: DesignTokens.spacing12),
+              // Phone number field
+              Expanded(
+                child: TextFormField(
+                  controller: widget.phone,
+                  keyboardType: TextInputType.phone,
+                  style: TextStyle(
+                    color: DesignTokens.textPrimaryOf(context),
+                    fontWeight: DesignTokens.fontWeightMedium,
+                    fontSize: DesignTokens.fontSizeBody,
+                  ),
+                  decoration: InputDecoration(
+                    labelText: 'Phone number',
+                    prefixIcon: Icon(
+                      Icons.phone_outlined,
+                      color: DesignTokens.textSecondaryOf(context),
+                      size: 20,
+                    ),
+                    filled: true,
+                    fillColor: DesignTokens.surfaceOf(context),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: DesignTokens.borderColorOf(context),
+                        width: 1,
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: DesignTokens.borderColorOf(context),
+                        width: 1,
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(
+                        color: DesignTokens.accentOrange,
+                        width: 2,
+                      ),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: DesignTokens.spacing16,
+                      vertical: DesignTokens.spacing16,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Step 3: DOB and Gender
 class _Step3 extends StatelessWidget {
   final DateTime dob;
   final String gender;
@@ -411,56 +1007,78 @@ class _Step3 extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return _StepShell(
-      title: 'Step 3: DOB and Gender',
-      subtitle: 'Use the rotator picker for date.',
+      title: 'Date of Birth & Gender',
+      subtitle: 'Help us personalize your experience',
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
+          // Modern DOB picker with blur effect
           Container(
-            height: 180,
+            height: 220,
             decoration: BoxDecoration(
-              color: cs.surface.withOpacity(0.5),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: cs.outlineVariant.withOpacity(0.35)),
-            ),
-            child: CupertinoTheme(
-              data: CupertinoThemeData(
-                brightness: Theme.of(context).brightness,
-                primaryColor: cs.primary,
-                textTheme: CupertinoTextThemeData(
-                  dateTimePickerTextStyle: TextStyle(
-                    color: cs.onSurface,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+              color: DesignTokens.surfaceOf(context),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: DesignTokens.borderColorOf(context),
+                width: 1,
               ),
-              child: CupertinoDatePicker(
-                mode: CupertinoDatePickerMode.date,
-                initialDateTime: dob,
-                maximumDate: DateTime.now().subtract(const Duration(days: 365 * 10)),
-                minimumDate: DateTime(1950, 1, 1),
-                onDateTimeChanged: onDobChanged,
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: Stack(
+                children: [
+                  // Blur effect overlay
+                  Positioned.fill(
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 2, sigmaY: 2),
+                      child: Container(
+                        color: DesignTokens.surfaceOf(context).withValues(alpha: 0.8),
+                      ),
+                    ),
+                  ),
+                  // Date picker
+                  CupertinoTheme(
+                    data: CupertinoThemeData(
+                      brightness: Theme.of(context).brightness,
+                      primaryColor: DesignTokens.accentOrange,
+                      textTheme: CupertinoTextThemeData(
+                        dateTimePickerTextStyle: TextStyle(
+                          color: DesignTokens.textPrimaryOf(context),
+                          fontSize: 22,
+                          fontWeight: DesignTokens.fontWeightSemiBold,
+                        ),
+                      ),
+                    ),
+                    child: CupertinoDatePicker(
+                      mode: CupertinoDatePickerMode.date,
+                      initialDateTime: dob,
+                      maximumDate: DateTime.now().subtract(const Duration(days: 365 * 10)),
+                      minimumDate: DateTime(1950, 1, 1),
+                      onDateTimeChanged: onDobChanged,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: DesignTokens.spacing32),
           Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _ChoiceChip(
+              _GenderChip(
                 text: 'Male',
                 selected: gender == 'Male',
                 onTap: () => onGender('Male'),
               ),
-              const SizedBox(width: 10),
-              _ChoiceChip(
+              const SizedBox(width: DesignTokens.spacing12),
+              _GenderChip(
                 text: 'Female',
                 selected: gender == 'Female',
                 onTap: () => onGender('Female'),
               ),
-              const SizedBox(width: 10),
-              _ChoiceChip(
+              const SizedBox(width: DesignTokens.spacing12),
+              _GenderChip(
                 text: 'Other',
                 selected: gender == 'Other',
                 onTap: () => onGender('Other'),
@@ -473,26 +1091,21 @@ class _Step3 extends StatelessWidget {
   }
 }
 
-class _Step4 extends StatelessWidget {
+// Step 4: Height and Weight
+class _Step4 extends StatefulWidget {
   final bool heightInCm;
   final bool weightInKg;
-
   final double heightCm;
   final int feet;
   final int inch;
-
   final double weightKg;
   final double weightLbs;
-
   final double bmi;
-
   final ValueChanged<bool> onToggleHeightUnit;
   final ValueChanged<bool> onToggleWeightUnit;
-
   final ValueChanged<double> onHeightCm;
   final ValueChanged<int> onFeet;
   final ValueChanged<int> onInch;
-
   final ValueChanged<double> onWeightKg;
   final ValueChanged<double> onWeightLbs;
 
@@ -515,128 +1128,255 @@ class _Step4 extends StatelessWidget {
   });
 
   @override
+  State<_Step4> createState() => _Step4State();
+}
+
+class _Step4State extends State<_Step4> {
+  late FixedExtentScrollController _heightCmController;
+  late FixedExtentScrollController _feetController;
+  late FixedExtentScrollController _inchController;
+  late FixedExtentScrollController _weightKgController;
+  late FixedExtentScrollController _weightLbsController;
+
+  @override
+  void initState() {
+    super.initState();
+    _heightCmController = FixedExtentScrollController(initialItem: (widget.heightCm - 80).round());
+    _feetController = FixedExtentScrollController(initialItem: widget.feet - 3);
+    _inchController = FixedExtentScrollController(initialItem: widget.inch);
+    _weightKgController = FixedExtentScrollController(initialItem: ((widget.weightKg - 20) * 2).round());
+    _weightLbsController = FixedExtentScrollController(initialItem: (widget.weightLbs - 44).round());
+  }
+
+  @override
+  void dispose() {
+    _heightCmController.dispose();
+    _feetController.dispose();
+    _inchController.dispose();
+    _weightKgController.dispose();
+    _weightLbsController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final textPrimary = DesignTokens.textPrimaryOf(context);
 
     return _StepShell(
-      title: 'Step 4: Height and Weight',
-      subtitle: 'Toggle units, we will store canonical values in backend.',
+      title: 'Height & Weight',
+      subtitle: 'Select your measurements',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Height', style: TextStyle(color: cs.onSurfaceVariant)),
-          const SizedBox(height: 8),
+          Text(
+            'Height',
+            style: TextStyle(
+              color: DesignTokens.textSecondaryOf(context),
+              fontWeight: DesignTokens.fontWeightSemiBold,
+              fontSize: DesignTokens.fontSizeBody,
+            ),
+          ),
+          const SizedBox(height: DesignTokens.spacing8),
           Row(
             children: [
               _TogglePill(
                 left: 'cm',
                 right: 'ft/in',
-                isLeft: heightInCm,
-                onChanged: onToggleHeightUnit,
+                isLeft: widget.heightInCm,
+                onChanged: widget.onToggleHeightUnit,
               ),
-              const Spacer(),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: DesignTokens.spacing12),
           AnimatedSwitcher(
-            duration: const Duration(milliseconds: 260),
-            switchInCurve: Curves.easeOutCubic,
-            switchOutCurve: Curves.easeInCubic,
-            child: heightInCm
-                ? _NumberField(
+            duration: DesignTokens.animationMedium,
+            child: widget.heightInCm
+                ? _ModernRotator(
                     key: const ValueKey('cm'),
-                    label: 'Height (cm)',
-                    value: heightCm.toStringAsFixed(0),
-                    keyboardType: TextInputType.number,
-                    onChanged: (v) {
-                      final n = double.tryParse(v);
-                      if (n != null) onHeightCm(n.clamp(80, 230));
-                    },
+                    height: 180,
+                    child: CupertinoTheme(
+                      data: CupertinoThemeData(
+                        brightness: Theme.of(context).brightness,
+                        primaryColor: DesignTokens.accentOrange,
+                        textTheme: CupertinoTextThemeData(
+                          pickerTextStyle: TextStyle(
+                            color: textPrimary,
+                            fontSize: 22,
+                            fontWeight: DesignTokens.fontWeightSemiBold,
+                          ),
+                        ),
+                      ),
+                      child: CupertinoPicker(
+                        scrollController: _heightCmController,
+                        itemExtent: 50,
+                        onSelectedItemChanged: (index) {
+                          HapticFeedback.selectionClick();
+                          widget.onHeightCm((80 + index).toDouble());
+                        },
+                        children: List.generate(151, (index) {
+                          final value = 80 + index;
+                          return Center(
+                            child: Text('$value cm'),
+                          );
+                        }),
+                      ),
+                    ),
                   )
                 : Row(
                     key: const ValueKey('ftin'),
                     children: [
                       Expanded(
-                        child: _NumberField(
-                          label: 'Feet',
-                          value: '$feet',
-                          keyboardType: TextInputType.number,
-                          onChanged: (v) {
-                            final n = int.tryParse(v);
-                            if (n != null) onFeet(n.clamp(3, 8));
-                          },
+                        child: _ModernRotator(
+                          height: 180,
+                          child: CupertinoTheme(
+                            data: CupertinoThemeData(
+                              brightness: Theme.of(context).brightness,
+                              primaryColor: DesignTokens.accentOrange,
+                              textTheme: CupertinoTextThemeData(
+                                pickerTextStyle: TextStyle(
+                                  color: textPrimary,
+                                  fontSize: 22,
+                                  fontWeight: DesignTokens.fontWeightSemiBold,
+                                ),
+                              ),
+                            ),
+                            child: CupertinoPicker(
+                              scrollController: _feetController,
+                              itemExtent: 50,
+                              onSelectedItemChanged: (index) {
+                                HapticFeedback.selectionClick();
+                                widget.onFeet(3 + index);
+                              },
+                              children: List.generate(6, (index) {
+                                final value = 3 + index;
+                                return Center(child: Text('$value ft'));
+                              }),
+                            ),
+                          ),
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: DesignTokens.spacing12),
                       Expanded(
-                        child: _NumberField(
-                          label: 'Inches',
-                          value: '$inch',
-                          keyboardType: TextInputType.number,
-                          onChanged: (v) {
-                            final n = int.tryParse(v);
-                            if (n != null) onInch(n.clamp(0, 11));
-                          },
+                        child: _ModernRotator(
+                          height: 180,
+                          child: CupertinoTheme(
+                            data: CupertinoThemeData(
+                              brightness: Theme.of(context).brightness,
+                              primaryColor: DesignTokens.accentOrange,
+                              textTheme: CupertinoTextThemeData(
+                                pickerTextStyle: TextStyle(
+                                  color: textPrimary,
+                                  fontSize: 22,
+                                  fontWeight: DesignTokens.fontWeightSemiBold,
+                                ),
+                              ),
+                            ),
+                            child: CupertinoPicker(
+                              scrollController: _inchController,
+                              itemExtent: 50,
+                              onSelectedItemChanged: (index) {
+                                HapticFeedback.selectionClick();
+                                widget.onInch(index);
+                              },
+                              children: List.generate(12, (index) {
+                                return Center(child: Text('$index in'));
+                              }),
+                            ),
+                          ),
                         ),
                       ),
                     ],
                   ),
           ),
-          const SizedBox(height: 16),
-          Text('Weight', style: TextStyle(color: cs.onSurfaceVariant)),
-          const SizedBox(height: 8),
+          const SizedBox(height: DesignTokens.spacing24),
+          // Weight section with icon
           Row(
             children: [
-              _TogglePill(
-                left: 'kg',
-                right: 'lbs',
-                isLeft: weightInKg,
-                onChanged: onToggleWeightUnit,
+              Icon(
+                Icons.monitor_weight_rounded,
+                color: DesignTokens.accentOrange,
+                size: 20,
               ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: cs.primary.withOpacity(0.14),
-                  borderRadius: BorderRadius.circular(99),
-                  border: Border.all(color: cs.primary.withOpacity(0.25)),
-                ),
-                child: Text(
-                  'BMI ${bmi.isFinite ? bmi.toStringAsFixed(1) : '--'}',
-                  style: TextStyle(color: cs.onSurface, fontWeight: FontWeight.w800),
+              const SizedBox(width: DesignTokens.spacing8),
+              Text(
+                'Weight',
+                style: TextStyle(
+                  color: DesignTokens.textSecondaryOf(context),
+                  fontWeight: DesignTokens.fontWeightSemiBold,
+                  fontSize: DesignTokens.fontSizeBody,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 260),
-            child: weightInKg
-                ? _NumberField(
-                    key: const ValueKey('kg'),
-                    label: 'Weight (kg)',
-                    value: weightKg.toStringAsFixed(1),
-                    keyboardType: TextInputType.number,
-                    onChanged: (v) {
-                      final n = double.tryParse(v);
-                      if (n != null) onWeightKg(n.clamp(20, 250));
-                    },
-                  )
-                : _NumberField(
-                    key: const ValueKey('lbs'),
-                    label: 'Weight (lbs)',
-                    value: weightLbs.toStringAsFixed(0),
-                    keyboardType: TextInputType.number,
-                    onChanged: (v) {
-                      final n = double.tryParse(v);
-                      if (n != null) onWeightLbs(n.clamp(44, 550));
-                    },
-                  ),
+          const SizedBox(height: DesignTokens.spacing8),
+          _TogglePill(
+            left: 'kg',
+            right: 'lbs',
+            isLeft: widget.weightInKg,
+            onChanged: widget.onToggleWeightUnit,
           ),
-          const SizedBox(height: 10),
-          Text(
-            'BMI shown here is preview. Store height/weight in backend, compute BMI there too.',
-            style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+          const SizedBox(height: DesignTokens.spacing12),
+          AnimatedSwitcher(
+            duration: DesignTokens.animationMedium,
+            child: widget.weightInKg
+                ? _ModernRotator(
+                    key: const ValueKey('kg'),
+                    height: 180,
+                    child: CupertinoTheme(
+                      data: CupertinoThemeData(
+                        brightness: Theme.of(context).brightness,
+                        primaryColor: DesignTokens.accentOrange,
+                        textTheme: CupertinoTextThemeData(
+                          pickerTextStyle: TextStyle(
+                            color: textPrimary,
+                            fontSize: 22,
+                            fontWeight: DesignTokens.fontWeightSemiBold,
+                          ),
+                        ),
+                      ),
+                      child: CupertinoPicker(
+                        scrollController: _weightKgController,
+                        itemExtent: 50,
+                        onSelectedItemChanged: (index) {
+                          HapticFeedback.selectionClick();
+                          widget.onWeightKg((20 + index * 0.5).clamp(20, 250));
+                        },
+                        children: List.generate(461, (index) {
+                          final value = (20 + index * 0.5).toStringAsFixed(1);
+                          return Center(child: Text('$value kg'));
+                        }),
+                      ),
+                    ),
+                  )
+                : _ModernRotator(
+                    key: const ValueKey('lbs'),
+                    height: 180,
+                    child: CupertinoTheme(
+                      data: CupertinoThemeData(
+                        brightness: Theme.of(context).brightness,
+                        primaryColor: DesignTokens.accentOrange,
+                        textTheme: CupertinoTextThemeData(
+                          pickerTextStyle: TextStyle(
+                            color: textPrimary,
+                            fontSize: 22,
+                            fontWeight: DesignTokens.fontWeightSemiBold,
+                          ),
+                        ),
+                      ),
+                      child: CupertinoPicker(
+                        scrollController: _weightLbsController,
+                        itemExtent: 50,
+                        onSelectedItemChanged: (index) {
+                          HapticFeedback.selectionClick();
+                          widget.onWeightLbs((44 + index).toDouble().clamp(44, 550));
+                        },
+                        children: List.generate(507, (index) {
+                          final value = 44 + index;
+                          return Center(child: Text('$value lbs'));
+                        }),
+                      ),
+                    ),
+                  ),
           ),
         ],
       ),
@@ -644,6 +1384,7 @@ class _Step4 extends StatelessWidget {
   }
 }
 
+// Step 5: Goals and Role
 class _Step5 extends StatelessWidget {
   final List<String> goals;
   final Set<String> selected;
@@ -661,48 +1402,71 @@ class _Step5 extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
     return _StepShell(
-      title: 'Step 5: Goal and Role',
-      subtitle: 'Choose your focus and role.',
+      title: 'Goals & Role',
+      subtitle: 'Choose your fitness goals and role',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Goal category', style: TextStyle(color: cs.onSurfaceVariant)),
-          const SizedBox(height: 10),
+          Text(
+            'Fitness Goals',
+            style: TextStyle(
+              color: DesignTokens.textSecondaryOf(context),
+              fontWeight: DesignTokens.fontWeightSemiBold,
+              fontSize: DesignTokens.fontSizeBody,
+            ),
+          ),
+          const SizedBox(height: DesignTokens.spacing12),
           Wrap(
-            spacing: 10,
-            runSpacing: 10,
+            spacing: DesignTokens.spacing10,
+            runSpacing: DesignTokens.spacing10,
             children: goals.map((g) {
               final isOn = selected.contains(g);
               return InkWell(
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: BorderRadius.circular(DesignTokens.radiusChip),
                 onTap: () => onToggleGoal(g),
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 220),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  duration: DesignTokens.animationFast,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: DesignTokens.spacing16,
+                    vertical: DesignTokens.spacing12,
+                  ),
                   decoration: BoxDecoration(
-                    color: isOn ? cs.primary.withOpacity(0.20) : cs.surface.withOpacity(0.45),
-                    borderRadius: BorderRadius.circular(999),
+                    color: isOn
+                        ? DesignTokens.accentOrange.withValues(alpha: 0.15)
+                        : DesignTokens.surfaceOf(context),
+                    borderRadius: BorderRadius.circular(DesignTokens.radiusChip),
                     border: Border.all(
-                      color: isOn ? cs.primary.withOpacity(0.55) : cs.outlineVariant.withOpacity(0.35),
+                      color: isOn
+                          ? DesignTokens.accentOrange.withValues(alpha: 0.5)
+                          : DesignTokens.borderColorOf(context),
+                      width: 1,
                     ),
                   ),
                   child: Text(
                     g,
                     style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: isOn ? cs.onSurface : cs.onSurfaceVariant,
+                      fontWeight: DesignTokens.fontWeightSemiBold,
+                      color: isOn
+                          ? DesignTokens.textPrimaryOf(context)
+                          : DesignTokens.textSecondaryOf(context),
+                      fontSize: DesignTokens.fontSizeBodySmall,
                     ),
                   ),
                 ),
               );
             }).toList(),
           ),
-          const SizedBox(height: 18),
-          Text('Role', style: TextStyle(color: cs.onSurfaceVariant)),
-          const SizedBox(height: 10),
+          const SizedBox(height: DesignTokens.spacing24),
+          Text(
+            'Role',
+            style: TextStyle(
+              color: DesignTokens.textSecondaryOf(context),
+              fontWeight: DesignTokens.fontWeightSemiBold,
+              fontSize: DesignTokens.fontSizeBody,
+            ),
+          ),
+          const SizedBox(height: DesignTokens.spacing12),
           Row(
             children: [
               Expanded(
@@ -712,7 +1476,7 @@ class _Step5 extends StatelessWidget {
                   onTap: () => onRole('Client'),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: DesignTokens.spacing12),
               Expanded(
                 child: _ChoiceChip(
                   text: 'Trainer',
@@ -722,17 +1486,13 @@ class _Step5 extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          Text(
-            'Note: Trainer verification (certificates, gov id) can be collected after signup on a separate flow.',
-            style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
-          ),
         ],
       ),
     );
   }
 }
 
+// Shared Components
 class _StepShell extends StatelessWidget {
   final String title;
   final String subtitle;
@@ -747,18 +1507,26 @@ class _StepShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(DesignTokens.spacing20),
       child: ListView(
         children: [
           Text(
             title,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w900,
-                ),
+            style: TextStyle(
+              fontSize: DesignTokens.fontSizeH2,
+              fontWeight: DesignTokens.fontWeightBold,
+              color: DesignTokens.textPrimaryOf(context),
+            ),
           ),
-          const SizedBox(height: 6),
-          Text(subtitle, style: Theme.of(context).textTheme.bodyMedium),
-          const SizedBox(height: 16),
+          const SizedBox(height: DesignTokens.spacing6),
+          Text(
+            subtitle,
+            style: TextStyle(
+              color: DesignTokens.textSecondaryOf(context),
+              fontSize: DesignTokens.fontSizeBody,
+            ),
+          ),
+          const SizedBox(height: DesignTokens.spacing24),
           child,
         ],
       ),
@@ -766,83 +1534,93 @@ class _StepShell extends StatelessWidget {
   }
 }
 
-class _Field extends StatelessWidget {
+class _CleanField extends StatelessWidget {
   final String label;
   final TextEditingController controller;
   final TextInputType? keyboardType;
-  final bool obscureText;
-  final String? Function(String?)? validator;
-  final Widget? prefix;
-  final Widget? suffix;
-  final ValueChanged<String>? onChanged;
+  final IconData prefix;
 
-  const _Field({
-    super.key,
+  const _CleanField({
     required this.label,
     required this.controller,
     this.keyboardType,
-    this.obscureText = false,
-    this.validator,
-    this.prefix,
-    this.suffix,
-    this.onChanged,
+    required this.prefix,
   });
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final textPrimary = DesignTokens.textPrimaryOf(context);
+    final textSecondary = DesignTokens.textSecondaryOf(context);
+    final surfaceColor = DesignTokens.surfaceOf(context);
+    final borderColor = DesignTokens.borderColorOf(context);
+    
     return TextFormField(
       controller: controller,
       keyboardType: keyboardType,
-      obscureText: obscureText,
-      validator: validator,
-      onChanged: onChanged,
-      style: TextStyle(color: cs.onSurface, fontWeight: FontWeight.w700),
+      style: TextStyle(
+        color: textPrimary,
+        fontWeight: DesignTokens.fontWeightMedium,
+        fontSize: DesignTokens.fontSizeBody,
+      ),
       decoration: InputDecoration(
         labelText: label,
-        prefixIcon: prefix,
-        suffixIcon: suffix,
+        labelStyle: TextStyle(
+          color: textSecondary,
+          fontWeight: DesignTokens.fontWeightRegular,
+        ),
+        prefixIcon: Icon(prefix, color: textSecondary, size: 20),
         filled: true,
-        fillColor: cs.surface.withOpacity(0.40),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+        fillColor: surfaceColor,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: borderColor, width: 1),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: borderColor, width: 1),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: DesignTokens.accentOrange, width: 2),
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: DesignTokens.spacing16,
+          vertical: DesignTokens.spacing16,
+        ),
       ),
     );
   }
 }
 
-class _NumberField extends StatefulWidget {
-  final String label;
-  final String value;
-  final TextInputType? keyboardType;
-  final ValueChanged<String>? onChanged;
+class _CleanButton extends StatefulWidget {
+  final String text;
+  final VoidCallback? onTap;
+  final bool isLoading;
 
-  const _NumberField({
-    super.key,
-    required this.label,
-    required this.value,
-    this.keyboardType,
-    this.onChanged,
+  const _CleanButton({
+    required this.text,
+    this.onTap,
+    this.isLoading = false,
   });
 
   @override
-  State<_NumberField> createState() => _NumberFieldState();
+  State<_CleanButton> createState() => _CleanButtonState();
 }
 
-class _NumberFieldState extends State<_NumberField> {
-  late TextEditingController _controller;
+class _CleanButtonState extends State<_CleanButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _scale;
 
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController(text: widget.value);
-  }
-
-  @override
-  void didUpdateWidget(_NumberField oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.value != widget.value) {
-      _controller.text = widget.value;
-    }
+    _controller = AnimationController(
+      vsync: this,
+      duration: DesignTokens.interactionDuration,
+    );
+    _scale = Tween<double>(begin: 1.0, end: 0.97)
+        .animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
   }
 
   @override
@@ -853,95 +1631,94 @@ class _NumberFieldState extends State<_NumberField> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return TextFormField(
-      controller: _controller,
-      keyboardType: widget.keyboardType,
-      onChanged: widget.onChanged,
-      style: TextStyle(color: cs.onSurface, fontWeight: FontWeight.w700),
-      decoration: InputDecoration(
-        labelText: widget.label,
-        filled: true,
-        fillColor: cs.surface.withOpacity(0.40),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
-      ),
-    );
-  }
-}
-
-class _PrimaryButton extends StatefulWidget {
-  final String text;
-  final VoidCallback? onTap;
-  final bool isLoading;
-
-  const _PrimaryButton({required this.text, this.onTap, this.isLoading = false});
-
-  @override
-  State<_PrimaryButton> createState() => _PrimaryButtonState();
-}
-
-class _PrimaryButtonState extends State<_PrimaryButton>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 120));
-  late final Animation<double> _s =
-      Tween(begin: 1.0, end: 0.98).animate(CurvedAnimation(parent: _c, curve: Curves.easeOut));
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
     return GestureDetector(
-      onTapDown: (_) => _c.forward(),
-      onTapCancel: () => _c.reverse(),
-      onTapUp: (_) => _c.reverse(),
-      onTap: widget.onTap == null || widget.isLoading
-          ? null
-          : () {
-              HapticFeedback.lightImpact();
-              widget.onTap?.call();
-            },
+      onTapDown: (_) => _controller.forward(),
+      onTapCancel: () => _controller.reverse(),
+      onTapUp: (_) {
+        _controller.reverse();
+        if (widget.onTap != null && !widget.isLoading) {
+          HapticFeedback.lightImpact();
+          widget.onTap?.call();
+        }
+      },
       child: ScaleTransition(
-        scale: _s,
+        scale: _scale,
         child: Container(
-          height: 54,
+          height: 52,
+          width: double.infinity,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            gradient: LinearGradient(
-              colors: [cs.primary, cs.primary.withOpacity(0.70)],
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: cs.primary.withOpacity(0.20),
-                blurRadius: 18,
-                offset: const Offset(0, 10),
-              ),
-            ],
+            color: DesignTokens.accentOrange,
+            borderRadius: BorderRadius.circular(12),
           ),
           alignment: Alignment.center,
           child: widget.isLoading
-              ? SizedBox(
-                  width: 20,
-                  height: 20,
+              ? const SizedBox(
+                  width: 24,
+                  height: 24,
                   child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(cs.onPrimary),
+                    strokeWidth: 2.5,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                   ),
                 )
               : Text(
                   widget.text,
                   style: TextStyle(
-                    color: cs.onPrimary,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 16,
+                    color: Colors.white,
+                    fontWeight: DesignTokens.fontWeightSemiBold,
+                    fontSize: DesignTokens.fontSizeBody,
                   ),
                 ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GenderChip extends StatelessWidget {
+  final String text;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _GenderChip({
+    required this.text,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textSecondary = DesignTokens.textSecondaryOf(context);
+    final surfaceColor = DesignTokens.surfaceOf(context);
+    final borderColor = DesignTokens.borderColorOf(context);
+    
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: DesignTokens.animationFast,
+        padding: const EdgeInsets.symmetric(
+          horizontal: DesignTokens.spacing20,
+          vertical: DesignTokens.spacing10,
+        ),
+        decoration: BoxDecoration(
+          color: selected
+              ? DesignTokens.accentOrange.withValues(alpha: 0.15)
+              : surfaceColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected
+                ? DesignTokens.accentOrange
+                : borderColor,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(
+            fontWeight: selected ? DesignTokens.fontWeightSemiBold : DesignTokens.fontWeightMedium,
+            color: selected ? DesignTokens.accentOrange : textSecondary,
+            fontSize: DesignTokens.fontSizeBodySmall,
+          ),
         ),
       ),
     );
@@ -961,28 +1738,87 @@ class _ChoiceChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final textPrimary = DesignTokens.textPrimaryOf(context);
+    final textSecondary = DesignTokens.textSecondaryOf(context);
+    final surfaceColor = DesignTokens.surfaceOf(context);
+    final borderColor = DesignTokens.borderColorOf(context);
+    
     return InkWell(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(DesignTokens.radiusSecondary),
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        duration: DesignTokens.animationFast,
+        padding: const EdgeInsets.symmetric(
+          horizontal: DesignTokens.spacing16,
+          vertical: DesignTokens.spacing16,
+        ),
         decoration: BoxDecoration(
-          color: selected ? cs.primary.withOpacity(0.18) : cs.surface.withOpacity(0.35),
-          borderRadius: BorderRadius.circular(16),
+          color: selected
+              ? DesignTokens.accentOrange.withValues(alpha: 0.15)
+              : surfaceColor,
+          borderRadius: BorderRadius.circular(DesignTokens.radiusSecondary),
           border: Border.all(
-            color: selected ? cs.primary.withOpacity(0.55) : cs.outlineVariant.withOpacity(0.35),
+            color: selected
+                ? DesignTokens.accentOrange.withValues(alpha: 0.5)
+                : borderColor,
+            width: 1,
           ),
         ),
         child: Center(
           child: Text(
             text,
             style: TextStyle(
-              fontWeight: FontWeight.w900,
-              color: selected ? cs.onSurface : cs.onSurfaceVariant,
+              fontWeight: DesignTokens.fontWeightBold,
+              color: selected ? textPrimary : textSecondary,
+              fontSize: DesignTokens.fontSizeBody,
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// Modern rotator widget with blur effect
+class _ModernRotator extends StatelessWidget {
+  final double height;
+  final Widget child;
+  final Key? key;
+
+  const _ModernRotator({
+    this.key,
+    required this.height,
+    required this.child,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final surfaceColor = DesignTokens.surfaceOf(context);
+    final borderColor = DesignTokens.borderColorOf(context);
+
+    return Container(
+      height: height,
+      decoration: BoxDecoration(
+        color: surfaceColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: borderColor, width: 1),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Stack(
+          children: [
+            // Blur effect overlay
+            Positioned.fill(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 2, sigmaY: 2),
+                child: Container(
+                  color: surfaceColor.withValues(alpha: 0.8),
+                ),
+              ),
+            ),
+            // Picker content
+            child,
+          ],
         ),
       ),
     );
@@ -1004,13 +1840,17 @@ class _TogglePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final surfaceColor = DesignTokens.surfaceOf(context);
+    final borderColor = DesignTokens.borderColorOf(context);
+    final textPrimary = DesignTokens.textPrimaryOf(context);
+    final textSecondary = DesignTokens.textSecondaryOf(context);
+    
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: cs.surface.withOpacity(0.35),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: cs.outlineVariant.withOpacity(0.35)),
+        color: surfaceColor,
+        borderRadius: BorderRadius.circular(DesignTokens.radiusChip),
+        border: Border.all(color: borderColor, width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1019,11 +1859,15 @@ class _TogglePill extends StatelessWidget {
             text: left,
             selected: isLeft,
             onTap: () => onChanged(true),
+            textPrimary: textPrimary,
+            textSecondary: textSecondary,
           ),
           _MiniToggle(
             text: right,
             selected: !isLeft,
             onTap: () => onChanged(false),
+            textPrimary: textPrimary,
+            textSecondary: textSecondary,
           ),
         ],
       ),
@@ -1035,31 +1879,40 @@ class _MiniToggle extends StatelessWidget {
   final String text;
   final bool selected;
   final VoidCallback onTap;
+  final Color textPrimary;
+  final Color textSecondary;
 
   const _MiniToggle({
     required this.text,
     required this.selected,
     required this.onTap,
+    required this.textPrimary,
+    required this.textSecondary,
   });
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return InkWell(
-      borderRadius: BorderRadius.circular(999),
+      borderRadius: BorderRadius.circular(DesignTokens.radiusChip),
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        duration: DesignTokens.animationFast,
+        padding: const EdgeInsets.symmetric(
+          horizontal: DesignTokens.spacing16,
+          vertical: DesignTokens.spacing8,
+        ),
         decoration: BoxDecoration(
-          color: selected ? cs.primary.withOpacity(0.22) : Colors.transparent,
-          borderRadius: BorderRadius.circular(999),
+          color: selected
+              ? DesignTokens.accentOrange.withValues(alpha: 0.22)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(DesignTokens.radiusChip),
         ),
         child: Text(
           text,
           style: TextStyle(
-            fontWeight: FontWeight.w900,
-            color: selected ? cs.onSurface : cs.onSurfaceVariant,
+            fontWeight: DesignTokens.fontWeightBold,
+            color: selected ? textPrimary : textSecondary,
+            fontSize: DesignTokens.fontSizeBodySmall,
           ),
         ),
       ),

@@ -75,10 +75,10 @@ class AppTheme {
       // Scaffold
       scaffoldBackgroundColor: DesignTokens.lightBackground,
       
-      // Cards - Rounded, shadows only (no borders)
+      // Cards - Rounded, no shadows
       cardTheme: CardThemeData(
-        elevation: 2,
-        shadowColor: Colors.black.withValues(alpha: 0.08),
+        elevation: 0,
+        shadowColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
         ),
@@ -247,10 +247,10 @@ class AppTheme {
       // Scaffold
       scaffoldBackgroundColor: DesignTokens.darkBackground,
       
-      // Cards - Rounded, shadows only (no borders)
+      // Cards - Rounded, no shadows, black/grey mix
       cardTheme: CardThemeData(
-        elevation: 2,
-        shadowColor: Colors.black.withValues(alpha: 0.35),
+        elevation: 0,
+        shadowColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
         ),
