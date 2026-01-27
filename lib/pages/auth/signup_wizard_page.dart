@@ -16,7 +16,6 @@ class SignupWizardPage extends StatefulWidget {
 class _SignupWizardPageState extends State<SignupWizardPage>
     with TickerProviderStateMixin {
   final _page = PageController();
-  final _scrollController = ScrollController();
   int _step = 0;
 
   // Step 1
@@ -82,28 +81,11 @@ class _SignupWizardPageState extends State<SignupWizardPage>
     );
     
     _stepTransitionController.forward();
-    
-    // Add listeners to text controllers to check completion
-    _userId.addListener(_checkAndScroll);
-    _email.addListener(_checkAndScroll);
-    _pass.addListener(_checkAndScroll);
-    _confirmPass.addListener(_checkAndScroll);
-    _first.addListener(_checkAndScroll);
-    _last.addListener(_checkAndScroll);
-    _phone.addListener(_checkAndScroll);
   }
 
   @override
   void dispose() {
     _page.dispose();
-    _scrollController.dispose();
-    _userId.removeListener(_checkAndScroll);
-    _email.removeListener(_checkAndScroll);
-    _pass.removeListener(_checkAndScroll);
-    _confirmPass.removeListener(_checkAndScroll);
-    _first.removeListener(_checkAndScroll);
-    _last.removeListener(_checkAndScroll);
-    _phone.removeListener(_checkAndScroll);
     _userId.dispose();
     _email.dispose();
     _pass.dispose();
@@ -242,9 +224,6 @@ class _SignupWizardPageState extends State<SignupWizardPage>
     }
     
     if (_step < 4) {
-      // Reset scroll position for new step
-      _scrollController.jumpTo(0);
-      
       // Animate step transition
       _stepTransitionController.reset();
       setState(() => _step++);
@@ -343,246 +322,245 @@ class _SignupWizardPageState extends State<SignupWizardPage>
     }
   }
 
-  bool _isStepComplete(int step) {
+  String _getStepTitle(int step) {
     switch (step) {
-      case 0: // Step 1: Credentials
-        final pass = _pass.text;
-        final hasValidPassword = pass.isNotEmpty && 
-          RegExp(r'[A-Z]').hasMatch(pass) &&
-          RegExp(r'[a-z]').hasMatch(pass) &&
-          RegExp(r'[0-9]').hasMatch(pass) &&
-          RegExp(r'[!@#$%^&*(),.?":{}|<>]').hasMatch(pass);
-        return _userId.text.trim().isNotEmpty &&
-               _email.text.trim().isNotEmpty &&
-               hasValidPassword &&
-               _pass.text == _confirmPass.text &&
-               _confirmPass.text.isNotEmpty &&
-               _userIdAvailabilityStatus == 'available';
-      case 1: // Step 2: Personal Info
-        return _first.text.trim().isNotEmpty &&
-               _last.text.trim().isNotEmpty &&
-               _phone.text.trim().isNotEmpty;
-      case 2: // Step 3: DOB & Gender
-        return _gender.isNotEmpty;
-      case 3: // Step 4: Height & Weight
-        return true; // Always complete (has default values)
-      case 4: // Step 5: Goals & Role
-        return _selectedGoals.isNotEmpty && _role.isNotEmpty;
+      case 0:
+        return 'Account Setup';
+      case 1:
+        return 'Personal Information';
+      case 2:
+        return 'DOB & Gender';
+      case 3:
+        return 'Height & Weight';
+      case 4:
+        return 'Goals & Role';
       default:
-        return false;
+        return 'Account Setup';
     }
   }
 
-  void _checkAndScroll() {
-    if (_isStepComplete(_step)) {
-      Future.delayed(const Duration(milliseconds: 300), () {
-        if (_scrollController.hasClients) {
-          _scrollController.animateTo(
-            _scrollController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 400),
-            curve: Curves.easeOut,
-          );
-        }
-      });
+  String _getStepSubtitle(int step) {
+    switch (step) {
+      case 0:
+        return 'Create your unique user ID and secure password';
+      case 1:
+        return 'Tell us about yourself';
+      case 2:
+        return 'Help us with your Age and Gender';
+      case 3:
+        return 'Select your measurements';
+      case 4:
+        return 'Choose your fitness goals and role';
+      default:
+        return '';
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final bgColor = DesignTokens.backgroundOf(context);
-    final progress = (_step + 1) / 5;
 
     return Scaffold(
       backgroundColor: bgColor,
       body: SafeArea(
         child: FadeTransition(
           opacity: _fadeController,
-          child: SingleChildScrollView(
-            controller: _scrollController,
-            child: Column(
-              children: [
-              // Clean Header
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: DesignTokens.spacing24,
-                  vertical: DesignTokens.spacing20,
-                ),
-                child: Row(
-                  children: [
-                    IconButton(
-                      onPressed: _back,
-                      icon: Icon(
-                        Icons.arrow_back_rounded,
-                        color: DesignTokens.textPrimaryOf(context),
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        'Create Account',
-                        style: TextStyle(
-                          fontSize: DesignTokens.fontSizeH2,
-                          fontWeight: DesignTokens.fontWeightBold,
-                          color: DesignTokens.textPrimaryOf(context),
-                        ),
-                      ),
-                    ),
-                    // Step count with different style
-                    Row(
-                      children: [
-                        Text(
-                          '${_step + 1}',
-                          style: TextStyle(
-                            color: _getStepColor(_step),
-                            fontWeight: DesignTokens.fontWeightBold,
-                            fontSize: DesignTokens.fontSizeH2,
-                          ),
-                        ),
-                        Text(
-                          '/5',
-                          style: TextStyle(
-                            color: DesignTokens.textSecondaryOf(context),
-                            fontWeight: DesignTokens.fontWeightMedium,
-                            fontSize: DesignTokens.fontSizeBody,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              
-              // Progress Bar with different colors for each step
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: DesignTokens.spacing24,
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: SizedBox(
-                    height: 4,
-                    child: Stack(
-                      children: [
-                        Container(
-                          color: DesignTokens.borderColorOf(context),
-                        ),
-                        AnimatedContainer(
-                          duration: DesignTokens.animationMedium,
-                          curve: DesignTokens.animationCurve,
-                          width: MediaQuery.of(context).size.width * progress,
-                          decoration: BoxDecoration(
-                            color: _getStepColor(_step),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              
-              const SizedBox(height: DesignTokens.spacing32),
-              
-              // Content
-              SizedBox(
-                height: MediaQuery.of(context).size.height * 0.5,
+          child: Column(
+            children: [
+              // Header with back arrow and heading - Transparent
+              Container(
+                color: Colors.transparent,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: DesignTokens.spacing24,
+                    vertical: DesignTokens.spacing8,
                   ),
-                    child: PageView(
-                      controller: _page,
-                      physics: const NeverScrollableScrollPhysics(),
-                      children: [
-                      _Step1(
-                        userId: _userId,
-                        email: _email,
-                        pass: _pass,
-                        confirmPass: _confirmPass,
-                        userIdAvailabilityStatus: _userIdAvailabilityStatus,
-                        isCheckingUserId: _isCheckingUserId,
-                        onUserIdChanged: _checkUserIdAvailability,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      IconButton(
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        onPressed: _back,
+                        icon: Icon(
+                          Icons.arrow_back_rounded,
+                          color: DesignTokens.textPrimaryOf(context),
+                          size: 20,
+                        ),
                       ),
-                      _Step2(
-                        first: _first,
-                        last: _last,
-                        phone: _phone,
-                        countryCode: _phoneCountryCode,
-                        onCountryCodeChanged: (code) => setState(() => _phoneCountryCode = code),
-                      ),
-                      _Step3(
-                        dob: _dob,
-                        gender: _gender,
-                        onDobChanged: (d) {
-                          HapticFeedback.selectionClick();
-                          setState(() => _dob = d);
-                        },
-                        onGender: (g) {
-                          HapticFeedback.selectionClick();
-                          setState(() => _gender = g);
-                        },
-                      ),
-                      _Step4(
-                        heightInCm: _heightInCm,
-                        weightInKg: _weightInKg,
-                        heightCm: _heightCm,
-                        feet: _feet,
-                        inch: _inch,
-                        weightKg: _weightKg,
-                        weightLbs: _weightLbs,
-                        bmi: _bmi,
-                        onToggleHeightUnit: (v) {
-                          HapticFeedback.selectionClick();
-                          setState(() => _heightInCm = v);
-                        },
-                        onToggleWeightUnit: (v) {
-                          HapticFeedback.selectionClick();
-                          setState(() => _weightInKg = v);
-                        },
-                        onHeightCm: (v) => setState(() => _heightCm = v),
-                        onFeet: (v) => setState(() => _feet = v),
-                        onInch: (v) => setState(() => _inch = v),
-                        onWeightKg: (v) => setState(() => _weightKg = v),
-                        onWeightLbs: (v) => setState(() => _weightLbs = v),
-                      ),
-                      _Step5(
-                        goals: _goals,
-                        selected: _selectedGoals,
-                        role: _role,
-                        onToggleGoal: (g) {
-                          HapticFeedback.selectionClick();
-                          setState(() {
-                            if (_selectedGoals.contains(g) && _selectedGoals.length > 1) {
-                              _selectedGoals.remove(g);
-                            } else {
-                              _selectedGoals.add(g);
-                            }
-                          });
-                        },
-                        onRole: (r) {
-                          HapticFeedback.selectionClick();
-                          setState(() => _role = r);
-                        },
+                      const SizedBox(width: DesignTokens.spacing8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _getStepTitle(_step),
+                              style: TextStyle(
+                                fontSize: DesignTokens.fontSizeH2,
+                                fontWeight: DesignTokens.fontWeightBold,
+                                color: DesignTokens.textPrimaryOf(context),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              _getStepSubtitle(_step),
+                              style: TextStyle(
+                                color: DesignTokens.textSecondaryOf(context),
+                                fontSize: DesignTokens.fontSizeMeta,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
                 ),
               ),
               
-              const SizedBox(height: DesignTokens.spacing20),
+              const SizedBox(height: DesignTokens.spacing12),
               
-              // Next/Submit Button
+              // Segmented Progress Bar - No background
               Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: DesignTokens.spacing24,
-                  vertical: DesignTokens.spacing20,
                 ),
-                child: _CleanButton(
-                  text: _step == 4 ? 'Create Account' : 'Continue',
-                  onTap: _isSubmitting ? null : _next,
-                  isLoading: _isSubmitting,
+                child: Row(
+                  children: List.generate(5, (index) {
+                    final isCompleted = index < _step;
+                    final isCurrent = index == _step;
+                    
+                    return Expanded(
+                      child: Container(
+                        height: 4,
+                        margin: EdgeInsets.only(
+                          right: index < 4 ? 4 : 0,
+                        ),
+                        decoration: BoxDecoration(
+                          gradient: (isCompleted || isCurrent)
+                              ? const LinearGradient(
+                                  colors: [
+                                    Color(0xFFFFD93D), // Yellow
+                                    Color(0xFFFF8A00), // Orange
+                                  ],
+                                  begin: Alignment.centerLeft,
+                                  end: Alignment.centerRight,
+                                )
+                              : null,
+                          color: (isCompleted || isCurrent)
+                              ? null
+                              : DesignTokens.borderColorOf(context),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    );
+                  }),
                 ),
               ),
-              ],
-            ),
+              
+              const SizedBox(height: DesignTokens.spacing24),
+              
+              const SizedBox(height: DesignTokens.spacing16),
+              
+              // Content - Scrollable
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: DesignTokens.spacing24,
+                  ),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: MediaQuery.of(context).size.height * 0.6,
+                    child: PageView(
+                      controller: _page,
+                      physics: const NeverScrollableScrollPhysics(),
+                      children: [
+                        _Step1(
+                          userId: _userId,
+                          email: _email,
+                          pass: _pass,
+                          confirmPass: _confirmPass,
+                          userIdAvailabilityStatus: _userIdAvailabilityStatus,
+                          isCheckingUserId: _isCheckingUserId,
+                          onUserIdChanged: _checkUserIdAvailability,
+                        ),
+                        _Step2(
+                          first: _first,
+                          last: _last,
+                          phone: _phone,
+                        ),
+                        _Step3(
+                          dob: _dob,
+                          gender: _gender,
+                          onDobChanged: (d) {
+                            HapticFeedback.selectionClick();
+                            setState(() => _dob = d);
+                          },
+                          onGender: (g) {
+                            HapticFeedback.selectionClick();
+                            setState(() => _gender = g);
+                          },
+                        ),
+                        _Step4(
+                          heightInCm: _heightInCm,
+                          weightInKg: _weightInKg,
+                          heightCm: _heightCm,
+                          feet: _feet,
+                          inch: _inch,
+                          weightKg: _weightKg,
+                          weightLbs: _weightLbs,
+                          bmi: _bmi,
+                          onToggleHeightUnit: (v) {
+                            HapticFeedback.selectionClick();
+                            setState(() => _heightInCm = v);
+                          },
+                          onToggleWeightUnit: (v) {
+                            HapticFeedback.selectionClick();
+                            setState(() => _weightInKg = v);
+                          },
+                          onHeightCm: (v) => setState(() => _heightCm = v),
+                          onFeet: (v) => setState(() => _feet = v),
+                          onInch: (v) => setState(() => _inch = v),
+                          onWeightKg: (v) => setState(() => _weightKg = v),
+                          onWeightLbs: (v) => setState(() => _weightLbs = v),
+                        ),
+                        _Step5(
+                          goals: _goals,
+                          selected: _selectedGoals,
+                          role: _role,
+                          onToggleGoal: (g) {
+                            HapticFeedback.selectionClick();
+                            setState(() {
+                              if (_selectedGoals.contains(g) && _selectedGoals.length > 1) {
+                                _selectedGoals.remove(g);
+                              } else {
+                                _selectedGoals.add(g);
+                              }
+                            });
+                          },
+                          onRole: (r) {
+                            HapticFeedback.selectionClick();
+                            setState(() => _role = r);
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              
+              // Next/Submit Button - Fixed at bottom - Transparent
+              Container(
+                color: Colors.transparent,
+                child: Padding(
+                  padding: const EdgeInsets.all(DesignTokens.spacing24),
+                  child: _NextButton(
+                    text: _step == 4 ? 'Create Account' : 'Next',
+                    onTap: _isSubmitting ? null : _next,
+                    isLoading: _isSubmitting,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -637,9 +615,9 @@ class _Step1State extends State<_Step1> {
     final passwordsMatch = widget.pass.text == widget.confirmPass.text && widget.confirmPass.text.isNotEmpty;
 
     return _StepShell(
-      title: 'Account Setup',
-      subtitle: 'Create your unique user ID and secure password',
+      subtitle: '',
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           // User ID
           TextFormField(
@@ -719,7 +697,7 @@ class _Step1State extends State<_Step1> {
               ),
             ),
           ),
-          const SizedBox(height: DesignTokens.spacing16),
+          const SizedBox(height: DesignTokens.spacing12),
           
           // Email
           _CleanField(
@@ -728,7 +706,7 @@ class _Step1State extends State<_Step1> {
             keyboardType: TextInputType.emailAddress,
             prefix: Icons.mail_outline_rounded,
           ),
-          const SizedBox(height: DesignTokens.spacing16),
+          const SizedBox(height: DesignTokens.spacing12),
           
           // Password
           TextFormField(
@@ -780,7 +758,7 @@ class _Step1State extends State<_Step1> {
               ),
             ),
           ),
-          const SizedBox(height: DesignTokens.spacing16),
+          const SizedBox(height: DesignTokens.spacing12),
           
           // Confirm Password
           TextFormField(
@@ -843,15 +821,11 @@ class _Step2 extends StatefulWidget {
   final TextEditingController first;
   final TextEditingController last;
   final TextEditingController phone;
-  final String countryCode;
-  final ValueChanged<String> onCountryCodeChanged;
 
   const _Step2({
     required this.first,
     required this.last,
     required this.phone,
-    required this.countryCode,
-    required this.onCountryCodeChanged,
   });
 
   @override
@@ -859,25 +833,13 @@ class _Step2 extends StatefulWidget {
 }
 
 class _Step2State extends State<_Step2> {
-  final Map<String, String> _countryCodes = {
-    'India': '+91',
-    'United States': '+1',
-    'United Kingdom': '+44',
-    'Canada': '+1',
-    'Australia': '+61',
-    'Germany': '+49',
-    'France': '+33',
-    'Japan': '+81',
-    'China': '+86',
-    'Brazil': '+55',
-  };
 
   @override
   Widget build(BuildContext context) {
     return _StepShell(
-      title: 'Personal Information',
-      subtitle: 'Tell us about yourself',
+      subtitle: '',
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           // First name - full width
           _CleanField(
@@ -885,20 +847,21 @@ class _Step2State extends State<_Step2> {
             controller: widget.first,
             prefix: Icons.person_outline_rounded,
           ),
-          const SizedBox(height: DesignTokens.spacing16),
+          const SizedBox(height: DesignTokens.spacing12),
           // Last name - full width
           _CleanField(
             label: 'Last name',
             controller: widget.last,
             prefix: Icons.person_outline_rounded,
           ),
-          const SizedBox(height: DesignTokens.spacing16),
-          // Phone with country code
+          const SizedBox(height: DesignTokens.spacing12),
+          // Phone with fixed country code
           Row(
             children: [
-              // Country code selector
+              // Fixed country code box
               Container(
-                width: 100,
+                width: 60,
+                height: 56,
                 decoration: BoxDecoration(
                   color: DesignTokens.surfaceOf(context),
                   borderRadius: BorderRadius.circular(12),
@@ -907,36 +870,19 @@ class _Step2State extends State<_Step2> {
                     width: 1,
                   ),
                 ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: widget.countryCode,
-                    isExpanded: true,
-                    padding: const EdgeInsets.symmetric(horizontal: DesignTokens.spacing12),
-                    icon: Icon(
-                      Icons.arrow_drop_down,
-                      color: DesignTokens.textSecondaryOf(context),
-                    ),
+                child: Center(
+                  child: Text(
+                    '+91',
                     style: TextStyle(
                       color: DesignTokens.textPrimaryOf(context),
-                      fontWeight: DesignTokens.fontWeightMedium,
+                      fontWeight: DesignTokens.fontWeightSemiBold,
                       fontSize: DesignTokens.fontSizeBody,
                     ),
-                    items: _countryCodes.entries.map((entry) {
-                      return DropdownMenuItem<String>(
-                        value: entry.value,
-                        child: Text(entry.value),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      if (value != null) {
-                        widget.onCountryCodeChanged(value);
-                      }
-                    },
                   ),
                 ),
               ),
               const SizedBox(width: DesignTokens.spacing12),
-              // Phone number field
+              // Phone number field - Big
               Expanded(
                 child: TextFormField(
                   controller: widget.phone,
@@ -1005,85 +951,90 @@ class _Step3 extends StatelessWidget {
     required this.onGender,
   });
 
+  String _calculateAge(DateTime birthDate) {
+    final now = DateTime.now();
+    int years = now.year - birthDate.year;
+    int months = now.month - birthDate.month;
+    
+    if (months < 0) {
+      years--;
+      months += 12;
+    }
+    
+    if (now.day < birthDate.day) {
+      months--;
+      if (months < 0) {
+        years--;
+        months += 12;
+      }
+    }
+    
+    if (years == 0) {
+      return '$months ${months == 1 ? 'month' : 'months'}';
+    } else if (months == 0) {
+      return '$years ${years == 1 ? 'year' : 'years'}';
+    } else {
+      return '$years ${years == 1 ? 'year' : 'years'} $months ${months == 1 ? 'month' : 'months'}';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final ageText = _calculateAge(dob);
+    
     return _StepShell(
-      title: 'Date of Birth & Gender',
-      subtitle: 'Help us personalize your experience',
+      subtitle: '',
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Modern DOB picker with blur effect
+          // Modern DOB picker with blur effect - Bigger
           Container(
-            height: 220,
+            height: 240,
             decoration: BoxDecoration(
               color: DesignTokens.surfaceOf(context),
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: DesignTokens.borderColorOf(context),
-                width: 1,
+                width: 1.5,
               ),
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(16),
               child: Stack(
                 children: [
                   // Blur effect overlay
                   Positioned.fill(
                     child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 2, sigmaY: 2),
+                      filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3),
                       child: Container(
-                        color: DesignTokens.surfaceOf(context).withValues(alpha: 0.8),
+                        color: DesignTokens.surfaceOf(context).withValues(alpha: 0.9),
                       ),
                     ),
                   ),
-                  // Date picker
-                  CupertinoTheme(
-                    data: CupertinoThemeData(
-                      brightness: Theme.of(context).brightness,
-                      primaryColor: DesignTokens.accentOrange,
-                      textTheme: CupertinoTextThemeData(
-                        dateTimePickerTextStyle: TextStyle(
-                          color: DesignTokens.textPrimaryOf(context),
-                          fontSize: 22,
-                          fontWeight: DesignTokens.fontWeightSemiBold,
-                        ),
-                      ),
-                    ),
-                    child: CupertinoDatePicker(
-                      mode: CupertinoDatePickerMode.date,
-                      initialDateTime: dob,
-                      maximumDate: DateTime.now().subtract(const Duration(days: 365 * 10)),
-                      minimumDate: DateTime(1950, 1, 1),
-                      onDateTimeChanged: onDobChanged,
-                    ),
+                  // Date picker with short month names and gradient selected text
+                  _DatePickerWithShortMonths(
+                    initialDateTime: dob,
+                    onDateTimeChanged: onDobChanged,
                   ),
                 ],
               ),
             ),
           ),
+          const SizedBox(height: DesignTokens.spacing12),
+          // Age display
+          Text(
+            'Age: $ageText',
+            style: TextStyle(
+              color: DesignTokens.textSecondaryOf(context),
+              fontSize: DesignTokens.fontSizeBody,
+              fontWeight: DesignTokens.fontWeightMedium,
+            ),
+          ),
           const SizedBox(height: DesignTokens.spacing32),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _GenderChip(
-                text: 'Male',
-                selected: gender == 'Male',
-                onTap: () => onGender('Male'),
-              ),
-              const SizedBox(width: DesignTokens.spacing12),
-              _GenderChip(
-                text: 'Female',
-                selected: gender == 'Female',
-                onTap: () => onGender('Female'),
-              ),
-              const SizedBox(width: DesignTokens.spacing12),
-              _GenderChip(
-                text: 'Other',
-                selected: gender == 'Other',
-                onTap: () => onGender('Other'),
-              ),
-            ],
+          // Gender selection with swiping effect - center active, sides with opacity
+          _SwipeableGenderSelector(
+            selectedGender: gender,
+            onGenderSelected: onGender,
           ),
         ],
       ),
@@ -1149,6 +1100,41 @@ class _Step4State extends State<_Step4> {
   }
 
   @override
+  void didUpdateWidget(_Step4 oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Sync height controllers
+    if (oldWidget.heightCm != widget.heightCm) {
+      final cmIndex = (widget.heightCm - 80).round().clamp(0, 150);
+      if (_heightCmController.hasClients && _heightCmController.selectedItem != cmIndex) {
+        _heightCmController.jumpToItem(cmIndex);
+      }
+      // Update ft/in when cm changes
+      final totalInches = (widget.heightCm / 2.54).round();
+      final feet = (totalInches / 12).floor().clamp(3, 8);
+      final inches = (totalInches % 12).clamp(0, 11);
+      if (oldWidget.feet != feet && _feetController.hasClients) {
+        _feetController.jumpToItem((feet - 3).clamp(0, 5));
+      }
+      if (oldWidget.inch != inches && _inchController.hasClients) {
+        _inchController.jumpToItem(inches.clamp(0, 11));
+      }
+    }
+    // Sync weight controllers
+    if (oldWidget.weightKg != widget.weightKg && widget.weightInKg) {
+      final kgIndex = ((widget.weightKg - 20) * 2).round().clamp(0, 460);
+      if (_weightKgController.hasClients && _weightKgController.selectedItem != kgIndex) {
+        _weightKgController.jumpToItem(kgIndex);
+      }
+    }
+    if (oldWidget.weightLbs != widget.weightLbs && !widget.weightInKg) {
+      final lbsIndex = (widget.weightLbs - 44).round().clamp(0, 506);
+      if (_weightLbsController.hasClients && _weightLbsController.selectedItem != lbsIndex) {
+        _weightLbsController.jumpToItem(lbsIndex);
+      }
+    }
+  }
+
+  @override
   void dispose() {
     _heightCmController.dispose();
     _feetController.dispose();
@@ -1163,23 +1149,30 @@ class _Step4State extends State<_Step4> {
     final textPrimary = DesignTokens.textPrimaryOf(context);
 
     return _StepShell(
-      title: 'Height & Weight',
-      subtitle: 'Select your measurements',
+      subtitle: '',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            'Height',
-            style: TextStyle(
-              color: DesignTokens.textSecondaryOf(context),
-              fontWeight: DesignTokens.fontWeightSemiBold,
-              fontSize: DesignTokens.fontSizeBody,
-            ),
-          ),
-          const SizedBox(height: DesignTokens.spacing8),
+          // Height section with icon and toggle
           Row(
             children: [
-              _TogglePill(
+              Icon(
+                Icons.height_rounded,
+                color: DesignTokens.accentOrange,
+                size: 20,
+              ),
+              const SizedBox(width: DesignTokens.spacing8),
+              Text(
+                'Height',
+                style: TextStyle(
+                  color: DesignTokens.textSecondaryOf(context),
+                  fontWeight: DesignTokens.fontWeightSemiBold,
+                  fontSize: DesignTokens.fontSizeBody,
+                ),
+              ),
+              const Spacer(),
+              _SmallToggle(
                 left: 'cm',
                 right: 'ft/in',
                 isLeft: widget.heightInCm,
@@ -1191,105 +1184,164 @@ class _Step4State extends State<_Step4> {
           AnimatedSwitcher(
             duration: DesignTokens.animationMedium,
             child: widget.heightInCm
-                ? _ModernRotator(
+                ? Container(
                     key: const ValueKey('cm'),
                     height: 180,
-                    child: CupertinoTheme(
-                      data: CupertinoThemeData(
-                        brightness: Theme.of(context).brightness,
-                        primaryColor: DesignTokens.accentOrange,
-                        textTheme: CupertinoTextThemeData(
-                          pickerTextStyle: TextStyle(
-                            color: textPrimary,
-                            fontSize: 22,
-                            fontWeight: DesignTokens.fontWeightSemiBold,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: DesignTokens.borderColorOf(context),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: CupertinoTheme(
+                        data: CupertinoThemeData(
+                          brightness: Theme.of(context).brightness,
+                          primaryColor: DesignTokens.accentOrange,
+                          textTheme: CupertinoTextThemeData(
+                            pickerTextStyle: TextStyle(
+                              color: textPrimary,
+                              fontSize: 22,
+                              fontWeight: DesignTokens.fontWeightSemiBold,
+                            ),
                           ),
                         ),
-                      ),
-                      child: CupertinoPicker(
-                        scrollController: _heightCmController,
-                        itemExtent: 50,
-                        onSelectedItemChanged: (index) {
-                          HapticFeedback.selectionClick();
-                          widget.onHeightCm((80 + index).toDouble());
-                        },
-                        children: List.generate(151, (index) {
-                          final value = 80 + index;
-                          return Center(
-                            child: Text('$value cm'),
-                          );
-                        }),
+                        child: CupertinoPicker(
+                          scrollController: _heightCmController,
+                          itemExtent: 50,
+                          onSelectedItemChanged: (index) {
+                            HapticFeedback.selectionClick();
+                            final newHeightCm = (80 + index).toDouble();
+                            widget.onHeightCm(newHeightCm);
+                            // Auto-adjust ft/in when cm changes
+                            final totalInches = (newHeightCm / 2.54).round();
+                            final feet = (totalInches / 12).floor().clamp(3, 8);
+                            final inches = (totalInches % 12).clamp(0, 11);
+                            widget.onFeet(feet);
+                            widget.onInch(inches);
+                          },
+                          children: List.generate(151, (index) {
+                            final value = 80 + index;
+                            final isSelected = value == widget.heightCm.round();
+                            return Center(
+                              child: _GradientPickerItem(
+                                text: '$value cm',
+                                isSelected: isSelected,
+                              ),
+                            );
+                          }),
+                        ),
                       ),
                     ),
                   )
-                : Row(
+                : Container(
                     key: const ValueKey('ftin'),
-                    children: [
-                      Expanded(
-                        child: _ModernRotator(
-                          height: 180,
-                          child: CupertinoTheme(
-                            data: CupertinoThemeData(
-                              brightness: Theme.of(context).brightness,
-                              primaryColor: DesignTokens.accentOrange,
-                              textTheme: CupertinoTextThemeData(
-                                pickerTextStyle: TextStyle(
-                                  color: textPrimary,
-                                  fontSize: 22,
-                                  fontWeight: DesignTokens.fontWeightSemiBold,
+                    height: 180,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: DesignTokens.borderColorOf(context),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Row(
+                        children: [
+                          // Feet rotator
+                          Expanded(
+                            child: CupertinoTheme(
+                              data: CupertinoThemeData(
+                                brightness: Theme.of(context).brightness,
+                                primaryColor: DesignTokens.accentOrange,
+                                textTheme: CupertinoTextThemeData(
+                                  pickerTextStyle: TextStyle(
+                                    color: textPrimary,
+                                    fontSize: 22,
+                                    fontWeight: DesignTokens.fontWeightSemiBold,
+                                  ),
                                 ),
                               ),
-                            ),
-                            child: CupertinoPicker(
-                              scrollController: _feetController,
-                              itemExtent: 50,
-                              onSelectedItemChanged: (index) {
-                                HapticFeedback.selectionClick();
-                                widget.onFeet(3 + index);
-                              },
-                              children: List.generate(6, (index) {
-                                final value = 3 + index;
-                                return Center(child: Text('$value ft'));
-                              }),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: DesignTokens.spacing12),
-                      Expanded(
-                        child: _ModernRotator(
-                          height: 180,
-                          child: CupertinoTheme(
-                            data: CupertinoThemeData(
-                              brightness: Theme.of(context).brightness,
-                              primaryColor: DesignTokens.accentOrange,
-                              textTheme: CupertinoTextThemeData(
-                                pickerTextStyle: TextStyle(
-                                  color: textPrimary,
-                                  fontSize: 22,
-                                  fontWeight: DesignTokens.fontWeightSemiBold,
-                                ),
+                              child: CupertinoPicker(
+                                scrollController: _feetController,
+                                itemExtent: 50,
+                                onSelectedItemChanged: (index) {
+                                  HapticFeedback.selectionClick();
+                                  final feet = 3 + index;
+                                  widget.onFeet(feet);
+                                  // Auto-adjust cm when ft changes
+                                  final totalInches = (feet * 12) + widget.inch;
+                                  final heightCm = (totalInches * 2.54).round().toDouble();
+                                  widget.onHeightCm(heightCm.clamp(80, 230));
+                                },
+                                children: List.generate(6, (index) {
+                                  final value = 3 + index;
+                                  final isSelected = value == widget.feet;
+                                  return Center(
+                                    child: _GradientPickerItem(
+                                      text: '$value ft',
+                                      isSelected: isSelected,
+                                    ),
+                                  );
+                                }),
                               ),
                             ),
-                            child: CupertinoPicker(
-                              scrollController: _inchController,
-                              itemExtent: 50,
-                              onSelectedItemChanged: (index) {
-                                HapticFeedback.selectionClick();
-                                widget.onInch(index);
-                              },
-                              children: List.generate(12, (index) {
-                                return Center(child: Text('$index in'));
-                              }),
+                          ),
+                          // Inches rotator
+                          Expanded(
+                            child: CupertinoTheme(
+                              data: CupertinoThemeData(
+                                brightness: Theme.of(context).brightness,
+                                primaryColor: DesignTokens.accentOrange,
+                                textTheme: CupertinoTextThemeData(
+                                  pickerTextStyle: TextStyle(
+                                    color: textPrimary,
+                                    fontSize: 22,
+                                    fontWeight: DesignTokens.fontWeightSemiBold,
+                                  ),
+                                ),
+                              ),
+                              child: CupertinoPicker(
+                                scrollController: _inchController,
+                                itemExtent: 50,
+                                onSelectedItemChanged: (index) {
+                                  HapticFeedback.selectionClick();
+                                  widget.onInch(index);
+                                  // Auto-adjust cm when inch changes
+                                  final totalInches = (widget.feet * 12) + index;
+                                  final heightCm = (totalInches * 2.54).round().toDouble();
+                                  if (heightCm >= 80 && heightCm <= 230) {
+                                    widget.onHeightCm(heightCm);
+                                    // Update the cm controller
+                                    final cmIndex = (heightCm - 80).round().clamp(0, 150);
+                                    if (_heightCmController.hasClients) {
+                                      _heightCmController.jumpToItem(cmIndex);
+                                    }
+                                  }
+                                },
+                                children: List.generate(12, (index) {
+                                  final isSelected = index == widget.inch;
+                                  return Center(
+                                    child: _GradientPickerItem(
+                                      text: '$index in',
+                                      isSelected: isSelected,
+                                    ),
+                                  );
+                                }),
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
           ),
-          const SizedBox(height: DesignTokens.spacing24),
-          // Weight section with icon
+          const SizedBox(height: DesignTokens.spacing16),
+          // Weight section with icon and toggle
           Row(
             children: [
               Icon(
@@ -1306,80 +1358,49 @@ class _Step4State extends State<_Step4> {
                   fontSize: DesignTokens.fontSizeBody,
                 ),
               ),
+              const Spacer(),
+              _SmallToggle(
+                left: 'kg',
+                right: 'lbs',
+                isLeft: widget.weightInKg,
+                onChanged: widget.onToggleWeightUnit,
+              ),
             ],
           ),
-          const SizedBox(height: DesignTokens.spacing8),
-          _TogglePill(
-            left: 'kg',
-            right: 'lbs',
-            isLeft: widget.weightInKg,
-            onChanged: widget.onToggleWeightUnit,
-          ),
           const SizedBox(height: DesignTokens.spacing12),
+          // Horizontal weight selector with ruler design
           AnimatedSwitcher(
             duration: DesignTokens.animationMedium,
             child: widget.weightInKg
-                ? _ModernRotator(
-                    key: const ValueKey('kg'),
-                    height: 180,
-                    child: CupertinoTheme(
-                      data: CupertinoThemeData(
-                        brightness: Theme.of(context).brightness,
-                        primaryColor: DesignTokens.accentOrange,
-                        textTheme: CupertinoTextThemeData(
-                          pickerTextStyle: TextStyle(
-                            color: textPrimary,
-                            fontSize: 22,
-                            fontWeight: DesignTokens.fontWeightSemiBold,
-                          ),
-                        ),
-                      ),
-                      child: CupertinoPicker(
-                        scrollController: _weightKgController,
-                        itemExtent: 50,
-                        onSelectedItemChanged: (index) {
-                          HapticFeedback.selectionClick();
-                          widget.onWeightKg((20 + index * 0.5).clamp(20, 250));
-                        },
-                        children: List.generate(461, (index) {
-                          final value = (20 + index * 0.5).toStringAsFixed(1);
-                          return Center(child: Text('$value kg'));
-                        }),
-                      ),
-                    ),
+                ? _HorizontalRulerWeightSelector(
+                    value: widget.weightKg,
+                    unit: 'kg',
+                    min: 35,
+                    max: 150,
+                    onChanged: (value) {
+                      HapticFeedback.selectionClick();
+                      widget.onWeightKg(value);
+                      // Auto-adjust lbs
+                      final lbsValue = (value * 2.20462).round().toDouble();
+                      widget.onWeightLbs(lbsValue);
+                    },
                   )
-                : _ModernRotator(
-                    key: const ValueKey('lbs'),
-                    height: 180,
-                    child: CupertinoTheme(
-                      data: CupertinoThemeData(
-                        brightness: Theme.of(context).brightness,
-                        primaryColor: DesignTokens.accentOrange,
-                        textTheme: CupertinoTextThemeData(
-                          pickerTextStyle: TextStyle(
-                            color: textPrimary,
-                            fontSize: 22,
-                            fontWeight: DesignTokens.fontWeightSemiBold,
-                          ),
-                        ),
-                      ),
-                      child: CupertinoPicker(
-                        scrollController: _weightLbsController,
-                        itemExtent: 50,
-                        onSelectedItemChanged: (index) {
-                          HapticFeedback.selectionClick();
-                          widget.onWeightLbs((44 + index).toDouble().clamp(44, 550));
-                        },
-                        children: List.generate(507, (index) {
-                          final value = 44 + index;
-                          return Center(child: Text('$value lbs'));
-                        }),
-                      ),
-                    ),
+                : _HorizontalRulerWeightSelector(
+                    value: widget.weightLbs,
+                    unit: 'lbs',
+                    min: 44,
+                    max: 550,
+                    onChanged: (value) {
+                      HapticFeedback.selectionClick();
+                      widget.onWeightLbs(value);
+                      // Auto-adjust kg
+                      final kgValue = (value * 0.453592).roundToDouble();
+                      widget.onWeightKg(kgValue);
+                    },
                   ),
           ),
-        ],
-      ),
+          ],
+        ),
     );
   }
 }
@@ -1403,10 +1424,10 @@ class _Step5 extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return _StepShell(
-      title: 'Goals & Role',
-      subtitle: 'Choose your fitness goals and role',
+      subtitle: '',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Text(
             'Fitness Goals',
@@ -1417,47 +1438,13 @@ class _Step5 extends StatelessWidget {
             ),
           ),
           const SizedBox(height: DesignTokens.spacing12),
-          Wrap(
-            spacing: DesignTokens.spacing10,
-            runSpacing: DesignTokens.spacing10,
-            children: goals.map((g) {
-              final isOn = selected.contains(g);
-              return InkWell(
-                borderRadius: BorderRadius.circular(DesignTokens.radiusChip),
-                onTap: () => onToggleGoal(g),
-                child: AnimatedContainer(
-                  duration: DesignTokens.animationFast,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: DesignTokens.spacing16,
-                    vertical: DesignTokens.spacing12,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isOn
-                        ? DesignTokens.accentOrange.withValues(alpha: 0.15)
-                        : DesignTokens.surfaceOf(context),
-                    borderRadius: BorderRadius.circular(DesignTokens.radiusChip),
-                    border: Border.all(
-                      color: isOn
-                          ? DesignTokens.accentOrange.withValues(alpha: 0.5)
-                          : DesignTokens.borderColorOf(context),
-                      width: 1,
-                    ),
-                  ),
-                  child: Text(
-                    g,
-                    style: TextStyle(
-                      fontWeight: DesignTokens.fontWeightSemiBold,
-                      color: isOn
-                          ? DesignTokens.textPrimaryOf(context)
-                          : DesignTokens.textSecondaryOf(context),
-                      fontSize: DesignTokens.fontSizeBodySmall,
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
+          // Goals dropdown selector
+          _GoalsDropdown(
+            goals: goals,
+            selected: selected,
+            onToggleGoal: onToggleGoal,
           ),
-          const SizedBox(height: DesignTokens.spacing24),
+          const SizedBox(height: DesignTokens.spacing16),
           Text(
             'Role',
             style: TextStyle(
@@ -1467,69 +1454,45 @@ class _Step5 extends StatelessWidget {
             ),
           ),
           const SizedBox(height: DesignTokens.spacing12),
-          Row(
-            children: [
-              Expanded(
-                child: _ChoiceChip(
-                  text: 'Client',
-                  selected: role == 'Client',
-                  onTap: () => onRole('Client'),
-                ),
-              ),
-              const SizedBox(width: DesignTokens.spacing12),
-              Expanded(
-                child: _ChoiceChip(
-                  text: 'Trainer',
-                  selected: role == 'Trainer',
-                  onTap: () => onRole('Trainer'),
-                ),
-              ),
-            ],
+          // Role selector input box
+          _RoleSelector(
+            selectedRole: role,
+            onRoleSelected: onRole,
           ),
-        ],
-      ),
+          ],
+        ),
     );
   }
 }
 
 // Shared Components
 class _StepShell extends StatelessWidget {
-  final String title;
   final String subtitle;
   final Widget child;
 
   const _StepShell({
-    required this.title,
     required this.subtitle,
     required this.child,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(DesignTokens.spacing20),
-      child: ListView(
-        children: [
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: DesignTokens.fontSizeH2,
-              fontWeight: DesignTokens.fontWeightBold,
-              color: DesignTokens.textPrimaryOf(context),
-            ),
-          ),
-          const SizedBox(height: DesignTokens.spacing6),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (subtitle.isNotEmpty) ...[
           Text(
             subtitle,
             style: TextStyle(
               color: DesignTokens.textSecondaryOf(context),
-              fontSize: DesignTokens.fontSizeBody,
+              fontSize: DesignTokens.fontSizeBodySmall,
             ),
           ),
           const SizedBox(height: DesignTokens.spacing24),
-          child,
         ],
-      ),
+        child,
+      ],
     );
   }
 }
@@ -1567,6 +1530,9 @@ class _CleanField extends StatelessWidget {
         labelStyle: TextStyle(
           color: textSecondary,
           fontWeight: DesignTokens.fontWeightRegular,
+        ),
+        hintStyle: TextStyle(
+          color: textSecondary,
         ),
         prefixIcon: Icon(prefix, color: textSecondary, size: 20),
         filled: true,
@@ -1647,7 +1613,7 @@ class _CleanButtonState extends State<_CleanButton>
           height: 52,
           width: double.infinity,
           decoration: BoxDecoration(
-            color: DesignTokens.accentOrange,
+            gradient: DesignTokens.primaryGradient,
             borderRadius: BorderRadius.circular(12),
           ),
           alignment: Alignment.center,
@@ -1674,13 +1640,179 @@ class _CleanButtonState extends State<_CleanButton>
   }
 }
 
-class _GenderChip extends StatelessWidget {
+class _NextButton extends StatefulWidget {
   final String text;
+  final VoidCallback? onTap;
+  final bool isLoading;
+
+  const _NextButton({
+    required this.text,
+    this.onTap,
+    this.isLoading = false,
+  });
+
+  @override
+  State<_NextButton> createState() => _NextButtonState();
+}
+
+class _NextButtonState extends State<_NextButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: DesignTokens.interactionDuration,
+    );
+    _scale = Tween<double>(begin: 1.0, end: 0.97)
+        .animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => _controller.forward(),
+      onTapCancel: () => _controller.reverse(),
+      onTapUp: (_) {
+        _controller.reverse();
+        if (widget.onTap != null && !widget.isLoading) {
+          HapticFeedback.lightImpact();
+          widget.onTap?.call();
+        }
+      },
+      child: ScaleTransition(
+        scale: _scale,
+        child: Container(
+          height: 52,
+          width: double.infinity,
+          decoration: BoxDecoration(
+            gradient: DesignTokens.primaryGradient,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          alignment: Alignment.center,
+          child: widget.isLoading
+              ? const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                )
+              : Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      widget.text,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: DesignTokens.fontWeightSemiBold,
+                        fontSize: DesignTokens.fontSizeBody,
+                      ),
+                    ),
+                    const SizedBox(width: DesignTokens.spacing8),
+                    Icon(
+                      Icons.arrow_forward_rounded,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+// Gender selector with swiping
+class _GenderSelector extends StatefulWidget {
+  final String selectedGender;
+  final ValueChanged<String> onGenderSelected;
+
+  const _GenderSelector({
+    required this.selectedGender,
+    required this.onGenderSelected,
+  });
+
+  @override
+  State<_GenderSelector> createState() => _GenderSelectorState();
+}
+
+class _GenderSelectorState extends State<_GenderSelector> {
+  late PageController _pageController;
+  late int _currentIndex;
+
+  final List<Map<String, dynamic>> _genders = [
+    {'label': 'Male', 'icon': Icons.male_rounded},
+    {'label': 'Female', 'icon': Icons.female_rounded},
+    {'label': 'Other', 'icon': Icons.transgender_rounded},
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = _genders.indexWhere((g) => g['label'] == widget.selectedGender);
+    if (_currentIndex == -1) _currentIndex = 0;
+    _pageController = PageController(initialPage: _currentIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 100,
+      child: PageView.builder(
+        controller: _pageController,
+        onPageChanged: (index) {
+          setState(() => _currentIndex = index);
+          HapticFeedback.selectionClick();
+          widget.onGenderSelected(_genders[index]['label']);
+        },
+        itemCount: _genders.length,
+        itemBuilder: (context, index) {
+          final gender = _genders[index];
+          final isSelected = index == _currentIndex;
+          return _ModernGenderBox(
+            icon: gender['icon'],
+            label: gender['label'],
+            selected: isSelected,
+            onTap: () {
+              _pageController.animateToPage(
+                index,
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOut,
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ModernGenderBox extends StatelessWidget {
+  final IconData icon;
+  final String label;
   final bool selected;
   final VoidCallback onTap;
 
-  const _GenderChip({
-    required this.text,
+  const _ModernGenderBox({
+    required this.icon,
+    required this.label,
     required this.selected,
     required this.onTap,
   });
@@ -1691,34 +1823,56 @@ class _GenderChip extends StatelessWidget {
     final surfaceColor = DesignTokens.surfaceOf(context);
     final borderColor = DesignTokens.borderColorOf(context);
     
-    return InkWell(
-      borderRadius: BorderRadius.circular(12),
-      onTap: onTap,
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
       child: AnimatedContainer(
-        duration: DesignTokens.animationFast,
-        padding: const EdgeInsets.symmetric(
-          horizontal: DesignTokens.spacing20,
-          vertical: DesignTokens.spacing10,
-        ),
+        duration: DesignTokens.animationMedium,
+        margin: const EdgeInsets.symmetric(horizontal: DesignTokens.spacing8),
+        width: 90,
+        height: 90,
         decoration: BoxDecoration(
-          color: selected
-              ? DesignTokens.accentOrange.withValues(alpha: 0.15)
-              : surfaceColor,
-          borderRadius: BorderRadius.circular(12),
+          gradient: selected ? DesignTokens.primaryGradient : null,
+          color: selected ? null : surfaceColor,
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: selected
-                ? DesignTokens.accentOrange
+                ? Colors.transparent
                 : borderColor,
-            width: selected ? 2 : 1,
+            width: selected ? 0 : 1.5,
           ),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: DesignTokens.accentOrange.withValues(alpha: 0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
         ),
-        child: Text(
-          text,
-          style: TextStyle(
-            fontWeight: selected ? DesignTokens.fontWeightSemiBold : DesignTokens.fontWeightMedium,
-            color: selected ? DesignTokens.accentOrange : textSecondary,
-            fontSize: DesignTokens.fontSizeBodySmall,
-          ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 32,
+              color: selected ? Colors.white : textSecondary,
+            ),
+            const SizedBox(height: DesignTokens.spacing6),
+            Text(
+              label,
+              style: TextStyle(
+                fontWeight: selected
+                    ? DesignTokens.fontWeightBold
+                    : DesignTokens.fontWeightMedium,
+                color: selected ? Colors.white : textSecondary,
+                fontSize: DesignTokens.fontSizeBodySmall,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1779,7 +1933,659 @@ class _ChoiceChip extends StatelessWidget {
   }
 }
 
-// Modern rotator widget with blur effect
+// Swipeable gender selector with fixed center, symbols only, looped selection
+class _SwipeableGenderSelector extends StatefulWidget {
+  final String selectedGender;
+  final ValueChanged<String> onGenderSelected;
+
+  const _SwipeableGenderSelector({
+    required this.selectedGender,
+    required this.onGenderSelected,
+  });
+
+  @override
+  State<_SwipeableGenderSelector> createState() => _SwipeableGenderSelectorState();
+}
+
+class _SwipeableGenderSelectorState extends State<_SwipeableGenderSelector> {
+  late PageController _pageController;
+  late int _currentIndex;
+
+  final List<Map<String, dynamic>> _genders = [
+    {'label': 'Male', 'icon': Icons.male_rounded},
+    {'label': 'Female', 'icon': Icons.female_rounded},
+    {'label': 'Other', 'icon': Icons.transgender_rounded},
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = _genders.indexWhere((g) => g['label'] == widget.selectedGender);
+    if (_currentIndex == -1) _currentIndex = 0;
+    _pageController = PageController(
+      initialPage: 1000 + _currentIndex, // Start in middle for infinite scroll
+      viewportFraction: 0.3,
+    );
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // Arrow pointing down above symbol
+        Icon(
+          Icons.keyboard_arrow_down_rounded,
+          size: 18,
+          color: DesignTokens.textSecondaryOf(context),
+        ),
+        const SizedBox(height: 2),
+        // Swipeable gender symbols with looping
+        SizedBox(
+          height: 60,
+          child: PageView.builder(
+            controller: _pageController,
+            onPageChanged: (index) {
+              final actualIndex = index % _genders.length;
+              setState(() => _currentIndex = actualIndex);
+              HapticFeedback.selectionClick();
+              widget.onGenderSelected(_genders[actualIndex]['label']);
+              // Loop back to middle if needed for infinite scroll
+              if (index < 500 || index > 1500) {
+                _pageController.jumpToPage(1000 + actualIndex);
+              }
+            },
+            itemBuilder: (context, index) {
+              final actualIndex = index % _genders.length;
+              final gender = _genders[actualIndex];
+              final isCenter = actualIndex == _currentIndex;
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Icon with gradient when selected
+                  ShaderMask(
+                    shaderCallback: (bounds) {
+                      if (isCenter) {
+                        return DesignTokens.primaryGradient.createShader(
+                          Rect.fromLTWH(0, 0, bounds.width, bounds.height),
+                        );
+                      }
+                      return LinearGradient(
+                        colors: [
+                          DesignTokens.textSecondaryOf(context),
+                          DesignTokens.textSecondaryOf(context),
+                        ],
+                      ).createShader(
+                        Rect.fromLTWH(0, 0, bounds.width, bounds.height),
+                      );
+                    },
+                    child: Icon(
+                      gender['icon'],
+                      size: 36,
+                      color: Colors.white, // This will be masked by the gradient
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  // Gender name below icon
+                  SizedBox(
+                    width: 70,
+                    child: Text(
+                      gender['label'],
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: DesignTokens.fontSizeBodySmall,
+                        fontWeight: isCenter
+                            ? DesignTokens.fontWeightBold
+                            : DesignTokens.fontWeightMedium,
+                        color: isCenter
+                            ? DesignTokens.textPrimaryOf(context)
+                            : DesignTokens.textSecondaryOf(context),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 2),
+        // Arrow pointing up below symbol
+        Icon(
+          Icons.keyboard_arrow_up_rounded,
+          size: 18,
+          color: DesignTokens.textSecondaryOf(context),
+        ),
+      ],
+    );
+  }
+}
+
+// Small gender box
+class _SmallGenderBox extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _SmallGenderBox({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textSecondary = DesignTokens.textSecondaryOf(context);
+    final surfaceColor = DesignTokens.surfaceOf(context);
+    final borderColor = DesignTokens.borderColorOf(context);
+    
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: AnimatedContainer(
+        duration: DesignTokens.animationMedium,
+        width: 70,
+        height: 70,
+        decoration: BoxDecoration(
+          gradient: selected ? DesignTokens.primaryGradient : null,
+          color: selected ? null : surfaceColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected
+                ? Colors.transparent
+                : borderColor,
+            width: selected ? 0 : 1.5,
+          ),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: DesignTokens.accentOrange.withValues(alpha: 0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 24,
+              color: selected ? Colors.white : textSecondary,
+            ),
+            const SizedBox(height: DesignTokens.spacing4),
+            Text(
+              label,
+              style: TextStyle(
+                fontWeight: selected
+                    ? DesignTokens.fontWeightBold
+                    : DesignTokens.fontWeightMedium,
+                color: selected ? Colors.white : textSecondary,
+                fontSize: DesignTokens.fontSizeMeta,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Custom date picker with short month names and gradient selected text
+class _CustomDatePicker extends StatefulWidget {
+  final DateTime initialDateTime;
+  final ValueChanged<DateTime> onDateTimeChanged;
+
+  const _CustomDatePicker({
+    required this.initialDateTime,
+    required this.onDateTimeChanged,
+  });
+
+  @override
+  State<_CustomDatePicker> createState() => _CustomDatePickerState();
+}
+
+class _CustomDatePickerState extends State<_CustomDatePicker> {
+  late FixedExtentScrollController _dayController;
+  late FixedExtentScrollController _monthController;
+  late FixedExtentScrollController _yearController;
+  late DateTime _selectedDate;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedDate = widget.initialDateTime;
+    _dayController = FixedExtentScrollController(initialItem: _selectedDate.day - 1);
+    _monthController = FixedExtentScrollController(initialItem: _selectedDate.month - 1);
+    _yearController = FixedExtentScrollController(
+      initialItem: _selectedDate.year - 1950,
+    );
+  }
+
+  @override
+  void dispose() {
+    _dayController.dispose();
+    _monthController.dispose();
+    _yearController.dispose();
+    super.dispose();
+  }
+
+  void _updateDate(int day, int month, int year) {
+    final newDate = DateTime(year, month, day);
+    if (newDate != _selectedDate) {
+      setState(() => _selectedDate = newDate);
+      widget.onDateTimeChanged(newDate);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textPrimary = DesignTokens.textPrimaryOf(context);
+    final textSecondary = DesignTokens.textSecondaryOf(context);
+    final shortMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    
+    return Row(
+      children: [
+        // Day picker
+        Expanded(
+          child: _ModernRotator(
+            height: 240,
+            child: CupertinoTheme(
+              data: CupertinoThemeData(
+                brightness: Theme.of(context).brightness,
+                primaryColor: DesignTokens.accentOrange,
+                textTheme: CupertinoTextThemeData(
+                  pickerTextStyle: TextStyle(
+                    color: textPrimary,
+                    fontSize: 22,
+                    fontWeight: DesignTokens.fontWeightBold,
+                  ),
+                ),
+              ),
+              child: CupertinoPicker(
+                scrollController: _dayController,
+                itemExtent: 50,
+                onSelectedItemChanged: (index) {
+                  HapticFeedback.selectionClick();
+                  final daysInMonth = DateTime(_selectedDate.year, _selectedDate.month + 1, 0).day;
+                  final day = (index % daysInMonth) + 1;
+                  _updateDate(day, _selectedDate.month, _selectedDate.year);
+                },
+                children: List.generate(31, (index) {
+                  final day = index + 1;
+                  return Center(
+                    child: _GradientPickerItem(
+                      text: day.toString(),
+                      isSelected: day == _selectedDate.day,
+                    ),
+                  );
+                }),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: DesignTokens.spacing8),
+        // Month picker
+        Expanded(
+          child: _ModernRotator(
+            height: 240,
+            child: CupertinoTheme(
+              data: CupertinoThemeData(
+                brightness: Theme.of(context).brightness,
+                primaryColor: DesignTokens.accentOrange,
+                textTheme: CupertinoTextThemeData(
+                  pickerTextStyle: TextStyle(
+                    color: textPrimary,
+                    fontSize: 22,
+                    fontWeight: DesignTokens.fontWeightBold,
+                  ),
+                ),
+              ),
+              child: CupertinoPicker(
+                scrollController: _monthController,
+                itemExtent: 50,
+                onSelectedItemChanged: (index) {
+                  HapticFeedback.selectionClick();
+                  final month = index + 1;
+                  final daysInMonth = DateTime(_selectedDate.year, month + 1, 0).day;
+                  final day = _selectedDate.day > daysInMonth ? daysInMonth : _selectedDate.day;
+                  _updateDate(day, month, _selectedDate.year);
+                },
+                children: shortMonths.map((month) {
+                  final index = shortMonths.indexOf(month);
+                  return Center(
+                    child: _GradientPickerItem(
+                      text: month,
+                      isSelected: index + 1 == _selectedDate.month,
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: DesignTokens.spacing8),
+        // Year picker
+        Expanded(
+          child: _ModernRotator(
+            height: 240,
+            child: CupertinoTheme(
+              data: CupertinoThemeData(
+                brightness: Theme.of(context).brightness,
+                primaryColor: DesignTokens.accentOrange,
+                textTheme: CupertinoTextThemeData(
+                  pickerTextStyle: TextStyle(
+                    color: textPrimary,
+                    fontSize: 22,
+                    fontWeight: DesignTokens.fontWeightBold,
+                  ),
+                ),
+              ),
+              child: CupertinoPicker(
+                scrollController: _yearController,
+                itemExtent: 50,
+                onSelectedItemChanged: (index) {
+                  HapticFeedback.selectionClick();
+                  final year = 1950 + index;
+                  final daysInMonth = DateTime(year, _selectedDate.month + 1, 0).day;
+                  final day = _selectedDate.day > daysInMonth ? daysInMonth : _selectedDate.day;
+                  _updateDate(day, _selectedDate.month, year);
+                },
+                children: List.generate(75, (index) {
+                  final year = 1950 + index;
+                  return Center(
+                    child: _GradientPickerItem(
+                      text: year.toString(),
+                      isSelected: year == _selectedDate.year,
+                    ),
+                  );
+                }),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// Date picker with short month names
+class _DatePickerWithShortMonths extends StatefulWidget {
+  final DateTime initialDateTime;
+  final ValueChanged<DateTime> onDateTimeChanged;
+
+  const _DatePickerWithShortMonths({
+    required this.initialDateTime,
+    required this.onDateTimeChanged,
+  });
+
+  @override
+  State<_DatePickerWithShortMonths> createState() => _DatePickerWithShortMonthsState();
+}
+
+class _DatePickerWithShortMonthsState extends State<_DatePickerWithShortMonths> {
+  late DateTime _selectedDate;
+  late FixedExtentScrollController _dayController;
+  late FixedExtentScrollController _monthController;
+  late FixedExtentScrollController _yearController;
+
+  final List<String> _shortMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  
+  // For infinite looping - start in the middle
+  static const int _monthLoopSize = 12;
+  static const int _dayMiddleIndex = 1000;
+  static const int _monthMiddleIndex = 1000;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedDate = widget.initialDateTime;
+    // Start in the middle for infinite scroll - always use 31 for day controller
+    _dayController = FixedExtentScrollController(
+      initialItem: _dayMiddleIndex + (_selectedDate.day - 1),
+    );
+    _monthController = FixedExtentScrollController(
+      initialItem: _monthMiddleIndex + (_selectedDate.month - 1),
+    );
+    _yearController = FixedExtentScrollController(initialItem: _selectedDate.year - 1950);
+  }
+
+  @override
+  void dispose() {
+    _dayController.dispose();
+    _monthController.dispose();
+    _yearController.dispose();
+    super.dispose();
+  }
+
+  void _updateDate(int day, int month, int year) {
+    final newDate = DateTime(year, month, day);
+    if (newDate != _selectedDate) {
+      setState(() => _selectedDate = newDate);
+      widget.onDateTimeChanged(newDate);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final surfaceColor = DesignTokens.surfaceOf(context);
+    final borderColor = DesignTokens.borderColorOf(context);
+
+    return Container(
+      height: 240,
+      decoration: BoxDecoration(
+        color: surfaceColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: borderColor,
+          width: 1.5,
+        ),
+      ),
+      child: Row(
+        children: [
+          // Day picker
+          Expanded(
+            child: CupertinoTheme(
+              data: CupertinoThemeData(
+                brightness: Theme.of(context).brightness,
+                primaryColor: DesignTokens.accentOrange,
+              ),
+              child: Builder(
+                builder: (context) {
+                  final daysInMonth = DateTime(_selectedDate.year, _selectedDate.month + 1, 0).day;
+                  // Always use 31 days to prevent rotation, but hide invalid days
+                  return CupertinoPicker(
+                    scrollController: _dayController,
+                    itemExtent: 50,
+                    onSelectedItemChanged: (index) {
+                      HapticFeedback.selectionClick();
+                      // Calculate actual day from looped index (always 31 days)
+                      final actualIndex = index % 31;
+                      final day = actualIndex + 1;
+                      
+                      // Only update if day is valid for current month
+                      if (day <= daysInMonth) {
+                        _updateDate(day, _selectedDate.month, _selectedDate.year);
+                      }
+                      
+                      // Loop back to middle if needed for infinite scroll
+                      if (index < _dayMiddleIndex - 500 || index > _dayMiddleIndex + 500) {
+                        final newIndex = _dayMiddleIndex + actualIndex;
+                        if (_dayController.hasClients) {
+                          _dayController.jumpToItem(newIndex);
+                        }
+                      }
+                    },
+                    children: List.generate(31 * 50, (index) {
+                      final actualIndex = index % 31;
+                      final day = actualIndex + 1;
+                      final isValidDay = day <= daysInMonth;
+                      // Check if this is the selected day (regardless of index position)
+                      final isSelected = day == _selectedDate.day && isValidDay;
+                      return Center(
+                        child: isValidDay
+                            ? _GradientPickerItem(
+                                text: day.toString(),
+                                isSelected: isSelected,
+                              )
+                            : Opacity(
+                                opacity: 0.0, // Invisible but maintains spacing
+                                child: _GradientPickerItem(
+                                  text: day.toString(),
+                                  isSelected: false,
+                                ),
+                              ),
+                      );
+                    }),
+                  );
+                },
+              ),
+            ),
+          ),
+          const SizedBox(width: DesignTokens.spacing8),
+          // Month picker with short names
+          Expanded(
+            child: CupertinoTheme(
+              data: CupertinoThemeData(
+                brightness: Theme.of(context).brightness,
+                primaryColor: DesignTokens.accentOrange,
+              ),
+              child: CupertinoPicker(
+                scrollController: _monthController,
+                itemExtent: 50,
+                onSelectedItemChanged: (index) {
+                  HapticFeedback.selectionClick();
+                  // Calculate actual month from looped index
+                  final actualIndex = index % _monthLoopSize;
+                  final month = actualIndex + 1;
+                  
+                  // Preserve the selected day if valid for new month, otherwise use max day
+                  final daysInMonth = DateTime(_selectedDate.year, month + 1, 0).day;
+                  final day = _selectedDate.day > daysInMonth ? daysInMonth : _selectedDate.day;
+                  
+                  _updateDate(day, month, _selectedDate.year);
+                  
+                  // Immediately update day controller to prevent rotation
+                  Future.microtask(() {
+                    if (mounted && _dayController.hasClients) {
+                      final dayIndex = _dayMiddleIndex + (day - 1);
+                      _dayController.jumpToItem(dayIndex);
+                    }
+                  });
+                  
+                  // Loop back to middle if needed for infinite scroll
+                  if (index < _monthMiddleIndex - 500 || index > _monthMiddleIndex + 500) {
+                    final newIndex = _monthMiddleIndex + actualIndex;
+                    if (_monthController.hasClients) {
+                      _monthController.jumpToItem(newIndex);
+                    }
+                  }
+                },
+                children: List.generate(_monthLoopSize * 100, (index) {
+                  final actualIndex = index % _monthLoopSize;
+                  final month = _shortMonths[actualIndex];
+                  // Check if this is the selected month (regardless of index position)
+                  final isSelected = actualIndex + 1 == _selectedDate.month;
+                  return Center(
+                    child: _GradientPickerItem(
+                      text: month,
+                      isSelected: isSelected,
+                    ),
+                  );
+                }),
+              ),
+            ),
+          ),
+          const SizedBox(width: DesignTokens.spacing8),
+          // Year picker
+          Expanded(
+            child: CupertinoTheme(
+              data: CupertinoThemeData(
+                brightness: Theme.of(context).brightness,
+                primaryColor: DesignTokens.accentOrange,
+              ),
+              child: CupertinoPicker(
+                scrollController: _yearController,
+                itemExtent: 50,
+                onSelectedItemChanged: (index) {
+                  HapticFeedback.selectionClick();
+                  final year = 1950 + index;
+                  final daysInMonth = DateTime(year, _selectedDate.month + 1, 0).day;
+                  final day = _selectedDate.day > daysInMonth ? daysInMonth : _selectedDate.day;
+                  _updateDate(day, _selectedDate.month, year);
+                },
+                children: List.generate(75, (index) {
+                  final year = 1950 + index;
+                  final isSelected = year == _selectedDate.year;
+                  return Center(
+                    child: _GradientPickerItem(
+                      text: year.toString(),
+                      isSelected: isSelected,
+                    ),
+                  );
+                }),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Gradient picker item for selected text
+class _GradientPickerItem extends StatelessWidget {
+  final String text;
+  final bool isSelected;
+
+  const _GradientPickerItem({
+    required this.text,
+    required this.isSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (isSelected) {
+      return ShaderMask(
+        shaderCallback: (bounds) => DesignTokens.primaryGradient.createShader(
+          Rect.fromLTWH(0, 0, bounds.width, bounds.height),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: DesignTokens.fontWeightBold,
+            color: Colors.white,
+          ),
+        ),
+      );
+    }
+    return Text(
+      text,
+      style: TextStyle(
+        fontSize: 22,
+        fontWeight: DesignTokens.fontWeightMedium,
+        color: DesignTokens.textSecondaryOf(context),
+      ),
+    );
+  }
+}
+
+// Modern rotator widget with enhanced design
 class _ModernRotator extends StatelessWidget {
   final double height;
   final Widget child;
@@ -1800,19 +2606,68 @@ class _ModernRotator extends StatelessWidget {
       height: height,
       decoration: BoxDecoration(
         color: surfaceColor,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: borderColor, width: 1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borderColor, width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         child: Stack(
           children: [
-            // Blur effect overlay
-            Positioned.fill(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 2, sigmaY: 2),
-                child: Container(
-                  color: surfaceColor.withValues(alpha: 0.8),
+            // Gradient overlay at top and bottom
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: height * 0.3,
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      surfaceColor,
+                      surfaceColor.withValues(alpha: 0),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: height * 0.3,
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [
+                      surfaceColor,
+                      surfaceColor.withValues(alpha: 0),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            // Center highlight line
+            Center(
+              child: Container(
+                height: 50,
+                decoration: BoxDecoration(
+                  color: DesignTokens.accentOrange.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: DesignTokens.accentOrange.withValues(alpha: 0.3),
+                    width: 1,
+                  ),
                 ),
               ),
             ),
@@ -1825,13 +2680,617 @@ class _ModernRotator extends StatelessWidget {
   }
 }
 
-class _TogglePill extends StatelessWidget {
+// Vertical weight selector with scale design
+class _VerticalWeightSelector extends StatefulWidget {
+  final double value;
+  final String unit;
+  final double min;
+  final double max;
+  final ValueChanged<double> onChanged;
+
+  const _VerticalWeightSelector({
+    required this.value,
+    required this.unit,
+    required this.min,
+    required this.max,
+    required this.onChanged,
+  });
+
+  @override
+  State<_VerticalWeightSelector> createState() => _VerticalWeightSelectorState();
+}
+
+class _VerticalWeightSelectorState extends State<_VerticalWeightSelector> {
+  late FixedExtentScrollController _controller;
+
+  int _getIndexForValue(double value) {
+    if (widget.unit == 'kg') {
+      return ((value - widget.min) * 2).round().clamp(0, ((widget.max - widget.min) * 2).round());
+    } else {
+      return (value - widget.min).round().clamp(0, (widget.max - widget.min).round());
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final initialIndex = _getIndexForValue(widget.value);
+    _controller = FixedExtentScrollController(initialItem: initialIndex);
+  }
+
+  @override
+  void didUpdateWidget(_VerticalWeightSelector oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.value != widget.value || oldWidget.unit != widget.unit) {
+      final newIndex = _getIndexForValue(widget.value);
+      if (_controller.hasClients && _controller.selectedItem != newIndex) {
+        _controller.jumpToItem(newIndex);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textPrimary = DesignTokens.textPrimaryOf(context);
+    final surfaceColor = DesignTokens.surfaceOf(context);
+    final itemCount = widget.unit == 'kg'
+        ? ((widget.max - widget.min) * 2).round() + 1
+        : (widget.max - widget.min).round() + 1;
+    
+    return Container(
+      height: 180,
+      decoration: BoxDecoration(
+        color: surfaceColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: DesignTokens.borderColorOf(context),
+          width: 1.5,
+        ),
+      ),
+      child: Row(
+        children: [
+          // Scale markers on left
+          Container(
+            width: 30,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: List.generate(10, (index) {
+                final isMajor = index % 2 == 0;
+                return Container(
+                  width: isMajor ? 3 : 2,
+                  height: isMajor ? 12 : 8,
+                  color: DesignTokens.borderColorOf(context),
+                );
+              }),
+            ),
+          ),
+          const SizedBox(width: DesignTokens.spacing8),
+          // Vertical picker
+          Expanded(
+            child: Stack(
+              children: [
+                CupertinoTheme(
+                  data: CupertinoThemeData(
+                    brightness: Theme.of(context).brightness,
+                    primaryColor: DesignTokens.accentOrange,
+                    textTheme: CupertinoTextThemeData(
+                      pickerTextStyle: TextStyle(
+                        color: textPrimary,
+                        fontSize: 22,
+                        fontWeight: DesignTokens.fontWeightBold,
+                      ),
+                    ),
+                  ),
+                  child: CupertinoPicker(
+                    scrollController: _controller,
+                    itemExtent: 50,
+                    onSelectedItemChanged: (index) {
+                      HapticFeedback.selectionClick();
+                      final newValue = widget.unit == 'kg' 
+                          ? (widget.min + index * 0.5).clamp(widget.min, widget.max)
+                          : (widget.min + index).toDouble().clamp(widget.min, widget.max);
+                      widget.onChanged(newValue);
+                    },
+                    children: List.generate(itemCount, (index) {
+                      final value = widget.unit == 'kg'
+                          ? (widget.min + index * 0.5).clamp(widget.min, widget.max)
+                          : (widget.min + index).toDouble();
+                      final isSelected = widget.unit == 'kg'
+                          ? (value - widget.value).abs() < 0.3
+                          : (value - widget.value).abs() < 1;
+                      return Center(
+                        child: _GradientPickerItem(
+                          text: '${value.toStringAsFixed(widget.unit == 'kg' ? 1 : 0)} ${widget.unit}',
+                          isSelected: isSelected,
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+                // Center highlight line
+                Positioned(
+                  top: 65,
+                  left: 0,
+                  right: 0,
+                  height: 50,
+                  child: IgnorePointer(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: DesignTokens.accentOrange.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: DesignTokens.accentOrange.withValues(alpha: 0.3),
+                          width: 1,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Weight slider with ruler design - completely rebuilt
+class _HorizontalRulerWeightSelector extends StatefulWidget {
+  final double value;
+  final String unit;
+  final double min;
+  final double max;
+  final ValueChanged<double> onChanged;
+
+  const _HorizontalRulerWeightSelector({
+    required this.value,
+    required this.unit,
+    required this.min,
+    required this.max,
+    required this.onChanged,
+  });
+
+  @override
+  State<_HorizontalRulerWeightSelector> createState() => _HorizontalRulerWeightSelectorState();
+}
+
+class _HorizontalRulerWeightSelectorState extends State<_HorizontalRulerWeightSelector> {
+  late ScrollController _scrollController;
+  // 10 lines per unit: 9 small lines (0.1-0.9) + 1 big line (whole number)
+  // Each 0.1 unit = pixelsPerUnit / 10
+  final double _pixelsPerUnit = 120.0; // 12 pixels per line for good spacing
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Start at first big line (min value)
+      _scrollToValue(widget.min, animate: false);
+    });
+  }
+
+  @override
+  void didUpdateWidget(_HorizontalRulerWeightSelector oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.value != widget.value || oldWidget.unit != widget.unit) {
+      _scrollToValue(widget.value, animate: true);
+    }
+  }
+
+  void _scrollToValue(double value, {bool animate = true}) {
+    if (!_scrollController.hasClients) return;
+    final roundedValue = value.round().toDouble().clamp(widget.min, widget.max);
+    final offset = (roundedValue - widget.min) * _pixelsPerUnit;
+    
+    if (animate) {
+      _scrollController.animateTo(
+        offset,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+    } else {
+      _scrollController.jumpTo(offset);
+    }
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final offset = _scrollController.offset;
+    final newValue = (offset / _pixelsPerUnit) + widget.min;
+    final clampedValue = newValue.clamp(widget.min, widget.max);
+    final roundedValue = (clampedValue * 10).round() / 10.0;
+    
+    if ((roundedValue - widget.value).abs() > 0.05) {
+      widget.onChanged(roundedValue);
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textPrimary = DesignTokens.textPrimaryOf(context);
+    final screenWidth = MediaQuery.of(context).size.width;
+    final range = widget.max - widget.min;
+    final totalWidth = range * _pixelsPerUnit + screenWidth;
+    
+    return Column(
+      children: [
+        // Weight display
+        Text(
+          '${widget.value.toStringAsFixed(widget.unit == 'kg' ? 1 : 0)} ${widget.unit}',
+          style: TextStyle(
+            fontSize: 36,
+            fontWeight: DesignTokens.fontWeightBold,
+            color: textPrimary,
+          ),
+        ),
+        const SizedBox(height: DesignTokens.spacing24),
+        // Ruler slider
+        Container(
+          height: 100,
+          child: Stack(
+            children: [
+              // Scrollable ruler
+              NotificationListener<ScrollNotification>(
+                onNotification: (notification) {
+                  if (notification is ScrollUpdateNotification || 
+                      notification is ScrollEndNotification) {
+                    _onScroll();
+                  }
+                  return false;
+                },
+                child: SingleChildScrollView(
+                  controller: _scrollController,
+                  scrollDirection: Axis.horizontal,
+                  physics: const _WeightSliderPhysics(),
+                  child: Container(
+                    width: totalWidth,
+                    height: 100,
+                    child: CustomPaint(
+                      painter: _WeightRulerPainter(
+                        min: widget.min,
+                        max: widget.max,
+                        pixelsPerUnit: _pixelsPerUnit,
+                        screenWidth: screenWidth,
+                        textColor: DesignTokens.textSecondaryOf(context),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              // Center indicator line with orange gradient
+              Center(
+                child: ShaderMask(
+                  shaderCallback: (bounds) => DesignTokens.primaryGradient.createShader(
+                    Rect.fromLTWH(0, 0, bounds.width, bounds.height),
+                  ),
+                  child: Container(
+                    width: 1.0,
+                    height: 100,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// Fast and smooth scroll physics
+class _WeightSliderPhysics extends ClampingScrollPhysics {
+  const _WeightSliderPhysics({super.parent});
+
+  @override
+  _WeightSliderPhysics applyTo(ScrollPhysics? ancestor) {
+    return _WeightSliderPhysics(parent: buildParent(ancestor));
+  }
+
+  @override
+  double get minFlingVelocity => 5.0;
+  @override
+  double get maxFlingVelocity => 30000.0;
+}
+
+// Ruler painter - draws lines and numbers
+class _WeightRulerPainter extends CustomPainter {
+  final double min;
+  final double max;
+  final double pixelsPerUnit;
+  final double screenWidth;
+  final Color textColor;
+
+  _WeightRulerPainter({
+    required this.min,
+    required this.max,
+    required this.pixelsPerUnit,
+    required this.screenWidth,
+    required this.textColor,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final minorPaint = Paint()
+      ..color = textColor.withValues(alpha: 0.4)
+      ..strokeWidth = 1.0;
+
+    final majorPaint = Paint()
+      ..color = textColor.withValues(alpha: 0.9)
+      ..strokeWidth = 1.0;
+
+    final centerX = screenWidth / 2;
+    final rulerY = size.height * 0.65;
+    final majorHeight = 40.0;
+    final minorHeight = 22.0;
+
+    // Calculate visible range
+    final padding = 300.0;
+    final visibleStart = ((centerX - padding) / pixelsPerUnit * 10).floor() / 10.0 + min;
+    final visibleEnd = (((centerX + size.width + padding) / pixelsPerUnit) * 10).ceil() / 10.0 + min;
+
+    // Draw all lines in visible range
+    for (double value = visibleStart; value <= visibleEnd; value += 0.1) {
+      if (value < min || value > max) continue;
+      
+      final x = (value - min) * pixelsPerUnit;
+      final decimalPart = (value - value.floor()).abs();
+      final isMajor = decimalPart < 0.01 || decimalPart > 0.99;
+      
+      final height = isMajor ? majorHeight : minorHeight;
+      final paint = isMajor ? majorPaint : minorPaint;
+
+      // Draw line pointing up
+      canvas.drawLine(
+        Offset(x, rulerY),
+        Offset(x, rulerY - height),
+        paint,
+      );
+      
+      // Draw number below big lines
+      if (isMajor) {
+        final wholeNumber = value.round();
+        if (wholeNumber >= min && wholeNumber <= max) {
+          final text = wholeNumber.toString();
+          final textPainter = TextPainter(
+            text: TextSpan(
+              text: text,
+              style: TextStyle(
+                color: textColor,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            textDirection: TextDirection.ltr,
+          );
+          textPainter.layout();
+          textPainter.paint(
+            canvas,
+            Offset(x - textPainter.width / 2, rulerY + 12),
+          );
+        }
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_WeightRulerPainter oldDelegate) {
+    return oldDelegate.min != min || oldDelegate.max != max;
+  }
+}
+
+// Goals dropdown selector
+class _GoalsDropdown extends StatefulWidget {
+  final List<String> goals;
+  final Set<String> selected;
+  final ValueChanged<String> onToggleGoal;
+
+  const _GoalsDropdown({
+    required this.goals,
+    required this.selected,
+    required this.onToggleGoal,
+  });
+
+  @override
+  State<_GoalsDropdown> createState() => _GoalsDropdownState();
+}
+
+class _GoalsDropdownState extends State<_GoalsDropdown> {
+  String? _selectedGoal;
+
+  @override
+  void initState() {
+    super.initState();
+    // Set initial selected goal if any
+    if (widget.selected.isNotEmpty) {
+      _selectedGoal = widget.selected.first;
+    }
+  }
+
+  @override
+  void didUpdateWidget(_GoalsDropdown oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.selected.isNotEmpty && widget.selected != oldWidget.selected) {
+      _selectedGoal = widget.selected.first;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: DesignTokens.surfaceOf(context),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: DesignTokens.borderColorOf(context),
+          width: 1.5,
+        ),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: _selectedGoal,
+          isExpanded: true,
+          padding: const EdgeInsets.symmetric(horizontal: DesignTokens.spacing16),
+          icon: Icon(
+            Icons.arrow_drop_down,
+            color: DesignTokens.textSecondaryOf(context),
+          ),
+          hint: Text(
+            'Select fitness goals',
+            style: TextStyle(
+              color: DesignTokens.textSecondaryOf(context),
+              fontSize: DesignTokens.fontSizeBody,
+            ),
+          ),
+          style: TextStyle(
+            color: DesignTokens.textPrimaryOf(context),
+            fontWeight: DesignTokens.fontWeightMedium,
+            fontSize: DesignTokens.fontSizeBody,
+          ),
+          items: widget.goals.map((goal) {
+            final isSelected = widget.selected.contains(goal);
+            return DropdownMenuItem<String>(
+              value: goal,
+              child: Row(
+                children: [
+                  if (isSelected)
+                    Icon(
+                      Icons.check_circle,
+                      color: DesignTokens.accentOrange,
+                      size: 20,
+                    )
+                  else
+                    Icon(
+                      Icons.circle_outlined,
+                      color: DesignTokens.textSecondaryOf(context),
+                      size: 20,
+                    ),
+                  const SizedBox(width: DesignTokens.spacing8),
+                  Expanded(
+                    child: Text(goal),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+          onChanged: (value) {
+            if (value != null) {
+              setState(() => _selectedGoal = value);
+              HapticFeedback.selectionClick();
+              widget.onToggleGoal(value);
+            }
+          },
+        ),
+      ),
+    );
+  }
+}
+
+// Role selector input box
+class _RoleSelector extends StatefulWidget {
+  final String selectedRole;
+  final ValueChanged<String> onRoleSelected;
+
+  const _RoleSelector({
+    required this.selectedRole,
+    required this.onRoleSelected,
+  });
+
+  @override
+  State<_RoleSelector> createState() => _RoleSelectorState();
+}
+
+class _RoleSelectorState extends State<_RoleSelector> {
+  late FixedExtentScrollController _controller;
+  final List<String> _roles = ['Client', 'Trainer', 'Nutritionist'];
+
+  @override
+  void initState() {
+    super.initState();
+    final initialIndex = _roles.indexOf(widget.selectedRole);
+    _controller = FixedExtentScrollController(
+      initialItem: initialIndex >= 0 ? initialIndex : 0,
+    );
+  }
+
+  @override
+  void didUpdateWidget(_RoleSelector oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedRole != widget.selectedRole) {
+      final newIndex = _roles.indexOf(widget.selectedRole);
+      if (newIndex >= 0 && _controller.hasClients && _controller.selectedItem != newIndex) {
+        _controller.jumpToItem(newIndex);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 200,
+      decoration: BoxDecoration(
+        color: DesignTokens.surfaceOf(context),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: DesignTokens.borderColorOf(context),
+          width: 1.5,
+        ),
+      ),
+      child: CupertinoTheme(
+        data: CupertinoThemeData(
+          brightness: Theme.of(context).brightness,
+          primaryColor: DesignTokens.accentOrange,
+        ),
+        child: CupertinoPicker(
+          scrollController: _controller,
+          itemExtent: 50,
+          onSelectedItemChanged: (index) {
+            HapticFeedback.selectionClick();
+            widget.onRoleSelected(_roles[index]);
+          },
+          children: _roles.map((role) {
+            final isSelected = role == widget.selectedRole;
+            return Center(
+              child: _GradientPickerItem(
+                text: role,
+                isSelected: isSelected,
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+}
+
+// Modern toggle switch design
+class _ModernToggle extends StatelessWidget {
   final String left;
   final String right;
   final bool isLeft;
   final ValueChanged<bool> onChanged;
 
-  const _TogglePill({
+  const _ModernToggle({
     required this.left,
     required this.right,
     required this.isLeft,
@@ -1840,82 +3299,171 @@ class _TogglePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final textSecondary = DesignTokens.textSecondaryOf(context);
     final surfaceColor = DesignTokens.surfaceOf(context);
     final borderColor = DesignTokens.borderColorOf(context);
-    final textPrimary = DesignTokens.textPrimaryOf(context);
-    final textSecondary = DesignTokens.textSecondaryOf(context);
     
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: surfaceColor,
-        borderRadius: BorderRadius.circular(DesignTokens.radiusChip),
-        border: Border.all(color: borderColor, width: 1),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _MiniToggle(
-            text: left,
-            selected: isLeft,
-            onTap: () => onChanged(true),
-            textPrimary: textPrimary,
-            textSecondary: textSecondary,
-          ),
-          _MiniToggle(
-            text: right,
-            selected: !isLeft,
-            onTap: () => onChanged(false),
-            textPrimary: textPrimary,
-            textSecondary: textSecondary,
-          ),
-        ],
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onChanged(!isLeft);
+      },
+      child: Container(
+        height: 52,
+        decoration: BoxDecoration(
+          color: surfaceColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: borderColor, width: 1.5),
+        ),
+        child: Stack(
+          children: [
+            AnimatedPositioned(
+              duration: DesignTokens.animationMedium,
+              curve: Curves.easeOutCubic,
+              left: isLeft ? 4 : null,
+              right: isLeft ? null : 4,
+              top: 4,
+              bottom: 4,
+              width: (MediaQuery.of(context).size.width - 48 - 8) / 2,
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: DesignTokens.primaryGradient,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: DesignTokens.accentOrange.withValues(alpha: 0.3),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      left,
+                      style: TextStyle(
+                        fontWeight: isLeft
+                            ? DesignTokens.fontWeightBold
+                            : DesignTokens.fontWeightMedium,
+                        color: isLeft ? Colors.white : textSecondary,
+                        fontSize: DesignTokens.fontSizeBody,
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      right,
+                      style: TextStyle(
+                        fontWeight: !isLeft
+                            ? DesignTokens.fontWeightBold
+                            : DesignTokens.fontWeightMedium,
+                        color: !isLeft ? Colors.white : textSecondary,
+                        fontSize: DesignTokens.fontSizeBody,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-class _MiniToggle extends StatelessWidget {
-  final String text;
-  final bool selected;
-  final VoidCallback onTap;
-  final Color textPrimary;
-  final Color textSecondary;
+// Small toggle for inline use
+class _SmallToggle extends StatelessWidget {
+  final String left;
+  final String right;
+  final bool isLeft;
+  final ValueChanged<bool> onChanged;
 
-  const _MiniToggle({
-    required this.text,
-    required this.selected,
-    required this.onTap,
-    required this.textPrimary,
-    required this.textSecondary,
+  const _SmallToggle({
+    required this.left,
+    required this.right,
+    required this.isLeft,
+    required this.onChanged,
   });
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(DesignTokens.radiusChip),
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: DesignTokens.animationFast,
-        padding: const EdgeInsets.symmetric(
-          horizontal: DesignTokens.spacing16,
-          vertical: DesignTokens.spacing8,
-        ),
+    final textSecondary = DesignTokens.textSecondaryOf(context);
+    final surfaceColor = DesignTokens.surfaceOf(context);
+    final borderColor = DesignTokens.borderColorOf(context);
+    
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onChanged(!isLeft);
+      },
+      child: Container(
+        height: 32,
+        width: 100,
         decoration: BoxDecoration(
-          color: selected
-              ? DesignTokens.accentOrange.withValues(alpha: 0.22)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(DesignTokens.radiusChip),
+          color: surfaceColor,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: borderColor, width: 1),
         ),
-        child: Text(
-          text,
-          style: TextStyle(
-            fontWeight: DesignTokens.fontWeightBold,
-            color: selected ? textPrimary : textSecondary,
-            fontSize: DesignTokens.fontSizeBodySmall,
-          ),
+        child: Stack(
+          children: [
+            AnimatedPositioned(
+              duration: DesignTokens.animationMedium,
+              curve: Curves.easeOutCubic,
+              left: isLeft ? 2 : null,
+              right: isLeft ? null : 2,
+              top: 2,
+              bottom: 2,
+              width: 48,
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: DesignTokens.primaryGradient,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+              ),
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      left,
+                      style: TextStyle(
+                        fontWeight: isLeft
+                            ? DesignTokens.fontWeightBold
+                            : DesignTokens.fontWeightMedium,
+                        color: isLeft ? Colors.white : textSecondary,
+                        fontSize: DesignTokens.fontSizeBodySmall,
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      right,
+                      style: TextStyle(
+                        fontWeight: !isLeft
+                            ? DesignTokens.fontWeightBold
+                            : DesignTokens.fontWeightMedium,
+                        color: !isLeft ? Colors.white : textSecondary,
+                        fontSize: DesignTokens.fontSizeBodySmall,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
   }
 }
+

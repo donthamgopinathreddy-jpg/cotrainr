@@ -110,20 +110,34 @@ class _LoginPageState extends State<LoginPage>
                 children: [
                   const SizedBox(height: DesignTokens.spacing40),
                   
-                  // Minimalist logo
+                  // Logo
                   Center(
-                    child: Container(
-                      width: 80,
+                    child: Image.asset(
+                      Theme.of(context).brightness == Brightness.dark
+                          ? 'assets/images/cotrainr_logo_white.png'
+                          : 'assets/images/cotrainr_logo_black.png',
+                      width: 200,
                       height: 80,
-                      decoration: BoxDecoration(
-                        color: DesignTokens.accentOrange.withValues(alpha: 0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.bolt_rounded,
-                        color: DesignTokens.accentOrange,
-                        size: 40,
-                      ),
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) {
+                        // Fallback to icon if image not found
+                        debugPrint('Logo image not found: ${Theme.of(context).brightness == Brightness.dark ? "cotrainr_logo_white.png" : "cotrainr_logo_black.png"}');
+                        return Container(
+                          width: 200,
+                          height: 80,
+                          decoration: BoxDecoration(
+                            gradient: DesignTokens.primaryGradient,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Center(
+                            child: Icon(
+                              Icons.bolt_rounded,
+                              color: Colors.white,
+                              size: 40,
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
                   
@@ -371,7 +385,7 @@ class _CleanButtonState extends State<_CleanButton>
         child: Container(
           height: 52,
           decoration: BoxDecoration(
-            color: DesignTokens.accentOrange,
+            gradient: DesignTokens.primaryGradient,
             borderRadius: BorderRadius.circular(12),
           ),
           alignment: Alignment.center,

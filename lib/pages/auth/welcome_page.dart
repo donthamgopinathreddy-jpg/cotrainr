@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -12,37 +13,98 @@ class WelcomePage extends StatefulWidget {
 }
 
 class _WelcomePageState extends State<WelcomePage>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _animationController;
-  late final Animation<double> _fadeAnimation;
-  late final Animation<Offset> _slideAnimation;
+  late final AnimationController _logoController;
+  late final Animation<double> _logoScaleAnimation;
+  late final Animation<double> _logoRotationAnimation;
+  late final Animation<double> _titleFadeAnimation;
+  late final Animation<Offset> _titleSlideAnimation;
+  late final Animation<double> _subtitleFadeAnimation;
+  late final Animation<Offset> _subtitleSlideAnimation;
+  late final Animation<double> _buttonsFadeAnimation;
+  late final Animation<Offset> _buttonsSlideAnimation;
 
   @override
   void initState() {
     super.initState();
     _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1000),
+      duration: const Duration(milliseconds: 1200),
     );
     
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+    _logoController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    
+    _logoScaleAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
-        parent: _animationController,
-        curve: Curves.easeOut,
+        parent: _logoController,
+        curve: Curves.elasticOut,
       ),
     );
     
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.1),
+    _logoRotationAnimation = Tween<double>(begin: -0.05, end: 0.0).animate(
+      CurvedAnimation(
+        parent: _logoController,
+        curve: Curves.easeOutBack,
+      ),
+    );
+    
+    _titleFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: const Interval(0.2, 0.5, curve: Curves.easeOut),
+      ),
+    );
+    
+    _titleSlideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.2),
       end: Offset.zero,
     ).animate(
       CurvedAnimation(
         parent: _animationController,
-        curve: Curves.easeOutCubic,
+        curve: const Interval(0.2, 0.5, curve: Curves.easeOutCubic),
+      ),
+    );
+    
+    _subtitleFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: const Interval(0.4, 0.7, curve: Curves.easeOut),
+      ),
+    );
+    
+    _subtitleSlideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.15),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: const Interval(0.4, 0.7, curve: Curves.easeOutCubic),
+      ),
+    );
+    
+    _buttonsFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: const Interval(0.6, 1.0, curve: Curves.easeOut),
+      ),
+    );
+    
+    _buttonsSlideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.2),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: const Interval(0.6, 1.0, curve: Curves.easeOutCubic),
       ),
     );
     
     _checkSession();
+    _logoController.forward();
     _animationController.forward();
   }
 
@@ -62,6 +124,7 @@ class _WelcomePageState extends State<WelcomePage>
   @override
   void dispose() {
     _animationController.dispose();
+    _logoController.dispose();
     super.dispose();
   }
 
@@ -84,39 +147,59 @@ class _WelcomePageState extends State<WelcomePage>
     return Scaffold(
       backgroundColor: bgColor,
       body: SafeArea(
-        child: FadeTransition(
-          opacity: _fadeAnimation,
-          child: SlideTransition(
-            position: _slideAnimation,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: DesignTokens.spacing24,
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Logo
-                  Center(
-                    child: Container(
-                      width: 100,
-                      height: 100,
-                      decoration: BoxDecoration(
-                        color: DesignTokens.accentOrange.withValues(alpha: 0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        Icons.bolt_rounded,
-                        color: DesignTokens.accentOrange,
-                        size: 56,
-                      ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: DesignTokens.spacing24,
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Logo with scale and rotation animation
+              Center(
+                child: ScaleTransition(
+                  scale: _logoScaleAnimation,
+                  child: RotationTransition(
+                    turns: _logoRotationAnimation,
+                    child: Image.asset(
+                      Theme.of(context).brightness == Brightness.dark
+                          ? 'assets/images/cotrainr_logo_white.png'
+                          : 'assets/images/cotrainr_logo_black.png',
+                      width: 200,
+                      height: 80,
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) {
+                        // Fallback to icon if image not found
+                        debugPrint('Logo image not found: ${Theme.of(context).brightness == Brightness.dark ? "cotrainr_logo_white.png" : "cotrainr_logo_black.png"}');
+                        return Container(
+                          width: 200,
+                          height: 80,
+                          decoration: BoxDecoration(
+                            gradient: DesignTokens.primaryGradient,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Center(
+                            child: Icon(
+                              Icons.bolt_rounded,
+                              color: Colors.white,
+                              size: 40,
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
-                  
-                  const SizedBox(height: DesignTokens.spacing48),
-                  
-                  // Welcome Text
-                  Text(
+                ),
+              ),
+              
+              const SizedBox(height: DesignTokens.spacing48),
+              
+              // Welcome Text with fade and slide
+              FadeTransition(
+                opacity: _titleFadeAnimation,
+                child: SlideTransition(
+                  position: _titleSlideAnimation,
+                  child: Text(
                     'Welcome to Cotrainr',
                     style: TextStyle(
                       fontSize: 36,
@@ -126,10 +209,17 @@ class _WelcomePageState extends State<WelcomePage>
                     ),
                     textAlign: TextAlign.center,
                   ),
-                  
-                  const SizedBox(height: DesignTokens.spacing8),
-                  
-                  Text(
+                ),
+              ),
+              
+              const SizedBox(height: DesignTokens.spacing8),
+              
+              // Subtitle with fade and slide
+              FadeTransition(
+                opacity: _subtitleFadeAnimation,
+                child: SlideTransition(
+                  position: _subtitleSlideAnimation,
+                  child: Text(
                     'Transform your fitness journey',
                     style: TextStyle(
                       fontSize: DesignTokens.fontSizeBody,
@@ -138,27 +228,38 @@ class _WelcomePageState extends State<WelcomePage>
                     ),
                     textAlign: TextAlign.center,
                   ),
-                  
-                  const SizedBox(height: DesignTokens.spacing48),
-                  
-                  // Login Button
-                  _WelcomeButton(
-                    text: 'Login',
-                    onTap: _goToLogin,
-                    isPrimary: true,
-                  ),
-                  
-                  const SizedBox(height: DesignTokens.spacing16),
-                  
-                  // Create Account Button
-                  _WelcomeButton(
-                    text: 'Create Account',
-                    onTap: _goToCreateAccount,
-                    isPrimary: false,
-                  ),
-                ],
+                ),
               ),
-            ),
+              
+              const SizedBox(height: DesignTokens.spacing48),
+              
+              // Buttons with fade and slide
+              FadeTransition(
+                opacity: _buttonsFadeAnimation,
+                child: SlideTransition(
+                  position: _buttonsSlideAnimation,
+                  child: Column(
+                    children: [
+                      // Login Button
+                      _WelcomeButton(
+                        text: 'Login',
+                        onTap: _goToLogin,
+                        isPrimary: true,
+                      ),
+                      
+                      const SizedBox(height: DesignTokens.spacing16),
+                      
+                      // Create Account Button
+                      _WelcomeButton(
+                        text: 'Create Account',
+                        onTap: _goToCreateAccount,
+                        isPrimary: false,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -218,8 +319,11 @@ class _WelcomeButtonState extends State<_WelcomeButton>
         child: Container(
           height: 52,
           decoration: BoxDecoration(
+            gradient: widget.isPrimary
+                ? DesignTokens.primaryGradient
+                : null,
             color: widget.isPrimary
-                ? DesignTokens.accentOrange
+                ? null
                 : DesignTokens.surfaceOf(context),
             borderRadius: BorderRadius.circular(12),
             border: widget.isPrimary
