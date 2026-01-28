@@ -140,7 +140,10 @@ class _WelcomePageState extends State<WelcomePage>
 
   @override
   Widget build(BuildContext context) {
-    final bgColor = DesignTokens.backgroundOf(context);
+    // White background in light mode, dark in dark mode
+    final bgColor = Theme.of(context).brightness == Brightness.dark
+        ? DesignTokens.darkBackground
+        : Colors.white;
     final textPrimary = DesignTokens.textPrimaryOf(context);
     final textSecondary = DesignTokens.textSecondaryOf(context);
 
@@ -325,7 +328,7 @@ class _WelcomeButtonState extends State<_WelcomeButton>
             color: widget.isPrimary
                 ? null
                 : DesignTokens.surfaceOf(context),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
             border: widget.isPrimary
                 ? null
                 : Border.all(

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_colors.dart';
 import '../../utils/page_transitions.dart';
 import '../../widgets/common/pressable_card.dart';
@@ -25,8 +26,13 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
     with SingleTickerProviderStateMixin {
   final String _username = 'John Doe';
   final String _handle = '@fitness_john';
-  final String _role = 'client';
   final bool _isSubscribed = false;
+  
+  String get _role {
+    final supabase = Supabase.instance.client;
+    final user = supabase.auth.currentUser;
+    return user?.userMetadata?['role']?.toString().toLowerCase() ?? 'client';
+  }
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
 
@@ -125,16 +131,19 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                     },
                   ),
                 ),
-                const SizedBox(height: 12),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: _FullLengthButton(
-                    label: _isSubscribed ? 'My Subscription' : 'Subscription',
-                    icon: Icons.star_rounded,
-                    iconGradient: AppColors.stepsGradient,
-                    onTap: () => HapticFeedback.lightImpact(),
+                // Only show subscription button for clients
+                if (_role == 'client') ...[
+                  const SizedBox(height: 12),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: _FullLengthButton(
+                      label: _isSubscribed ? 'My Subscription' : 'Subscription',
+                      icon: Icons.star_rounded,
+                      iconGradient: AppColors.stepsGradient,
+                      onTap: () => HapticFeedback.lightImpact(),
+                    ),
                   ),
-                ),
+                ],
                 if (_role == 'client') ...[
                   const SizedBox(height: 12),
                   Padding(

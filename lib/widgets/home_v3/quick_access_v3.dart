@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
 import '../common/pressable_card.dart';
@@ -10,7 +11,14 @@ class QuickAccessV3 extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final items = [
+    
+    // Get user role from Supabase
+    final supabase = Supabase.instance.client;
+    final user = supabase.auth.currentUser;
+    final userRole = user?.userMetadata?['role']?.toString().toLowerCase() ?? 'client';
+    
+    // Filter items based on role
+    final allItems = [
       _QuickTileData('MEAL TRACKER', Icons.restaurant_rounded,
           const LinearGradient(colors: [AppColors.green, Color(0xFF65E6B3)])),
       _QuickTileData('MESSAGING', Icons.chat_bubble_outline_rounded,
@@ -21,7 +29,17 @@ class QuickAccessV3 extends StatelessWidget {
           const LinearGradient(colors: [AppColors.orange, AppColors.yellow])),
       _QuickTileData('BECOME A TRAINER', Icons.school_rounded,
           const LinearGradient(colors: [AppColors.orange, AppColors.pink])),
+      _QuickTileData('SUBSCRIPTION', Icons.card_membership_rounded,
+          const LinearGradient(colors: [AppColors.purple, AppColors.pink])),
     ];
+    
+    // Remove "BECOME A TRAINER" and "SUBSCRIPTION" for trainers and nutritionists
+    final items = allItems.where((item) {
+      if (userRole == 'trainer' || userRole == 'nutritionist') {
+        return item.title != 'BECOME A TRAINER' && item.title != 'SUBSCRIPTION';
+      }
+      return true; // Show all items for clients
+    }).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../theme/design_tokens.dart';
 
 class LoginPage extends StatefulWidget {
@@ -19,6 +20,7 @@ class _LoginPageState extends State<LoginPage>
   final _pass = TextEditingController();
   bool _obscure = true;
   bool _isLoading = false;
+  bool _rememberMe = false;
   
   late final AnimationController _animationController;
   late final Animation<double> _fadeAnimation;
@@ -52,6 +54,133 @@ class _LoginPageState extends State<LoginPage>
   void _goSignup() {
     HapticFeedback.lightImpact();
     context.push('/auth/create-account');
+  }
+
+  Future<void> _forgotPassword() async {
+    HapticFeedback.lightImpact();
+    
+    // Show dialog to enter email
+    final emailController = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: DesignTokens.surfaceOf(context),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
+        ),
+        title: Text(
+          'Reset Password',
+          style: TextStyle(
+            color: DesignTokens.textPrimaryOf(context),
+            fontWeight: DesignTokens.fontWeightBold,
+            fontSize: DesignTokens.fontSizeH3,
+          ),
+        ),
+        content: TextField(
+          controller: emailController,
+          keyboardType: TextInputType.emailAddress,
+          style: TextStyle(color: DesignTokens.textPrimaryOf(context)),
+          decoration: InputDecoration(
+            labelText: 'Email',
+            labelStyle: TextStyle(color: DesignTokens.textSecondaryOf(context)),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(DesignTokens.radiusSmall),
+              borderSide: BorderSide(color: DesignTokens.borderColorOf(context)),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(DesignTokens.radiusSmall),
+              borderSide: BorderSide(color: DesignTokens.borderColorOf(context)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(DesignTokens.radiusSmall),
+              borderSide: const BorderSide(color: DesignTokens.accentOrange, width: 2),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: DesignTokens.textSecondaryOf(context)),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, emailController.text),
+            child: Text(
+              'Send',
+              style: TextStyle(
+                color: DesignTokens.accentOrange,
+                fontWeight: DesignTokens.fontWeightSemiBold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && result.isNotEmpty) {
+      try {
+        final supabase = Supabase.instance.client;
+        await supabase.auth.resetPasswordForEmail(
+          result.trim(),
+          redirectTo: 'cotrainr://reset-password',
+        );
+        
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Password reset email sent!'),
+            backgroundColor: DesignTokens.accentGreen,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
+            ),
+          ),
+        );
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: DesignTokens.accentRed,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _signInWithOAuth(OAuthProvider provider) async {
+    HapticFeedback.lightImpact();
+    setState(() => _isLoading = true);
+
+    try {
+      final supabase = Supabase.instance.client;
+      await supabase.auth.signInWithOAuth(
+        provider,
+        redirectTo: 'cotrainr://auth-callback',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Login failed: ${e.toString()}'),
+          backgroundColor: DesignTokens.accentRed,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   Future<void> _login() async {
@@ -90,7 +219,10 @@ class _LoginPageState extends State<LoginPage>
 
   @override
   Widget build(BuildContext context) {
-    final bgColor = DesignTokens.backgroundOf(context);
+    // White background in light mode, dark in dark mode
+    final bgColor = Theme.of(context).brightness == Brightness.dark
+        ? DesignTokens.darkBackground
+        : Colors.white;
     final textPrimary = DesignTokens.textPrimaryOf(context);
     final textSecondary = DesignTokens.textSecondaryOf(context);
 
@@ -109,39 +241,6 @@ class _LoginPageState extends State<LoginPage>
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const SizedBox(height: DesignTokens.spacing40),
-                  
-                  // Logo
-                  Center(
-                    child: Image.asset(
-                      Theme.of(context).brightness == Brightness.dark
-                          ? 'assets/images/cotrainr_logo_white.png'
-                          : 'assets/images/cotrainr_logo_black.png',
-                      width: 200,
-                      height: 80,
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) {
-                        // Fallback to icon if image not found
-                        debugPrint('Logo image not found: ${Theme.of(context).brightness == Brightness.dark ? "cotrainr_logo_white.png" : "cotrainr_logo_black.png"}');
-                        return Container(
-                          width: 200,
-                          height: 80,
-                          decoration: BoxDecoration(
-                            gradient: DesignTokens.primaryGradient,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Center(
-                            child: Icon(
-                              Icons.bolt_rounded,
-                              color: Colors.white,
-                              size: 40,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  
-                  const SizedBox(height: DesignTokens.spacing48),
                   
                   // Clean typography
                   Text(
@@ -200,6 +299,70 @@ class _LoginPageState extends State<LoginPage>
                           },
                         ),
                         
+                        const SizedBox(height: DesignTokens.spacing16),
+                        
+                        // Remember me and Forgot password row
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            // Remember me checkbox
+                            GestureDetector(
+                              onTap: () {
+                                HapticFeedback.selectionClick();
+                                setState(() => _rememberMe = !_rememberMe);
+                              },
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 20,
+                                    height: 20,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(
+                                        color: _rememberMe
+                                            ? DesignTokens.accentOrange
+                                            : DesignTokens.borderColorOf(context),
+                                        width: _rememberMe ? 2 : 1,
+                                      ),
+                                      color: _rememberMe
+                                          ? DesignTokens.accentOrange
+                                          : Colors.transparent,
+                                    ),
+                                    child: _rememberMe
+                                        ? const Icon(
+                                            Icons.check,
+                                            size: 14,
+                                            color: Colors.white,
+                                          )
+                                        : null,
+                                  ),
+                                  const SizedBox(width: DesignTokens.spacing8),
+                                  Text(
+                                    'Remember me',
+                                    style: TextStyle(
+                                      color: textSecondary,
+                                      fontSize: DesignTokens.fontSizeBodySmall,
+                                      fontWeight: DesignTokens.fontWeightRegular,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            // Forgot password
+                            GestureDetector(
+                              onTap: _forgotPassword,
+                              child: Text(
+                                'Forgot Password?',
+                                style: TextStyle(
+                                  color: DesignTokens.accentOrange,
+                                  fontSize: DesignTokens.fontSizeBodySmall,
+                                  fontWeight: DesignTokens.fontWeightSemiBold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        
                         const SizedBox(height: DesignTokens.spacing32),
                         
                         _CleanButton(
@@ -211,7 +374,95 @@ class _LoginPageState extends State<LoginPage>
                     ),
                   ),
                   
-                  const SizedBox(height: DesignTokens.spacing24),
+                  const SizedBox(height: DesignTokens.spacing32),
+                  
+                  // Divider with "OR"
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Divider(
+                          color: DesignTokens.borderColorOf(context),
+                          thickness: 1,
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: DesignTokens.spacing16),
+                        child: Text(
+                          'OR',
+                          style: TextStyle(
+                            color: textSecondary,
+                            fontSize: DesignTokens.fontSizeBodySmall,
+                            fontWeight: DesignTokens.fontWeightMedium,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Divider(
+                          color: DesignTokens.borderColorOf(context),
+                          thickness: 1,
+                        ),
+                      ),
+                    ],
+                  ),
+                  
+                  const SizedBox(height: DesignTokens.spacing32),
+                  
+                  // Continue with heading
+                  Text(
+                    'Continue with',
+                    style: TextStyle(
+                      fontSize: DesignTokens.fontSizeBody,
+                      color: textSecondary,
+                      fontWeight: DesignTokens.fontWeightRegular,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  
+                  const SizedBox(height: DesignTokens.spacing20),
+                  
+                  // Social login icon boxes
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _SocialIconBox(
+                        iconWidget: FaIcon(
+                          FontAwesomeIcons.google,
+                          size: 32,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white
+                              : Colors.black,
+                        ),
+                        onTap: () => _signInWithOAuth(OAuthProvider.google),
+                        isLoading: _isLoading,
+                      ),
+                      const SizedBox(width: DesignTokens.spacing20),
+                      _SocialIconBox(
+                        iconWidget: FaIcon(
+                          FontAwesomeIcons.apple,
+                          size: 32,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white
+                              : Colors.black,
+                        ),
+                        onTap: () => _signInWithOAuth(OAuthProvider.apple),
+                        isLoading: _isLoading,
+                      ),
+                      const SizedBox(width: DesignTokens.spacing20),
+                      _SocialIconBox(
+                        iconWidget: FaIcon(
+                          FontAwesomeIcons.facebook,
+                          size: 32,
+                          color: Theme.of(context).brightness == Brightness.dark
+                              ? Colors.white
+                              : Colors.black,
+                        ),
+                        onTap: () => _signInWithOAuth(OAuthProvider.facebook),
+                        isLoading: _isLoading,
+                      ),
+                    ],
+                  ),
+                  
+                  const SizedBox(height: DesignTokens.spacing32),
                   
                   // Sign up link
                   Row(
@@ -301,22 +552,22 @@ class _CleanField extends StatelessWidget {
         filled: true,
         fillColor: surfaceColor,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
           borderSide: BorderSide(color: borderColor, width: 1),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
           borderSide: BorderSide(color: borderColor, width: 1),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
           borderSide: const BorderSide(
             color: DesignTokens.accentOrange,
             width: 2,
           ),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
           borderSide: const BorderSide(
             color: DesignTokens.accentRed,
             width: 1,
@@ -330,6 +581,86 @@ class _CleanField extends StatelessWidget {
     );
   }
 }
+
+// Social Icon Box Widget
+class _SocialIconBox extends StatefulWidget {
+  final Widget iconWidget;
+  final VoidCallback? onTap;
+  final bool isLoading;
+
+  const _SocialIconBox({
+    required this.iconWidget,
+    this.onTap,
+    this.isLoading = false,
+  });
+
+  @override
+  State<_SocialIconBox> createState() => _SocialIconBoxState();
+}
+
+class _SocialIconBoxState extends State<_SocialIconBox>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: DesignTokens.interactionDuration,
+    );
+    _scale = Tween<double>(begin: 1.0, end: 0.95)
+        .animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final surfaceColor = DesignTokens.surfaceOf(context);
+    final borderColor = DesignTokens.borderColorOf(context);
+
+    return GestureDetector(
+      onTapDown: (_) => _controller.forward(),
+      onTapCancel: () => _controller.reverse(),
+      onTapUp: (_) {
+        _controller.reverse();
+        if (widget.onTap != null && !widget.isLoading) {
+          HapticFeedback.lightImpact();
+          widget.onTap?.call();
+        }
+      },
+      child: ScaleTransition(
+        scale: _scale,
+        child: Opacity(
+          opacity: widget.isLoading ? 0.6 : 1.0,
+          child: Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: surfaceColor,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: borderColor,
+                width: 1,
+              ),
+            ),
+            child: Center(
+              child: widget.iconWidget,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
 
 class _CleanButton extends StatefulWidget {
   final String text;
@@ -386,7 +717,7 @@ class _CleanButtonState extends State<_CleanButton>
           height: 52,
           decoration: BoxDecoration(
             gradient: DesignTokens.primaryGradient,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
           ),
           alignment: Alignment.center,
           child: widget.isLoading

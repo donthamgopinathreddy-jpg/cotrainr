@@ -1,39 +1,29 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../theme/design_tokens.dart';
-import 'home_page_v3.dart';
-import '../discover/discover_page.dart';
+import 'nutritionist_home_page.dart';
+import '../trainer/create_client_page.dart';
 import '../quest/quest_page.dart';
 import '../cocircle/cocircle_page.dart';
 import '../profile/profile_page.dart';
 
-class HomeShellPage extends StatefulWidget {
-  final bool showWelcome;
-  
-  const HomeShellPage({
-    super.key,
-    this.showWelcome = false,
-  });
+class NutritionistDashboardPage extends StatefulWidget {
+  const NutritionistDashboardPage({super.key});
 
   @override
-  State<HomeShellPage> createState() => _HomeShellPageState();
+  State<NutritionistDashboardPage> createState() => _NutritionistDashboardPageState();
 }
 
-class _HomeShellPageState extends State<HomeShellPage>
-    with SingleTickerProviderStateMixin {
+class _NutritionistDashboardPageState extends State<NutritionistDashboardPage> {
   int _currentIndex = 0;
   late final PageController _pageController;
-  late final AnimationController _welcomeController;
-  late final Animation<double> _welcomeFade;
-  late final Animation<Offset> _welcomeSlide;
-  bool _showWelcomeBubble = false;
 
   final List<NavigationItem> _navigationItems = [
     NavigationItem(
       icon: Icons.home_outlined,
       activeIcon: Icons.home,
       label: 'Home',
-      route: '/home',
+      route: '/nutritionist/dashboard',
       gradient: LinearGradient(
         colors: [DesignTokens.accentOrange, DesignTokens.accentAmber],
         begin: Alignment.topLeft,
@@ -41,10 +31,10 @@ class _HomeShellPageState extends State<HomeShellPage>
       ),
     ),
     NavigationItem(
-      icon: Icons.explore_outlined,
-      activeIcon: Icons.explore,
-      label: 'Discover',
-      route: '/home/discover',
+      icon: Icons.person_add_outlined,
+      activeIcon: Icons.person_add,
+      label: 'Clients',
+      route: '/nutritionist/clients',
       gradient: const LinearGradient(
         colors: [Color(0xFF3ED598), Color(0xFF4DA3FF)],
         begin: Alignment.topLeft,
@@ -55,7 +45,7 @@ class _HomeShellPageState extends State<HomeShellPage>
       icon: Icons.emoji_events_outlined,
       activeIcon: Icons.emoji_events,
       label: 'Quest',
-      route: '/home/quest',
+      route: '/nutritionist/quest',
       gradient: const LinearGradient(
         colors: [Color(0xFFFFD93D), Color(0xFFFF5A5A)],
         begin: Alignment.topLeft,
@@ -66,7 +56,7 @@ class _HomeShellPageState extends State<HomeShellPage>
       icon: Icons.people_outline,
       activeIcon: Icons.people,
       label: 'Cocircle',
-      route: '/home/cocircle',
+      route: '/nutritionist/cocircle',
       gradient: const LinearGradient(
         colors: [Color(0xFF4DA3FF), Color(0xFF8B5CF6)],
         begin: Alignment.topLeft,
@@ -77,7 +67,7 @@ class _HomeShellPageState extends State<HomeShellPage>
       icon: Icons.person_outline,
       activeIcon: Icons.person,
       label: 'Profile',
-      route: '/home/profile',
+      route: '/nutritionist/profile',
       gradient: const LinearGradient(
         colors: [Color(0xFFFF5A5A), Color(0xFFFF8A7A)],
         begin: Alignment.topLeft,
@@ -90,54 +80,11 @@ class _HomeShellPageState extends State<HomeShellPage>
   void initState() {
     super.initState();
     _pageController = PageController(initialPage: _currentIndex);
-    
-    _welcomeController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 800),
-    );
-    
-    _welcomeFade = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _welcomeController,
-        curve: const Interval(0.0, 0.6, curve: Curves.easeOut),
-      ),
-    );
-    
-    _welcomeSlide = Tween<Offset>(
-      begin: const Offset(0, -0.3),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _welcomeController,
-        curve: const Interval(0.0, 0.6, curve: Curves.easeOutCubic),
-      ),
-    );
-    
-    if (widget.showWelcome) {
-      _showWelcomeBubble = true;
-      // Start animation after a short delay
-      Future.delayed(const Duration(milliseconds: 300), () {
-        if (mounted) {
-          _welcomeController.forward();
-        }
-      });
-      // Auto-hide after 3 seconds
-      Future.delayed(const Duration(milliseconds: 3300), () {
-        if (mounted && _showWelcomeBubble) {
-          _welcomeController.reverse().then((_) {
-            if (mounted) {
-              setState(() => _showWelcomeBubble = false);
-            }
-          });
-        }
-      });
-    }
   }
 
   @override
   void dispose() {
     _pageController.dispose();
-    _welcomeController.dispose();
     super.dispose();
   }
 
@@ -146,26 +93,15 @@ class _HomeShellPageState extends State<HomeShellPage>
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      body: Stack(
-        children: [
-          PageView.builder(
+      body: PageView.builder(
         controller: _pageController,
         physics: const BouncingScrollPhysics(),
         onPageChanged: (index) => setState(() => _currentIndex = index),
         itemCount: _navigationItems.length,
         itemBuilder: (context, index) {
           final pages = [
-            HomePageV3(
-              onNavigateToCocircle: () {
-                _pageController.animateToPage(
-                  3, // Cocircle feed is at index 3
-                  duration: const Duration(milliseconds: 260),
-                  curve: Curves.easeOutCubic,
-                );
-                setState(() => _currentIndex = 3);
-              },
-            ),
-            const DiscoverPage(),
+            const NutritionistHomePage(),
+            const CreateClientPage(),
             const QuestPage(),
             const CocirclePage(),
             const ProfilePage(),
@@ -193,69 +129,6 @@ class _HomeShellPageState extends State<HomeShellPage>
             ),
           );
         },
-      ),
-          // Floating welcome bubble
-          if (_showWelcomeBubble)
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 16,
-              left: 16,
-              right: 16,
-              child: SlideTransition(
-                position: _welcomeSlide,
-                child: FadeTransition(
-                  opacity: _welcomeFade,
-                  child: Material(
-                    elevation: 8,
-                    borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: DesignTokens.spacing20,
-                        vertical: DesignTokens.spacing16,
-                      ),
-                      decoration: BoxDecoration(
-                        gradient: DesignTokens.primaryGradient,
-                        borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.check_circle,
-                            color: Colors.white,
-                            size: 24,
-                          ),
-                          const SizedBox(width: DesignTokens.spacing12),
-                          Expanded(
-                            child: Text(
-                              'Welcome back!',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: DesignTokens.fontSizeBody,
-                                fontWeight: DesignTokens.fontWeightSemiBold,
-                              ),
-                            ),
-                          ),
-                          GestureDetector(
-                            onTap: () {
-                              _welcomeController.reverse().then((_) {
-                                if (mounted) {
-                                  setState(() => _showWelcomeBubble = false);
-                                }
-                              });
-                            },
-                            child: const Icon(
-                              Icons.close,
-                              color: Colors.white,
-                              size: 20,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(

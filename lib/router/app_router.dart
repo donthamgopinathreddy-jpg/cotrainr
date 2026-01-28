@@ -5,11 +5,14 @@ import '../core/motion/motion.dart';
 import '../../pages/auth/login_page.dart';
 import '../../pages/auth/signup_wizard_page.dart';
 import '../../pages/auth/welcome_page.dart';
+import '../../pages/auth/welcome_animation_page.dart';
 import '../../pages/home/home_shell_page.dart';
 import '../../pages/notifications/notification_page.dart';
 import '../../pages/insights/insights_detail_page.dart';
 import '../../pages/messaging/messaging_page.dart';
 import '../../pages/trainer/become_trainer_page.dart';
+import '../../pages/trainer/trainer_dashboard_page.dart';
+import '../../pages/nutritionist/nutritionist_dashboard_page.dart';
 import '../../pages/refer/refer_friend_page.dart';
 import '../../pages/video_sessions/video_sessions_page.dart';
 import '../../pages/video_sessions/create_meeting_page.dart';
@@ -27,7 +30,7 @@ final GoRouter appRouter = GoRouter(
     final isLoggedIn = session != null;
 
     // Public routes that don't require auth
-    final publicRoutes = ['/welcome', '/auth/login', '/auth/create-account'];
+    final publicRoutes = ['/welcome', '/auth/login', '/auth/create-account', '/welcome-animation'];
     final isPublicRoute = publicRoutes.contains(state.matchedLocation);
 
     // If not logged in and trying to access protected route
@@ -35,8 +38,23 @@ final GoRouter appRouter = GoRouter(
       return '/welcome';
     }
 
-    // If logged in and trying to access auth routes, redirect to home
-    if (isLoggedIn && isPublicRoute) {
+    // If logged in and trying to access auth routes, redirect based on user role
+    // But allow /welcome-animation to be accessed even when logged in
+    if (isLoggedIn && isPublicRoute && state.matchedLocation != '/welcome-animation') {
+      // Try to get user role from metadata
+      try {
+        final user = supabase.auth.currentUser;
+        if (user != null && user.userMetadata != null) {
+          final role = user.userMetadata?['role']?.toString().toLowerCase();
+          if (role == 'trainer') {
+            return '/trainer/dashboard';
+          } else if (role == 'nutritionist') {
+            return '/nutritionist/dashboard';
+          }
+        }
+      } catch (e) {
+        // If we can't get role, default to home
+      }
       return '/home';
     }
 
@@ -68,10 +86,20 @@ final GoRouter appRouter = GoRouter(
       ),
     ),
     GoRoute(
+      path: '/welcome-animation',
+      name: 'welcomeAnimation',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const WelcomeAnimationPage(),
+        state: state,
+      ),
+    ),
+    GoRoute(
       path: '/home',
       name: 'home',
       pageBuilder: (context, state) => _fadeSlidePage(
-        child: const HomeShellPage(),
+        child: HomeShellPage(
+          showWelcome: state.uri.queryParameters['showWelcome'] == 'true',
+        ),
         state: state,
       ),
     ),
@@ -150,6 +178,22 @@ final GoRouter appRouter = GoRouter(
       name: 'becomeTrainer',
       pageBuilder: (context, state) => _fadeSlidePage(
         child: const BecomeTrainerPage(),
+        state: state,
+      ),
+    ),
+    GoRoute(
+      path: '/trainer/dashboard',
+      name: 'trainerDashboard',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const TrainerDashboardPage(),
+        state: state,
+      ),
+    ),
+    GoRoute(
+      path: '/nutritionist/dashboard',
+      name: 'nutritionistDashboard',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const NutritionistDashboardPage(),
         state: state,
       ),
     ),
