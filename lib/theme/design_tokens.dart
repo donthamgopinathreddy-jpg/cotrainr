@@ -159,6 +159,35 @@ class DesignTokens {
     end: Alignment.bottomRight,
   );
 
+  // ========== ROLE-SPECIFIC GRADIENTS ==========
+  // My Clients gradient (Green to Blue) - used in Trainer/Nutritionist navigation
+  static const LinearGradient myClientsGradient = LinearGradient(
+    colors: [Color(0xFF3ED598), accentBlue],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  // Quest gradient (Yellow to Red) - used in Quest navigation
+  static const LinearGradient questGradient = LinearGradient(
+    colors: [accentYellow, accentRed],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  // Cocircle gradient (Blue to Purple) - used in Cocircle navigation
+  static const LinearGradient cocircleGradient = LinearGradient(
+    colors: [accentBlue, accentPurple],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  // Profile gradient (Red to Pink) - used in Profile navigation
+  static const LinearGradient profileGradient = LinearGradient(
+    colors: [accentRed, Color(0xFFFF8A7A)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
   // Soft gradient for cards (subtle, elegant)
   static LinearGradient softGradient(BuildContext context) {
     return LinearGradient(

@@ -2,17 +2,24 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/motion/motion.dart';
+import '../theme/design_tokens.dart';
 import '../../pages/auth/login_page.dart';
 import '../../pages/auth/signup_wizard_page.dart';
 import '../../pages/auth/welcome_page.dart';
 import '../../pages/auth/welcome_animation_page.dart';
+import '../../pages/auth/permissions_page.dart';
 import '../../pages/home/home_shell_page.dart';
 import '../../pages/notifications/notification_page.dart';
 import '../../pages/insights/insights_detail_page.dart';
 import '../../pages/messaging/messaging_page.dart';
+import '../../pages/messaging/chat_screen.dart';
 import '../../pages/trainer/become_trainer_page.dart';
 import '../../pages/trainer/trainer_dashboard_page.dart';
+import '../../pages/trainer/create_client_page.dart';
+import '../../pages/trainer/client_detail_page.dart';
+import '../../pages/trainer/verification_submission_page.dart';
 import '../../pages/nutritionist/nutritionist_dashboard_page.dart';
+import '../../pages/nutritionist/nutritionist_client_detail_page.dart';
 import '../../pages/refer/refer_friend_page.dart';
 import '../../pages/video_sessions/video_sessions_page.dart';
 import '../../pages/video_sessions/create_meeting_page.dart';
@@ -24,13 +31,14 @@ import '../../models/video_session_models.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: '/welcome',
+  debugLogDiagnostics: true,
   redirect: (BuildContext context, GoRouterState state) {
     final supabase = Supabase.instance.client;
     final session = supabase.auth.currentSession;
     final isLoggedIn = session != null;
 
     // Public routes that don't require auth
-    final publicRoutes = ['/welcome', '/auth/login', '/auth/create-account', '/welcome-animation'];
+    final publicRoutes = ['/welcome', '/auth/login', '/auth/create-account', '/welcome-animation', '/auth/permissions'];
     final isPublicRoute = publicRoutes.contains(state.matchedLocation);
 
     // If not logged in and trying to access protected route
@@ -84,6 +92,17 @@ final GoRouter appRouter = GoRouter(
         child: const SignupWizardPage(),
         state: state,
       ),
+    ),
+    GoRoute(
+      path: '/auth/permissions',
+      name: 'permissions',
+      pageBuilder: (context, state) {
+        final role = (state.extra as Map<String, dynamic>?)?['role'] ?? 'client';
+        return _fadeSlidePage(
+          child: PermissionsPage(userRole: role),
+          state: state,
+        );
+      },
     ),
     GoRoute(
       path: '/welcome-animation',
@@ -259,6 +278,61 @@ final GoRouter appRouter = GoRouter(
         child: const QuestPage(),
         state: state,
       ),
+    ),
+    GoRoute(
+      path: '/verification',
+      name: 'verification',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const VerificationSubmissionPage(),
+        state: state,
+      ),
+    ),
+    // Standardized client routes
+    GoRoute(
+      path: '/clients/:id',
+      name: 'clientDetail',
+      pageBuilder: (context, state) {
+        final clientId = state.pathParameters['id'] ?? '';
+        return _fadeSlidePage(
+          child: ClientDetailPage(
+            client: state.extra as ClientItem?,
+            clientId: clientId,
+          ),
+          state: state,
+        );
+      },
+    ),
+    GoRoute(
+      path: '/nutritionist/clients/:id',
+      name: 'nutritionistClientDetail',
+      pageBuilder: (context, state) {
+        final clientId = state.pathParameters['id'] ?? '';
+        return _fadeSlidePage(
+          child: NutritionistClientDetailPage(
+            client: state.extra as ClientItem?,
+            clientId: clientId,
+          ),
+          state: state,
+        );
+      },
+    ),
+    GoRoute(
+      path: '/messaging/chat/:userId',
+      name: 'chatScreen',
+      pageBuilder: (context, state) {
+        final userId = state.pathParameters['userId'] ?? '';
+        final extra = state.extra as Map<String, dynamic>?;
+        return _fadeSlidePage(
+          child: ChatScreen(
+            conversationId: userId,
+            userName: extra?['userName'] ?? 'User',
+            avatarGradient: DesignTokens.primaryGradient,
+            isOnline: extra?['isOnline'] ?? false,
+            avatarUrl: extra?['avatarUrl'],
+          ),
+          state: state,
+        );
+      },
     ),
   ],
 );

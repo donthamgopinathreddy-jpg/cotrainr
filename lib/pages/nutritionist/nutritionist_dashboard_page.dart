@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../theme/design_tokens.dart';
 import 'nutritionist_home_page.dart';
-import '../trainer/create_client_page.dart';
-import '../quest/quest_page.dart';
-import '../cocircle/cocircle_page.dart';
-import '../profile/profile_page.dart';
+import 'nutritionist_my_clients_page.dart';
+import 'nutritionist_quest_page.dart';
+import 'nutritionist_cocircle_page.dart';
+import 'nutritionist_profile_page.dart';
 
 class NutritionistDashboardPage extends StatefulWidget {
   const NutritionistDashboardPage({super.key});
@@ -33,7 +33,7 @@ class _NutritionistDashboardPageState extends State<NutritionistDashboardPage> {
     NavigationItem(
       icon: Icons.person_add_outlined,
       activeIcon: Icons.person_add,
-      label: 'Clients',
+      label: 'My Clients',
       route: '/nutritionist/clients',
       gradient: const LinearGradient(
         colors: [Color(0xFF3ED598), Color(0xFF4DA3FF)],
@@ -101,10 +101,10 @@ class _NutritionistDashboardPageState extends State<NutritionistDashboardPage> {
         itemBuilder: (context, index) {
           final pages = [
             const NutritionistHomePage(),
-            const CreateClientPage(),
-            const QuestPage(),
-            const CocirclePage(),
-            const ProfilePage(),
+            const NutritionistMyClientsPage(),
+            const NutritionistQuestPage(),
+            NutritionistCocirclePage(),
+            const NutritionistProfilePage(),
           ];
           return AnimatedSwitcher(
             duration: const Duration(milliseconds: 300),

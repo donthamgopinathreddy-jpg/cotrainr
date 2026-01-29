@@ -25,6 +25,8 @@ class _SignupWizardPageState extends State<SignupWizardPage>
   final _confirmPass = TextEditingController();
   String? _userIdAvailabilityStatus;
   bool _isCheckingUserId = false;
+  String? _emailValidationStatus; // 'valid', 'invalid', 'taken', null
+  bool _isCheckingEmail = false;
 
   // Step 2
   final _first = TextEditingController();
@@ -121,6 +123,12 @@ class _SignupWizardPageState extends State<SignupWizardPage>
       );
       return false;
     }
+    if (userIdText.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('User ID must be at least 6 characters')),
+      );
+      return false;
+    }
     if (!RegExp(r'^[a-z0-9_]+$').hasMatch(userIdText)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('User ID can only contain lowercase letters, numbers, and underscore')),
@@ -143,6 +151,18 @@ class _SignupWizardPageState extends State<SignupWizardPage>
     if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(_email.text.trim())) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please enter a valid email')),
+      );
+      return false;
+    }
+    if (_emailValidationStatus == 'taken') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This email is already used')),
+      );
+      return false;
+    }
+    if (_emailValidationStatus != 'valid') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please ensure email is valid')),
       );
       return false;
     }
@@ -202,6 +222,48 @@ class _SignupWizardPageState extends State<SignupWizardPage>
       setState(() {
         _userIdAvailabilityStatus = isAvailable ? 'available' : 'taken';
         _isCheckingUserId = false;
+      });
+    }
+  }
+
+  Future<void> _checkEmailValidation(String email) async {
+    final emailTrimmed = email.trim();
+    
+    if (emailTrimmed.isEmpty) {
+      setState(() {
+        _emailValidationStatus = null;
+        _isCheckingEmail = false;
+      });
+      return;
+    }
+
+    // Check email format first
+    final isValidFormat = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(emailTrimmed);
+    
+    if (!isValidFormat) {
+      setState(() {
+        _emailValidationStatus = 'invalid';
+        _isCheckingEmail = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _isCheckingEmail = true;
+      _emailValidationStatus = 'checking';
+    });
+
+    // Simulate API call to check if email is already used
+    await Future.delayed(const Duration(milliseconds: 800));
+
+    // For now, simulate: email is available if it doesn't contain "taken" or "used"
+    final isAvailable = !emailTrimmed.toLowerCase().contains('taken') && 
+                        !emailTrimmed.toLowerCase().contains('used');
+    
+    if (mounted) {
+      setState(() {
+        _emailValidationStatus = isAvailable ? 'valid' : 'taken';
+        _isCheckingEmail = false;
       });
     }
   }
@@ -297,13 +359,8 @@ class _SignupWizardPageState extends State<SignupWizardPage>
           final role = _role.toLowerCase();
           if (!mounted) return;
           
-          if (role == 'trainer') {
-            context.go('/trainer/dashboard');
-          } else if (role == 'nutritionist') {
-            context.go('/nutritionist/dashboard');
-          } else {
-            context.go('/home');
-          }
+          // Redirect to permissions page first
+          context.go('/auth/permissions', extra: {'role': role});
         } else {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
@@ -376,7 +433,9 @@ class _SignupWizardPageState extends State<SignupWizardPage>
 
   @override
   Widget build(BuildContext context) {
-    final bgColor = DesignTokens.backgroundOf(context);
+    final bgColor = Theme.of(context).brightness == Brightness.light
+        ? Colors.white
+        : DesignTokens.backgroundOf(context);
     final textPrimary = DesignTokens.textPrimaryOf(context);
     final textSecondary = DesignTokens.textSecondaryOf(context);
 
@@ -489,6 +548,9 @@ class _SignupWizardPageState extends State<SignupWizardPage>
                       userIdAvailabilityStatus: _userIdAvailabilityStatus,
                       isCheckingUserId: _isCheckingUserId,
                       onUserIdChanged: _checkUserIdAvailability,
+                      emailValidationStatus: _emailValidationStatus,
+                      isCheckingEmail: _isCheckingEmail,
+                      onEmailChanged: _checkEmailValidation,
                     ),
                     _Step2Content(
                       first: _first,
@@ -559,58 +621,55 @@ class _SignupWizardPageState extends State<SignupWizardPage>
               // Navigation button
               Container(
                 padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-                decoration: BoxDecoration(
-                  color: DesignTokens.surfaceOf(context),
-                  border: Border(
-                    top: BorderSide(
-                      color: DesignTokens.borderColorOf(context),
-                      width: 1,
-                    ),
-                  ),
-                ),
                 child: SafeArea(
                   top: false,
                   child: SizedBox(
                     width: double.infinity,
-                    child: TextButton(
-                      onPressed: _isSubmitting ? null : _next,
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 18),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+                    child: GestureDetector(
+                      onTap: _isSubmitting ? null : _next,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
+                          ),
+                          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
                         ),
-                      ),
-                      child: _isSubmitting
-                        ? SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.5,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                DesignTokens.accentOrange,
-                              ),
-                            ),
-                          )
-                        : Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                _step == 4 ? 'Create Account' : 'Next',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: 0.2,
-                                  color: DesignTokens.accentOrange,
+                        child: _isSubmitting
+                          ? SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                valueColor: const AlwaysStoppedAnimation<Color>(
+                                  Colors.black,
                                 ),
                               ),
-                              const SizedBox(width: 8),
-                              Icon(
-                                Icons.arrow_forward_rounded,
-                                size: 20,
-                                color: DesignTokens.accentOrange,
-                              ),
-                            ],
-                          ),
+                            )
+                          : Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  _step == 4 ? 'Create Account' : 'Next',
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 0.2,
+                                    color: Colors.black,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                const Text(
+                                  '>',
+                                  style: TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.black,
+                                  ),
+                                ),
+                              ],
+                            ),
+                      ),
                     ),
                   ),
                 ),
@@ -632,6 +691,9 @@ class _Step1Content extends StatefulWidget {
   final String? userIdAvailabilityStatus;
   final bool isCheckingUserId;
   final ValueChanged<String> onUserIdChanged;
+  final String? emailValidationStatus;
+  final bool isCheckingEmail;
+  final ValueChanged<String> onEmailChanged;
 
   const _Step1Content({
     required this.userId,
@@ -641,6 +703,9 @@ class _Step1Content extends StatefulWidget {
     required this.userIdAvailabilityStatus,
     required this.isCheckingUserId,
     required this.onUserIdChanged,
+    required this.emailValidationStatus,
+    required this.isCheckingEmail,
+    required this.onEmailChanged,
   });
 
   @override
@@ -650,6 +715,27 @@ class _Step1Content extends StatefulWidget {
 class _Step1ContentState extends State<_Step1Content> {
   bool _obscurePass = true;
   bool _obscureConfirmPass = true;
+
+  @override
+  void initState() {
+    super.initState();
+    // Listen to password changes to update validation chips
+    widget.pass.addListener(_onPasswordChanged);
+    widget.confirmPass.addListener(_onPasswordChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.pass.removeListener(_onPasswordChanged);
+    widget.confirmPass.removeListener(_onPasswordChanged);
+    super.dispose();
+  }
+
+  void _onPasswordChanged() {
+    setState(() {
+      // Trigger rebuild to update password validation chips
+    });
+  }
 
   bool _isValidPassword(String password) {
     if (password.length < 8) return false;
@@ -678,6 +764,7 @@ class _Step1ContentState extends State<_Step1Content> {
             controller: widget.userId,
             hint: 'lowercase, numbers, _ only',
             prefixIcon: Icons.alternate_email_rounded,
+            keyboardType: TextInputType.text,
             onChanged: (value) {
               Future.delayed(const Duration(milliseconds: 500), () {
                 if (widget.userId.text == value) {
@@ -686,10 +773,15 @@ class _Step1ContentState extends State<_Step1Content> {
               });
             },
             inputFormatters: [
-              FilteringTextInputFormatter.allow(RegExp(r'[a-z0-9_]')),
+              FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9_]')),
               TextInputFormatter.withFunction((oldValue, newValue) {
+                // Only convert letters to lowercase, preserve numbers and underscores
+                final newText = newValue.text.replaceAllMapped(
+                  RegExp(r'[A-Z]'),
+                  (match) => match.group(0)!.toLowerCase(),
+                );
                 return TextEditingValue(
-                  text: newValue.text.toLowerCase(),
+                  text: newText,
                   selection: newValue.selection,
                 );
               }),
@@ -705,9 +797,15 @@ class _Step1ContentState extends State<_Step1Content> {
                 : widget.userIdAvailabilityStatus == 'taken'
                   ? Icon(Icons.cancel, color: DesignTokens.accentRed, size: 20)
                   : null,
+            helperText: widget.userId.text.isNotEmpty && widget.userId.text.length < 6
+              ? 'Minimum 6 characters required'
+              : null,
+            helperColor: widget.userId.text.isNotEmpty && widget.userId.text.length < 6
+              ? DesignTokens.accentRed
+              : null,
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
 
           _TextFieldCard(
             label: 'Email',
@@ -715,9 +813,37 @@ class _Step1ContentState extends State<_Step1Content> {
             hint: 'your.email@example.com',
             prefixIcon: Icons.mail_outline_rounded,
             keyboardType: TextInputType.emailAddress,
+            onChanged: (value) {
+              Future.delayed(const Duration(milliseconds: 500), () {
+                if (widget.email.text == value) {
+                  widget.onEmailChanged(value);
+                }
+              });
+            },
+            suffix: widget.isCheckingEmail
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : widget.emailValidationStatus == 'valid'
+                ? Icon(Icons.check_circle, color: DesignTokens.accentGreen, size: 20)
+                : widget.emailValidationStatus == 'taken'
+                  ? Icon(Icons.cancel, color: DesignTokens.accentRed, size: 20)
+                  : widget.emailValidationStatus == 'invalid'
+                    ? Icon(Icons.error_outline, color: DesignTokens.accentRed, size: 20)
+                    : null,
+            helperText: widget.emailValidationStatus == 'invalid'
+              ? 'Invalid email'
+              : widget.emailValidationStatus == 'taken'
+                ? 'Already used'
+                : null,
+            helperColor: widget.emailValidationStatus == 'invalid' || widget.emailValidationStatus == 'taken'
+              ? DesignTokens.accentRed
+              : null,
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
 
           _TextFieldCard(
             label: 'Password',
@@ -725,6 +851,11 @@ class _Step1ContentState extends State<_Step1Content> {
             hint: 'Create a strong password',
             prefixIcon: Icons.lock_outline_rounded,
             obscureText: _obscurePass,
+            onChanged: (value) {
+              setState(() {
+                // Trigger rebuild to update password validation chips
+              });
+            },
             suffix: IconButton(
               icon: Icon(
                 _obscurePass ? Icons.visibility_outlined : Icons.visibility_off_outlined,
@@ -827,7 +958,7 @@ class _Step2Content extends StatelessWidget {
             prefixIcon: Icons.person_outline_rounded,
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
 
           _TextFieldCard(
             label: 'Last Name',
@@ -836,7 +967,7 @@ class _Step2Content extends StatelessWidget {
             prefixIcon: Icons.person_outline_rounded,
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
 
           _TextFieldCard(
             label: 'Phone Number',
@@ -844,6 +975,10 @@ class _Step2Content extends StatelessWidget {
             hint: 'Enter your phone number',
             keyboardType: TextInputType.phone,
             prefixIcon: Icons.phone_outlined,
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(10),
+            ],
             prefix: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -927,31 +1062,39 @@ class _Step3Content extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 8),
-          Container(
+          SizedBox(
             height: 220,
-            decoration: BoxDecoration(
-              color: surfaceColor,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: borderColor, width: 1.5),
-            ),
-            child: CupertinoTheme(
-              data: CupertinoThemeData(
-                brightness: Theme.of(context).brightness,
-                primaryColor: DesignTokens.accentOrange,
-                textTheme: CupertinoTextThemeData(
-                  pickerTextStyle: TextStyle(
-                    color: textPrimary,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
+            child: ShaderMask(
+              shaderCallback: (bounds) => LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                stops: const [0.0, 0.15, 0.85, 1.0],
+                colors: [
+                  Colors.transparent,
+                  Colors.white,
+                  Colors.white,
+                  Colors.transparent,
+                ],
+              ).createShader(bounds),
+              blendMode: BlendMode.dstIn,
+              child: CupertinoTheme(
+                data: CupertinoThemeData(
+                  brightness: Theme.of(context).brightness,
+                  primaryColor: DesignTokens.accentOrange,
+                  textTheme: CupertinoTextThemeData(
+                    pickerTextStyle: TextStyle(
+                      color: textPrimary,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-              ),
-              child: CupertinoDatePicker(
-                mode: CupertinoDatePickerMode.date,
-                initialDateTime: dob,
-                maximumDate: DateTime.now(),
-                minimumDate: DateTime(1900),
-                onDateTimeChanged: onDobChanged,
+                child: _CustomDatePicker(
+                  initialDate: dob,
+                  maximumDate: DateTime.now(),
+                  minimumDate: DateTime(1900),
+                  onDateChanged: onDobChanged,
+                ),
               ),
             ),
           ),
@@ -959,20 +1102,14 @@ class _Step3Content extends StatelessWidget {
           const SizedBox(height: 20),
 
           Center(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(
-                color: DesignTokens.surfaceOf(context),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: DesignTokens.borderColorOf(context),
-                  width: 1,
-                ),
-              ),
+            child: ShaderMask(
+              shaderCallback: (bounds) => const LinearGradient(
+                colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
+              ).createShader(bounds),
               child: Text(
                 'Age: $ageText',
                 style: TextStyle(
-                  color: DesignTokens.textSecondaryOf(context),
+                  color: Colors.white, // This will be masked by the gradient
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
                 ),
@@ -998,7 +1135,8 @@ class _Step3Content extends StatelessWidget {
             children: [
               Expanded(
                 child: _GenderOption(
-                  label: 'Male',
+                  symbol: '♂',
+                  name: 'Male',
                   isSelected: gender == 'Male',
                   onTap: () => onGenderChanged('Male'),
                 ),
@@ -1006,7 +1144,8 @@ class _Step3Content extends StatelessWidget {
               const SizedBox(width: 14),
               Expanded(
                 child: _GenderOption(
-                  label: 'Female',
+                  symbol: '♀',
+                  name: 'Female',
                   isSelected: gender == 'Female',
                   onTap: () => onGenderChanged('Female'),
                 ),
@@ -1014,7 +1153,8 @@ class _Step3Content extends StatelessWidget {
               const SizedBox(width: 14),
               Expanded(
                 child: _GenderOption(
-                  label: 'Other',
+                  symbol: '⚧',
+                  name: 'Other',
                   isSelected: gender == 'Other',
                   onTap: () => onGenderChanged('Other'),
                 ),
@@ -1071,6 +1211,9 @@ class _Step4ContentState extends State<_Step4Content> {
   late FixedExtentScrollController _inchController;
   late FixedExtentScrollController _weightKgController;
   late FixedExtentScrollController _weightLbsController;
+  
+  late int _selectedWeightKgIndex;
+  late int _selectedWeightLbsIndex;
 
   @override
   void initState() {
@@ -1084,11 +1227,13 @@ class _Step4ContentState extends State<_Step4Content> {
     _inchController = FixedExtentScrollController(
       initialItem: widget.inch.clamp(0, 11),
     );
+    _selectedWeightKgIndex = ((widget.weightKg - 35) / 0.1).round().clamp(0, 1150);
     _weightKgController = FixedExtentScrollController(
-      initialItem: (widget.weightKg - 35).round().clamp(0, 115),
+      initialItem: _selectedWeightKgIndex,
     );
+    _selectedWeightLbsIndex = ((widget.weightLbs - 77) / 0.1).round().clamp(0, 2530);
     _weightLbsController = FixedExtentScrollController(
-      initialItem: ((widget.weightLbs - 77) / 0.1).round().clamp(0, 2530),
+      initialItem: _selectedWeightLbsIndex,
     );
   }
 
@@ -1117,14 +1262,34 @@ class _Step4ContentState extends State<_Step4Content> {
           // Height
           Row(
             children: [
-              Text(
-                'Height',
-                style: TextStyle(
-                  color: DesignTokens.textSecondaryOf(context),
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.2,
-                ),
+              Row(
+                children: [
+                  ShaderMask(
+                    shaderCallback: (bounds) => const LinearGradient(
+                      colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
+                    ).createShader(bounds),
+                    child: Icon(
+                      Icons.height,
+                      size: 18,
+                      color: Colors.white, // This will be masked by the gradient
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  ShaderMask(
+                    shaderCallback: (bounds) => const LinearGradient(
+                      colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
+                    ).createShader(bounds),
+                    child: Text(
+                      'Height',
+                      style: TextStyle(
+                        color: Colors.white, // This will be masked by the gradient
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const Spacer(),
               _UnitToggle(
@@ -1138,124 +1303,213 @@ class _Step4ContentState extends State<_Step4Content> {
 
           const SizedBox(height: 16),
 
-          Container(
+          SizedBox(
             height: 200,
-            decoration: BoxDecoration(
-              color: surfaceColor,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: borderColor, width: 1.5),
-            ),
             child: widget.heightInCm
-              ? CupertinoTheme(
-                  data: CupertinoThemeData(
-                    brightness: Theme.of(context).brightness,
-                    primaryColor: DesignTokens.accentOrange,
-                    textTheme: CupertinoTextThemeData(
-                      pickerTextStyle: TextStyle(
-                        color: textPrimary,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w600,
+              ? ShaderMask(
+                  shaderCallback: (bounds) => LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    stops: const [0.0, 0.15, 0.85, 1.0],
+                    colors: [
+                      Colors.transparent,
+                      Colors.white,
+                      Colors.white,
+                      Colors.transparent,
+                    ],
+                  ).createShader(bounds),
+                  blendMode: BlendMode.dstIn,
+                  child: CupertinoTheme(
+                    data: CupertinoThemeData(
+                      brightness: Theme.of(context).brightness,
+                      primaryColor: DesignTokens.accentOrange,
+                      textTheme: CupertinoTextThemeData(
+                        pickerTextStyle: TextStyle(
+                          color: textPrimary,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
-                  ),
-                  child: CupertinoPicker(
-                    scrollController: _heightCmController,
-                    itemExtent: 50,
-                    onSelectedItemChanged: (index) {
-                      HapticFeedback.selectionClick();
-                      final newHeightCm = (80 + index).toDouble();
-                      widget.onHeightCm(newHeightCm);
-                      final totalInches = (newHeightCm / 2.54).round();
-                      final feet = (totalInches / 12).floor().clamp(3, 8);
-                      final inches = (totalInches % 12).clamp(0, 11);
-                      widget.onFeet(feet);
-                      widget.onInch(inches);
-                    },
-                    children: List.generate(151, (index) {
-                      final value = 80 + index;
-                      return Center(
-                        child: Text(
-                          '$value cm',
-                          style: TextStyle(
-                            color: value == widget.heightCm.round()
-                              ? DesignTokens.accentOrange
-                              : textPrimary,
-                          ),
-                        ),
-                      );
-                    }),
+                    child: _LoopingPicker(
+                      scrollController: _heightCmController,
+                      itemExtent: 50,
+                      itemCount: 151,
+                      initialIndex: (widget.heightCm - 80).round().clamp(0, 150),
+                      onSelectedItemChanged: (index) {
+                        HapticFeedback.selectionClick();
+                        final newHeightCm = (80 + (index % 151)).toDouble();
+                        widget.onHeightCm(newHeightCm);
+                        final totalInches = (newHeightCm / 2.54).round();
+                        final feet = (totalInches / 12).floor().clamp(3, 8);
+                        final inches = (totalInches % 12).clamp(0, 11);
+                        widget.onFeet(feet);
+                        widget.onInch(inches);
+                      },
+                      builder: (context, index) {
+                        final value = 80 + (index % 151);
+                        final isSelected = value == widget.heightCm.round();
+                        return Center(
+                          child: isSelected
+                            ? ShaderMask(
+                                shaderCallback: (bounds) => const LinearGradient(
+                                  colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
+                                ).createShader(bounds),
+                                child: Text(
+                                  '$value cm',
+                                  style: TextStyle(
+                                    color: Colors.white, // This will be masked by the gradient
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              )
+                            : Text(
+                                '$value cm',
+                                style: TextStyle(
+                                  color: textPrimary.withOpacity(0.8),
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                        );
+                      },
+                    ),
                   ),
                 )
               : Row(
                   children: [
                     Expanded(
-                      child: CupertinoTheme(
-                        data: CupertinoThemeData(
-                          brightness: Theme.of(context).brightness,
-                          primaryColor: DesignTokens.accentOrange,
-                          textTheme: CupertinoTextThemeData(
-                            pickerTextStyle: TextStyle(
-                              color: textPrimary,
-                              fontSize: 20,
-                              fontWeight: FontWeight.w600,
+                      child: ShaderMask(
+                        shaderCallback: (bounds) => LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          stops: const [0.0, 0.15, 0.85, 1.0],
+                          colors: [
+                            Colors.transparent,
+                            Colors.white,
+                            Colors.white,
+                            Colors.transparent,
+                          ],
+                        ).createShader(bounds),
+                        blendMode: BlendMode.dstIn,
+                        child: CupertinoTheme(
+                          data: CupertinoThemeData(
+                            brightness: Theme.of(context).brightness,
+                            primaryColor: DesignTokens.accentOrange,
+                            textTheme: CupertinoTextThemeData(
+                              pickerTextStyle: TextStyle(
+                                color: textPrimary,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
-                        ),
-                        child: CupertinoPicker(
-                          scrollController: _feetController,
-                          itemExtent: 50,
-                          onSelectedItemChanged: (index) {
-                            HapticFeedback.selectionClick();
-                            widget.onFeet(3 + index);
-                          },
-                          children: List.generate(6, (index) {
-                            final value = 3 + index;
-                            return Center(
-                              child: Text(
-                                '$value ft',
-                                style: TextStyle(
-                                  color: value == widget.feet
-                                    ? DesignTokens.accentOrange
-                                    : textPrimary,
-                                ),
-                              ),
-                            );
-                          }),
+                          child: _LoopingPicker(
+                            scrollController: _feetController,
+                            itemExtent: 50,
+                            itemCount: 6,
+                            initialIndex: (widget.feet - 3).clamp(0, 5),
+                            onSelectedItemChanged: (index) {
+                              HapticFeedback.selectionClick();
+                              widget.onFeet(3 + (index % 6));
+                            },
+                            builder: (context, index) {
+                              final value = 3 + (index % 6);
+                              final isSelected = value == widget.feet;
+                              return Center(
+                                child: isSelected
+                                  ? ShaderMask(
+                                      shaderCallback: (bounds) => const LinearGradient(
+                                        colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
+                                      ).createShader(bounds),
+                                      child: Text(
+                                        '$value ft',
+                                        style: TextStyle(
+                                          color: Colors.white, // This will be masked by the gradient
+                                          fontSize: 24,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    )
+                                  : Text(
+                                      '$value ft',
+                                      style: TextStyle(
+                                        color: textPrimary.withOpacity(0.8),
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                              );
+                            },
+                          ),
                         ),
                       ),
                     ),
                     Expanded(
-                      child: CupertinoTheme(
-                        data: CupertinoThemeData(
-                          brightness: Theme.of(context).brightness,
-                          primaryColor: DesignTokens.accentOrange,
-                          textTheme: CupertinoTextThemeData(
-                            pickerTextStyle: TextStyle(
-                              color: textPrimary,
-                              fontSize: 20,
-                              fontWeight: FontWeight.w600,
+                      child: ShaderMask(
+                        shaderCallback: (bounds) => LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          stops: const [0.0, 0.15, 0.85, 1.0],
+                          colors: [
+                            Colors.transparent,
+                            Colors.white,
+                            Colors.white,
+                            Colors.transparent,
+                          ],
+                        ).createShader(bounds),
+                        blendMode: BlendMode.dstIn,
+                        child: CupertinoTheme(
+                          data: CupertinoThemeData(
+                            brightness: Theme.of(context).brightness,
+                            primaryColor: DesignTokens.accentOrange,
+                            textTheme: CupertinoTextThemeData(
+                              pickerTextStyle: TextStyle(
+                                color: textPrimary,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
-                        ),
-                        child: CupertinoPicker(
-                          scrollController: _inchController,
-                          itemExtent: 50,
-                          onSelectedItemChanged: (index) {
-                            HapticFeedback.selectionClick();
-                            widget.onInch(index);
-                          },
-                          children: List.generate(12, (index) {
-                            return Center(
-                              child: Text(
-                                '$index in',
-                                style: TextStyle(
-                                  color: index == widget.inch
-                                    ? DesignTokens.accentOrange
-                                    : textPrimary,
-                                ),
-                              ),
-                            );
-                          }),
+                          child: _LoopingPicker(
+                            scrollController: _inchController,
+                            itemExtent: 50,
+                            itemCount: 12,
+                            initialIndex: widget.inch.clamp(0, 11),
+                            onSelectedItemChanged: (index) {
+                              HapticFeedback.selectionClick();
+                              widget.onInch(index % 12);
+                            },
+                            builder: (context, index) {
+                              final value = index % 12;
+                              final isSelected = value == widget.inch;
+                              return Center(
+                                child: isSelected
+                                  ? ShaderMask(
+                                      shaderCallback: (bounds) => const LinearGradient(
+                                        colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
+                                      ).createShader(bounds),
+                                      child: Text(
+                                        '$value in',
+                                        style: TextStyle(
+                                          color: Colors.white, // This will be masked by the gradient
+                                          fontSize: 24,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    )
+                                  : Text(
+                                      '$value in',
+                                      style: TextStyle(
+                                        color: textPrimary.withOpacity(0.8),
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                              );
+                            },
+                          ),
                         ),
                       ),
                     ),
@@ -1268,14 +1522,34 @@ class _Step4ContentState extends State<_Step4Content> {
           // Weight
           Row(
             children: [
-              Text(
-                'Weight',
-                style: TextStyle(
-                  color: DesignTokens.textSecondaryOf(context),
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.2,
-                ),
+              Row(
+                children: [
+                  ShaderMask(
+                    shaderCallback: (bounds) => const LinearGradient(
+                      colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
+                    ).createShader(bounds),
+                    child: Icon(
+                      Icons.monitor_weight,
+                      size: 18,
+                      color: Colors.white, // This will be masked by the gradient
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  ShaderMask(
+                    shaderCallback: (bounds) => const LinearGradient(
+                      colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
+                    ).createShader(bounds),
+                    child: Text(
+                      'Weight',
+                      style: TextStyle(
+                        color: Colors.white, // This will be masked by the gradient
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const Spacer(),
               _UnitToggle(
@@ -1289,86 +1563,151 @@ class _Step4ContentState extends State<_Step4Content> {
 
           const SizedBox(height: 16),
 
-          Container(
+          SizedBox(
             height: 200,
-            decoration: BoxDecoration(
-              color: surfaceColor,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: borderColor, width: 1.5),
-            ),
             child: widget.weightInKg
-              ? CupertinoTheme(
-                  data: CupertinoThemeData(
-                    brightness: Theme.of(context).brightness,
-                    primaryColor: DesignTokens.accentOrange,
-                    textTheme: CupertinoTextThemeData(
-                      pickerTextStyle: TextStyle(
-                        color: textPrimary,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w600,
+              ? ShaderMask(
+                  shaderCallback: (bounds) => LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    stops: const [0.0, 0.15, 0.85, 1.0],
+                    colors: [
+                      Colors.transparent,
+                      Colors.white,
+                      Colors.white,
+                      Colors.transparent,
+                    ],
+                  ).createShader(bounds),
+                  blendMode: BlendMode.dstIn,
+                  child: CupertinoTheme(
+                    data: CupertinoThemeData(
+                      brightness: Theme.of(context).brightness,
+                      primaryColor: DesignTokens.accentOrange,
+                      textTheme: CupertinoTextThemeData(
+                        pickerTextStyle: TextStyle(
+                          color: textPrimary,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
-                  ),
-                  child: CupertinoPicker(
-                    scrollController: _weightKgController,
-                    itemExtent: 50,
-                    onSelectedItemChanged: (index) {
-                      HapticFeedback.selectionClick();
-                      final newWeightKg = (35 + index * 0.1).roundToDouble();
-                      widget.onWeightKg(newWeightKg);
-                      final lbsValue = (newWeightKg * 2.20462).round().toDouble();
-                      widget.onWeightLbs(lbsValue);
-                    },
-                    children: List.generate(1151, (index) {
-                      final value = (35 + index * 0.1).toStringAsFixed(1);
-                      return Center(
-                        child: Text(
-                          '$value kg',
-                          style: TextStyle(
-                            color: (double.parse(value) - widget.weightKg).abs() < 0.1
-                              ? DesignTokens.accentOrange
-                              : textPrimary,
-                          ),
-                        ),
-                      );
-                    }),
+                    child: _LoopingPicker(
+                      scrollController: _weightKgController,
+                      itemExtent: 50,
+                      itemCount: 1151,
+                      initialIndex: _selectedWeightKgIndex,
+                      onSelectedItemChanged: (index) {
+                        setState(() {
+                          _selectedWeightKgIndex = index % 1151;
+                        });
+                        HapticFeedback.selectionClick();
+                        final newWeightKg = (35 + (index % 1151) * 0.1).roundToDouble();
+                        widget.onWeightKg(newWeightKg);
+                        final lbsValue = (newWeightKg * 2.20462).round().toDouble();
+                        widget.onWeightLbs(lbsValue);
+                      },
+                      builder: (context, index) {
+                        final actualIndex = index % 1151;
+                        final value = (35 + actualIndex * 0.1).toStringAsFixed(1);
+                        final isSelected = actualIndex == _selectedWeightKgIndex;
+                        return Center(
+                          child: isSelected
+                            ? ShaderMask(
+                                shaderCallback: (bounds) => const LinearGradient(
+                                  colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
+                                ).createShader(bounds),
+                                child: Text(
+                                  '$value kg',
+                                  style: TextStyle(
+                                    color: Colors.white, // This will be masked by the gradient
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              )
+                            : Text(
+                                '$value kg',
+                                style: TextStyle(
+                                  color: textPrimary.withOpacity(0.8),
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                        );
+                      },
+                    ),
                   ),
                 )
-              : CupertinoTheme(
-                  data: CupertinoThemeData(
-                    brightness: Theme.of(context).brightness,
-                    primaryColor: DesignTokens.accentOrange,
-                    textTheme: CupertinoTextThemeData(
-                      pickerTextStyle: TextStyle(
-                        color: textPrimary,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w600,
+              : ShaderMask(
+                  shaderCallback: (bounds) => LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    stops: const [0.0, 0.15, 0.85, 1.0],
+                    colors: [
+                      Colors.transparent,
+                      Colors.white,
+                      Colors.white,
+                      Colors.transparent,
+                    ],
+                  ).createShader(bounds),
+                  blendMode: BlendMode.dstIn,
+                  child: CupertinoTheme(
+                    data: CupertinoThemeData(
+                      brightness: Theme.of(context).brightness,
+                      primaryColor: DesignTokens.accentOrange,
+                      textTheme: CupertinoTextThemeData(
+                        pickerTextStyle: TextStyle(
+                          color: textPrimary,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
-                  ),
-                  child: CupertinoPicker(
+                    child: _LoopingPicker(
                     scrollController: _weightLbsController,
                     itemExtent: 50,
+                    itemCount: 2531,
+                    initialIndex: _selectedWeightLbsIndex,
                     onSelectedItemChanged: (index) {
+                      setState(() {
+                        _selectedWeightLbsIndex = index % 2531;
+                      });
                       HapticFeedback.selectionClick();
-                      final newWeightLbs = (77 + index * 0.1).roundToDouble();
+                      final newWeightLbs = (77 + (index % 2531) * 0.1).roundToDouble();
                       widget.onWeightLbs(newWeightLbs);
                       final kgValue = (newWeightLbs * 0.453592).roundToDouble();
                       widget.onWeightKg(kgValue);
                     },
-                    children: List.generate(2531, (index) {
-                      final value = (77 + index * 0.1).toStringAsFixed(1);
+                    builder: (context, index) {
+                      final actualIndex = index % 2531;
+                      final value = (77 + actualIndex * 0.1).toStringAsFixed(1);
+                      final isSelected = actualIndex == _selectedWeightLbsIndex;
                       return Center(
-                        child: Text(
-                          '$value lbs',
-                          style: TextStyle(
-                            color: (double.parse(value) - widget.weightLbs).abs() < 0.1
-                              ? DesignTokens.accentOrange
-                              : textPrimary,
-                          ),
-                        ),
+                        child: isSelected
+                          ? ShaderMask(
+                              shaderCallback: (bounds) => const LinearGradient(
+                                colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
+                              ).createShader(bounds),
+                              child: Text(
+                                '$value lbs',
+                                style: TextStyle(
+                                  color: Colors.white, // This will be masked by the gradient
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            )
+                          : Text(
+                              '$value lbs',
+                              style: TextStyle(
+                                color: textPrimary.withOpacity(0.8),
+                                fontSize: 20,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                       );
-                    }),
+                    },
+                  ),
                   ),
                 ),
           ),
@@ -1379,7 +1718,7 @@ class _Step4ContentState extends State<_Step4Content> {
 }
 
 // Step 5: Goals & Role
-class _Step5Content extends StatelessWidget {
+class _Step5Content extends StatefulWidget {
   final List<String> goals;
   final Set<String> selected;
   final String role;
@@ -1393,6 +1732,29 @@ class _Step5Content extends StatelessWidget {
     required this.onToggleGoal,
     required this.onRoleChanged,
   });
+
+  @override
+  State<_Step5Content> createState() => _Step5ContentState();
+}
+
+class _Step5ContentState extends State<_Step5Content> {
+  late FixedExtentScrollController _roleController;
+
+  @override
+  void initState() {
+    super.initState();
+    final roles = ['Client', 'Trainer', 'Nutritionist'];
+    final initialIndex = roles.indexOf(widget.role);
+    _roleController = FixedExtentScrollController(
+      initialItem: initialIndex >= 0 ? initialIndex : 0,
+    );
+  }
+
+  @override
+  void dispose() {
+    _roleController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1417,12 +1779,12 @@ class _Step5Content extends StatelessWidget {
           Wrap(
             spacing: 10,
             runSpacing: 10,
-            children: goals.map((goal) {
-              final isSelected = selected.contains(goal);
+            children: widget.goals.map((goal) {
+              final isSelected = widget.selected.contains(goal);
               return _GoalChip(
                 label: goal,
                 isSelected: isSelected,
-                onTap: () => onToggleGoal(goal),
+                onTap: () => widget.onToggleGoal(goal),
               );
             }).toList(),
           ),
@@ -1441,46 +1803,74 @@ class _Step5Content extends StatelessWidget {
 
           const SizedBox(height: 16),
 
-          Container(
+          SizedBox(
             height: 180,
-            decoration: BoxDecoration(
-              color: DesignTokens.surfaceOf(context),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: DesignTokens.borderColorOf(context),
-                width: 1.5,
-              ),
-            ),
-            child: CupertinoTheme(
-              data: CupertinoThemeData(
-                brightness: Theme.of(context).brightness,
-                primaryColor: DesignTokens.accentOrange,
-                textTheme: CupertinoTextThemeData(
-                  pickerTextStyle: TextStyle(
-                    color: DesignTokens.textPrimaryOf(context),
-                    fontSize: 20,
-                    fontWeight: FontWeight.w600,
+            child: ShaderMask(
+              shaderCallback: (bounds) => LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                stops: const [0.0, 0.15, 0.85, 1.0],
+                colors: [
+                  Colors.transparent,
+                  Colors.white,
+                  Colors.white,
+                  Colors.transparent,
+                ],
+              ).createShader(bounds),
+              blendMode: BlendMode.dstIn,
+              child: CupertinoTheme(
+                data: CupertinoThemeData(
+                  brightness: Theme.of(context).brightness,
+                  primaryColor: DesignTokens.accentOrange,
+                  textTheme: CupertinoTextThemeData(
+                    pickerTextStyle: TextStyle(
+                      color: DesignTokens.textPrimaryOf(context),
+                      fontSize: 20,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-              ),
-              child: CupertinoPicker(
-                itemExtent: 50,
-                onSelectedItemChanged: (index) {
-                  final roles = ['Client', 'Trainer', 'Nutritionist'];
-                  onRoleChanged(roles[index]);
-                },
-                children: ['Client', 'Trainer', 'Nutritionist'].map((r) {
-                  return Center(
-                    child: Text(
-                      r,
-                      style: TextStyle(
-                        color: r == role
-                          ? DesignTokens.accentOrange
-                          : DesignTokens.textPrimaryOf(context),
-                      ),
-                    ),
-                  );
-                }).toList(),
+                child: _LoopingPicker(
+                  scrollController: _roleController,
+                  itemExtent: 50,
+                  itemCount: 3,
+                  initialIndex: ['Client', 'Trainer', 'Nutritionist'].indexOf(widget.role).clamp(0, 2),
+                  onSelectedItemChanged: (index) {
+                    HapticFeedback.selectionClick();
+                    final roles = ['Client', 'Trainer', 'Nutritionist'];
+                    widget.onRoleChanged(roles[index]);
+                  },
+                  builder: (context, index) {
+                    final roles = ['Client', 'Trainer', 'Nutritionist'];
+                    final role = roles[index % 3];
+                    final isSelected = role == widget.role;
+                    final textPrimary = DesignTokens.textPrimaryOf(context);
+                    return Center(
+                      child: isSelected
+                        ? ShaderMask(
+                            shaderCallback: (bounds) => const LinearGradient(
+                              colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
+                            ).createShader(bounds),
+                            child: Text(
+                              role,
+                              style: TextStyle(
+                                color: Colors.white, // This will be masked by the gradient
+                                fontSize: 24,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          )
+                        : Text(
+                            role,
+                            style: TextStyle(
+                              color: textPrimary.withOpacity(0.8),
+                              fontSize: 20,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                    );
+                  },
+                ),
               ),
             ),
           ),
@@ -1489,6 +1879,7 @@ class _Step5Content extends StatelessWidget {
     );
   }
 }
+
 
 // Reusable Components
 class _TextFieldCard extends StatefulWidget {
@@ -1526,16 +1917,10 @@ class _TextFieldCard extends StatefulWidget {
 
 class _TextFieldCardState extends State<_TextFieldCard> {
   final _focusNode = FocusNode();
-  bool _isFocused = false;
 
   @override
   void initState() {
     super.initState();
-    _focusNode.addListener(() {
-      setState(() {
-        _isFocused = _focusNode.hasFocus;
-      });
-    });
   }
 
   @override
@@ -1554,66 +1939,69 @@ class _TextFieldCardState extends State<_TextFieldCard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          padding: _isFocused ? const EdgeInsets.all(1.5) : EdgeInsets.zero,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-            gradient: _isFocused
-              ? const LinearGradient(
-                  colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
-                )
-              : null,
-            border: _isFocused
-              ? null
-              : Border.all(color: borderColor, width: 0.5),
+        // Use exact same structure as login page - Material handles gap automatically
+        TextFormField(
+          controller: widget.controller,
+          focusNode: _focusNode,
+          obscureText: widget.obscureText,
+          keyboardType: widget.keyboardType,
+          inputFormatters: widget.inputFormatters,
+          onChanged: (value) {
+            if (widget.onChanged != null) {
+              widget.onChanged!(value);
+            }
+            setState(() {}); // Trigger rebuild for label animation
+          },
+          style: TextStyle(
+            color: textPrimary,
+            fontWeight: DesignTokens.fontWeightMedium,
+            fontSize: DesignTokens.fontSizeBody,
           ),
-          child: Container(
-            decoration: BoxDecoration(
-              color: surfaceColor,
-              borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+          decoration: InputDecoration(
+            labelText: widget.label,
+            hintText: widget.hint,
+            labelStyle: TextStyle(
+              color: textSecondary,
+              fontWeight: DesignTokens.fontWeightRegular,
             ),
-            child: TextField(
-              controller: widget.controller,
-              focusNode: _focusNode,
-              obscureText: widget.obscureText,
-              keyboardType: widget.keyboardType,
-              inputFormatters: widget.inputFormatters,
-              onChanged: (value) {
-                if (widget.onChanged != null) {
-                  widget.onChanged!(value);
-                }
-                setState(() {}); // Trigger rebuild for label animation
-              },
-              style: TextStyle(
-                color: textPrimary,
-                fontWeight: DesignTokens.fontWeightMedium,
-                fontSize: DesignTokens.fontSizeBody,
+            prefixIcon: widget.prefix != null
+              ? null
+              : Icon(widget.prefixIcon, color: textSecondary, size: 20),
+            prefix: widget.prefix,
+            suffixIcon: widget.suffix,
+            filled: true,
+            fillColor: surfaceColor,
+            isDense: true,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+              borderSide: BorderSide(color: borderColor, width: 1),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+              borderSide: BorderSide(color: borderColor, width: 1),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+              borderSide: const BorderSide(
+                color: DesignTokens.accentOrange,
+                width: 2,
               ),
-              decoration: InputDecoration(
-                labelText: widget.label,
-                hintText: widget.hint,
-                labelStyle: TextStyle(
-                  color: textSecondary,
-                  fontWeight: DesignTokens.fontWeightRegular,
-                ),
-                hintStyle: TextStyle(
-                  color: textSecondary.withOpacity(0.6),
-                ),
-                prefixIcon: widget.prefix != null
-                  ? null
-                  : Icon(widget.prefixIcon, color: textSecondary, size: 20),
-                prefix: widget.prefix,
-                suffixIcon: widget.suffix,
-                filled: true,
-                fillColor: Colors.transparent,
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: DesignTokens.spacing16,
-                  vertical: DesignTokens.spacing16,
-                ),
-              ),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+              borderSide: BorderSide(color: borderColor, width: 1),
+            ),
+            focusedErrorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+              borderSide: BorderSide(color: borderColor, width: 1),
+            ),
+            disabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+              borderSide: BorderSide(color: borderColor, width: 1),
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: DesignTokens.spacing16,
+              vertical: DesignTokens.spacing16,
             ),
           ),
         ),
@@ -1643,54 +2031,82 @@ class _PasswordChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: isValid
-          ? DesignTokens.accentGreen.withOpacity(0.15)
-          : DesignTokens.surfaceOf(context),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
+    return AnimatedScale(
+      scale: isValid ? 1.0 : 0.95,
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOutBack,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
           color: isValid
-            ? DesignTokens.accentGreen
-            : DesignTokens.borderColorOf(context),
-          width: 1,
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            isValid ? Icons.check : Icons.close,
-            size: 14,
+            ? DesignTokens.accentGreen.withOpacity(0.15)
+            : DesignTokens.surfaceOf(context),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
             color: isValid
               ? DesignTokens.accentGreen
-              : DesignTokens.textSecondaryOf(context),
+              : DesignTokens.borderColorOf(context),
+            width: isValid ? 1.5 : 1,
           ),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: isValid
-                ? DesignTokens.accentGreen
-                : DesignTokens.textSecondaryOf(context),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 250),
+              transitionBuilder: (child, animation) {
+                return ScaleTransition(
+                  scale: Tween<double>(begin: 0.0, end: 1.0).animate(
+                    CurvedAnimation(
+                      parent: animation,
+                      curve: Curves.easeOutBack,
+                    ),
+                  ),
+                  child: FadeTransition(
+                    opacity: animation,
+                    child: child,
+                  ),
+                );
+              },
+              child: Icon(
+                isValid ? Icons.check_circle : Icons.close,
+                key: ValueKey(isValid),
+                size: 14,
+                color: isValid
+                  ? DesignTokens.accentGreen
+                  : DesignTokens.textSecondaryOf(context),
+              ),
             ),
-          ),
-        ],
+            const SizedBox(width: 4),
+            AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 300),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: isValid ? FontWeight.w600 : FontWeight.w500,
+                color: isValid
+                  ? DesignTokens.accentGreen
+                  : DesignTokens.textSecondaryOf(context),
+              ),
+              child: Text(label),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
 class _GenderOption extends StatelessWidget {
-  final String label;
+  final String symbol;
+  final String name;
   final bool isSelected;
   final VoidCallback onTap;
 
   const _GenderOption({
-    required this.label,
+    required this.symbol,
+    required this.name,
     required this.isSelected,
     required this.onTap,
   });
@@ -1699,12 +2115,14 @@ class _GenderOption extends StatelessWidget {
   Widget build(BuildContext context) {
     final surfaceColor = DesignTokens.surfaceOf(context);
     final borderColor = DesignTokens.borderColorOf(context);
-    final textPrimary = DesignTokens.textPrimaryOf(context);
+    final textSecondary = DesignTokens.textSecondaryOf(context);
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final symbolColor = isDarkMode ? Colors.white : Colors.black;
 
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 18),
+        padding: const EdgeInsets.symmetric(vertical: 16),
         decoration: BoxDecoration(
           color: isSelected
             ? DesignTokens.accentOrange.withOpacity(0.15)
@@ -1717,17 +2135,49 @@ class _GenderOption extends StatelessWidget {
             width: isSelected ? 2 : 1.5,
           ),
         ),
-        child: Center(
-          child: Text(
-            label,
-            style: TextStyle(
-              color: isSelected
-                ? DesignTokens.accentOrange
-                : textPrimary,
-              fontSize: 16,
-              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Symbol - always white/black, gradient when selected
+            isSelected
+              ? ShaderMask(
+                  shaderCallback: (bounds) => const LinearGradient(
+                    colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
+                  ).createShader(bounds),
+                  child: Text(
+                    symbol,
+                    style: TextStyle(
+                      color: Colors.white, // This will be masked by the gradient
+                      fontSize: 28,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                )
+              : ColorFiltered(
+                  colorFilter: ColorFilter.mode(
+                    symbolColor,
+                    BlendMode.srcIn,
+                  ),
+                  child: Text(
+                    symbol,
+                    style: TextStyle(
+                      color: symbolColor, // White in dark mode, black in light mode
+                      fontSize: 28,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+            const SizedBox(height: 8),
+            // Name label
+            Text(
+              name,
+              style: TextStyle(
+                color: textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -1753,61 +2203,73 @@ class _UnitToggle extends StatelessWidget {
     final borderColor = DesignTokens.borderColorOf(context);
     final textPrimary = DesignTokens.textPrimaryOf(context);
 
-    return Container(
-      padding: const EdgeInsets.all(2),
-      decoration: BoxDecoration(
-        color: surfaceColor,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: borderColor, width: 1),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          GestureDetector(
-            onTap: () => onChanged(true),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: isLeft
-                  ? DesignTokens.accentOrange
-                  : Colors.transparent,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text(
-                left,
-                style: TextStyle(
-                  color: isLeft
-                    ? Colors.white
-                    : textPrimary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+    return SizedBox(
+      width: 100, // Fixed width to ensure both toggles are same size
+      child: Container(
+        padding: const EdgeInsets.all(2),
+        decoration: BoxDecoration(
+          color: surfaceColor,
+          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+          border: Border.all(color: borderColor, width: 1),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: GestureDetector(
+                onTap: () => onChanged(true),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  decoration: BoxDecoration(
+                    gradient: isLeft
+                      ? const LinearGradient(
+                          colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
+                        )
+                      : null,
+                    color: isLeft ? null : Colors.transparent,
+                    borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+                  ),
+                  child: Center(
+                    child: Text(
+                      left,
+                      style: TextStyle(
+                        color: isLeft ? Colors.white : textPrimary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
-          GestureDetector(
-            onTap: () => onChanged(false),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: !isLeft
-                  ? DesignTokens.accentOrange
-                  : Colors.transparent,
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text(
-                right,
-                style: TextStyle(
-                  color: !isLeft
-                    ? Colors.white
-                    : textPrimary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
+            Expanded(
+              child: GestureDetector(
+                onTap: () => onChanged(false),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  decoration: BoxDecoration(
+                    gradient: !isLeft
+                      ? const LinearGradient(
+                          colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
+                        )
+                      : null,
+                    color: !isLeft ? null : Colors.transparent,
+                    borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+                  ),
+                  child: Center(
+                    child: Text(
+                      right,
+                      style: TextStyle(
+                        color: !isLeft ? Colors.white : textPrimary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1829,7 +2291,7 @@ class _GoalChip extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           gradient: isSelected
             ? DesignTokens.primaryGradient
@@ -1837,7 +2299,7 @@ class _GoalChip extends StatelessWidget {
           color: isSelected
             ? null
             : DesignTokens.surfaceOf(context),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
           border: Border.all(
             color: isSelected
               ? Colors.transparent
@@ -1851,7 +2313,7 @@ class _GoalChip extends StatelessWidget {
             color: isSelected
               ? Colors.white
               : DesignTokens.textPrimaryOf(context),
-            fontSize: 14,
+            fontSize: 12,
             fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
           ),
         ),
@@ -1859,3 +2321,317 @@ class _GoalChip extends StatelessWidget {
     );
   }
 }
+
+class _CustomDatePicker extends StatefulWidget {
+  final DateTime initialDate;
+  final DateTime maximumDate;
+  final DateTime minimumDate;
+  final ValueChanged<DateTime> onDateChanged;
+
+  const _CustomDatePicker({
+    required this.initialDate,
+    required this.maximumDate,
+    required this.minimumDate,
+    required this.onDateChanged,
+  });
+
+  @override
+  State<_CustomDatePicker> createState() => _CustomDatePickerState();
+}
+
+class _CustomDatePickerState extends State<_CustomDatePicker> {
+  late int selectedDay;
+  late int selectedMonth;
+  late int selectedYear;
+  
+  final List<String> shortMonths = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    selectedDay = widget.initialDate.day;
+    selectedMonth = widget.initialDate.month - 1;
+    selectedYear = widget.initialDate.year;
+  }
+
+  int _getDaysInMonth(int year, int month) {
+    return DateTime(year, month + 1, 0).day;
+  }
+
+  void _updateDate() {
+    final daysInMonth = _getDaysInMonth(selectedYear, selectedMonth);
+    if (selectedDay > daysInMonth) {
+      selectedDay = daysInMonth;
+    }
+    final newDate = DateTime(selectedYear, selectedMonth + 1, selectedDay);
+    if (newDate.isBefore(widget.minimumDate)) {
+      widget.onDateChanged(widget.minimumDate);
+    } else if (newDate.isAfter(widget.maximumDate)) {
+      widget.onDateChanged(widget.maximumDate);
+    } else {
+      widget.onDateChanged(newDate);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textPrimary = DesignTokens.textPrimaryOf(context);
+    final minYear = widget.minimumDate.year;
+    final maxYear = widget.maximumDate.year;
+    
+    final daysInMonth = _getDaysInMonth(selectedYear, selectedMonth);
+    final days = List.generate(daysInMonth, (i) => i + 1);
+    
+    final years = List.generate(maxYear - minYear + 1, (i) => minYear + i);
+
+    return Row(
+      children: [
+        // Day picker (first)
+        Expanded(
+          child: _GradientPicker(
+            scrollController: FixedExtentScrollController(
+              initialItem: selectedDay > daysInMonth ? daysInMonth - 1 : selectedDay - 1
+            ),
+            itemExtent: 40,
+            selectedIndex: selectedDay > daysInMonth ? daysInMonth - 1 : selectedDay - 1,
+            onSelectedItemChanged: (index) {
+              setState(() {
+                selectedDay = days[index];
+                _updateDate();
+              });
+            },
+            children: days.map((day) {
+              return day.toString();
+            }).toList(),
+          ),
+        ),
+        // Month picker (second)
+        Expanded(
+          child: _GradientPicker(
+            scrollController: FixedExtentScrollController(initialItem: selectedMonth),
+            itemExtent: 40,
+            selectedIndex: selectedMonth,
+            onSelectedItemChanged: (index) {
+              setState(() {
+                selectedMonth = index;
+                _updateDate();
+              });
+            },
+            children: shortMonths.map((month) {
+              return month;
+            }).toList(),
+          ),
+        ),
+        // Year picker (third)
+        Expanded(
+          child: _GradientPicker(
+            scrollController: FixedExtentScrollController(
+              initialItem: selectedYear - minYear
+            ),
+            itemExtent: 40,
+            selectedIndex: selectedYear - minYear,
+            onSelectedItemChanged: (index) {
+              setState(() {
+                selectedYear = years[index];
+                _updateDate();
+              });
+            },
+            children: years.map((year) {
+              return year.toString();
+            }).toList(),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _GradientPicker extends StatefulWidget {
+  final FixedExtentScrollController scrollController;
+  final double itemExtent;
+  final int selectedIndex;
+  final ValueChanged<int> onSelectedItemChanged;
+  final List<String> children;
+
+  const _GradientPicker({
+    required this.scrollController,
+    required this.itemExtent,
+    required this.selectedIndex,
+    required this.onSelectedItemChanged,
+    required this.children,
+  });
+
+  @override
+  State<_GradientPicker> createState() => _GradientPickerState();
+}
+
+class _GradientPickerState extends State<_GradientPicker> {
+  late int _currentIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.selectedIndex;
+  }
+
+  @override
+  void didUpdateWidget(_GradientPicker oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.selectedIndex != oldWidget.selectedIndex) {
+      _currentIndex = widget.selectedIndex;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textPrimary = DesignTokens.textPrimaryOf(context);
+
+    return CupertinoPicker(
+      scrollController: widget.scrollController,
+      itemExtent: widget.itemExtent,
+      onSelectedItemChanged: (index) {
+        setState(() {
+          _currentIndex = index;
+        });
+        widget.onSelectedItemChanged(index);
+      },
+      children: widget.children.asMap().entries.map((entry) {
+        final index = entry.key;
+        final text = entry.value;
+        final isSelected = index == _currentIndex;
+
+        return Center(
+          child: isSelected
+            ? ShaderMask(
+                shaderCallback: (bounds) => const LinearGradient(
+                  colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
+                ).createShader(bounds),
+                child: Text(
+                  text,
+                  style: TextStyle(
+                    color: Colors.white, // This will be masked by the gradient
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              )
+            : Text(
+                text,
+                style: TextStyle(
+                  color: textPrimary.withOpacity(0.5),
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _LoopingPicker extends StatefulWidget {
+  final FixedExtentScrollController scrollController;
+  final double itemExtent;
+  final int itemCount;
+  final int initialIndex;
+  final ValueChanged<int> onSelectedItemChanged;
+  final Widget Function(BuildContext, int) builder;
+
+  const _LoopingPicker({
+    required this.scrollController,
+    required this.itemExtent,
+    required this.itemCount,
+    required this.initialIndex,
+    required this.onSelectedItemChanged,
+    required this.builder,
+  });
+
+  @override
+  State<_LoopingPicker> createState() => _LoopingPickerState();
+}
+
+class _LoopingPickerState extends State<_LoopingPicker> {
+  static const int _multiplier = 20; // Reduced multiplier for better performance
+  late FixedExtentScrollController _controller;
+  int _lastSelectedIndex = 0;
+  bool _isJumping = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final middleIndex = (widget.itemCount * _multiplier / 2).round() + widget.initialIndex;
+    _controller = FixedExtentScrollController(initialItem: middleIndex);
+    _lastSelectedIndex = middleIndex;
+    _controller.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_onScroll);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_controller.hasClients || _isJumping) return;
+    
+    final currentIndex = _controller.selectedItem;
+    final actualIndex = currentIndex % widget.itemCount;
+    
+    if (currentIndex != _lastSelectedIndex) {
+      widget.onSelectedItemChanged(actualIndex);
+      _lastSelectedIndex = currentIndex;
+    }
+
+    // Reset to middle when near edges for continuous looping
+    final threshold = widget.itemCount * 2;
+    if (currentIndex < threshold) {
+      // Near the beginning, jump to middle
+      _isJumping = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_controller.hasClients && mounted) {
+          final newIndex = (widget.itemCount * _multiplier / 2).round() + actualIndex;
+          _controller.jumpToItem(newIndex);
+          Future.delayed(const Duration(milliseconds: 50), () {
+            if (mounted) _isJumping = false;
+          });
+        }
+      });
+    } else if (currentIndex > widget.itemCount * (_multiplier - 2)) {
+      // Near the end, jump to middle
+      _isJumping = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_controller.hasClients && mounted) {
+          final newIndex = (widget.itemCount * _multiplier / 2).round() + actualIndex;
+          _controller.jumpToItem(newIndex);
+          Future.delayed(const Duration(milliseconds: 50), () {
+            if (mounted) _isJumping = false;
+          });
+        }
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final totalItems = widget.itemCount * _multiplier;
+    
+    return CupertinoPicker(
+      scrollController: _controller,
+      itemExtent: widget.itemExtent,
+      onSelectedItemChanged: (index) {
+        if (!_isJumping) {
+          final actualIndex = index % widget.itemCount;
+          widget.onSelectedItemChanged(actualIndex);
+        }
+      },
+      children: List.generate(totalItems, (index) {
+        return widget.builder(context, index);
+      }),
+    );
+  }
+}
+

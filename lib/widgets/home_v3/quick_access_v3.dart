@@ -18,6 +18,13 @@ class QuickAccessV3 extends StatelessWidget {
     final userRole = user?.userMetadata?['role']?.toString().toLowerCase() ?? 'client';
     
     // Filter items based on role
+    final itemsToExclude = <String>[];
+    
+    // For trainers and nutritionists, exclude these tiles
+    if (userRole == 'trainer' || userRole == 'nutritionist') {
+      itemsToExclude.addAll(['BECOME A TRAINER', 'SUBSCRIPTION', 'AI PLANNER']);
+    }
+    
     final allItems = [
       _QuickTileData('MEAL TRACKER', Icons.restaurant_rounded,
           const LinearGradient(colors: [AppColors.green, Color(0xFF65E6B3)])),
@@ -25,21 +32,18 @@ class QuickAccessV3 extends StatelessWidget {
           const LinearGradient(colors: [AppColors.blue, AppColors.cyan])),
       _QuickTileData('VIDEO SESSIONS', Icons.videocam_rounded,
           const LinearGradient(colors: [AppColors.purple, Color(0xFFB38CFF)])),
-      _QuickTileData('AI PLANNER', Icons.auto_awesome_rounded,
-          const LinearGradient(colors: [AppColors.orange, AppColors.yellow])),
-      _QuickTileData('BECOME A TRAINER', Icons.school_rounded,
-          const LinearGradient(colors: [AppColors.orange, AppColors.pink])),
-      _QuickTileData('SUBSCRIPTION', Icons.card_membership_rounded,
-          const LinearGradient(colors: [AppColors.purple, AppColors.pink])),
+      if (!itemsToExclude.contains('AI PLANNER'))
+        _QuickTileData('AI PLANNER', Icons.auto_awesome_rounded,
+            const LinearGradient(colors: [AppColors.orange, AppColors.yellow])),
+      if (!itemsToExclude.contains('BECOME A TRAINER'))
+        _QuickTileData('BECOME A TRAINER', Icons.school_rounded,
+            const LinearGradient(colors: [AppColors.orange, AppColors.pink])),
+      if (!itemsToExclude.contains('SUBSCRIPTION'))
+        _QuickTileData('SUBSCRIPTION', Icons.card_membership_rounded,
+            const LinearGradient(colors: [AppColors.purple, AppColors.pink])),
     ];
     
-    // Remove "BECOME A TRAINER" and "SUBSCRIPTION" for trainers and nutritionists
-    final items = allItems.where((item) {
-      if (userRole == 'trainer' || userRole == 'nutritionist') {
-        return item.title != 'BECOME A TRAINER' && item.title != 'SUBSCRIPTION';
-      }
-      return true; // Show all items for clients
-    }).toList();
+    final items = allItems;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -70,8 +74,14 @@ class QuickAccessV3 extends StatelessWidget {
               } else if (item.title == 'BECOME A TRAINER') {
                 onTap = () => context.push('/trainer/become');
               } else if (item.title == 'VIDEO SESSIONS') {
-                onTap = () => context.push('/video?role=client');
-                // Red dot removed as requested
+                // Navigate based on user role
+                if (userRole == 'trainer') {
+                  onTap = () => context.push('/video?role=trainer');
+                } else if (userRole == 'nutritionist') {
+                  onTap = () => context.push('/video?role=nutritionist');
+                } else {
+                  onTap = () => context.push('/video?role=client');
+                }
               }
               return _QuickTile(item: item, onTap: onTap, showBadge: showBadge);
             },

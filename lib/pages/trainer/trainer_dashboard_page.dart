@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../theme/design_tokens.dart';
 import 'trainer_home_page.dart';
-import 'create_client_page.dart';
-import '../quest/quest_page.dart';
-import '../cocircle/cocircle_page.dart';
-import '../profile/profile_page.dart';
+import 'trainer_my_clients_page.dart';
+import 'trainer_quest_page.dart';
+import 'trainer_cocircle_page.dart';
+import 'trainer_profile_page.dart';
 
 class TrainerDashboardPage extends StatefulWidget {
   const TrainerDashboardPage({super.key});
@@ -33,7 +33,7 @@ class _TrainerDashboardPageState extends State<TrainerDashboardPage> {
     NavigationItem(
       icon: Icons.person_add_outlined,
       activeIcon: Icons.person_add,
-      label: 'Clients',
+      label: 'My Clients',
       route: '/trainer/clients',
       gradient: const LinearGradient(
         colors: [Color(0xFF3ED598), Color(0xFF4DA3FF)],
@@ -101,10 +101,10 @@ class _TrainerDashboardPageState extends State<TrainerDashboardPage> {
         itemBuilder: (context, index) {
           final pages = [
             const TrainerHomePage(),
-            const CreateClientPage(),
-            const QuestPage(),
-            const CocirclePage(),
-            const ProfilePage(),
+            const TrainerMyClientsPage(),
+            const TrainerQuestPage(),
+            TrainerCocirclePage(),
+            const TrainerProfilePage(),
           ];
           return AnimatedSwitcher(
             duration: const Duration(milliseconds: 300),

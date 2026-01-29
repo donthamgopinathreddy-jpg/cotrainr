@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import '../../theme/design_tokens.dart';
 
 class CreateClientPage extends StatefulWidget {
@@ -57,7 +58,7 @@ class _CreateClientPageState extends State<CreateClientPage>
           email: 'john@example.com',
           phone: '+1234567890',
           joinDate: DateTime.now().subtract(const Duration(days: 30)),
-          status: 'Active',
+          status: ClientStatus.active,
           avatar: null,
         ),
         ClientItem(
@@ -66,7 +67,7 @@ class _CreateClientPageState extends State<CreateClientPage>
           email: 'jane@example.com',
           phone: '+1234567891',
           joinDate: DateTime.now().subtract(const Duration(days: 15)),
-          status: 'Active',
+          status: ClientStatus.active,
           avatar: null,
         ),
       ]);
@@ -77,7 +78,7 @@ class _CreateClientPageState extends State<CreateClientPage>
           email: 'bob@example.com',
           phone: '+1234567892',
           joinDate: DateTime.now().subtract(const Duration(days: 2)),
-          status: 'Pending',
+          status: ClientStatus.pending,
           avatar: null,
         ),
       ]);
@@ -283,12 +284,13 @@ class _CreateClientPageState extends State<CreateClientPage>
       itemCount: clients.length,
       itemBuilder: (context, index) {
         final client = clients[index];
-        return _buildClientCard(client, textPrimary, textSecondary, surfaceColor, borderColor);
+        return _buildClientCard(context, client, textPrimary, textSecondary, surfaceColor, borderColor);
       },
     );
   }
 
   Widget _buildClientCard(
+    BuildContext context,
     ClientItem client,
     Color textPrimary,
     Color textSecondary,
@@ -296,114 +298,195 @@ class _CreateClientPageState extends State<CreateClientPage>
     Color borderColor,
   ) {
     return Container(
-      margin: const EdgeInsets.only(bottom: DesignTokens.spacing12),
-      padding: const EdgeInsets.all(DesignTokens.spacing16),
-      decoration: BoxDecoration(
-        color: surfaceColor,
-        borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
-        border: Border.all(color: borderColor, width: 1),
-      ),
-      child: Row(
-        children: [
-          // Avatar
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              gradient: DesignTokens.primaryGradient,
-              shape: BoxShape.circle,
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: surfaceColor,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
             ),
-            child: client.avatar != null
-                ? ClipOval(child: Image.network(client.avatar!, fit: BoxFit.cover))
-                : Center(
-                    child: Text(
-                      client.name[0].toUpperCase(),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+            child: InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: () {
+              HapticFeedback.lightImpact();
+              if (client.id.isNotEmpty) {
+                context.push('/clients/${client.id}', extra: client);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Client ID is missing'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              }
+            },
+            splashColor: DesignTokens.accentOrange.withOpacity(0.1),
+            highlightColor: DesignTokens.accentOrange.withOpacity(0.05),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                children: [
+                  // Avatar
+                  Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: client.status == 'Active'
+                            ? DesignTokens.accentGreen.withOpacity(0.3)
+                            : DesignTokens.accentOrange.withOpacity(0.3),
+                        width: 2,
                       ),
                     ),
+                    child: ClipOval(
+                      child: client.avatar != null
+                          ? Image.network(
+                              client.avatar!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  _buildAvatarPlaceholder(client.name),
+                            )
+                          : _buildAvatarPlaceholder(client.name),
+                    ),
                   ),
-          ),
-          const SizedBox(width: DesignTokens.spacing16),
-          // Info
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  client.name,
-                  style: TextStyle(
-                    color: textPrimary,
-                    fontSize: DesignTokens.fontSizeBody,
-                    fontWeight: DesignTokens.fontWeightSemiBold,
+                  const SizedBox(width: 16),
+                  // Info
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                client.name,
+                                style: TextStyle(
+                                  color: textPrimary,
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: -0.3,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (client.status == 'Active')
+                              Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  color: DesignTokens.accentGreen,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          client.email,
+                          style: TextStyle(
+                            color: textSecondary,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w400,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: client.statusColor.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            client.statusString,
+                            style: TextStyle(
+                              color: client.statusColor,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  client.email,
-                  style: TextStyle(
-                    color: textSecondary,
-                    fontSize: DesignTokens.fontSizeBodySmall,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: DesignTokens.spacing8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: client.status == 'Active'
-                            ? DesignTokens.accentGreen.withValues(alpha: 0.2)
-                            : DesignTokens.accentOrange.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(DesignTokens.radiusSmall),
-                      ),
-                      child: Text(
-                        client.status,
-                        style: TextStyle(
-                          color: client.status == 'Active'
-                              ? DesignTokens.accentGreen
-                              : DesignTokens.accentOrange,
-                          fontSize: DesignTokens.fontSizeMeta,
-                          fontWeight: DesignTokens.fontWeightSemiBold,
+                  // Actions
+                  if (client.status == ClientStatus.pending)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 12),
+                      child: GestureDetector(
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          // Accept client request
+                          setState(() {
+                            _pendingRequests.remove(client);
+                            client.status = ClientStatus.active;
+                            _myClients.add(client);
+                          });
+                        },
+                        behavior: HitTestBehavior.opaque,
+                        child: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            gradient: DesignTokens.primaryGradient,
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: DesignTokens.accentOrange.withOpacity(0.3),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.check,
+                            color: Colors.white,
+                            size: 20,
+                          ),
                         ),
                       ),
+                    )
+                  else
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      color: textSecondary.withOpacity(0.4),
+                      size: 24,
                     ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          // Actions
-          if (client.status == 'Pending')
-            GestureDetector(
-              onTap: () {
-                HapticFeedback.lightImpact();
-                // Accept client request
-                setState(() {
-                  _pendingRequests.remove(client);
-                  client.status = 'Active';
-                  _myClients.add(client);
-                });
-              },
-              child: Container(
-                padding: const EdgeInsets.all(DesignTokens.spacing8),
-                decoration: BoxDecoration(
-                  gradient: DesignTokens.primaryGradient,
-                  borderRadius: BorderRadius.circular(DesignTokens.radiusSmall),
-                ),
-                child: const Icon(
-                  Icons.check,
-                  color: Colors.white,
-                  size: 20,
-                ),
+                ],
               ),
             ),
-        ],
+          ),
+        ),
+    );
+  }
+
+  Widget _buildAvatarPlaceholder(String name) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: DesignTokens.primaryGradient,
+      ),
+      child: Center(
+        child: Text(
+          name[0].toUpperCase(),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
       ),
     );
   }
@@ -474,14 +557,27 @@ class _CreateClientPageState extends State<CreateClientPage>
   }
 }
 
+enum ClientStatus { active, atRisk, newClient, pending }
+
+enum ClientAlert {
+  missedCheckin,
+  proteinLow,
+  waterLow,
+  weightSpike,
+  overtraining,
+}
+
 class ClientItem {
   final String id;
   final String name;
   final String email;
   final String phone;
   final DateTime joinDate;
-  String status;
+  ClientStatus status;
   final String? avatar;
+  final List<ClientAlert> alerts;
+  final double? adherencePercentage; // 0-100
+  final DateTime? lastCheckIn;
 
   ClientItem({
     required this.id,
@@ -491,5 +587,64 @@ class ClientItem {
     required this.joinDate,
     required this.status,
     this.avatar,
+    this.alerts = const [],
+    this.adherencePercentage,
+    this.lastCheckIn,
   });
+
+  String get statusString {
+    switch (status) {
+      case ClientStatus.active:
+        return 'Active';
+      case ClientStatus.atRisk:
+        return 'At Risk';
+      case ClientStatus.newClient:
+        return 'New';
+      case ClientStatus.pending:
+        return 'Pending';
+    }
+  }
+
+  Color get statusColor {
+    switch (status) {
+      case ClientStatus.active:
+        return DesignTokens.accentGreen;
+      case ClientStatus.atRisk:
+        return DesignTokens.accentRed;
+      case ClientStatus.newClient:
+        return DesignTokens.accentBlue;
+      case ClientStatus.pending:
+        return DesignTokens.accentOrange;
+    }
+  }
+
+  String getAlertLabel(ClientAlert alert) {
+    switch (alert) {
+      case ClientAlert.missedCheckin:
+        return 'Missed Check-in';
+      case ClientAlert.proteinLow:
+        return 'Protein Low';
+      case ClientAlert.waterLow:
+        return 'Water Low';
+      case ClientAlert.weightSpike:
+        return 'Weight Spike';
+      case ClientAlert.overtraining:
+        return 'Overtraining';
+    }
+  }
+
+  IconData getAlertIcon(ClientAlert alert) {
+    switch (alert) {
+      case ClientAlert.missedCheckin:
+        return Icons.event_busy;
+      case ClientAlert.proteinLow:
+        return Icons.restaurant;
+      case ClientAlert.waterLow:
+        return Icons.water_drop;
+      case ClientAlert.weightSpike:
+        return Icons.trending_up;
+      case ClientAlert.overtraining:
+        return Icons.warning;
+    }
+  }
 }

@@ -14,26 +14,22 @@ import '../../pages/insights/insights_detail_page.dart';
 import '../../pages/trainer/become_trainer_page.dart';
 import '../../pages/trainer/verification_submission_page.dart';
 import '../../pages/refer/refer_friend_page.dart';
-import 'settings_page.dart';
+import '../profile/settings_page.dart';
 
-class ProfilePage extends ConsumerStatefulWidget {
-  const ProfilePage({super.key});
+class TrainerProfilePage extends ConsumerStatefulWidget {
+  const TrainerProfilePage({super.key});
 
   @override
-  ConsumerState<ProfilePage> createState() => _ProfilePageState();
+  ConsumerState<TrainerProfilePage> createState() => _TrainerProfilePageState();
 }
 
-class _ProfilePageState extends ConsumerState<ProfilePage>
+class _TrainerProfilePageState extends ConsumerState<TrainerProfilePage>
     with SingleTickerProviderStateMixin {
   final String _username = 'John Doe';
   final String _handle = '@fitness_john';
   final bool _isSubscribed = false;
   
-  String get _role {
-    final supabase = Supabase.instance.client;
-    final user = supabase.auth.currentUser;
-    return user?.userMetadata?['role']?.toString().toLowerCase() ?? 'client';
-  }
+  String get _role => 'trainer';
 
   // Check verification status - in real app, fetch from Supabase
   String? get _verificationStatus {
@@ -146,7 +142,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                       Navigator.push(
                         context,
                         PageTransitions.slideRoute(
-                          const SettingsPage(),
+                          SettingsPage(),
                           beginOffset: const Offset(0, 0.05),
                         ),
                       );
