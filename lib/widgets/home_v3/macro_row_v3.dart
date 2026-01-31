@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../theme/app_colors.dart';
 import '../common/pressable_card.dart';
 
@@ -11,6 +12,7 @@ class MacroRowV3 extends StatelessWidget {
   final VoidCallback? onCaloriesTap;
   final VoidCallback? onWaterTap;
   final VoidCallback? onDistanceTap;
+  final VoidCallback? onAddWater;
   final String? caloriesHeroTag;
   final String? waterHeroTag;
   final String? distanceHeroTag;
@@ -25,6 +27,7 @@ class MacroRowV3 extends StatelessWidget {
     this.onCaloriesTap,
     this.onWaterTap,
     this.onDistanceTap,
+    this.onAddWater,
     this.caloriesHeroTag,
     this.waterHeroTag,
     this.distanceHeroTag,
@@ -32,7 +35,7 @@ class MacroRowV3 extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const double waterHeight = 118;
+    const double waterHeight = 140;
     const double distanceHeight = 68;
     const double gap = 12;
     const double caloriesHeight = waterHeight + distanceHeight + gap;
@@ -70,6 +73,7 @@ class MacroRowV3 extends StatelessWidget {
                     child: _WaterCard(
                       water: water,
                       waterGoal: waterGoal,
+                      onAddWater: onAddWater,
                     ),
                   ),
                 ),
@@ -102,18 +106,20 @@ class MacroRowV3 extends StatelessWidget {
 class _WaterCard extends StatelessWidget {
   final double water;
   final double waterGoal;
+  final VoidCallback? onAddWater;
 
   const _WaterCard({
     required this.water,
     required this.waterGoal,
+    this.onAddWater,
   });
 
   @override
   Widget build(BuildContext context) {
-    final progress = (waterGoal <= 0) ? 0.0 : (water / waterGoal);
+    final progress = (waterGoal <= 0) ? 0.0 : (water / waterGoal).clamp(0.0, 1.0);
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
       decoration: BoxDecoration(
         gradient: AppColors.waterGradient,
         borderRadius: BorderRadius.circular(26),
@@ -121,12 +127,14 @@ class _WaterCard extends StatelessWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                width: 32,
-                height: 32,
+                width: 40,
+                height: 40,
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.2),
                   shape: BoxShape.circle,
@@ -134,53 +142,80 @@ class _WaterCard extends StatelessWidget {
                 child: const Icon(
                   Icons.water_drop_outlined,
                   color: Colors.white,
-                  size: 16,
+                  size: 24,
                 ),
               ),
               const SizedBox(width: 8),
-              Text(
-                'WATER',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white.withOpacity(0.9),
+              Padding(
+                padding: const EdgeInsets.only(top: 0),
+                child: Text(
+                  'WATER',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white.withOpacity(0.9),
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 6),
-          RichText(
-            text: TextSpan(
-              style: const TextStyle(color: Colors.white),
-              children: [
-                TextSpan(
-                  text: water.toStringAsFixed(1),
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                  ),
+          const SizedBox(height: 2),
+          Transform.translate(
+            offset: const Offset(-2, -22),
+            child: Padding(
+              padding: const EdgeInsets.only(left: 48),
+              child: RichText(
+                text: TextSpan(
+                  style: const TextStyle(color: Colors.white),
+                  children: [
+                    TextSpan(
+                      text: water.toStringAsFixed(1),
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    TextSpan(
+                      text: ' / ${waterGoal.toStringAsFixed(1)}L',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ),
-                TextSpan(
-                  text: ' / ${waterGoal.toStringAsFixed(1)}L',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
           const Spacer(),
-          _WaterBar(progress: progress),
+          Transform.translate(
+            offset: const Offset(0, -16),
+            child: _WaterBar(progress: progress),
+          ),
           const SizedBox(height: 6),
-          Align(
-            alignment: Alignment.centerRight,
-            child: Text(
-              '+ 250ml',
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
+          Transform.translate(
+            offset: const Offset(0, -10),
+            child: GestureDetector(
+              onTap: () {
+                HapticFeedback.lightImpact();
+                onAddWater?.call();
+              },
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.7),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Text(
+                  '+ 250ml',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.blue,
+                  ),
+                ),
               ),
             ),
           ),
@@ -281,8 +316,8 @@ class _DistanceCard extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 28,
-            height: 28,
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.2),
               shape: BoxShape.circle,
@@ -290,31 +325,38 @@ class _DistanceCard extends StatelessWidget {
             child: const Icon(
               Icons.location_on_outlined,
               color: Colors.white,
-              size: 14,
+              size: 20,
             ),
           ),
           const SizedBox(width: 8),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                'DISTANCE',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white.withOpacity(0.9),
-                ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(left: 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'DISTANCE',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white.withOpacity(0.9),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${distanceKm.toStringAsFixed(1)} km',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
               ),
-              Text(
-                '${distanceKm.toStringAsFixed(1)} km',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                ),
-              ),
-            ],
+            ),
           ),
         ],
       ),

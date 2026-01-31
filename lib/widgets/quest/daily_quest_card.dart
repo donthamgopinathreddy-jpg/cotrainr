@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../theme/design_tokens.dart';
-import '../../pages/quest/quest_page.dart' show DailyQuest, QuestStatus;
+import '../../models/quest_models.dart';
 
 class DailyQuestCard extends StatefulWidget {
   final DailyQuest quest;

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/design_tokens.dart';
-import '../../pages/quest/quest_page.dart' show LeaderboardEntry;
+import '../../models/quest_models.dart';
 
 class LeaderboardView extends StatelessWidget {
   final List<LeaderboardEntry> entries;
@@ -21,7 +21,13 @@ class LeaderboardView extends StatelessWidget {
       ..sort((a, b) => a.rank.compareTo(b.rank));
     final currentUser = entries.firstWhere(
       (e) => e.userId == currentUserId,
-      orElse: () => entries.first,
+      orElse: () => entries.isNotEmpty ? entries.first : const LeaderboardEntry(
+        userId: '',
+        username: 'You',
+        rank: 0,
+        level: 0,
+        xp: 0,
+      ),
     );
 
     return Column(
@@ -62,7 +68,7 @@ class LeaderboardView extends StatelessWidget {
         const SizedBox(height: DesignTokens.spacing24),
 
         // Current User Highlight
-        if (currentUser.rank > 3)
+        if (currentUser.rank > 3 && entries.isNotEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: DesignTokens.spacing16),
             child: Container(

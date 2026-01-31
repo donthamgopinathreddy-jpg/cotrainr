@@ -404,22 +404,6 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
                         goalHitRate: 0.64,
                         unit: config.unit,
                       ),
-                      const SizedBox(height: 12),
-                      if (config.type == MetricType.water) ...[
-                        const SizedBox(height: 12),
-                        _QuickAddRow(
-                          onAdd: (value) {
-                            HapticFeedback.lightImpact();
-                            // Show feedback - could add snackbar here
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Added ${value}ml water'),
-                                duration: const Duration(seconds: 1),
-                              ),
-                            );
-                          },
-                        ),
-                      ],
                       const SizedBox(height: 24),
                     ],
                   ),
@@ -1068,83 +1052,6 @@ class _ToggleChip extends StatelessWidget {
               fontSize: 12,
               fontWeight: FontWeight.w600,
               color: Colors.white.withOpacity(isActive ? 1 : 0.6),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _QuickAddRow extends StatelessWidget {
-  final ValueChanged<int> onAdd;
-
-  const _QuickAddRow({required this.onAdd});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        _QuickAddButton(label: '+250ml', onTap: () => onAdd(250)),
-        const SizedBox(width: 12),
-        _QuickAddButton(label: '+500ml', onTap: () => onAdd(500)),
-        const SizedBox(width: 12),
-        _QuickAddButton(label: '+750ml', onTap: () => onAdd(750)),
-        const SizedBox(width: 12),
-        _QuickAddButton(label: '+1000ml', onTap: () => onAdd(1000)),
-      ],
-    );
-  }
-}
-
-class _QuickAddButton extends StatefulWidget {
-  final String label;
-  final VoidCallback onTap;
-
-  const _QuickAddButton({required this.label, required this.onTap});
-
-  @override
-  State<_QuickAddButton> createState() => _QuickAddButtonState();
-}
-
-class _QuickAddButtonState extends State<_QuickAddButton> {
-  bool _pressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: GestureDetector(
-        onTapDown: (_) => setState(() => _pressed = true),
-        onTapUp: (_) {
-          setState(() => _pressed = false);
-          widget.onTap();
-        },
-        onTapCancel: () => setState(() => _pressed = false),
-        child: AnimatedScale(
-          scale: _pressed ? 0.98 : 1.0,
-          duration: const Duration(milliseconds: 120),
-          child: _GlassCard(
-            radius: 22,
-            child: Center(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.add_circle_outline,
-                    color: Colors.white, // Button is on gradient card, white is fine
-                    size: 16,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    widget.label,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white, // Button is on gradient card, white is fine
-                    ),
-                  ),
-                ],
-              ),
             ),
           ),
         ),

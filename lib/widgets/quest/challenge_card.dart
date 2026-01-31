@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../theme/design_tokens.dart';
-import '../../pages/quest/quest_page.dart' show ChallengeQuest;
+import '../../models/quest_models.dart';
 
 class ChallengeCard extends StatefulWidget {
   final ChallengeQuest challenge;
@@ -31,9 +31,10 @@ class _ChallengeCardState extends State<ChallengeCard>
       duration: DesignTokens.animationFast,
       vsync: this,
     );
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.98).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
-    );
+    _scaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 0.98,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
   }
 
   @override
@@ -63,10 +64,7 @@ class _ChallengeCardState extends State<ChallengeCard>
               padding: const EdgeInsets.all(DesignTokens.spacing16),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [
-                    DesignTokens.accentPurple,
-                    DesignTokens.accentBlue,
-                  ],
+                  colors: [DesignTokens.accentPurple, DesignTokens.accentBlue],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -124,7 +122,9 @@ class _ChallengeCardState extends State<ChallengeCard>
                             color: widget.challenge.isJoined
                                 ? Colors.white.withValues(alpha: 0.2)
                                 : Colors.white,
-                            borderRadius: BorderRadius.circular(DesignTokens.radiusChip),
+                            borderRadius: BorderRadius.circular(
+                              DesignTokens.radiusChip,
+                            ),
                           ),
                           child: Text(
                             widget.challenge.isJoined ? 'Joined' : 'Join',
@@ -174,7 +174,7 @@ class _ChallengeCardState extends State<ChallengeCard>
                       ),
                     ],
                   ),
-                  
+
                   // Progress (if joined)
                   if (widget.challenge.isJoined) ...[
                     const SizedBox(height: DesignTokens.spacing12),
@@ -187,7 +187,9 @@ class _ChallengeCardState extends State<ChallengeCard>
                           height: 6,
                           decoration: BoxDecoration(
                             color: Colors.white.withValues(alpha: 0.2),
-                            borderRadius: BorderRadius.circular(DesignTokens.radiusChip),
+                            borderRadius: BorderRadius.circular(
+                              DesignTokens.radiusChip,
+                            ),
                           ),
                           child: FractionallySizedBox(
                             widthFactor: value,
@@ -195,7 +197,9 @@ class _ChallengeCardState extends State<ChallengeCard>
                             child: Container(
                               decoration: BoxDecoration(
                                 color: Colors.white,
-                                borderRadius: BorderRadius.circular(DesignTokens.radiusChip),
+                                borderRadius: BorderRadius.circular(
+                                  DesignTokens.radiusChip,
+                                ),
                               ),
                             ),
                           ),

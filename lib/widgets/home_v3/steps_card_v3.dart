@@ -48,7 +48,7 @@ class StepsCardV3 extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               const Text(
-                'Steps',
+                'STEPS',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,

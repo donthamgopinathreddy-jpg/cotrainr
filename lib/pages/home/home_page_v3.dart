@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/design_tokens.dart';
 import '../../providers/profile_images_provider.dart';
 import '../../widgets/home_v3/hero_header_v3.dart';
+import '../../widgets/home_v3/streak_pill_v3.dart';
 import '../../widgets/home_v3/steps_card_v3.dart';
 import '../../widgets/home_v3/macro_row_v3.dart';
 import '../../widgets/home_v3/bmi_card_v3.dart';
@@ -11,6 +12,7 @@ import '../../widgets/home_v3/quick_access_v3.dart';
 import '../../widgets/home_v3/feed_preview_v3.dart';
 import '../../widgets/home_v3/nearby_preview_v3.dart';
 import '../insights/insights_detail_page.dart';
+import '../../services/streak_service.dart';
 
 class HomePageV3 extends ConsumerStatefulWidget {
   final VoidCallback? onNavigateToCocircle;
@@ -30,11 +32,11 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
   // Mock data
   final String _username = 'John Doe';
   final int _notificationCount = 3;
-  final int _streakDays = 7;
+  int _streakDays = 0;
   final int _currentSteps = 8234;
   final int _goalSteps = 10000;
   final int _currentCalories = 1856;
-  final double _currentWater = 1.5;
+  double _currentWater = 1.5;
   final double _goalWater = 2.5;
   final double _currentDistance = 4.6;
   final double _bmi = 22.4;
@@ -57,6 +59,16 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
       curve: Curves.easeOut,
     );
     _fadeController.forward();
+    _loadStreak();
+  }
+
+  Future<void> _loadStreak() async {
+    final streak = await StreakService.updateStreakOnLogin();
+    if (mounted) {
+      setState(() {
+        _streakDays = streak;
+      });
+    }
   }
 
   @override
@@ -125,41 +137,56 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                 notificationCount: _notificationCount,
                 coverImageUrl: ref.watch(profileImagesProvider).coverImagePath,
                 avatarUrl: ref.watch(profileImagesProvider).profileImagePath,
-                streakDays: _streakDays,
+                streakDays: 0, // Remove streak from header
                 onNotificationTap: () => context.push('/notifications'),
               ),
               0,
             ),
           ),
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _animated(
-                Transform.translate(
-                  offset: const Offset(0, -20),
-                  child: _safeSection(
+            child: Transform.translate(
+              offset: const Offset(0, -32),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _animated(
+                  _safeSection(
+                    context,
+                    StreakPillV3(streakDays: _streakDays),
+                  ),
+                  50,
+                ),
+              ),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Transform.translate(
+              offset: const Offset(0, -8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _animated(
+                  _safeSection(
                     context,
                     StepsCardV3(
-                      steps: _currentSteps,
-                      goal: _goalSteps,
-                      sparkline: _stepsWeeklyData,
-                      heroTag: 'tile_steps',
-                      onTap: () => context.push(
-                        '/insights/steps',
-                        extra: InsightArgs(
-                          MetricType.steps,
-                          _stepsWeeklyData,
-                          goal: _goalSteps.toDouble(),
-                        ),
+                    steps: _currentSteps,
+                    goal: _goalSteps,
+                    sparkline: _stepsWeeklyData,
+                    heroTag: 'tile_steps',
+                    onTap: () => context.push(
+                      '/insights/steps',
+                      extra: InsightArgs(
+                        MetricType.steps,
+                        _stepsWeeklyData,
+                        goal: _goalSteps.toDouble(),
                       ),
                     ),
                   ),
                 ),
                 100,
               ),
+              ),
             ),
           ),
-          const SliverToBoxAdapter(child: SizedBox(height: 16)),
+          const SliverToBoxAdapter(child: SizedBox(height: 8)),
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -197,6 +224,14 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                         _distanceWeeklyData,
                       ),
                     ),
+                    onAddWater: () {
+                      setState(() {
+                        _currentWater += 0.25; // Add 250ml (0.25L)
+                        if (_currentWater > _goalWater) {
+                          _currentWater = _goalWater; // Cap at goal
+                        }
+                      });
+                    },
                   ),
                 ),
                 140,

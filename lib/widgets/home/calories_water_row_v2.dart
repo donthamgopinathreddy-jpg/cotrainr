@@ -230,22 +230,29 @@ class _WaterCard extends StatelessWidget {
                   ),
                 ),
                 SizedBox(height: DesignTokens.spacing4),
-                // Add button: +250ml pill inside card
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: DesignTokens.spacing8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    gradient: DesignTokens.primaryGradient,
-                    borderRadius: BorderRadius.circular(DesignTokens.radiusChip),
-                  ),
-                  child: Text(
-                    '+250ml',
-                    style: TextStyle(
-                      fontSize: DesignTokens.fontSizeMeta,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
+                // Add button: +250ml pill inside card - clickable
+                GestureDetector(
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    // TODO: Add 250ml water to daily metrics
+                    // This should trigger a callback or state update
+                  },
+                  child: Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: DesignTokens.spacing8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: DesignTokens.primaryGradient,
+                      borderRadius: BorderRadius.circular(DesignTokens.radiusChip),
+                    ),
+                    child: Text(
+                      '+250ml',
+                      style: TextStyle(
+                        fontSize: DesignTokens.fontSizeMeta,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ),

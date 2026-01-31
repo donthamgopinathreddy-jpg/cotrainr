@@ -54,6 +54,7 @@ dependencies:
   device_info_plus: ^12.3.0
   package_info_plus: ^8.0.0
   font_awesome_flutter: ^10.7.0
+  shared_preferences: ^2.2.2
 
 dev_dependencies:
   flutter_test:

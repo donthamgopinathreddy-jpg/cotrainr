@@ -182,47 +182,48 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
             ],
           ),
         ),
-        _fadeSlide(
-          _animForDelay(110),
-          GestureDetector(
-            onTapDown: (_) => setState(() => _streakPressed = true),
-            onTapUp: (_) {
-              setState(() => _streakPressed = false);
-              HapticFeedback.lightImpact();
-            },
-            onTapCancel: () => setState(() => _streakPressed = false),
-            child: AnimatedScale(
-              scale: _streakPressed ? 0.98 : 1.0,
-              duration: const Duration(milliseconds: 90),
-              child: Container(
-                height: 36,
-                padding: const EdgeInsets.symmetric(horizontal: 14),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.35),
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.local_fire_department_rounded,
-                      color: AppColors.orange,
-                      size: 18,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      '${widget.streakDays}',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
+        if (widget.streakDays > 0)
+          _fadeSlide(
+            _animForDelay(110),
+            GestureDetector(
+              onTapDown: (_) => setState(() => _streakPressed = true),
+              onTapUp: (_) {
+                setState(() => _streakPressed = false);
+                HapticFeedback.lightImpact();
+              },
+              onTapCancel: () => setState(() => _streakPressed = false),
+              child: AnimatedScale(
+                scale: _streakPressed ? 0.98 : 1.0,
+                duration: const Duration(milliseconds: 90),
+                child: Container(
+                  height: 36,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.35),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.local_fire_department_rounded,
+                        color: AppColors.orange,
+                        size: 18,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 6),
+                      Text(
+                        '${widget.streakDays}',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
       ],
     );
 
@@ -259,14 +260,21 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
                       ),
                       if (widget.notificationCount > 0)
                         Positioned(
-                          top: 2,
-                          right: 2,
+                          top: 0,
+                          right: 0,
                           child: Container(
-                            width: 6,
-                            height: 6,
+                            width: 8,
+                            height: 8,
                             decoration: const BoxDecoration(
                               color: AppColors.red,
                               shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black26,
+                                  blurRadius: 2,
+                                  offset: Offset(0, 1),
+                                ),
+                              ],
                             ),
                           ),
                         ),

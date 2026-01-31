@@ -48,9 +48,9 @@ class _ImageCropPageState extends State<ImageCropPage> {
       debugPrint('Stack trace: $stackTrace');
       if (mounted) {
         setState(() => _isProcessing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error cropping image: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error cropping image: $e')));
       }
     }
   }
@@ -91,216 +91,228 @@ class _ImageCropPageState extends State<ImageCropPage> {
           return Container(
             color: backgroundColor,
             child: Scaffold(
-          backgroundColor: Colors.transparent,
-          extendBodyBehindAppBar: true,
-        appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.5),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.close, color: Colors.white, size: 24),
-          ),
-          onPressed: _isProcessing ? null : _handleBack,
-        ),
-        actions: [
-          Container(
-            margin: const EdgeInsets.only(right: 16),
-            decoration: BoxDecoration(
-              gradient: _gradient,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: TextButton(
-              onPressed: _isProcessing ? null : _handleCrop,
-              child: Text(
-                _isProcessing ? 'Processing...' : 'Done',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-      body: Stack(
-        children: [
-          // Crop area
-          Center(
-            child: Crop(
-              image: imageData,
-              controller: _cropController,
-              onCropped: (result) {
-                if (!mounted || _hasNavigated) return;
-                _hasNavigated = true;
-                
-                // Extract cropped data from CropResult
-                final croppedData = (result as dynamic).data as Uint8List?;
-                
-                if (croppedData != null) {
-                  debugPrint('Crop completed, bytes length: ${croppedData.length}');
-                  // Navigate immediately with the cropped result
-                  Future.microtask(() {
-                    if (mounted) {
-                      setState(() => _isProcessing = false);
-                      Navigator.of(context).pop(croppedData);
-                    }
-                  });
-                } else {
-                  debugPrint('Crop result is null or invalid. Result type: ${result.runtimeType}');
-                  if (mounted) {
-                    setState(() => _isProcessing = false);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Failed to crop image')),
-                    );
-                  }
-                }
-              },
-              aspectRatio: _aspectRatio,
-              radius: 0,
-              baseColor: Colors.transparent,
-              maskColor: Colors.black.withOpacity(0.7),
-            ),
-          ),
-          // Bottom controls
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: SafeArea(
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      Colors.black.withOpacity(0.8),
-                    ],
-                  ),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Aspect ratio buttons
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        _AspectRatioButton(
-                          icon: Icons.crop_free,
-                          label: 'Free',
-                          isActive: _aspectRatio == null,
-                          onTap: () {
-                            setState(() {
-                              _aspectRatio = null;
-                              _cropController.aspectRatio = null;
-                            });
-                          },
-                          gradient: _gradient,
-                        ),
-                        _AspectRatioButton(
-                          icon: Icons.crop_square,
-                          label: '1:1',
-                          isActive: _aspectRatio == 1.0,
-                          onTap: () {
-                            setState(() {
-                              _aspectRatio = 1.0;
-                              _cropController.aspectRatio = 1.0;
-                            });
-                          },
-                          gradient: _gradient,
-                        ),
-                        _AspectRatioButton(
-                          icon: Icons.phone_android,
-                          label: '9:16',
-                          isActive: _aspectRatio == 9 / 16,
-                          onTap: () {
-                            setState(() {
-                              _aspectRatio = 9 / 16;
-                              _cropController.aspectRatio = 9 / 16;
-                            });
-                          },
-                          gradient: _gradient,
-                        ),
-                        _AspectRatioButton(
-                          icon: Icons.phone_iphone,
-                          label: '16:9',
-                          isActive: _aspectRatio == 16 / 9,
-                          onTap: () {
-                            setState(() {
-                              _aspectRatio = 16 / 9;
-                              _cropController.aspectRatio = 16 / 9;
-                            });
-                          },
-                          gradient: _gradient,
-                        ),
-                      ],
+              backgroundColor: Colors.transparent,
+              extendBodyBehindAppBar: true,
+              appBar: AppBar(
+                backgroundColor: Colors.transparent,
+                elevation: 0,
+                leading: IconButton(
+                  icon: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.5),
+                      shape: BoxShape.circle,
                     ),
-                    const SizedBox(height: 20),
-                    // Rotation button
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        GestureDetector(
-                          onTap: _rotateImage,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 24,
-                              vertical: 12,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.15),
-                              borderRadius: BorderRadius.circular(24),
-                              border: Border.all(
-                                color: Colors.white.withOpacity(0.3),
-                                width: 1.5,
+                    child: const Icon(
+                      Icons.close,
+                      color: Colors.white,
+                      size: 24,
+                    ),
+                  ),
+                  onPressed: _isProcessing ? null : _handleBack,
+                ),
+                actions: [
+                  Container(
+                    margin: const EdgeInsets.only(right: 16),
+                    decoration: BoxDecoration(
+                      gradient: _gradient,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: TextButton(
+                      onPressed: _isProcessing ? null : _handleCrop,
+                      child: Text(
+                        _isProcessing ? 'Processing...' : 'Done',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              body: Stack(
+                children: [
+                  // Crop area
+                  Center(
+                    child: Crop(
+                      image: imageData,
+                      controller: _cropController,
+                      onCropped: (result) {
+                        if (!mounted || _hasNavigated) return;
+                        _hasNavigated = true;
+
+                        // Extract cropped data from CropResult
+                        final croppedData =
+                            (result as dynamic).data as Uint8List?;
+
+                        if (croppedData != null) {
+                          debugPrint(
+                            'Crop completed, bytes length: ${croppedData.length}',
+                          );
+                          // Navigate immediately with the cropped result
+                          Future.microtask(() {
+                            if (mounted) {
+                              setState(() => _isProcessing = false);
+                              Navigator.of(context).pop(croppedData);
+                            }
+                          });
+                        } else {
+                          debugPrint(
+                            'Crop result is null or invalid. Result type: ${result.runtimeType}',
+                          );
+                          if (mounted) {
+                            setState(() => _isProcessing = false);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Failed to crop image'),
                               ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
+                            );
+                          }
+                        }
+                      },
+                      aspectRatio: _aspectRatio,
+                      radius: 0,
+                      baseColor: Colors.transparent,
+                      maskColor: Colors.black.withOpacity(0.7),
+                    ),
+                  ),
+                  // Bottom controls
+                  Positioned(
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    child: SafeArea(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 20,
+                          horizontal: 16,
+                        ),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.transparent,
+                              Colors.black.withOpacity(0.8),
+                            ],
+                          ),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Aspect ratio buttons
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                               children: [
-                                ShaderMask(
-                                  shaderCallback: (rect) =>
-                                      _gradient.createShader(rect),
-                                  child: const Icon(
-                                    Icons.rotate_right,
-                                    color: Colors.white,
-                                    size: 22,
-                                  ),
+                                _AspectRatioButton(
+                                  icon: Icons.crop_free,
+                                  label: 'Free',
+                                  isActive: _aspectRatio == null,
+                                  onTap: () {
+                                    setState(() {
+                                      _aspectRatio = null;
+                                      _cropController.aspectRatio = null;
+                                    });
+                                  },
+                                  gradient: _gradient,
                                 ),
-                                const SizedBox(width: 8),
-                                const Text(
-                                  'Rotate',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 14,
+                                _AspectRatioButton(
+                                  icon: Icons.crop_square,
+                                  label: '1:1',
+                                  isActive: _aspectRatio == 1.0,
+                                  onTap: () {
+                                    setState(() {
+                                      _aspectRatio = 1.0;
+                                      _cropController.aspectRatio = 1.0;
+                                    });
+                                  },
+                                  gradient: _gradient,
+                                ),
+                                _AspectRatioButton(
+                                  icon: Icons.phone_android,
+                                  label: '9:16',
+                                  isActive: _aspectRatio == 9 / 16,
+                                  onTap: () {
+                                    setState(() {
+                                      _aspectRatio = 9 / 16;
+                                      _cropController.aspectRatio = 9 / 16;
+                                    });
+                                  },
+                                  gradient: _gradient,
+                                ),
+                                _AspectRatioButton(
+                                  icon: Icons.phone_iphone,
+                                  label: '16:9',
+                                  isActive: _aspectRatio == 16 / 9,
+                                  onTap: () {
+                                    setState(() {
+                                      _aspectRatio = 16 / 9;
+                                      _cropController.aspectRatio = 16 / 9;
+                                    });
+                                  },
+                                  gradient: _gradient,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 20),
+                            // Rotation button
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                GestureDetector(
+                                  onTap: _rotateImage,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 24,
+                                      vertical: 12,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withOpacity(0.15),
+                                      borderRadius: BorderRadius.circular(24),
+                                      border: Border.all(
+                                        color: Colors.white.withOpacity(0.3),
+                                        width: 1.5,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        ShaderMask(
+                                          shaderCallback: (rect) =>
+                                              _gradient.createShader(rect),
+                                          child: const Icon(
+                                            Icons.rotate_right,
+                                            color: Colors.white,
+                                            size: 22,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        const Text(
+                                          'Rotate',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ],
                             ),
-                          ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
-          ),
-        ],
-      ),
-        ),
-      ),
-            ),
-          },
-        ),
+          );
+        },
       ),
     );
   }
@@ -347,20 +359,12 @@ class _AspectRatioButton extends StatelessWidget {
             ),
             child: Center(
               child: isActive
-                  ? Icon(
-                      icon,
-                      color: Colors.white,
-                      size: 24,
-                    )
+                  ? Icon(icon, color: Colors.white, size: 24)
                   : ShaderMask(
                       shaderCallback: (rect) => const LinearGradient(
                         colors: [Colors.white, Colors.white],
                       ).createShader(rect),
-                      child: Icon(
-                        icon,
-                        color: Colors.white,
-                        size: 24,
-                      ),
+                      child: Icon(icon, color: Colors.white, size: 24),
                     ),
             ),
           ),

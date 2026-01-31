@@ -9,6 +9,20 @@
     <!-- Internet permission for url_launcher -->
     <uses-permission android:name="android.permission.INTERNET" />
     
+    <!-- Location permissions for distance calculation using GPS -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    
+    <!-- Health and fitness permissions for step tracking using mobile sensors -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    
+    <!-- Notification permission -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    
+    <!-- Microphone permission -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    
     <application
         android:label="cotrainr_flutter"
         android:name="${applicationName}"
