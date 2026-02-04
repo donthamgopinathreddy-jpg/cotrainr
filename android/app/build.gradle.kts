@@ -47,3 +47,56 @@ android {
 flutter {
     source = "../.."
 }
+
+// Copy APK to Flutter-expected location after build
+afterEvaluate {
+    tasks.named("assembleDebug") {
+        doLast {
+            val flutterApkDir = file("../../build/app/outputs/flutter-apk")
+            flutterApkDir.mkdirs()
+            
+            // Try flutter-apk location first, then fallback to apk location
+            val apkFile = file("build/outputs/flutter-apk/app-debug.apk")
+            val fallbackApkFile = file("build/outputs/apk/debug/app-debug.apk")
+            val flutterApkFile = file("../../build/app/outputs/flutter-apk/app-debug.apk")
+            
+            val sourceApk = when {
+                apkFile.exists() -> apkFile
+                fallbackApkFile.exists() -> fallbackApkFile
+                else -> null
+            }
+            
+            if (sourceApk != null) {
+                sourceApk.copyTo(flutterApkFile, overwrite = true)
+                println("Copied APK to ${flutterApkFile.absolutePath}")
+            } else {
+                println("Warning: APK not found in expected locations")
+            }
+        }
+    }
+
+    tasks.named("assembleRelease") {
+        doLast {
+            val flutterApkDir = file("../../build/app/outputs/flutter-apk")
+            flutterApkDir.mkdirs()
+            
+            // Try flutter-apk location first, then fallback to apk location
+            val apkFile = file("build/outputs/flutter-apk/app-release.apk")
+            val fallbackApkFile = file("build/outputs/apk/release/app-release.apk")
+            val flutterApkFile = file("../../build/app/outputs/flutter-apk/app-release.apk")
+            
+            val sourceApk = when {
+                apkFile.exists() -> apkFile
+                fallbackApkFile.exists() -> fallbackApkFile
+                else -> null
+            }
+            
+            if (sourceApk != null) {
+                sourceApk.copyTo(flutterApkFile, overwrite = true)
+                println("Copied APK to ${flutterApkFile.absolutePath}")
+            } else {
+                println("Warning: APK not found in expected locations")
+            }
+        }
+    }
+}

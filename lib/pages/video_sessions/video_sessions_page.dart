@@ -86,6 +86,7 @@ class _VideoSessionsPageState extends State<VideoSessionsPage>
         id: 'meeting_${meeting.meetingId}_${now.millisecondsSinceEpoch}',
         type: NotificationType.meeting,
         userName: null,
+        title: 'Meeting Started',
         message: '📹 Your meeting "${meeting.title}" is now live!',
         time: 'Just now',
         hasUnread: true,

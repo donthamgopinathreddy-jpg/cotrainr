@@ -153,18 +153,12 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
     final colorScheme = Theme.of(context).colorScheme;
     final hasMedia = widget.post.mediaUrl != null;
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Column(
+    return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Header - Clean, minimal
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               children: [
                 // Avatar
@@ -265,7 +259,7 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
           // Caption - Above media for better readability
           if (widget.post.caption.isNotEmpty)
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
               child: Text(
                 widget.post.caption,
                 style: TextStyle(
@@ -277,48 +271,43 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
               ),
             ),
 
-          // Media - Full width within card
+          // Media - Full width
           if (hasMedia)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 0),
-              child: GestureDetector(
-                onDoubleTap: () {
-                  widget.onDoubleTap?.call();
-                  _showHeartAnimation();
-                },
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(0),
-                      child: Container(
-                        width: double.infinity,
-                        constraints: const BoxConstraints(
-                          minHeight: 500,
-                          maxHeight: 700,
-                        ),
-                        child: Image(
-                          image: CachedNetworkImageProvider(widget.post.mediaUrl!),
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                          height: double.infinity,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Container(
-                              height: 500,
-                              color: colorScheme.surfaceContainerHighest,
-                              child: Center(
-                                child: Icon(
-                                  Icons.broken_image,
-                                  size: 64,
-                                  color: colorScheme.onSurface.withValues(alpha: 0.3),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
+            GestureDetector(
+              onDoubleTap: () {
+                widget.onDoubleTap?.call();
+                _showHeartAnimation();
+              },
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Container(
+                    width: double.infinity,
+                    constraints: const BoxConstraints(
+                      minHeight: 500,
+                      maxHeight: 700,
                     ),
-                    if (_showHeart)
+                    child: Image(
+                      image: CachedNetworkImageProvider(widget.post.mediaUrl!),
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      height: double.infinity,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          height: 500,
+                          color: colorScheme.surfaceContainerHighest,
+                          child: Center(
+                            child: Icon(
+                              Icons.broken_image,
+                              size: 64,
+                              color: colorScheme.onSurface.withValues(alpha: 0.3),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  if (_showHeart)
                       ScaleTransition(
                         scale: Tween<double>(begin: 0.0, end: 1.3).animate(
                           CurvedAnimation(
@@ -338,11 +327,10 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
                   ],
                 ),
               ),
-            ),
 
           // Actions Bar - Modern, spacious
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 16, 12, 12),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
             child: Row(
               children: [
                 _buildActionButton(
@@ -396,7 +384,6 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
             child: _showComments ? _buildCommentsSection() : const SizedBox.shrink(),
           ),
         ],
-      ),
     );
   }
 
@@ -404,10 +391,10 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
     final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

@@ -17,8 +17,8 @@ class Motion {
   static const Duration slow = Duration(milliseconds: 400);
 
   // ========== CURVES ==========
-  /// Primary curve for most animations (easeOutCubic - smooth, natural)
-  static const Curve primaryCurve = Curves.easeOutCubic;
+  /// Primary curve for most animations (fastOutSlowIn - smooth, natural, iOS-like)
+  static const Curve primaryCurve = Curves.fastOutSlowIn;
   
   /// For spring-like, bouncy animations
   static const Curve springCurve = Curves.easeOutBack;
@@ -28,19 +28,22 @@ class Motion {
   
   /// For large transitions (fastOutSlowIn)
   static const Curve largeTransitionCurve = Curves.fastOutSlowIn;
+  
+  /// For page transitions (smooth, polished feel)
+  static const Curve pageTransitionCurve = Curves.fastOutSlowIn;
 
   // ========== PAGE TRANSITIONS ==========
-  /// Standard page transition duration
-  static const Duration pageTransitionDuration = Duration(milliseconds: 280);
+  /// Standard page transition duration (optimized for smoothness)
+  static const Duration pageTransitionDuration = Duration(milliseconds: 300);
   
-  /// Reverse page transition duration (slightly faster)
-  static const Duration pageTransitionReverseDuration = Duration(milliseconds: 220);
+  /// Reverse page transition duration (slightly faster for snappy back navigation)
+  static const Duration pageTransitionReverseDuration = Duration(milliseconds: 250);
   
-  /// Slide offset for page transitions (8px = 0.03 of screen)
-  static const Offset pageSlideOffset = Offset(0, 0.03);
+  /// Slide offset for page transitions (subtle vertical movement)
+  static const Offset pageSlideOffset = Offset(0, 0.02);
   
   /// Horizontal slide offset for side navigation
-  static const Offset pageSlideHorizontalOffset = Offset(0.08, 0);
+  static const Offset pageSlideHorizontalOffset = Offset(0.05, 0);
 
   // ========== PRESS INTERACTIONS ==========
   /// Scale value when pressed (0.98 = 2% smaller)
@@ -107,15 +110,17 @@ class Motion {
     );
   }
 
-  /// Standard page transition builder (fade + slight slide)
+  /// Standard page transition builder (smooth fade + subtle slide with scale)
   static Widget Function(BuildContext, Animation<double>, Animation<double>, Widget)
       standardPageTransition({
     Offset slideOffset = pageSlideOffset,
     Duration duration = pageTransitionDuration,
-    Curve curve = primaryCurve,
+    Curve curve = pageTransitionCurve,
   }) {
     return (context, animation, secondaryAnimation, child) {
       final curved = CurvedAnimation(parent: animation, curve: curve);
+      
+      // Use a subtle scale + fade + slide for smooth transitions
       return FadeTransition(
         opacity: curved,
         child: SlideTransition(
@@ -123,8 +128,60 @@ class Motion {
             begin: slideOffset,
             end: Offset.zero,
           ).animate(curved),
+          child: ScaleTransition(
+            scale: Tween<double>(
+              begin: 0.99,
+              end: 1.0,
+            ).animate(CurvedAnimation(
+              parent: animation,
+              curve: const Interval(0.0, 0.7, curve: Curves.easeOut),
+            )),
+            child: child,
+          ),
+        ),
+      );
+    };
+  }
+  
+  /// Smooth horizontal slide transition (for side navigation)
+  static Widget Function(BuildContext, Animation<double>, Animation<double>, Widget)
+      horizontalSlideTransition({
+    Offset slideOffset = pageSlideHorizontalOffset,
+    Duration duration = pageTransitionDuration,
+    Curve curve = pageTransitionCurve,
+  }) {
+    return (context, animation, secondaryAnimation, child) {
+      final curved = CurvedAnimation(parent: animation, curve: curve);
+      
+      return SlideTransition(
+        position: Tween<Offset>(
+          begin: slideOffset,
+          end: Offset.zero,
+        ).animate(curved),
+        child: FadeTransition(
+          opacity: CurvedAnimation(
+            parent: animation,
+            curve: const Interval(0.0, 0.7, curve: Curves.easeOut),
+          ),
           child: child,
         ),
+      );
+    };
+  }
+
+  /// Fade-only transition (for tab navigation, no slide)
+  static Widget Function(BuildContext, Animation<double>, Animation<double>, Widget)
+      fadeOnlyTransition({
+    Duration duration = const Duration(milliseconds: 250),
+    Curve curve = Curves.easeInOut,
+  }) {
+    return (context, animation, secondaryAnimation, child) {
+      return FadeTransition(
+        opacity: CurvedAnimation(
+          parent: animation,
+          curve: curve,
+        ),
+        child: child,
       );
     };
   }

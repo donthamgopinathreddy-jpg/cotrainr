@@ -309,27 +309,48 @@ class _HomePageState extends State<HomePage> {
     return [
       NearbyPlace(
         id: '1',
-        name: 'FitZone Gym',
+        name: 'Gold\'s Gym',
         category: 'Gyms',
         rating: 4.5,
-        distance: 1.2,
-        thumbnailUrl: null, // Placeholder
+        distance: 0.8,
+        thumbnailUrl: null,
+        imageUrl: null, // Will use placeholder gradient
       ),
       NearbyPlace(
         id: '2',
-        name: 'Yoga Studio',
+        name: 'The Yoga Institute',
         category: 'Yoga',
         rating: 4.8,
-        distance: 2.5,
-        thumbnailUrl: null, // Placeholder
+        distance: 1.2,
+        thumbnailUrl: null,
+        imageUrl: null, // Will use placeholder gradient
       ),
       NearbyPlace(
         id: '3',
-        name: 'CrossFit Central',
-        category: 'CrossFit',
-        rating: 4.3,
-        distance: 3.1,
-        thumbnailUrl: null, // Placeholder
+        name: 'Cult.fit Center',
+        category: 'Gyms',
+        rating: 4.6,
+        distance: 1.5,
+        thumbnailUrl: null,
+        imageUrl: null, // Will use placeholder gradient
+      ),
+      NearbyPlace(
+        id: '4',
+        name: 'Anytime Fitness',
+        category: 'Gyms',
+        rating: 4.4,
+        distance: 2.1,
+        thumbnailUrl: null,
+        imageUrl: null, // Will use placeholder gradient
+      ),
+      NearbyPlace(
+        id: '5',
+        name: 'Talwalkars Gym',
+        category: 'Gyms',
+        rating: 4.7,
+        distance: 2.5,
+        thumbnailUrl: null,
+        imageUrl: null, // Will use placeholder gradient
       ),
     ];
   }

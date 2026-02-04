@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:image_picker/image_picker.dart';
 import '../../theme/design_tokens.dart';
 import '../../widgets/cocircle/cocircle_feed_card.dart';
 import '../../utils/page_transitions.dart';
@@ -401,16 +400,26 @@ class _CocirclePageState extends State<CocirclePage>
                 delegate: SliverChildBuilderDelegate(
                   (context, index) {
                     final post = _posts[index];
-                    return CocircleFeedCard(
-                      post: post,
-                      onLike: () => _toggleLike(post.id),
-                      onComment: () => _openComments(post.id),
-                      onShare: () => _sharePost(post.id),
-                      onDoubleTap: () => _handleDoubleTap(post.id),
-                      onFollow: () => _toggleFollow(post.userId),
-                      onProfileTap: () => _openProfile(post.userId, post.userName),
-                      isFollowing: _followingUserIds.contains(post.userId),
-                      isOwnPost: post.userId == _currentUserId,
+                    return Column(
+                      children: [
+                        CocircleFeedCard(
+                          post: post,
+                          onLike: () => _toggleLike(post.id),
+                          onComment: () => _openComments(post.id),
+                          onShare: () => _sharePost(post.id),
+                          onDoubleTap: () => _handleDoubleTap(post.id),
+                          onFollow: () => _toggleFollow(post.userId),
+                          onProfileTap: () => _openProfile(post.userId, post.userName),
+                          isFollowing: _followingUserIds.contains(post.userId),
+                          isOwnPost: post.userId == _currentUserId,
+                        ),
+                        if (index < _posts.length - 1)
+                          Divider(
+                            height: 1,
+                            thickness: 0.5,
+                            color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.08),
+                          ),
+                      ],
                     );
                   },
                   childCount: _posts.length,

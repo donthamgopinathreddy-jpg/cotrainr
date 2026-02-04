@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../theme/design_tokens.dart';
-import '../../theme/app_colors.dart';
-import '../cocircle/user_profile_page.dart';
+import '../../widgets/discover/discover_filter_sheet.dart';
+import 'center_detail_page.dart';
 
 class DiscoverPage extends StatefulWidget {
   const DiscoverPage({super.key});
@@ -23,6 +25,8 @@ class _DiscoverPageState extends State<DiscoverPage>
   int _selectedTabIndex = 0;
   bool _isLoading = false;
 
+  // Track request status: 'none', 'pending', 'accepted'
+  final Map<String, String> _requestStatus = {};
 
   // Mock data
   final List<DiscoverItem> _trainers = [];
@@ -64,7 +68,7 @@ class _DiscoverPageState extends State<DiscoverPage>
         distance: 0.8,
         location: 'Andheri, Mumbai',
         isVerified: true,
-        avatarUrl: null,
+        avatarUrl: 'https://i.pravatar.cc/150?img=12',
       ),
       DiscoverItem(
         id: '2',
@@ -75,7 +79,7 @@ class _DiscoverPageState extends State<DiscoverPage>
         distance: 1.5,
         location: 'Koramangala, Bangalore',
         isVerified: true,
-        avatarUrl: null,
+        avatarUrl: 'https://i.pravatar.cc/150?img=33',
       ),
       DiscoverItem(
         id: '3',
@@ -86,7 +90,7 @@ class _DiscoverPageState extends State<DiscoverPage>
         distance: 3.2,
         location: 'Gurgaon, Delhi NCR',
         isVerified: true,
-        avatarUrl: null,
+        avatarUrl: 'https://i.pravatar.cc/150?img=47',
       ),
     ]);
 
@@ -100,7 +104,7 @@ class _DiscoverPageState extends State<DiscoverPage>
         distance: 2.1,
         location: 'Bandra, Mumbai',
         isVerified: true,
-        avatarUrl: null,
+        avatarUrl: 'https://i.pravatar.cc/150?img=47',
       ),
       DiscoverItem(
         id: '5',
@@ -111,7 +115,7 @@ class _DiscoverPageState extends State<DiscoverPage>
         distance: 4.5,
         location: 'Powai, Mumbai',
         isVerified: true,
-        avatarUrl: null,
+        avatarUrl: 'https://i.pravatar.cc/150?img=51',
       ),
       DiscoverItem(
         id: '6',
@@ -122,7 +126,7 @@ class _DiscoverPageState extends State<DiscoverPage>
         distance: 1.8,
         location: 'Indiranagar, Bangalore',
         isVerified: true,
-        avatarUrl: null,
+        avatarUrl: 'https://i.pravatar.cc/150?img=20',
       ),
     ]);
 
@@ -174,6 +178,39 @@ class _DiscoverPageState extends State<DiscoverPage>
       default:
         return _trainers;
     }
+  }
+
+  void _showFilterSheet(BuildContext context) {
+    HapticFeedback.selectionClick();
+    final filterType = _selectedTabIndex == 0
+        ? FilterType.trainers
+        : _selectedTabIndex == 1
+            ? FilterType.nutritionists
+            : FilterType.centers;
+    final accentColor = _tabAccent(_selectedTabIndex);
+    final gradient = _tabGradient(_selectedTabIndex);
+    
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DiscoverFilterSheet(
+        filterType: filterType,
+        accentColor: accentColor,
+        gradient: gradient,
+        onApply: (distance, minRating, categories) {
+          // TODO: Apply filters to the list
+          setState(() {
+            // Filter logic here
+          });
+        },
+        onReset: () {
+          setState(() {
+            // Reset filter logic here
+          });
+        },
+      ),
+    );
   }
 
 
@@ -247,8 +284,12 @@ class _DiscoverPageState extends State<DiscoverPage>
                     _DiscoverSearchBar(
                       controller: _searchController,
                       focusNode: _searchFocusNode,
-                      hintText: 'Search trainers...',
-                      onFilterTap: () => HapticFeedback.selectionClick(),
+                      hintText: _selectedTabIndex == 0
+                          ? 'Search trainers...'
+                          : _selectedTabIndex == 1
+                              ? 'Search nutritionists...'
+                              : 'Search centers...',
+                      onFilterTap: () => _showFilterSheet(context),
                     ),
                     const SizedBox(height: DesignTokens.spacing16),
                     _DiscoverSegmentTabs(
@@ -306,19 +347,62 @@ class _DiscoverPageState extends State<DiscoverPage>
                           child: _DiscoverResultCard(
                             item: item,
                             accentColor: _tabAccent(_selectedTabIndex),
+                            accentGradient: _tabGradient(_selectedTabIndex),
+                            isCenter: _selectedTabIndex == 2,
+                            requestStatus: _requestStatus[item.id] ?? 'none',
                             onTap: () {
                               HapticFeedback.lightImpact();
-                              // Navigate to profile page
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => UserProfilePage(
-                                    userId: item.id,
-                                    userName: item.name,
-                                    isOwnProfile: false,
+                              if (_selectedTabIndex == 2) {
+                                // Navigate to center detail page
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => CenterDetailPage(
+                                      centerId: item.id,
+                                      centerName: item.name,
+                                      subtitle: item.subtitle,
+                                      location: item.location,
+                                      rating: item.rating,
+                                      reviews: item.reviews,
+                                      distance: item.distance,
+                                    ),
                                   ),
+                                );
+                              }
+                              // No navigation for trainers/nutritionists
+                            },
+                            onRequest: () {
+                              HapticFeedback.mediumImpact();
+                              setState(() {
+                                _requestStatus[item.id] = 'pending';
+                              });
+                              // TODO: Send notification to trainer/nutritionist
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Request sent to ${item.name}'),
+                                  duration: const Duration(seconds: 2),
+                                  behavior: SnackBarBehavior.floating,
                                 ),
                               );
+                            },
+                            onCancelRequest: () {
+                              HapticFeedback.mediumImpact();
+                              setState(() {
+                                _requestStatus[item.id] = 'none';
+                              });
+                              // TODO: Cancel request notification
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: const Text('Request canceled'),
+                                  duration: const Duration(seconds: 2),
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                            },
+                            onChat: () {
+                              HapticFeedback.lightImpact();
+                              // TODO: Navigate to chat
+                              context.push('/messaging');
                             },
                           ),
                         ),
@@ -614,12 +698,24 @@ class _DiscoverSegmentTabs extends StatelessWidget {
 class _DiscoverResultCard extends StatefulWidget {
   final DiscoverItem item;
   final Color accentColor;
+  final LinearGradient accentGradient;
+  final bool isCenter;
+  final String requestStatus; // 'none', 'pending', 'accepted'
   final VoidCallback onTap;
+  final VoidCallback? onRequest;
+  final VoidCallback? onCancelRequest;
+  final VoidCallback? onChat;
 
   const _DiscoverResultCard({
     required this.item,
     required this.accentColor,
+    required this.accentGradient,
+    this.isCenter = false,
+    this.requestStatus = 'none',
     required this.onTap,
+    this.onRequest,
+    this.onCancelRequest,
+    this.onChat,
   });
 
   @override
@@ -648,7 +744,7 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
           onTap: widget.onTap,
           onHighlightChanged: (value) => setState(() => _pressed = value),
           child: Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               color: colorScheme.surface,
               borderRadius: BorderRadius.circular(24),
@@ -660,153 +756,381 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                 ),
               ],
             ),
-            child: SizedBox(
-              height: 108,
-              child: Row(
-                children: [
-                  Stack(
-                    children: [
-                      Container(
-                        width: 72,
-                        height: 72,
+            child: widget.isCenter
+                ? _buildCenterCard(colorScheme)
+                : _buildProfileCard(colorScheme),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProfileCard(ColorScheme colorScheme) {
+    final hasRequest = widget.requestStatus != 'none';
+    final isAccepted = widget.requestStatus == 'accepted';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  width: 100,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: colorScheme.surfaceVariant,
+                  ),
+                  child: ClipOval(
+                    child: widget.item.avatarUrl == null || widget.item.avatarUrl!.isEmpty
+                        ? Container(
+                            color: colorScheme.surfaceContainerHighest,
+                            child: Icon(
+                              Icons.person_rounded,
+                              size: 50,
+                              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                            ),
+                          )
+                        : CachedNetworkImage(
+                            imageUrl: widget.item.avatarUrl!,
+                            width: 100,
+                            height: 100,
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) => Container(
+                              color: colorScheme.surfaceContainerHighest,
+                              child: const Center(
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                            ),
+                            errorWidget: (context, url, error) => Container(
+                              color: colorScheme.surfaceContainerHighest,
+                              child: Icon(
+                                Icons.person_rounded,
+                                size: 50,
+                                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                              ),
+                            ),
+                          ),
+                  ),
+                ),
+                if (widget.item.isVerified)
+                  Positioned(
+                    bottom: -6,
+                    right: -2,
+                    child: Container(
+                      width: 20,
+                      height: 20,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.15),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Container(
+                        margin: const EdgeInsets.all(2),
                         decoration: BoxDecoration(
+                          gradient: widget.accentGradient,
                           shape: BoxShape.circle,
-                          color: colorScheme.surfaceVariant,
                         ),
-                        child: ClipOval(
-                          child: widget.item.avatarUrl == null
-                              ? const _ShimmerBox(radius: 36)
-                              : Image.network(
-                                  widget.item.avatarUrl!,
-                                  fit: BoxFit.cover,
-                                ),
+                        child: const Icon(
+                          Icons.check_rounded,
+                          size: 12,
+                          color: Colors.white,
                         ),
                       ),
-                      if (widget.item.isVerified)
-                        Positioned(
-                          top: 2,
-                          right: 2,
-                          child: Container(
-                            width: 16,
-                            height: 16,
-                            decoration: BoxDecoration(
-                              color: AppColors.orange,
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.orange.withOpacity(0.4),
-                                  blurRadius: 6,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: const Icon(
-                              Icons.check_rounded,
-                              size: 10,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.item.name,
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                            color: colorScheme.onSurface,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          widget.item.subtitle,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: colorScheme.onSurface.withOpacity(0.6),
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.star_rounded,
-                              size: 14,
-                              color: widget.accentColor,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${widget.item.rating.toStringAsFixed(1)}',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: colorScheme.onSurface,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Container(
-                              width: 4,
-                              height: 4,
-                              decoration: BoxDecoration(
-                                color: colorScheme.onSurface.withOpacity(0.4),
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              '${widget.item.distance.toStringAsFixed(1)} km',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: colorScheme.onSurface.withOpacity(0.55),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.location_on_rounded,
-                              size: 14,
-                              color: colorScheme.onSurface.withOpacity(0.5),
-                            ),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                widget.item.location,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: colorScheme.onSurface.withOpacity(0.55),
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    size: 18,
-                    color: colorScheme.onSurface.withOpacity(0.4),
+              ],
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.item.name,
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: colorScheme.onSurface,
+                      letterSpacing: -0.3,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    widget.item.subtitle,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: colorScheme.onSurface.withOpacity(0.7),
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.star_rounded,
+                        size: 16,
+                        color: widget.accentColor,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${widget.item.rating.toStringAsFixed(1)}',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: colorScheme.onSurface,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        width: 4,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: colorScheme.onSurface.withOpacity(0.4),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        Icons.location_on_rounded,
+                        size: 14,
+                        color: colorScheme.onSurface.withOpacity(0.5),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${widget.item.distance.toStringAsFixed(1)} km',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: colorScheme.onSurface.withOpacity(0.6),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        // Request/Chat/Cancel Button
+        Align(
+          alignment: Alignment.centerRight,
+          child: isAccepted
+              ? Container(
+                  decoration: BoxDecoration(
+                    gradient: widget.accentGradient,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: widget.onChat,
+                      borderRadius: BorderRadius.circular(20),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.chat_bubble_outline_rounded, size: 16, color: Colors.white),
+                            const SizedBox(width: 6),
+                            const Text(
+                              'Chat',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                )
+              : hasRequest
+                  ? OutlinedButton.icon(
+                      onPressed: widget.onCancelRequest,
+                      icon: const Icon(Icons.close_rounded, size: 14),
+                      label: const Text('Cancel'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: colorScheme.onSurfaceVariant,
+                        side: BorderSide(
+                          color: colorScheme.outline.withValues(alpha: 0.3),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                      ),
+                    )
+                  : Container(
+                      decoration: BoxDecoration(
+                        gradient: widget.accentGradient,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: widget.onRequest,
+                          borderRadius: BorderRadius.circular(20),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            child: const Text(
+                              'Request',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCenterCard(ColorScheme colorScheme) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 100,
+          height: 100,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            color: colorScheme.surfaceVariant,
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: widget.item.avatarUrl == null || widget.item.avatarUrl!.isEmpty
+                ? Container(
+                    color: colorScheme.surfaceContainerHighest,
+                    child: Icon(
+                      Icons.place_rounded,
+                      size: 50,
+                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                    ),
+                  )
+                : CachedNetworkImage(
+                    imageUrl: widget.item.avatarUrl!,
+                    width: 100,
+                    height: 100,
+                    fit: BoxFit.cover,
+                    placeholder: (context, url) => Container(
+                      color: colorScheme.surfaceContainerHighest,
+                      child: const Center(
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                    errorWidget: (context, url, error) => Container(
+                      color: colorScheme.surfaceContainerHighest,
+                      child: Icon(
+                        Icons.place_rounded,
+                        size: 50,
+                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ),
           ),
         ),
-      ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.item.name,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: colorScheme.onSurface,
+                  letterSpacing: -0.3,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                widget.item.subtitle,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: colorScheme.onSurface.withOpacity(0.7),
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Icon(
+                    Icons.star_rounded,
+                    size: 16,
+                    color: widget.accentColor,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${widget.item.rating.toStringAsFixed(1)}',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    width: 4,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: colorScheme.onSurface.withOpacity(0.4),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Icon(
+                    Icons.location_on_rounded,
+                    size: 14,
+                    color: colorScheme.onSurface.withOpacity(0.5),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${widget.item.distance.toStringAsFixed(1)} km',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: colorScheme.onSurface.withOpacity(0.6),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        Icon(
+          Icons.chevron_right_rounded,
+          size: 18,
+          color: colorScheme.onSurface.withOpacity(0.4),
+        ),
+      ],
     );
   }
 }

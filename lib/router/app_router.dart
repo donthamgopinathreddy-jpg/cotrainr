@@ -337,7 +337,7 @@ final GoRouter appRouter = GoRouter(
   ],
 );
 
-/// Standard page transition (fade + slight slide)
+/// Standard page transition (smooth fade + subtle slide with scale)
 CustomTransitionPage<void> _fadeSlidePage({
   required Widget child,
   required GoRouterState state,
@@ -348,6 +348,9 @@ CustomTransitionPage<void> _fadeSlidePage({
     transitionDuration: Motion.pageTransitionDuration,
     reverseTransitionDuration: Motion.pageTransitionReverseDuration,
     transitionsBuilder: Motion.standardPageTransition(),
+    // Enable smooth transitions
+    maintainState: true,
+    fullscreenDialog: false,
   );
 }
 

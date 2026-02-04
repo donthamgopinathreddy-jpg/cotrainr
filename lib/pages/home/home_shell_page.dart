@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../theme/design_tokens.dart';
 import 'home_page_v3.dart';
 import '../discover/discover_page.dart';
@@ -150,7 +149,7 @@ class _HomeShellPageState extends State<HomeShellPage>
         children: [
           PageView.builder(
         controller: _pageController,
-        physics: const BouncingScrollPhysics(),
+        physics: const NeverScrollableScrollPhysics(), // Disable swipe, only allow programmatic navigation
         onPageChanged: (index) => setState(() => _currentIndex = index),
         itemCount: _navigationItems.length,
         itemBuilder: (context, index) {
@@ -159,7 +158,7 @@ class _HomeShellPageState extends State<HomeShellPage>
               onNavigateToCocircle: () {
                 _pageController.animateToPage(
                   3, // Cocircle feed is at index 3
-                  duration: const Duration(milliseconds: 260),
+                  duration: const Duration(milliseconds: 300),
                   curve: Curves.easeOutCubic,
                 );
                 setState(() => _currentIndex = 3);
@@ -173,16 +172,17 @@ class _HomeShellPageState extends State<HomeShellPage>
           return AnimatedSwitcher(
             duration: const Duration(milliseconds: 300),
             transitionBuilder: (child, animation) {
-              return FadeTransition(
-                opacity: animation,
-                child: SlideTransition(
-                  position: Tween<Offset>(
-                    begin: const Offset(0.1, 0),
-                    end: Offset.zero,
-                  ).animate(CurvedAnimation(
-                    parent: animation,
-                    curve: Curves.easeOutCubic,
-                  )),
+              // Sliding transition
+              return SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0.1, 0),
+                  end: Offset.zero,
+                ).animate(CurvedAnimation(
+                  parent: animation,
+                  curve: Curves.easeOutCubic,
+                )),
+                child: FadeTransition(
+                  opacity: animation,
                   child: child,
                 ),
               );
@@ -293,32 +293,49 @@ class _HomeShellPageState extends State<HomeShellPage>
 
     return GestureDetector(
       onTap: () {
-        HapticFeedback.lightImpact();
-        setState(() => _currentIndex = index);
-        _pageController.animateToPage(
-          index,
-          duration: const Duration(milliseconds: 260),
-          curve: Curves.easeOutCubic,
-        );
+        if (_currentIndex != index) {
+          setState(() => _currentIndex = index);
+          _pageController.animateToPage(
+            index,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
+          );
+        }
       },
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeInOut,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
         margin: const EdgeInsets.symmetric(horizontal: 2),
         decoration: BoxDecoration(
           gradient: isActive ? item.gradient : null,
           borderRadius: BorderRadius.circular(16),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              isActive ? item.activeIcon : item.icon,
-              color: isActive
-                  ? Colors.white
-                  : colorScheme.onSurface.withOpacity(0.6),
-              size: 26,
-            ),
-          ],
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          transitionBuilder: (child, animation) {
+            return SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, 0.3),
+                end: Offset.zero,
+              ).animate(CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOut,
+              )),
+              child: FadeTransition(
+                opacity: animation,
+                child: child,
+              ),
+            );
+          },
+          child: Icon(
+            isActive ? item.activeIcon : item.icon,
+            key: ValueKey('${item.label}_$isActive'),
+            color: isActive
+                ? Colors.white
+                : colorScheme.onSurface.withValues(alpha: 0.6),
+            size: 26,
+          ),
         ),
       ),
     );
