@@ -120,19 +120,20 @@ class _SignupWizardPageState extends State<SignupWizardPage>
     final userIdText = _userId.text.trim();
     if (userIdText.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('User ID is required')),
+        const SnackBar(content: Text('Username is required')),
       );
       return false;
     }
-    if (userIdText.length < 6) {
+    // Database requirement: 3-20 chars, A-Za-z0-9_ only
+    if (userIdText.length < 3 || userIdText.length > 20) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('User ID must be at least 6 characters')),
+        const SnackBar(content: Text('Username must be 3-20 characters')),
       );
       return false;
     }
-    if (!RegExp(r'^[a-z0-9_]+$').hasMatch(userIdText)) {
+    if (!RegExp(r'^[A-Za-z0-9_]{3,20}$').hasMatch(userIdText)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('User ID can only contain lowercase letters, numbers, and underscore')),
+        const SnackBar(content: Text('Username can only contain letters, numbers, and underscore')),
       );
       return false;
     }
@@ -202,7 +203,8 @@ class _SignupWizardPageState extends State<SignupWizardPage>
   }
 
   Future<void> _checkUserIdAvailability(String userId) async {
-    if (userId.isEmpty || !RegExp(r'^[a-z0-9_]+$').hasMatch(userId)) {
+    // Database requirement: 3-20 chars, A-Za-z0-9_ only
+    if (userId.isEmpty || !RegExp(r'^[A-Za-z0-9_]{3,20}$').hasMatch(userId)) {
       setState(() {
         _userIdAvailabilityStatus = null;
         _isCheckingUserId = false;
@@ -218,7 +220,8 @@ class _SignupWizardPageState extends State<SignupWizardPage>
     await Future.delayed(const Duration(milliseconds: 800));
 
     // Simulate availability check - in production, call your API
-    final isAvailable = userId.length >= 3;
+    // Database requirement: 3-20 chars, A-Za-z0-9_ only
+    final isAvailable = userId.length >= 3 && userId.length <= 20;
     if (mounted) {
       setState(() {
         _userIdAvailabilityStatus = isAvailable ? 'available' : 'taken';
@@ -315,7 +318,8 @@ class _SignupWizardPageState extends State<SignupWizardPage>
         email: _email.text.trim(),
         password: _pass.text,
         data: {
-          'user_id': _userId.text.trim(),
+          'username': _userId.text.trim(), // REQUIRED: database trigger expects 'username'
+          'full_name': '${_first.text.trim()} ${_last.text.trim()}'.trim(),
           'first_name': _first.text.trim(),
           'last_name': _last.text.trim(),
           'phone': '${_phoneCountryCode}${_phone.text.trim()}',
@@ -778,18 +782,9 @@ class _Step1ContentState extends State<_Step1Content> {
               });
             },
             inputFormatters: [
+              // Database requirement: A-Za-z0-9_ only, 3-20 chars
               FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9_]')),
-              TextInputFormatter.withFunction((oldValue, newValue) {
-                // Only convert letters to lowercase, preserve numbers and underscores
-                final newText = newValue.text.replaceAllMapped(
-                  RegExp(r'[A-Z]'),
-                  (match) => match.group(0)!.toLowerCase(),
-                );
-                return TextEditingValue(
-                  text: newText,
-                  selection: newValue.selection,
-                );
-              }),
+              LengthLimitingTextInputFormatter(20), // Max 20 chars
             ],
             suffix: widget.isCheckingUserId
               ? const SizedBox(
@@ -802,10 +797,10 @@ class _Step1ContentState extends State<_Step1Content> {
                 : widget.userIdAvailabilityStatus == 'taken'
                   ? Icon(Icons.cancel, color: DesignTokens.accentRed, size: 20)
                   : null,
-            helperText: widget.userId.text.isNotEmpty && widget.userId.text.length < 6
-              ? 'Minimum 6 characters required'
+            helperText: widget.userId.text.isNotEmpty && (widget.userId.text.length < 3 || widget.userId.text.length > 20)
+              ? 'Must be 3-20 characters'
               : null,
-            helperColor: widget.userId.text.isNotEmpty && widget.userId.text.length < 6
+            helperColor: widget.userId.text.isNotEmpty && (widget.userId.text.length < 3 || widget.userId.text.length > 20)
               ? DesignTokens.accentRed
               : null,
           ),

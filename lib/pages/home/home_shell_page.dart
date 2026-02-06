@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/design_tokens.dart';
+import '../../providers/profile_role_provider.dart';
 import 'home_page_v3.dart';
 import '../discover/discover_page.dart';
 import '../quest/quest_page.dart';
 import '../cocircle/cocircle_page.dart';
 import '../profile/profile_page.dart';
+import '../trainer/trainer_my_clients_page.dart';
+import '../nutritionist/nutritionist_my_clients_page.dart';
 
-class HomeShellPage extends StatefulWidget {
+class HomeShellPage extends ConsumerStatefulWidget {
   final bool showWelcome;
   
   const HomeShellPage({
@@ -15,10 +19,10 @@ class HomeShellPage extends StatefulWidget {
   });
 
   @override
-  State<HomeShellPage> createState() => _HomeShellPageState();
+  ConsumerState<HomeShellPage> createState() => _HomeShellPageState();
 }
 
-class _HomeShellPageState extends State<HomeShellPage>
+class _HomeShellPageState extends ConsumerState<HomeShellPage>
     with SingleTickerProviderStateMixin {
   int _currentIndex = 0;
   late final PageController _pageController;
@@ -27,63 +31,68 @@ class _HomeShellPageState extends State<HomeShellPage>
   late final Animation<Offset> _welcomeSlide;
   bool _showWelcomeBubble = false;
 
-  final List<NavigationItem> _navigationItems = [
-    NavigationItem(
-      icon: Icons.home_outlined,
-      activeIcon: Icons.home,
-      label: 'Home',
-      route: '/home',
-      gradient: LinearGradient(
-        colors: [DesignTokens.accentOrange, DesignTokens.accentAmber],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
+  List<NavigationItem> get _navigationItems {
+    final user = ref.watch(currentUserProvider).value;
+    final isProvider = user?.isProvider ?? false;
+    
+    return [
+      NavigationItem(
+        icon: Icons.home_outlined,
+        activeIcon: Icons.home,
+        label: 'Home',
+        route: '/home',
+        gradient: LinearGradient(
+          colors: [DesignTokens.accentOrange, DesignTokens.accentAmber],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
       ),
-    ),
-    NavigationItem(
-      icon: Icons.explore_outlined,
-      activeIcon: Icons.explore,
-      label: 'Discover',
-      route: '/home/discover',
-      gradient: const LinearGradient(
-        colors: [Color(0xFF3ED598), Color(0xFF4DA3FF)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
+      NavigationItem(
+        icon: isProvider ? Icons.person_add_outlined : Icons.explore_outlined,
+        activeIcon: isProvider ? Icons.person_add : Icons.explore,
+        label: isProvider ? 'My Clients' : 'Discover',
+        route: isProvider ? '/home/clients' : '/home/discover',
+        gradient: const LinearGradient(
+          colors: [Color(0xFF3ED598), Color(0xFF4DA3FF)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
       ),
-    ),
-    NavigationItem(
-      icon: Icons.emoji_events_outlined,
-      activeIcon: Icons.emoji_events,
-      label: 'Quest',
-      route: '/home/quest',
-      gradient: const LinearGradient(
-        colors: [Color(0xFFFFD93D), Color(0xFFFF5A5A)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
+      NavigationItem(
+        icon: Icons.emoji_events_outlined,
+        activeIcon: Icons.emoji_events,
+        label: 'Quest',
+        route: '/home/quest',
+        gradient: const LinearGradient(
+          colors: [Color(0xFFFFD93D), Color(0xFFFF5A5A)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
       ),
-    ),
-    NavigationItem(
-      icon: Icons.people_outline,
-      activeIcon: Icons.people,
-      label: 'Cocircle',
-      route: '/home/cocircle',
-      gradient: const LinearGradient(
-        colors: [Color(0xFF4DA3FF), Color(0xFF8B5CF6)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
+      NavigationItem(
+        icon: Icons.people_outline,
+        activeIcon: Icons.people,
+        label: 'Cocircle',
+        route: '/home/cocircle',
+        gradient: const LinearGradient(
+          colors: [Color(0xFF4DA3FF), Color(0xFF8B5CF6)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
       ),
-    ),
-    NavigationItem(
-      icon: Icons.person_outline,
-      activeIcon: Icons.person,
-      label: 'Profile',
-      route: '/home/profile',
-      gradient: const LinearGradient(
-        colors: [Color(0xFFFF5A5A), Color(0xFFFF8A7A)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
+      NavigationItem(
+        icon: Icons.person_outline,
+        activeIcon: Icons.person,
+        label: 'Profile',
+        route: '/home/profile',
+        gradient: const LinearGradient(
+          colors: [Color(0xFFFF5A5A), Color(0xFFFF8A7A)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
       ),
-    ),
-  ];
+    ];
+  }
 
   @override
   void initState() {
@@ -153,6 +162,10 @@ class _HomeShellPageState extends State<HomeShellPage>
         onPageChanged: (index) => setState(() => _currentIndex = index),
         itemCount: _navigationItems.length,
         itemBuilder: (context, index) {
+          final user = ref.watch(currentUserProvider).value;
+          final isTrainer = user?.isTrainer ?? false;
+          final isNutritionist = user?.isNutritionist ?? false;
+          
           final pages = [
             HomePageV3(
               onNavigateToCocircle: () {
@@ -164,7 +177,12 @@ class _HomeShellPageState extends State<HomeShellPage>
                 setState(() => _currentIndex = 3);
               },
             ),
-            const DiscoverPage(),
+            // Show "My Clients" for trainers/nutritionists, "Discover" for clients
+            isTrainer
+                ? const TrainerMyClientsPage()
+                : isNutritionist
+                    ? const NutritionistMyClientsPage()
+                    : const DiscoverPage(),
             const QuestPage(),
             const CocirclePage(),
             const ProfilePage(),

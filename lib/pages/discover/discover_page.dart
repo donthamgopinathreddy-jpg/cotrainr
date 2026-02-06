@@ -3,8 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:geolocator/geolocator.dart';
 import '../../theme/design_tokens.dart';
 import '../../widgets/discover/discover_filter_sheet.dart';
+import '../../repositories/provider_locations_repository.dart';
 import 'center_detail_page.dart';
 import '../cocircle/user_profile_page.dart';
 
@@ -25,14 +27,18 @@ class _DiscoverPageState extends State<DiscoverPage>
 
   int _selectedTabIndex = 0;
   bool _isLoading = false;
+  String? _errorMessage;
+  Position? _userPosition;
 
   // Track request status: 'none', 'pending', 'accepted'
   final Map<String, String> _requestStatus = {};
 
-  // Mock data
+  // Real data from Supabase
   final List<DiscoverItem> _trainers = [];
   final List<DiscoverItem> _nutritionists = [];
   final List<DiscoverItem> _centers = [];
+
+  final ProviderLocationsRepository _repo = ProviderLocationsRepository();
 
   @override
   void initState() {
@@ -46,7 +52,7 @@ class _DiscoverPageState extends State<DiscoverPage>
       curve: Curves.easeOut,
     );
     _fadeController.forward();
-    _loadMockData();
+    _loadRealData();
   }
 
   @override
@@ -58,145 +64,162 @@ class _DiscoverPageState extends State<DiscoverPage>
     super.dispose();
   }
 
-  // TODO: Replace mock data with real Supabase query using provider_locations
-  // Integration steps:
-  // 1. Get user's current location (lat/lng) from geolocator
-  // 2. Call ProviderLocationsRepository.fetchNearbyProviders() with:
-  //    - userLat, userLng
-  //    - maxDistanceKm (from filter)
-  //    - locationTypes (filtered by category)
-  // 3. For each result:
-  //    - If location_type='home' and is_public_exact=false: show display_name only, no exact pin
-  //    - For other types or is_public_exact=true: show exact coordinates on map
-  // 4. Calculate distance from user to location for display
-  // 5. Join with provider profiles table to get name, avatar, rating, etc.
-  // Example query structure:
-  //   final repo = ProviderLocationsRepository();
-  //   final nearby = await repo.fetchNearbyProviders(
-  //     userLat: currentLat,
-  //     userLng: currentLng,
-  //     maxDistanceKm: filterDistance,
-  //   );
-  //   // Then join with providers table to get full profile data
+  /// Load real data from Supabase using nearby_providers RPC
+  Future<void> _loadRealData() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+      _trainers.clear();
+      _nutritionists.clear();
+      _centers.clear();
+    });
 
-  void _loadMockData() {
-    _trainers.addAll([
-      DiscoverItem(
-        id: '1',
-        name: 'Priya Sharma',
-        subtitle: 'Strength & Conditioning Coach',
-        rating: 4.9,
-        reviews: 127,
-        distance: 0.8,
-        location: 'Andheri, Mumbai',
-        isVerified: true,
-        avatarUrl: 'https://i.pravatar.cc/150?img=12',
-        experienceYears: 8,
-      ),
-      DiscoverItem(
-        id: '2',
-        name: 'Rahul Verma',
-        subtitle: 'Yoga & Mindfulness Instructor',
-        rating: 4.8,
-        reviews: 94,
-        distance: 1.5,
-        location: 'Koramangala, Bangalore',
-        isVerified: true,
-        avatarUrl: 'https://i.pravatar.cc/150?img=33',
-        experienceYears: 5,
-      ),
-      DiscoverItem(
-        id: '3',
-        name: 'Sneha Patel',
-        subtitle: 'Certified Nutritionist',
-        rating: 4.9,
-        reviews: 156,
-        distance: 3.2,
-        location: 'Gurgaon, Delhi NCR',
-        isVerified: true,
-        avatarUrl: 'https://i.pravatar.cc/150?img=47',
-        experienceYears: 10,
-      ),
-    ]);
+    try {
+      // Get user location
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        setState(() {
+          _errorMessage = 'Location services are disabled. Please enable location services to discover nearby providers.';
+          _isLoading = false;
+        });
+        return;
+      }
 
-    _nutritionists.addAll([
-      DiscoverItem(
-        id: '4',
-        name: 'Sneha Patel',
-        subtitle: 'Certified Clinical Nutritionist',
-        rating: 4.9,
-        reviews: 156,
-        distance: 2.1,
-        location: 'Bandra, Mumbai',
-        isVerified: true,
-        avatarUrl: 'https://i.pravatar.cc/150?img=47',
-        experienceYears: 12,
-      ),
-      DiscoverItem(
-        id: '5',
-        name: 'Arjun Mehta',
-        subtitle: 'Sports Nutrition Specialist',
-        rating: 4.7,
-        reviews: 89,
-        distance: 4.5,
-        location: 'Powai, Mumbai',
-        isVerified: true,
-        avatarUrl: 'https://i.pravatar.cc/150?img=51',
-        experienceYears: 6,
-      ),
-      DiscoverItem(
-        id: '6',
-        name: 'Kavya Rao',
-        subtitle: 'Diet Planning Expert',
-        rating: 4.8,
-        reviews: 112,
-        distance: 1.8,
-        location: 'Indiranagar, Bangalore',
-        isVerified: true,
-        avatarUrl: 'https://i.pravatar.cc/150?img=20',
-        experienceYears: 7,
-      ),
-    ]);
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          setState(() {
+            _errorMessage = 'Location permissions are denied. Please enable location permissions to discover nearby providers.';
+            _isLoading = false;
+          });
+          return;
+        }
+      }
 
-    _centers.addAll([
-      DiscoverItem(
-        id: '7',
-        name: 'FitZone Gym',
-        subtitle: 'Premium Fitness Center',
-        rating: 4.6,
-        reviews: 248,
-        distance: 0.6,
-        location: 'Juhu, Mumbai',
-        isVerified: true,
-        avatarUrl: null,
-        experienceYears: 0,
-      ),
-      DiscoverItem(
-        id: '8',
-        name: 'Zen Yoga Studio',
-        subtitle: 'Mind & Body Wellness',
-        rating: 4.9,
-        reviews: 178,
-        distance: 2.3,
-        location: 'Whitefield, Bangalore',
-        isVerified: true,
-        avatarUrl: null,
-        experienceYears: 0,
-      ),
-      DiscoverItem(
-        id: '9',
-        name: 'PowerHouse CrossFit',
-        subtitle: 'High Intensity Training',
-        rating: 4.7,
-        reviews: 203,
-        distance: 3.9,
-        location: 'Cyber City, Gurgaon',
-        isVerified: true,
-        avatarUrl: null,
-        experienceYears: 0,
-      ),
-    ]);
+      if (permission == LocationPermission.deniedForever) {
+        setState(() {
+          _errorMessage = 'Location permissions are permanently denied. Please enable them in app settings.';
+          _isLoading = false;
+        });
+        return;
+      }
+
+      _userPosition = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium,
+      );
+
+      // Fetch nearby trainers
+      final trainerResults = await _repo.fetchNearbyProviders(
+        userLat: _userPosition!.latitude,
+        userLng: _userPosition!.longitude,
+        maxDistanceKm: 50.0,
+        providerTypes: ['trainer'],
+        locationTypes: null,
+      );
+
+      // Fetch nearby nutritionists
+      final nutritionistResults = await _repo.fetchNearbyProviders(
+        userLat: _userPosition!.latitude,
+        userLng: _userPosition!.longitude,
+        maxDistanceKm: 50.0,
+        providerTypes: ['nutritionist'],
+        locationTypes: null,
+      );
+
+      // Map trainer results to DiscoverItem
+      for (var result in trainerResults) {
+        final distanceKm = (result['distance_km'] as num?)?.toDouble() ?? 0.0;
+        final locationType = result['location_type'] as String?;
+        final geo = result['geo']; // May be null for home-private locations
+
+        // Extract provider info
+        final providerId = result['provider_id'] as String? ?? '';
+        final displayName = result['display_name'] as String? ?? 'Unknown Location';
+        final fullName = result['full_name'] as String? ?? 'Unknown Provider';
+        final avatarUrl = result['avatar_url'] as String?;
+        final verified = result['verified'] as bool? ?? false;
+        final rating = (result['rating'] as num?)?.toDouble() ?? 0.0;
+        final totalReviews = (result['total_reviews'] as int?) ?? 0;
+        final experienceYears = (result['experience_years'] as int?) ?? 0;
+        final specialization = (result['specialization'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [];
+        final subtitle = specialization.isNotEmpty 
+            ? specialization.join(', ')
+            : 'Fitness Trainer';
+
+        // Create location string (use display_name for home-private, otherwise show distance)
+        final location = geo == null && locationType == 'home'
+            ? displayName
+            : '${distanceKm.toStringAsFixed(1)} km away';
+
+        _trainers.add(DiscoverItem(
+          id: providerId,
+          name: fullName,
+          subtitle: subtitle,
+          rating: rating,
+          reviews: totalReviews,
+          distance: distanceKm,
+          location: location,
+          isVerified: verified,
+          avatarUrl: avatarUrl,
+          experienceYears: experienceYears,
+        ));
+      }
+
+      // Map nutritionist results to DiscoverItem
+      for (var result in nutritionistResults) {
+        final distanceKm = (result['distance_km'] as num?)?.toDouble() ?? 0.0;
+        final locationType = result['location_type'] as String?;
+        final geo = result['geo']; // May be null for home-private locations
+
+        // Extract provider info
+        final providerId = result['provider_id'] as String? ?? '';
+        final displayName = result['display_name'] as String? ?? 'Unknown Location';
+        final fullName = result['full_name'] as String? ?? 'Unknown Provider';
+        final avatarUrl = result['avatar_url'] as String?;
+        final verified = result['verified'] as bool? ?? false;
+        final rating = (result['rating'] as num?)?.toDouble() ?? 0.0;
+        final totalReviews = (result['total_reviews'] as int?) ?? 0;
+        final experienceYears = (result['experience_years'] as int?) ?? 0;
+        final specialization = (result['specialization'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [];
+        final subtitle = specialization.isNotEmpty 
+            ? specialization.join(', ')
+            : 'Nutritionist';
+
+        // Create location string (use display_name for home-private, otherwise show distance)
+        final location = geo == null && locationType == 'home'
+            ? displayName
+            : '${distanceKm.toStringAsFixed(1)} km away';
+
+        _nutritionists.add(DiscoverItem(
+          id: providerId,
+          name: fullName,
+          subtitle: subtitle,
+          rating: rating,
+          reviews: totalReviews,
+          distance: distanceKm,
+          location: location,
+          isVerified: verified,
+          avatarUrl: avatarUrl,
+          experienceYears: experienceYears,
+        ));
+      }
+
+      // Sort by distance
+      _trainers.sort((a, b) => a.distance.compareTo(b.distance));
+      _nutritionists.sort((a, b) => a.distance.compareTo(b.distance));
+
+      setState(() {
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Failed to load providers: ${e.toString()}';
+        _isLoading = false;
+      });
+    }
   }
+
 
   List<DiscoverItem> get _currentItems {
     switch (_selectedTabIndex) {
@@ -289,9 +312,7 @@ class _DiscoverPageState extends State<DiscoverPage>
           child: RefreshIndicator(
           onRefresh: () async {
             HapticFeedback.mediumImpact();
-            setState(() => _isLoading = true);
-            await Future.delayed(const Duration(seconds: 1));
-            setState(() => _isLoading = false);
+            await _loadRealData();
           },
           color: DesignTokens.accentGreen,
           child: CustomScrollView(
@@ -351,6 +372,8 @@ class _DiscoverPageState extends State<DiscoverPage>
                   ),
                 ),
               )
+            else if (_errorMessage != null)
+              SliverToBoxAdapter(child: _buildErrorState())
             else if (_currentItems.isEmpty)
               SliverToBoxAdapter(child: _buildEmptyState())
             else
@@ -485,10 +508,56 @@ class _DiscoverPageState extends State<DiscoverPage>
             ),
             const SizedBox(height: DesignTokens.spacing8),
             Text(
-              'Try changing filters',
+              'Try changing filters or expanding your search radius',
               style: TextStyle(
                 fontSize: DesignTokens.fontSizeBodySmall,
                 color: DesignTokens.textSecondaryOf(context),
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(DesignTokens.spacing24),
+        child: Column(
+          children: [
+            Icon(
+              Icons.error_outline_rounded,
+              size: 48,
+              color: DesignTokens.accentRed,
+            ),
+            const SizedBox(height: DesignTokens.spacing16),
+            Text(
+              'Error loading providers',
+              style: TextStyle(
+                fontSize: DesignTokens.fontSizeH3,
+                fontWeight: FontWeight.w700,
+                color: DesignTokens.textPrimaryOf(context),
+              ),
+            ),
+            const SizedBox(height: DesignTokens.spacing8),
+            Text(
+              _errorMessage ?? 'Unknown error',
+              style: TextStyle(
+                fontSize: DesignTokens.fontSizeBodySmall,
+                color: DesignTokens.textSecondaryOf(context),
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: DesignTokens.spacing16),
+            ElevatedButton.icon(
+              onPressed: () => _loadRealData(),
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Retry'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: DesignTokens.accentOrange,
+                foregroundColor: Colors.white,
               ),
             ),
           ],

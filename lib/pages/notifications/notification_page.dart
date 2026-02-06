@@ -5,6 +5,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../theme/app_colors.dart';
 import '../../services/notification_service.dart';
 import '../../services/meeting_storage_service.dart';
+import '../../repositories/notifications_repository.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 enum NotificationType {
   followRequest,
@@ -29,15 +31,16 @@ class NotificationPage extends StatefulWidget {
 
 class _NotificationPageState extends State<NotificationPage> {
   final NotificationService _notificationService = NotificationService();
+  final NotificationsRepository _notificationsRepo = NotificationsRepository();
   List<NotificationData> _notifications = [];
   final Map<String, NotificationData> _deletedNotifications = {};
   final Map<String, DateTime> _deletedTimestamps = {};
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
-    _initializeSampleNotifications();
-    _loadNotifications();
+    _loadRealNotifications();
     _notificationService.addListener(_loadNotifications);
   }
 
@@ -47,106 +50,122 @@ class _NotificationPageState extends State<NotificationPage> {
     super.dispose();
   }
 
-  void _initializeSampleNotifications() {
-    if (_notificationService.notifications.isEmpty) {
-      final now = DateTime.now();
-      final timestamp = now.millisecondsSinceEpoch;
+  Future<void> _loadRealNotifications() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+
+    try {
+      final notificationsData = await _notificationsRepo.fetchNotifications();
+      if (!mounted) return;
+
+      final notifications = <NotificationData>[];
       
-      _notificationService.addNotification(
-        NotificationData(
-          id: 'steps_goal_$timestamp',
-          type: NotificationType.stepsGoalAchieved,
-          title: 'Daily Steps Goal Achieved!',
-          message: "Congratulations! You've reached your 10,000 steps goal for today. Keep up the great work!",
-          time: '2h ago',
-          hasUnread: true,
-        ),
-      );
+      for (final notif in notificationsData) {
+        // Map database type to NotificationType enum
+        final type = _mapNotificationType(notif['type'] as String);
+        
+        // Parse data JSONB for additional info
+        final data = notif['data'] as Map<String, dynamic>?;
+        final actorId = data?['actor_id'] as String?;
+        final actorProfile = actorId != null ? await _getActorProfile(actorId) : null;
+        
+        // Format timestamp
+        final createdAt = DateTime.parse(notif['created_at'] as String);
+        final timeStr = NotificationsRepository.formatRelativeTime(createdAt);
+        
+        notifications.add(NotificationData(
+          id: notif['id'] as String,
+          type: type,
+          userName: actorProfile?['full_name'] as String? ?? actorProfile?['username'] as String?,
+          title: notif['title'] as String,
+          message: notif['body'] as String,
+          time: timeStr,
+          hasUnread: !(notif['read'] as bool? ?? false),
+          userAvatarUrl: actorProfile?['avatar_url'] as String?,
+          meetingId: data?['meeting_id'] as String?,
+        ));
+      }
 
-      _notificationService.addNotification(
-        NotificationData(
-          id: 'post_like_${timestamp + 1}',
-          type: NotificationType.postLike,
-          userName: 'Sarah Mitchell',
-          title: 'Sarah Mitchell',
-          message: 'liked your post',
-          time: '3h ago',
-          hasUnread: true,
-          userAvatarUrl: '',
-        ),
-      );
+      if (mounted) {
+        setState(() {
+          _notifications = notifications;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading notifications: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
 
-      _notificationService.addNotification(
-        NotificationData(
-          id: 'quest_completed_${timestamp + 2}',
-          type: NotificationType.questCompleted,
-          title: 'Quest Completed!',
-          message: "You completed 'Drink 8 Glasses of Water' and earned 30 XP!",
-          time: '5h ago',
-          hasUnread: true,
-        ),
-      );
+  Future<Map<String, dynamic>?> _getActorProfile(String userId) async {
+    try {
+      final supabase = Supabase.instance.client;
+      final response = await supabase
+          .from('profiles')
+          .select('id, username, full_name, avatar_url')
+          .eq('id', userId)
+          .maybeSingle();
+      return response;
+    } catch (e) {
+      print('Error fetching actor profile: $e');
+      return null;
+    }
+  }
 
-      _notificationService.addNotification(
-        NotificationData(
-          id: 'follow_${timestamp + 3}',
-          type: NotificationType.following,
-          userName: 'John Smith',
-          title: 'John Smith',
-          message: 'started following you',
-          time: '1d ago',
-          hasUnread: true,
-          userAvatarUrl: '',
-          canFollow: true,
-        ),
-      );
-
-      _notificationService.addNotification(
-        NotificationData(
-          id: 'comment_${timestamp + 4}',
-          type: NotificationType.comment,
-          userName: 'Mike Johnson',
-          title: 'Mike Johnson',
-          message: 'commented on your post',
-          time: '1d ago',
-          hasUnread: true,
-          userAvatarUrl: '',
-        ),
-      );
-
-      _notificationService.addNotification(
-        NotificationData(
-          id: 'streak_100_${timestamp + 5}',
-          type: NotificationType.streakReached,
-          title: 'Streak Reached 100 Days!',
-          message: 'Congratulations! You\'ve maintained your workout streak for 100 days. Keep going strong!',
-          time: '2d ago',
-          hasUnread: true,
-        ),
-      );
+  NotificationType _mapNotificationType(String dbType) {
+    switch (dbType.toLowerCase()) {
+      case 'follow':
+      case 'follow_request':
+        return NotificationType.followRequest;
+      case 'following':
+        return NotificationType.following;
+      case 'like':
+        return NotificationType.postLike;
+      case 'comment':
+        return NotificationType.comment;
+      case 'achievement':
+        return NotificationType.achievement;
+      case 'message':
+        return NotificationType.message;
+      case 'meeting':
+        return NotificationType.meeting;
+      case 'quest':
+        return NotificationType.questCompleted;
+      case 'goal_reached':
+      case 'steps_goal':
+        return NotificationType.stepsGoalAchieved;
+      case 'streak':
+        return NotificationType.streakReached;
+      default:
+        return NotificationType.goalReached;
     }
   }
 
   void _loadNotifications() {
+    // Keep for compatibility with NotificationService listeners
+    // But prefer real data loading
     if (mounted) {
-      setState(() {
-        _notifications = _notificationService.notifications;
-      });
+      _loadRealNotifications();
     }
   }
 
-  void _deleteNotification(int index) {
+  void _deleteNotification(int index) async {
     if (index < 0 || index >= _notifications.length) return;
     
     final notification = _notifications[index];
     HapticFeedback.mediumImpact();
     
+    // Delete from database
+    await _notificationsRepo.deleteNotification(notification.id);
+    
     if (mounted) {
       setState(() {
         _deletedNotifications[notification.id] = notification;
         _deletedTimestamps[notification.id] = DateTime.now();
-        _notificationService.removeNotification(notification.id);
-        _notifications = _notificationService.notifications;
+        _notifications.removeAt(index);
       });
     }
 
@@ -165,11 +184,12 @@ class _NotificationPageState extends State<NotificationPage> {
     
     HapticFeedback.lightImpact();
     
+    // Note: We can't undo delete from database, but we can restore in UI
+    // In a real app, you might want to implement soft delete
     if (mounted) {
       setState(() {
         final notification = _deletedNotifications[notificationId]!;
-        _notificationService.addNotification(notification);
-        _notifications = _notificationService.notifications;
+        _notifications.insert(0, notification);
         _deletedNotifications.remove(notificationId);
         _deletedTimestamps.remove(notificationId);
       });
@@ -289,13 +309,14 @@ class _NotificationPageState extends State<NotificationPage> {
             RefreshIndicator(
               onRefresh: () async {
                 HapticFeedback.lightImpact();
-                _loadNotifications();
-                await Future.delayed(const Duration(milliseconds: 500));
+                await _loadRealNotifications();
               },
               color: AppColors.orange,
-              child: totalCount == 0
-                  ? _buildEmptyState(context)
-                  : ListView.builder(
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : totalCount == 0
+                      ? _buildEmptyState(context)
+                      : ListView.builder(
                       padding: const EdgeInsets.only(top: 8, bottom: 24),
                       itemCount: totalCount,
                       itemBuilder: (context, index) {
@@ -361,7 +382,7 @@ class _NotificationPageState extends State<NotificationPage> {
                             },
                             child: _NotificationItem(
                               notification: notification,
-                              onTap: () {
+                              onTap: () async {
                                 HapticFeedback.selectionClick();
                                 if (notification.type == NotificationType.meeting && notification.meetingId != null) {
                                   final meetingStorage = MeetingStorageService();
@@ -371,8 +392,10 @@ class _NotificationPageState extends State<NotificationPage> {
                                   }
                                 }
                                 if (notification.hasUnread) {
-                                  _notificationService.markAsRead(notification.id);
-                                  _loadNotifications();
+                                  await _notificationsRepo.markAsRead(notification.id);
+                                  if (mounted) {
+                                    _loadRealNotifications();
+                                  }
                                 }
                               },
                               onFollow: notification.type == NotificationType.following && notification.canFollow

@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/design_tokens.dart';
+import '../../repositories/profile_repository.dart';
+import '../../repositories/posts_repository.dart';
+import '../../repositories/messages_repository.dart';
 import '../../widgets/home/hero_header_widget.dart';
 import '../../widgets/home/streak_card_v2.dart';
 import '../../widgets/home/steps_card_v2.dart';
@@ -31,21 +35,28 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final ScrollController _scrollController = ScrollController();
+  final ProfileRepository _profileRepo = ProfileRepository();
+  final PostsRepository _postsRepo = PostsRepository();
+  final MessagesRepository _messagesRepo = MessagesRepository();
 
-  // Mock data - Replace with real data from providers
-  final String _username = 'John Doe';
-  final String? _coverImageUrl = null; // null for gradient placeholder
-  final String? _avatarUrl = null; // null for gradient placeholder
-  final int _notificationCount = 3;
-  final int _streakDays = 7;
-  final int _currentSteps = 0;
-  final int _goalSteps = 10000;
-  final int _currentCalories = 0;
-  final double _currentWater = 0.0;
-  final double _goalWater = 2.5;
-  final double _bmi = 0.0;
-  final String _bmiStatus = '';
-  final String _userRole = 'client';
+  // Real data from Supabase
+  String _username = 'Loading...';
+  String? _coverImageUrl;
+  String? _avatarUrl;
+  int _notificationCount = 0;
+  int _unreadMessagesCount = 0;
+  int _streakDays = 0;
+  int _currentSteps = 0;
+  int _goalSteps = 10000;
+  int _currentCalories = 0;
+  double _currentWater = 0.0;
+  double _goalWater = 2.5;
+  double _bmi = 0.0;
+  String _bmiStatus = '';
+  String _userRole = 'client';
+
+  // Cocircle posts
+  List<CocirclePost> _cocirclePosts = [];
 
   // Weekly data for sparklines
   final List<double> _stepsWeeklyData = [];
@@ -53,15 +64,139 @@ class _HomePageState extends State<HomePage> {
   final List<double> _waterWeeklyData = [];
 
   @override
+  void initState() {
+    super.initState();
+    _loadAllData();
+  }
+
+  Future<void> _loadAllData() async {
+    await Future.wait([
+      _loadProfileData(),
+      _loadCocirclePosts(),
+      _loadUnreadMessages(),
+    ]);
+  }
+
+  @override
   void dispose() {
     _scrollController.dispose();
     super.dispose();
   }
 
+  Future<void> _loadProfileData() async {
+    try {
+      final profile = await _profileRepo.fetchMyProfile();
+      if (profile != null && mounted) {
+        setState(() {
+          // Get username - prefer full_name, fallback to username
+          final fullName = profile['full_name'] as String?;
+          final username = profile['username'] as String?;
+          _username = (fullName != null && fullName.isNotEmpty) 
+                      ? fullName 
+                      : (username ?? 'User');
+          
+          print('Loaded username: $_username (full_name: $fullName, username: $username)');
+          
+          _avatarUrl = profile['avatar_url'] as String?;
+          _coverImageUrl = profile['cover_url'] as String?;
+          
+          // Get height and weight
+          final heightCm = (profile['height_cm'] as num?)?.toDouble() ?? 0.0;
+          final weightKg = (profile['weight_kg'] as num?)?.toDouble() ?? 0.0;
+          
+          // Calculate BMI
+          if (heightCm > 0 && weightKg > 0) {
+            _bmi = ProfileRepository.calculateBMI(heightCm, weightKg);
+            _bmiStatus = ProfileRepository.getBMIStatus(_bmi);
+          }
+          
+          // Get role
+          _userRole = (profile['role'] as String?) ?? 'client';
+        });
+      } else {
+        print('Profile is null or widget not mounted');
+      }
+      
+      // Load notifications count
+      await _loadNotificationsCount();
+    } catch (e) {
+      print('Error loading profile: $e');
+      // Keep default values on error
+    }
+  }
+
+  Future<void> _loadNotificationsCount() async {
+    try {
+      final supabase = Supabase.instance.client;
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null) return;
+
+      final response = await supabase
+          .from('notifications')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('read', false);
+
+      if (mounted) {
+        setState(() {
+          _notificationCount = (response as List).length;
+        });
+      }
+    } catch (e) {
+      print('Error loading notifications: $e');
+    }
+  }
+
   Future<void> _onRefresh() async {
     HapticFeedback.mediumImpact();
-    // TODO: Refresh data from providers
-    await Future.delayed(const Duration(seconds: 1));
+    await _loadAllData();
+  }
+
+  Future<void> _loadCocirclePosts() async {
+    try {
+      final posts = await _postsRepo.fetchRecentPosts(limit: 5);
+      if (!mounted) return;
+
+      final cocirclePosts = <CocirclePost>[];
+      for (final post in posts) {
+        // Get post media (first image if available)
+        final media = await _postsRepo.fetchPostMedia(post['id'] as String);
+        final firstMedia = media.isNotEmpty ? media.first : null;
+        
+        // Get author info
+        final author = post['profiles'] as Map<String, dynamic>?;
+        final authorUsername = author?['username'] as String? ?? 'user';
+        final authorAvatar = author?['avatar_url'] as String?;
+
+        cocirclePosts.add(CocirclePost(
+          id: post['id'] as String,
+          userId: authorUsername,
+          imageUrl: firstMedia?['media_url'] as String?,
+          avatarUrl: authorAvatar,
+          likeCount: (post['likes_count'] as int?) ?? 0,
+          commentCount: (post['comments_count'] as int?) ?? 0,
+        ));
+      }
+
+      setState(() {
+        _cocirclePosts = cocirclePosts;
+      });
+    } catch (e) {
+      print('Error loading Cocircle posts: $e');
+    }
+  }
+
+  Future<void> _loadUnreadMessages() async {
+    try {
+      final count = await _messagesRepo.getUnreadMessagesCount();
+      if (mounted) {
+        setState(() {
+          _unreadMessagesCount = count;
+        });
+      }
+    } catch (e) {
+      print('Error loading unread messages: $e');
+    }
   }
 
   @override
@@ -90,10 +225,11 @@ class _HomePageState extends State<HomePage> {
                   );
                 },
                 child: HeroHeaderWidget(
+                  key: ValueKey(_username), // Force rebuild when username changes
                   coverImageUrl: _coverImageUrl,
                   avatarUrl: _avatarUrl,
                   username: _username,
-                  notificationCount: _notificationCount,
+                  notificationCount: _notificationCount + _unreadMessagesCount,
                 ),
               ),
             ),
@@ -241,7 +377,7 @@ class _HomePageState extends State<HomePage> {
                     ),
                   );
                 },
-                child: CocirclePreviewV2(posts: _getMockCocirclePosts()),
+                child: CocirclePreviewV2(posts: _cocirclePosts),
               ),
             ),
 
@@ -276,34 +412,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  List<CocirclePost> _getMockCocirclePosts() {
-    return [
-      CocirclePost(
-        id: '1',
-        userId: 'fitness_john',
-        imageUrl: null, // Placeholder
-        avatarUrl: null, // Placeholder
-        likeCount: 24,
-        commentCount: 5,
-      ),
-      CocirclePost(
-        id: '2',
-        userId: 'trainer_sarah',
-        imageUrl: null, // Placeholder
-        avatarUrl: null, // Placeholder
-        likeCount: 56,
-        commentCount: 12,
-      ),
-      CocirclePost(
-        id: '3',
-        userId: 'nutritionist_mike',
-        imageUrl: null, // Placeholder
-        avatarUrl: null, // Placeholder
-        likeCount: 12,
-        commentCount: 3,
-      ),
-    ];
-  }
 
   List<NearbyPlace> _getMockNearbyPlaces() {
     return [

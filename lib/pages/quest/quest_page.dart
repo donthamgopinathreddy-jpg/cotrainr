@@ -3,9 +3,11 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
 import '../../utils/page_transitions.dart';
+import '../../services/quest_service.dart';
 
 class QuestPage extends StatefulWidget {
   const QuestPage({super.key});
@@ -21,15 +23,19 @@ class _QuestPageState extends State<QuestPage>
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
 
-  final int _currentXP = 250;
-  final int _level = 4;
-  final String _levelTitle = 'Foundation';
+  int _currentXP = 250;
+  int _level = 4;
+  String _levelTitle = 'Foundation';
 
   late final List<_LevelInfo> _levels;
-  late final List<_QuestItem> _daily;
-  late final List<_QuestItem> _weekly;
+  List<_QuestItem> _daily = [];
+  List<_QuestItem> _weekly = [];
   late final List<_LeaderboardItem> _leaderboard;
   late final List<_AchievementItem> _achievements;
+  
+  final QuestService _questService = QuestService();
+  bool _isLoading = false;
+  String? _currentUserId;
 
   final LinearGradient _primaryGradient = const LinearGradient(
     colors: [Color(0xFFFF7A00), Color(0xFFFFC300)],
@@ -51,60 +57,8 @@ class _QuestPageState extends State<QuestPage>
     _fadeController.forward();
     _tabController = PageController(viewportFraction: 1.0);
     _levels = _buildLevels();
-    _daily = [
-      _QuestItem(
-        title: 'Steps Sprint',
-        subtitle: 'Hit 10,000 steps by 8:00 AM',
-        icon: Icons.directions_walk_outlined,
-        progress: 0.6,
-        rewardXP: 60,
-        timeLeft: '02:14:33',
-      ),
-      _QuestItem(
-        title: 'Hydration Boost',
-        subtitle: 'Drink 2.0L water today',
-        icon: Icons.water_drop_outlined,
-        progress: 0.75,
-        rewardXP: 40,
-      ),
-      _QuestItem(
-        title: 'Calorie Balance',
-        subtitle: 'Stay within target calories',
-        icon: Icons.local_fire_department_outlined,
-        progress: 0.4,
-        rewardXP: 50,
-      ),
-    ];
-    _weekly = [
-      _QuestItem(
-        title: 'Steps Marathon',
-        subtitle: 'Total 70,000 steps this week',
-        icon: Icons.directions_walk_outlined,
-        progress: 0.55,
-        rewardXP: 250,
-      ),
-      _QuestItem(
-        title: 'Hydration Streak',
-        subtitle: 'Meet water goal 5 days',
-        icon: Icons.water_drop_outlined,
-        progress: 0.6,
-        rewardXP: 180,
-      ),
-      _QuestItem(
-        title: 'Meal Consistency',
-        subtitle: 'Log meals 6 days',
-        icon: Icons.restaurant_outlined,
-        progress: 0.3,
-        rewardXP: 200,
-      ),
-      _QuestItem(
-        title: 'Balanced Week',
-        subtitle: 'Hit calories goal 4 days',
-        icon: Icons.emoji_events_outlined,
-        progress: 0.4,
-        rewardXP: 160,
-      ),
-    ];
+    _currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    _loadRealQuestData();
     _leaderboard = [
       _LeaderboardItem('Mia', 12, 1320, 1),
       _LeaderboardItem('Noah', 11, 1210, 2),
@@ -123,6 +77,71 @@ class _QuestPageState extends State<QuestPage>
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadRealQuestData() async {
+    if (_currentUserId == null) return;
+    
+    setState(() => _isLoading = true);
+    
+    try {
+      // Load daily quests
+      final dailyQuests = await _questService.getDailyQuests(_currentUserId!);
+      final dailyItems = dailyQuests.map((quest) => _QuestItem(
+        title: quest.title,
+        subtitle: quest.description,
+        icon: quest.icon,
+        progress: quest.maxProgress > 0 ? (quest.progress / quest.maxProgress).clamp(0.0, 1.0) : 0.0,
+        rewardXP: quest.rewardXP,
+        timeLeft: quest.timeLeft,
+      )).toList();
+
+      // Load weekly quests
+      final weeklyQuests = await _questService.getWeeklyQuests(_currentUserId!);
+      final weeklyItems = weeklyQuests.map((quest) => _QuestItem(
+        title: quest.title,
+        subtitle: quest.description,
+        icon: quest.icon,
+        progress: quest.maxProgress > 0 ? (quest.progress / quest.maxProgress).clamp(0.0, 1.0) : 0.0,
+        rewardXP: quest.rewardXP,
+        timeLeft: quest.timeLeft,
+      )).toList();
+
+      // Load user XP and level
+      final supabase = Supabase.instance.client;
+      final profileResponse = await supabase
+          .from('user_profiles')
+          .select('total_xp, level')
+          .eq('user_id', _currentUserId!)
+          .maybeSingle();
+
+      if (profileResponse != null) {
+        _currentXP = (profileResponse['total_xp'] as int?) ?? 0;
+        _level = (profileResponse['level'] as int?) ?? 1;
+        _levelTitle = _getLevelTitle(_level);
+      }
+
+      if (mounted) {
+        setState(() {
+          _daily = dailyItems;
+          _weekly = weeklyItems;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading quest data: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  String _getLevelTitle(int level) {
+    if (level < 5) return 'Foundation';
+    if (level < 10) return 'Rising';
+    if (level < 15) return 'Advanced';
+    if (level < 20) return 'Elite';
+    return 'Master';
   }
 
   void _openLevelsPage() {
@@ -191,11 +210,15 @@ class _QuestPageState extends State<QuestPage>
                   setState(() => _tabIndex = index);
                 },
                 children: [
-                  _DailySection(
-                    quests: _daily,
-                    gradient: _primaryGradient,
-                  ),
-                  _WeeklySection(quests: _weekly),
+                  _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _DailySection(
+                          quests: _daily,
+                          gradient: _primaryGradient,
+                        ),
+                  _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _WeeklySection(quests: _weekly),
                   _ChallengesSection(),
                   _AchievementsSection(items: _achievements),
                   _LeaderboardSection(entries: _leaderboard),

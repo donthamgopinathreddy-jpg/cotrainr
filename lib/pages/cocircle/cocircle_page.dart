@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/design_tokens.dart';
 import '../../widgets/cocircle/cocircle_feed_card.dart';
 import '../../utils/page_transitions.dart';
+import '../../repositories/posts_repository.dart';
 import 'cocircle_create_post_page.dart';
 import 'user_profile_page.dart';
 
@@ -255,7 +257,9 @@ class _CocirclePageState extends State<CocirclePage>
   final Set<String> _followingUserIds = {}; // Track who we follow
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
-  static const _currentUserId = 'fitness_john'; // Current user, hide Follow on own posts
+  final PostsRepository _postsRepo = PostsRepository();
+  bool _isLoading = false;
+  String? _currentUserId;
 
   @override
   void initState() {
@@ -269,7 +273,8 @@ class _CocirclePageState extends State<CocirclePage>
       curve: Curves.easeOut,
     );
     _fadeController.forward();
-    _loadMockData();
+    _currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    _loadRealData();
   }
 
   @override
@@ -279,59 +284,82 @@ class _CocirclePageState extends State<CocirclePage>
     super.dispose();
   }
 
-  void _loadMockData() {
-    _posts.addAll([
-      CocircleFeedPost(
-        id: '1',
-        userId: 'fitness_john',
-        userName: 'John Doe',
-        userRole: 'CLIENT',
-        avatarUrl: null,
-        timestamp: DateTime.now().subtract(const Duration(minutes: 30)),
-        mediaUrl: null,
-        mediaType: 'image',
-        caption: 'Just completed my first 10K run! 🏃‍♂️ Feeling amazing!',
-        likeCount: 24,
-        commentCount: 5,
-        shareCount: 2,
-        isLiked: false,
-      ),
-      CocircleFeedPost(
-        id: '2',
-        userId: 'trainer_sarah',
-        userName: 'Sarah Johnson',
-        userRole: 'TRAINER',
-        avatarUrl: null,
-        timestamp: DateTime.now().subtract(const Duration(hours: 2)),
-        mediaUrl: null,
-        mediaType: 'image',
-        caption: 'New workout routine for my clients! Try this 20-minute HIIT session 💪',
-        likeCount: 56,
-        commentCount: 12,
-        shareCount: 8,
-        isLiked: true,
-      ),
-      CocircleFeedPost(
-        id: '3',
-        userId: 'nutritionist_mike',
-        userName: 'Dr. Mike Chen',
-        userRole: 'NUTRITIONIST',
-        avatarUrl: null,
-        timestamp: DateTime.now().subtract(const Duration(hours: 5)),
-        mediaType: 'image',
-        caption: 'Meal prep Sunday! Healthy and delicious 🥗',
-        likeCount: 89,
-        commentCount: 15,
-        shareCount: 12,
-        isLiked: false,
-      ),
-    ]);
+  Future<void> _loadRealData() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+    
+    try {
+      final posts = await _postsRepo.fetchRecentPosts(limit: 20);
+      if (!mounted) return;
+
+      final cocirclePosts = <CocircleFeedPost>[];
+      
+      for (final post in posts) {
+        // Get post media
+        final media = await _postsRepo.fetchPostMedia(post['id'] as String);
+        final firstMedia = media.isNotEmpty ? media.first : null;
+        
+        // Get author info
+        final author = post['profiles'] as Map<String, dynamic>?;
+        final authorId = post['author_id'] as String;
+        final authorUsername = author?['username'] as String? ?? 'user';
+        final authorFullName = author?['full_name'] as String? ?? authorUsername;
+        final authorAvatar = author?['avatar_url'] as String?;
+        final authorRole = author?['role'] as String? ?? 'client';
+        
+        // Get like status (check if current user liked this post)
+        final supabase = Supabase.instance.client;
+        final userId = supabase.auth.currentUser?.id;
+        bool isLiked = false;
+        if (userId != null) {
+          try {
+            final likeResponse = await supabase
+                .from('post_likes')
+                .select('id')
+                .eq('post_id', post['id'])
+                .eq('user_id', userId)
+                .maybeSingle();
+            isLiked = likeResponse != null;
+          } catch (e) {
+            // Ignore errors
+          }
+        }
+
+        cocirclePosts.add(CocircleFeedPost(
+          id: post['id'] as String,
+          userId: authorId,
+          userName: authorFullName,
+          userRole: authorRole.toUpperCase(),
+          avatarUrl: authorAvatar,
+          timestamp: DateTime.parse(post['created_at'] as String),
+          mediaUrl: firstMedia?['media_url'] as String?,
+          mediaType: firstMedia?['media_kind'] as String? ?? 'image',
+          caption: post['content'] as String? ?? '',
+          likeCount: (post['likes_count'] as int?) ?? 0,
+          commentCount: (post['comments_count'] as int?) ?? 0,
+          shareCount: 0, // Not tracked in current schema
+          isLiked: isLiked,
+        ));
+      }
+
+      if (mounted) {
+        setState(() {
+          _posts.clear();
+          _posts.addAll(cocirclePosts);
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading Cocircle posts: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   Future<void> _onRefresh() async {
     HapticFeedback.mediumImpact();
-    // TODO: Refresh feed
-    await Future.delayed(const Duration(seconds: 1));
+    await _loadRealData();
   }
 
   @override
@@ -393,7 +421,14 @@ class _CocirclePageState extends State<CocirclePage>
                 ),
               ),
             ),
-            if (_posts.isEmpty)
+            if (_isLoading)
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.all(32.0),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+              )
+            else if (_posts.isEmpty)
               SliverToBoxAdapter(child: _buildEmptyState())
             else
               SliverList(

@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:crop_your_image/crop_your_image.dart';
 import '../../providers/profile_images_provider.dart';
+import '../../services/storage_service.dart';
+import '../../repositories/profile_repository.dart';
 
 class EditProfilePage extends ConsumerStatefulWidget {
   const EditProfilePage({super.key});
@@ -15,18 +17,26 @@ class EditProfilePage extends ConsumerStatefulWidget {
 
 class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   final _formKey = GlobalKey<FormState>();
-  final _firstNameController = TextEditingController(text: 'Gopinath');
-  final _lastNameController = TextEditingController(text: 'Reddy');
-  final _userIdController = TextEditingController(text: '@gopi_5412');
-  final _emailController = TextEditingController(text: 'gopinath@example.com');
+  final _firstNameController = TextEditingController();
+  final _lastNameController = TextEditingController();
+  final _userIdController = TextEditingController();
+  final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _phoneController = TextEditingController(text: '+1234567890');
-  final _dobController = TextEditingController(text: '1990-01-15');
-  final _heightController = TextEditingController(text: '175');
-  final _weightController = TextEditingController(text: '70');
+  final _phoneController = TextEditingController();
+  final _dobController = TextEditingController();
+  final _heightController = TextEditingController();
+  final _weightController = TextEditingController();
   
   String _selectedGender = 'Male';
   final List<String> _genders = ['Male', 'Female', 'Other'];
+  
+  final StorageService _storageService = StorageService();
+  final ProfileRepository _profileRepo = ProfileRepository();
+  bool _isLoading = false;
+  bool _isUploadingImage = false;
+  
+  String? _pendingProfileImagePath;
+  String? _pendingCoverImagePath;
 
   @override
   void dispose() {
@@ -60,19 +70,12 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
       );
       
       if (croppedPath != null && mounted) {
-        ref.read(profileImagesProvider.notifier).updateProfileImage(croppedPath);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Profile picture updated'),
-            duration: Duration(seconds: 1),
-          ),
-        );
-        // Auto dismiss after 1 second and navigate back
-        Future.delayed(const Duration(seconds: 1), () {
-          if (mounted) {
-            Navigator.pop(context); // Go back to settings
-          }
+        setState(() {
+          _pendingProfileImagePath = croppedPath;
         });
+        ref.read(profileImagesProvider.notifier).updateProfileImage(croppedPath);
+        // Upload immediately
+        await _uploadProfileImage(File(croppedPath));
       }
     }
   }
@@ -95,19 +98,12 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
       );
       
       if (croppedPath != null && mounted) {
-        ref.read(profileImagesProvider.notifier).updateCoverImage(croppedPath);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Cover picture updated'),
-            duration: Duration(seconds: 1),
-          ),
-        );
-        // Auto dismiss after 1 second and navigate back
-        Future.delayed(const Duration(seconds: 1), () {
-          if (mounted) {
-            Navigator.pop(context); // Go back to settings
-          }
+        setState(() {
+          _pendingCoverImagePath = croppedPath;
         });
+        ref.read(profileImagesProvider.notifier).updateCoverImage(croppedPath);
+        // Upload immediately
+        await _uploadCoverImage(File(croppedPath));
       }
     }
   }
@@ -147,7 +143,65 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
     }
   }
 
-  void _saveProfile() {
+  Future<void> _uploadProfileImage(File imageFile) async {
+    setState(() => _isUploadingImage = true);
+    try {
+      final url = await _storageService.uploadAvatar(imageFile);
+      if (url != null && mounted) {
+        await _profileRepo.updateProfile({'avatar_url': url});
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profile picture uploaded successfully'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error uploading profile picture: $e'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isUploadingImage = false);
+      }
+    }
+  }
+
+  Future<void> _uploadCoverImage(File imageFile) async {
+    setState(() => _isUploadingImage = true);
+    try {
+      final url = await _storageService.uploadCoverImage(imageFile);
+      if (url != null && mounted) {
+        await _profileRepo.updateProfile({'cover_url': url});
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Cover picture uploaded successfully'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error uploading cover picture: $e'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isUploadingImage = false);
+      }
+    }
+  }
+
+  Future<void> _saveProfile() async {
     if (_formKey.currentState!.validate()) {
       HapticFeedback.lightImpact();
       ScaffoldMessenger.of(context).showSnackBar(

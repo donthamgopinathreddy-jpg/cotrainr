@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_colors.dart';
+import '../../repositories/profile_repository.dart';
 import '../../utils/page_transitions.dart';
 import '../../widgets/common/pressable_card.dart';
 import '../../widgets/common/cover_with_blur_bridge.dart';
@@ -25,23 +26,21 @@ class ProfilePage extends ConsumerStatefulWidget {
 
 class _ProfilePageState extends ConsumerState<ProfilePage>
     with SingleTickerProviderStateMixin {
-  final String _username = 'John Doe';
-  final String _handle = '@fitness_john';
-  final bool _isSubscribed = false;
+  final ProfileRepository _profileRepo = ProfileRepository();
   
-  String get _role {
-    final supabase = Supabase.instance.client;
-    final user = supabase.auth.currentUser;
-    return user?.userMetadata?['role']?.toString().toLowerCase() ?? 'client';
-  }
-
+  String _username = 'Loading...';
+  String _handle = '@loading';
+  final bool _isSubscribed = false;
+  Map<String, dynamic>? _profile;
+  bool _isLoadingProfile = true;
+  
   // Check verification status - in real app, fetch from Supabase
   String? get _verificationStatus {
     if (_role == 'trainer' || _role == 'nutritionist') {
-      // Mock: check if verified - in real app, check user metadata or database
-      final supabase = Supabase.instance.client;
-      final user = supabase.auth.currentUser;
-      return user?.userMetadata?['verification_status']?.toString().toLowerCase();
+      // Check if verified from providers table
+      final verified = _profile?['verified'] as bool?;
+      if (verified == true) return 'verified';
+      return 'pending';
     }
     return null;
   }
@@ -52,7 +51,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
 
   bool get _needsVerification {
     if (_role == 'trainer' || _role == 'nutritionist') {
-      // Show verification card if not verified (status is null, 'pending', or anything other than 'verified')
+      // Show verification card if not verified
       return _verificationStatus != 'verified';
     }
     return false;
@@ -72,6 +71,34 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
       curve: Curves.easeOut,
     );
     _fadeController.forward();
+    _loadProfile();
+  }
+  
+  Future<void> _loadProfile() async {
+    setState(() => _isLoadingProfile = true);
+    try {
+      final profile = await _profileRepo.fetchMyProfile();
+      if (profile != null) {
+        setState(() {
+          _profile = profile;
+          _username = profile['full_name'] as String? ?? 
+                      profile['username'] as String? ?? 
+                      'User';
+          final username = profile['username'] as String? ?? '';
+          _handle = '@$username';
+          _isLoadingProfile = false;
+        });
+      } else {
+        setState(() => _isLoadingProfile = false);
+      }
+    } catch (e) {
+      setState(() => _isLoadingProfile = false);
+      print('Error loading profile: $e');
+    }
+  }
+  
+  String get _role {
+    return _profile?['role'] as String? ?? 'client';
   }
 
   @override
@@ -96,8 +123,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _ProfileCoverHeader(
-                  coverImageUrl: ref.watch(profileImagesProvider).coverImagePath,
-                  avatarUrl: ref.watch(profileImagesProvider).profileImagePath,
+                  coverImageUrl: _profile?['cover_url'] as String? ?? 
+                                ref.watch(profileImagesProvider).coverImagePath,
+                  avatarUrl: _profile?['avatar_url'] as String? ?? 
+                             ref.watch(profileImagesProvider).profileImagePath,
                   role: _role,
                   username: _username,
                   handle: _handle,

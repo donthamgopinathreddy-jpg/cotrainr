@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/theme_mode_provider.dart';
 import '../../providers/profile_images_provider.dart';
+import '../../repositories/profile_repository.dart';
 import '../../utils/page_transitions.dart';
 import 'edit_profile_page.dart';
 import 'settings/info_pages.dart';
@@ -23,23 +24,57 @@ class SettingsPage extends ConsumerStatefulWidget {
 }
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
+  final ProfileRepository _profileRepo = ProfileRepository();
+  
   bool _privateAccount = false;
   bool _showLocation = true;
   bool _pushNotifications = true;
   bool _communityNotifications = true;
   bool _reminderNotifications = true;
+  
+  // Profile data
+  Map<String, dynamic>? _profile;
+  bool _isLoadingProfile = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    setState(() => _isLoadingProfile = true);
+    try {
+      final profile = await _profileRepo.fetchMyProfile();
+      setState(() {
+        _profile = profile;
+        _isLoadingProfile = false;
+      });
+    } catch (e) {
+      setState(() => _isLoadingProfile = false);
+      print('Error loading profile: $e');
+    }
+  }
 
   /// Get current user role from Supabase
   String? get _userRole {
-    final supabase = Supabase.instance.client;
-    final user = supabase.auth.currentUser;
-    return user?.userMetadata?['role']?.toString().toLowerCase();
+    return _profile?['role'] as String?;
   }
 
   /// Check if user is a provider (trainer or nutritionist)
   bool get _isProvider {
     final role = _userRole;
     return role == 'trainer' || role == 'nutritionist';
+  }
+  
+  String get _displayName {
+    return _profile?['full_name'] as String? ?? 
+           _profile?['username'] as String? ?? 
+           'User';
+  }
+  
+  String get _username {
+    return _profile?['username'] as String? ?? '';
   }
 
   // (Image picking previously lived here; removed since it's not used in current Settings UI.)
@@ -158,10 +193,18 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           // Profile Section
           _ProfileSection(
             profileImagePath: profileImages.profileImagePath,
-            name: 'Gopinath Reddy',
-            username: '@gopi_5412',
+            avatarUrl: _profile?['avatar_url'] as String?,
+            name: _isLoadingProfile ? 'Loading...' : _displayName,
+            username: _isLoadingProfile ? '@loading' : '@$_username',
+            onRefresh: _loadProfile,
           ),
           const SizedBox(height: 16),
+          
+          // Account Details Section (shows all signup flow details)
+          if (!_isLoadingProfile && _profile != null) ...[
+            _AccountDetailsSection(profile: _profile!),
+            const SizedBox(height: 16),
+          ],
           _SettingsGroup(
             title: 'Account',
             children: [
@@ -469,13 +512,17 @@ class _AppearanceRow extends StatelessWidget {
 
 class _ProfileSection extends StatelessWidget {
   final String? profileImagePath;
+  final String? avatarUrl;
   final String name;
   final String username;
+  final VoidCallback? onRefresh;
 
   const _ProfileSection({
     required this.profileImagePath,
+    this.avatarUrl,
     required this.name,
     required this.username,
+    this.onRefresh,
   });
 
   @override
@@ -495,19 +542,26 @@ class _ProfileSection extends StatelessWidget {
             height: 64,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              image: profileImagePath != null && profileImagePath!.isNotEmpty
+              image: (avatarUrl != null && avatarUrl!.isNotEmpty)
                   ? DecorationImage(
-                      image: profileImagePath!.startsWith('http')
-                          ? NetworkImage(profileImagePath!)
-                          : FileImage(File(profileImagePath!)) as ImageProvider,
+                      image: NetworkImage(avatarUrl!),
                       fit: BoxFit.cover,
                     )
-                  : null,
-              color: profileImagePath == null || profileImagePath!.isEmpty
+                  : (profileImagePath != null && profileImagePath!.isNotEmpty)
+                      ? DecorationImage(
+                          image: profileImagePath!.startsWith('http')
+                              ? NetworkImage(profileImagePath!)
+                              : FileImage(File(profileImagePath!)) as ImageProvider,
+                          fit: BoxFit.cover,
+                        )
+                      : null,
+              color: (avatarUrl == null || avatarUrl!.isEmpty) &&
+                      (profileImagePath == null || profileImagePath!.isEmpty)
                   ? colorScheme.surfaceContainerHighest
                   : null,
             ),
-            child: profileImagePath == null || profileImagePath!.isEmpty
+            child: (avatarUrl == null || avatarUrl!.isEmpty) &&
+                    (profileImagePath == null || profileImagePath!.isEmpty)
                 ? Icon(Icons.person, size: 32, color: colorScheme.onSurface.withOpacity(0.5))
                 : null,
           ),
@@ -531,6 +585,195 @@ class _ProfileSection extends StatelessWidget {
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
                     color: colorScheme.onSurface.withOpacity(0.7),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (onRefresh != null)
+            IconButton(
+              icon: const Icon(Icons.refresh_rounded),
+              onPressed: onRefresh,
+              tooltip: 'Refresh profile',
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Account Details Section - Shows all signup flow details
+class _AccountDetailsSection extends StatelessWidget {
+  final Map<String, dynamic> profile;
+
+  const _AccountDetailsSection({required this.profile});
+
+  String _formatDate(DateTime? date) {
+    if (date == null) return 'Not set';
+    return '${date.day}/${date.month}/${date.year}';
+  }
+
+  String _formatDateOfBirth(dynamic dob) {
+    if (dob == null) return 'Not set';
+    if (dob is DateTime) return _formatDate(dob);
+    if (dob is String) {
+      try {
+        final date = DateTime.parse(dob);
+        return _formatDate(date);
+      } catch (e) {
+        return dob.toString();
+      }
+    }
+    return dob.toString();
+  }
+
+  double _calculateBMI() {
+    final heightCm = (profile['height_cm'] as num?)?.toDouble();
+    final weightKg = (profile['weight_kg'] as num?)?.toDouble();
+    if (heightCm == null || weightKg == null || heightCm <= 0 || weightKg <= 0) {
+      return 0.0;
+    }
+    final heightMeters = heightCm / 100.0;
+    return weightKg / (heightMeters * heightMeters);
+  }
+
+  String _getBMIStatus(double bmi) {
+    if (bmi == 0.0) return '';
+    if (bmi < 18.5) return 'Underweight';
+    if (bmi < 25) return 'Normal';
+    if (bmi < 30) return 'Overweight';
+    return 'Obese';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final heightCm = (profile['height_cm'] as num?)?.toInt();
+    final weightKg = (profile['weight_kg'] as num?)?.toDouble();
+    final dob = profile['date_of_birth'];
+    final gender = profile['gender'] as String?;
+    final phone = profile['phone'] as String?;
+    final email = profile['email'] as String?;
+    final username = profile['username'] as String?;
+    final role = profile['role'] as String?;
+    final bmi = _calculateBMI();
+    final bmiStatus = _getBMIStatus(bmi);
+
+    return _SettingsGroup(
+      title: 'Account Details',
+      children: [
+        _DetailRow(
+          label: 'User ID',
+          value: username ?? 'Not set',
+          icon: Icons.alternate_email_rounded,
+        ),
+        _DetailRow(
+          label: 'Email',
+          value: email ?? 'Not set',
+          icon: Icons.email_outlined,
+        ),
+        _DetailRow(
+          label: 'Phone',
+          value: phone ?? 'Not set',
+          icon: Icons.phone_outlined,
+        ),
+        _DetailRow(
+          label: 'Role',
+          value: role?.toUpperCase() ?? 'Not set',
+          icon: Icons.person_outline,
+        ),
+        if (dob != null || gender != null) ...[
+          const Divider(height: 1),
+          if (dob != null)
+            _DetailRow(
+              label: 'Date of Birth',
+              value: _formatDateOfBirth(dob),
+              icon: Icons.calendar_today_outlined,
+            ),
+          if (gender != null)
+            _DetailRow(
+              label: 'Gender',
+              value: gender,
+              icon: Icons.wc_outlined,
+            ),
+        ],
+        if (heightCm != null || weightKg != null) ...[
+          const Divider(height: 1),
+          if (heightCm != null)
+            _DetailRow(
+              label: 'Height',
+              value: '$heightCm cm',
+              icon: Icons.height,
+            ),
+          if (weightKg != null)
+            _DetailRow(
+              label: 'Weight',
+              value: '${weightKg.toStringAsFixed(1)} kg',
+              icon: Icons.monitor_weight_outlined,
+            ),
+          if (bmi > 0)
+            _DetailRow(
+              label: 'BMI',
+              value: '${bmi.toStringAsFixed(1)} ($bmiStatus)',
+              icon: Icons.favorite_outline,
+              valueColor: _getBMIColor(bmi, colorScheme),
+            ),
+        ],
+      ],
+    );
+  }
+
+  Color _getBMIColor(double bmi, ColorScheme colorScheme) {
+    if (bmi < 18.5) return Colors.blue;
+    if (bmi < 25) return Colors.green;
+    if (bmi < 30) return Colors.orange;
+    return Colors.red;
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color? valueColor;
+
+  const _DetailRow({
+    required this.label,
+    required this.value,
+    required this.icon,
+    this.valueColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final Color textColor = valueColor ?? colorScheme.onSurface;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Row(
+        children: [
+          Icon(icon, color: colorScheme.onSurface.withOpacity(0.7), size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: colorScheme.onSurface.withOpacity(0.6),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: textColor,
                   ),
                 ),
               ],

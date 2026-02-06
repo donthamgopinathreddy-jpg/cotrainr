@@ -71,7 +71,7 @@ class ProviderLocationsRepository {
               .select()
               .single();
 
-      return ProviderLocation.fromJson(response as Map<String, dynamic>);
+      return ProviderLocation.fromJson(response);
     } catch (e) {
       throw Exception('Failed to save location: $e');
     }
@@ -131,11 +131,13 @@ class ProviderLocationsRepository {
   /// Fetch nearby providers for discovery (public API)
   /// Uses the nearby_providers RPC function for efficient spatial queries
   /// 
-  /// TODO: Integrate this in Discover page to replace mock data
+  /// [providerTypes] - Filter by provider type: 'trainer' or 'nutritionist'. If null, returns all.
+  /// [locationTypes] - Filter by location type. If null, returns all.
   Future<List<Map<String, dynamic>>> fetchNearbyProviders({
     required double userLat,
     required double userLng,
     double maxDistanceKm = 50.0,
+    List<String>? providerTypes, // ['trainer'] or ['nutritionist'] or null for all
     List<LocationType>? locationTypes,
   }) async {
     try {
@@ -147,6 +149,7 @@ class ProviderLocationsRepository {
           'user_lat': userLat,
           'user_lng': userLng,
           'max_distance_km': maxDistanceKm,
+          'provider_types': providerTypes,
           'location_types': locationTypeStrings,
         },
       );
