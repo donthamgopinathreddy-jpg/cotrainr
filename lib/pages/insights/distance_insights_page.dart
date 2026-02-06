@@ -157,7 +157,7 @@ class _LinePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (data.length < 2) return;
+    if (data.isEmpty || data.length < 2) return;
     final maxVal = data.reduce((a, b) => a > b ? a : b);
     final minVal = data.reduce((a, b) => a < b ? a : b);
     final range = (maxVal - minVal).abs() < 0.001 ? 1.0 : maxVal - minVal;
@@ -182,7 +182,9 @@ class _LinePainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
 
-    final metric = path.computeMetrics().first;
+    final metrics = path.computeMetrics().toList();
+    if (metrics.isEmpty) return;
+    final metric = metrics.first;
     final drawPath =
         metric.extractPath(0, metric.length * progress.clamp(0.0, 1.0));
     canvas.drawPath(drawPath, paint);

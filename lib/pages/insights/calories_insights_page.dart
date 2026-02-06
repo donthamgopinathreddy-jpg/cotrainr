@@ -137,6 +137,9 @@ class _BarChartCard extends StatelessWidget {
               duration: const Duration(milliseconds: 600),
               curve: Curves.easeOutCubic,
               builder: (context, value, _) {
+                if (data.isEmpty) {
+                  return const SizedBox(height: 110);
+                }
                 final maxVal = data.reduce((a, b) => a > b ? a : b);
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.end,

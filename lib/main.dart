@@ -5,6 +5,7 @@ import 'core/config/supabase_config.dart';
 import 'router/app_router.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_mode_provider.dart';
+import 'services/health_tracking_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,6 +15,17 @@ void main() async {
     url: SupabaseConfig.supabaseUrl,
     anonKey: SupabaseConfig.supabaseAnonKey,
   );
+
+  // Initialize health tracking service for background step counting
+  // This starts tracking steps in the background even when app is not in foreground
+  final healthService = HealthTrackingService();
+  healthService.initialize().then((initialized) {
+    if (initialized) {
+      print('Health tracking service initialized successfully');
+    } else {
+      print('Health tracking service initialization failed');
+    }
+  });
 
   runApp(const ProviderScope(child: MyApp()));
 }

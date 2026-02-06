@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/design_tokens.dart';
+import '../../services/user_goals_service.dart';
 
 class SignupWizardPage extends StatefulWidget {
   const SignupWizardPage({super.key});
@@ -356,6 +357,10 @@ class _SignupWizardPageState extends State<SignupWizardPage>
         }
         
         if (session != null) {
+          // Initialize user goals (calculate water goal from weight)
+          final goalsService = UserGoalsService();
+          await goalsService.initializeGoals(weightKg: weightKg);
+          
           final role = _role.toLowerCase();
           if (!mounted) return;
           

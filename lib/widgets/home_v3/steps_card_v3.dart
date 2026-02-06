@@ -127,6 +127,10 @@ class _LineSparkPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (data.isEmpty || data.length < 2) {
+      return;
+    }
+    
     final maxVal = data.reduce((a, b) => a > b ? a : b);
     final minVal = data.reduce((a, b) => a < b ? a : b);
     final range = (maxVal - minVal).abs() < 0.001 ? 1.0 : maxVal - minVal;

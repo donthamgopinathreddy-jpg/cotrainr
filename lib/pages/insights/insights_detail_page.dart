@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fl_chart/fl_chart.dart';
+import '../../services/user_goals_service.dart';
 
 enum MetricType { steps, water, calories, distance }
 
@@ -31,6 +32,7 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
   late final List<DateTime> _weekDates;
   late final List<DateTime> _monthDates;
   late final List<double> _monthData;
+  double? _currentGoal;
 
   @override
   void initState() {
@@ -56,6 +58,31 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
       final base = 5 + (index % 7);
       return base.toDouble();
     });
+    _loadGoal();
+  }
+
+  Future<void> _loadGoal() async {
+    final goalsService = UserGoalsService();
+    double? goal;
+    switch (widget.args.t) {
+      case MetricType.steps:
+        goal = (await goalsService.getStepsGoal()).toDouble();
+        break;
+      case MetricType.water:
+        goal = await goalsService.getWaterGoal();
+        break;
+      case MetricType.calories:
+        goal = (await goalsService.getCaloriesGoal()).toDouble();
+        break;
+      case MetricType.distance:
+        goal = await goalsService.getDistanceGoal();
+        break;
+    }
+    if (mounted) {
+      setState(() {
+        _currentGoal = goal;
+      });
+    }
   }
 
   @override
@@ -64,10 +91,45 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
     super.dispose();
   }
 
-  void _showGoalPicker(BuildContext context, double currentGoal) {
-    final commonGoals = [5000, 7500, 10000, 12000, 15000];
+  Future<void> _showGoalPicker(BuildContext context, double? currentGoal) async {
+    final goal = currentGoal ?? widget.args.goal ?? 0.0;
+    final config = _MetricConfig.from(widget.args.t);
+    final goalsService = UserGoalsService();
+    
+    // Get common goals based on metric type
+    final List<double> commonGoals;
+    final String unit;
+    final String hintText;
+    
+    switch (widget.args.t) {
+      case MetricType.steps:
+        commonGoals = [5000, 7500, 10000, 12000, 15000];
+        unit = 'steps';
+        hintText = 'Enter custom steps';
+        break;
+      case MetricType.water:
+        commonGoals = [1.5, 2.0, 2.5, 3.0, 3.5];
+        unit = 'L';
+        hintText = 'Enter custom liters';
+        break;
+      case MetricType.calories:
+        commonGoals = [1500, 1800, 2000, 2200, 2500];
+        unit = 'calories';
+        hintText = 'Enter custom calories';
+        break;
+      case MetricType.distance:
+        commonGoals = [3.0, 5.0, 7.0, 10.0, 12.0];
+        unit = 'km';
+        hintText = 'Enter custom kilometers';
+        break;
+    }
+    
     final TextEditingController customGoalController = TextEditingController(
-      text: !commonGoals.contains(currentGoal.toInt()) ? currentGoal.toInt().toString() : '',
+      text: !commonGoals.contains(goal) 
+          ? (widget.args.t == MetricType.steps || widget.args.t == MetricType.calories
+              ? goal.toInt().toString()
+              : goal.toStringAsFixed(1))
+          : '',
     );
     
     showModalBottomSheet(
@@ -76,8 +138,8 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
       isScrollControlled: true,
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) {
-          double? selectedGoal = currentGoal;
-          bool isCustom = !commonGoals.contains(currentGoal.toInt());
+          double? selectedGoal = goal;
+          bool isCustom = !commonGoals.contains(goal);
           
           return Padding(
             padding: EdgeInsets.only(
@@ -94,173 +156,206 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                Text(
-                  'Set Daily Steps Goal',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                // Common goals
-                ...commonGoals.map((goal) => ListTile(
-                  title: Text(
-                    '${goal.toStringAsFixed(0)} steps',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Theme.of(context).colorScheme.onSurface,
+                    Text(
+                      'Set Daily ${config.title} Goal',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
                     ),
-                  ),
-                  trailing: !isCustom && selectedGoal == goal
-                      ? Icon(
-                          Icons.check_rounded,
-                          color: Theme.of(context).colorScheme.primary,
-                        )
-                      : null,
-                  onTap: () {
-                    setModalState(() {
-                      selectedGoal = goal.toDouble();
-                      isCustom = false;
-                      customGoalController.clear();
-                    });
-                  },
-                )),
-                const SizedBox(height: 8),
-                // Custom input
-                Text(
-                  'Custom',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: customGoalController,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                    hintText: 'Enter custom steps',
-                    hintStyle: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                    suffixIcon: customGoalController.text.isNotEmpty
-                        ? IconButton(
-                            icon: Icon(
+                    const SizedBox(height: 16),
+                    // Common goals
+                    ...commonGoals.map((goal) => ListTile(
+                      title: Text(
+                        widget.args.t == MetricType.steps || widget.args.t == MetricType.calories
+                            ? '${goal.toInt()} $unit'
+                            : '${goal.toStringAsFixed(1)} $unit',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
+                      ),
+                      trailing: !isCustom && selectedGoal == goal
+                          ? Icon(
                               Icons.check_rounded,
-                              color: isCustom && selectedGoal != null
-                                  ? Theme.of(context).colorScheme.primary
-                                  : Theme.of(context).colorScheme.onSurfaceVariant,
-                            ),
-                            onPressed: () {
-                              final value = double.tryParse(customGoalController.text);
-                              if (value != null && value > 0) {
-                                setModalState(() {
-                                  selectedGoal = value;
-                                  isCustom = true;
-                                });
-                              }
-                            },
-                          )
-                        : null,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(
-                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                              color: Theme.of(context).colorScheme.primary,
+                            )
+                          : null,
+                      onTap: () {
+                        setModalState(() {
+                          selectedGoal = goal;
+                          isCustom = false;
+                          customGoalController.clear();
+                        });
+                      },
+                    )),
+                    const SizedBox(height: 8),
+                    // Custom input
+                    Text(
+                      'Custom',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(
-                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                      ),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(
-                        color: Theme.of(context).colorScheme.primary,
-                        width: 2,
-                      ),
-                    ),
-                  ),
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
-                  onChanged: (value) {
-                    setModalState(() {
-                      if (value.isEmpty) {
-                        isCustom = false;
-                      }
-                    });
-                  },
-                ),
-                const SizedBox(height: 24),
-                // Save and Cancel buttons
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () {
-                          customGoalController.dispose();
-                          Navigator.pop(context);
-                        },
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          side: BorderSide(
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: customGoalController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        hintText: hintText,
+                        hintStyle: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                        suffixIcon: customGoalController.text.isNotEmpty
+                            ? IconButton(
+                                icon: Icon(
+                                  Icons.check_rounded,
+                                  color: isCustom && selectedGoal != null
+                                      ? Theme.of(context).colorScheme.primary
+                                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                                ),
+                                onPressed: () {
+                                  final value = double.tryParse(customGoalController.text);
+                                  if (value != null && value > 0) {
+                                    setModalState(() {
+                                      selectedGoal = value;
+                                      isCustom = true;
+                                    });
+                                  }
+                                },
+                              )
+                            : null,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
                             color: Theme.of(context).colorScheme.surfaceContainerHighest,
                           ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
                           ),
                         ),
-                        child: Text(
-                          'Cancel',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Theme.of(context).colorScheme.onSurface,
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                            color: Theme.of(context).colorScheme.primary,
+                            width: 2,
                           ),
                         ),
                       ),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                      onChanged: (value) {
+                        setModalState(() {
+                          if (value.isEmpty) {
+                            isCustom = false;
+                          } else {
+                            final parsed = double.tryParse(value);
+                            if (parsed != null && parsed > 0) {
+                              selectedGoal = parsed;
+                              isCustom = true;
+                            }
+                          }
+                        });
+                      },
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () {
-                          final finalGoal = selectedGoal ?? currentGoal;
-                          customGoalController.dispose();
-                          Navigator.pop(context);
-                          // TODO: Save goal to state or backend
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Goal set to ${finalGoal.toInt()} steps'),
-                              duration: const Duration(seconds: 1),
+                    const SizedBox(height: 24),
+                    // Save and Cancel buttons
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () {
+                              customGoalController.dispose();
+                              Navigator.pop(context);
+                            },
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              side: BorderSide(
+                                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                             ),
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          backgroundColor: Theme.of(context).colorScheme.primary,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            child: Text(
+                              'Cancel',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: Theme.of(context).colorScheme.onSurface,
+                              ),
+                            ),
                           ),
                         ),
-                        child: const Text(
-                          'Save',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: selectedGoal == null ? null : () async {
+                              final finalGoal = selectedGoal!;
+                              customGoalController.dispose();
+                              Navigator.pop(context);
+                              
+                              // Save goal based on metric type
+                              bool success = false;
+                              switch (widget.args.t) {
+                                case MetricType.steps:
+                                  success = await goalsService.setStepsGoal(finalGoal.toInt());
+                                  break;
+                                case MetricType.water:
+                                  success = await goalsService.setWaterGoal(finalGoal);
+                                  break;
+                                case MetricType.calories:
+                                  success = await goalsService.setCaloriesGoal(finalGoal.toInt());
+                                  break;
+                                case MetricType.distance:
+                                  success = await goalsService.setDistanceGoal(finalGoal);
+                                  break;
+                              }
+                              
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      success
+                                          ? 'Goal set to ${widget.args.t == MetricType.steps || widget.args.t == MetricType.calories ? finalGoal.toInt() : finalGoal.toStringAsFixed(1)} $unit'
+                                          : 'Failed to save goal',
+                                    ),
+                                    duration: const Duration(seconds: 2),
+                                  ),
+                                );
+                                // Refresh the page to show updated goal
+                                await _loadGoal();
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              backgroundColor: Theme.of(context).colorScheme.primary,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: const Text(
+                              'Save',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     ),
-                  ],
-                ),
                   ],
                 ),
               ),
@@ -277,10 +372,10 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
     final isMonth = _rangeController.index == 1;
     final data = isMonth ? _monthData : widget.args.w;
     final dates = isMonth ? _monthDates : _weekDates;
-    final goal = widget.args.goal;
-    final total = data.fold<double>(0, (a, b) => a + b);
-    final average = total / data.length;
-    final peak = data.reduce((a, b) => a > b ? a : b);
+    final goal = _currentGoal ?? widget.args.goal;
+    final total = data.isEmpty ? 0.0 : data.fold<double>(0, (a, b) => a + b);
+    final average = data.isEmpty ? 0.0 : total / data.length;
+    final peak = data.isEmpty ? 0.0 : data.reduce((a, b) => a > b ? a : b);
     final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
@@ -332,11 +427,10 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
                   ),
                 ),
                 actions: [
-                  if (config.type == MetricType.steps)
-                    TextButton(
-                      onPressed: () => _showGoalPicker(context, goal ?? 10000),
-                      child: Text(
-                        'Set goal',
+                  TextButton(
+                    onPressed: () => _showGoalPicker(context, _currentGoal ?? goal),
+                    child: Text(
+                      'Set goal',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
@@ -390,7 +484,7 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
                           dates: dates,
                           highlightIndex: _selectedIndex,
                         ),
-                      if (isMonth)
+                      if (isMonth && dates.isNotEmpty)
                         _RangeSummaryRow(
                           start: dates.first,
                           end: dates.last,

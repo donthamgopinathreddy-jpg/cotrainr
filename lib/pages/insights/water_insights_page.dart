@@ -111,6 +111,25 @@ class _WaterWeekCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (data.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceSoft,
+          borderRadius: BorderRadius.circular(22),
+        ),
+        child: const Center(
+          child: Text(
+            'No data available',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey,
+            ),
+          ),
+        ),
+      );
+    }
     final maxVal = data.reduce((a, b) => a > b ? a : b);
     return Container(
       padding: const EdgeInsets.all(16),

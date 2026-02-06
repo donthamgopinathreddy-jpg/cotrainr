@@ -49,7 +49,7 @@ final GoRouter appRouter = GoRouter(
     // If logged in and trying to access auth routes, redirect based on user role
     // But allow /welcome-animation to be accessed even when logged in
     if (isLoggedIn && isPublicRoute && state.matchedLocation != '/welcome-animation') {
-      // Try to get user role from metadata
+      // Try to get user role from metadata (fallback, pages will check profiles.role)
       try {
         final user = supabase.auth.currentUser;
         if (user != null && user.userMetadata != null) {
@@ -66,7 +66,13 @@ final GoRouter appRouter = GoRouter(
       return '/home';
     }
 
-    return null; // No redirect needed
+    // Remove role from video query params (security)
+    if (state.matchedLocation.startsWith('/video') && state.uri.queryParameters.containsKey('role')) {
+      final cleanUri = state.uri.replace(queryParameters: {});
+      return cleanUri.toString();
+    }
+
+    return null; // No redirect needed - pages will enforce role checks
   },
   routes: [
     GoRoute(
@@ -229,11 +235,7 @@ final GoRouter appRouter = GoRouter(
       name: 'videoSessions',
       pageBuilder: (context, state) => _fadeSlidePage(
         child: VideoSessionsPage(
-          role: state.uri.queryParameters['role'] == 'trainer'
-              ? Role.trainer
-              : state.uri.queryParameters['role'] == 'nutritionist'
-                  ? Role.nutritionist
-                  : Role.client,
+          role: Role.client,
         ),
         state: state,
       ),
@@ -243,11 +245,7 @@ final GoRouter appRouter = GoRouter(
       name: 'createMeeting',
       pageBuilder: (context, state) => _fadeSlidePage(
         child: CreateMeetingPage(
-          userRole: state.uri.queryParameters['role'] == 'trainer'
-              ? Role.trainer
-              : state.uri.queryParameters['role'] == 'nutritionist'
-                  ? Role.nutritionist
-                  : Role.client,
+          userRole: Role.client,
         ),
         state: state,
       ),

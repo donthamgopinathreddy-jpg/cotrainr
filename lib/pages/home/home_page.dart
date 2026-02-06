@@ -38,19 +38,19 @@ class _HomePageState extends State<HomePage> {
   final String? _avatarUrl = null; // null for gradient placeholder
   final int _notificationCount = 3;
   final int _streakDays = 7;
-  final int _currentSteps = 8234;
+  final int _currentSteps = 0;
   final int _goalSteps = 10000;
-  final int _currentCalories = 1856;
-  final double _currentWater = 1.5;
+  final int _currentCalories = 0;
+  final double _currentWater = 0.0;
   final double _goalWater = 2.5;
-  final double _bmi = 22.4;
-  final String _bmiStatus = 'Normal';
+  final double _bmi = 0.0;
+  final String _bmiStatus = '';
   final String _userRole = 'client';
 
   // Weekly data for sparklines
-  final List<double> _stepsWeeklyData = [6.2, 7.1, 8.3, 7.8, 8.5, 8.2, 8.0];
-  final List<double> _caloriesWeeklyData = [1.8, 2.0, 1.9, 2.1, 1.7, 1.9, 1.8];
-  final List<double> _waterWeeklyData = [1.2, 1.5, 1.8, 1.6, 1.4, 1.7, 1.5];
+  final List<double> _stepsWeeklyData = [];
+  final List<double> _caloriesWeeklyData = [];
+  final List<double> _waterWeeklyData = [];
 
   @override
   void dispose() {

@@ -372,7 +372,54 @@ class _MiniBars extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const labels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-    final maxVal = data.isEmpty ? 1.0 : data.reduce((a, b) => a > b ? a : b);
+    
+    if (data.isEmpty) {
+      return Column(
+        children: [
+          SizedBox(
+            height: 22,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: List.generate(labels.length, (index) {
+                return Expanded(
+                  child: Align(
+                    alignment: Alignment.bottomCenter,
+                    child: Container(
+                      width: 5,
+                      height: 0,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.8),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: List.generate(labels.length, (index) {
+              return Expanded(
+                child: Align(
+                  alignment: Alignment.center,
+                  child: Text(
+                    labels[index],
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white.withOpacity(0.8),
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ],
+      );
+    }
+    
+    final maxVal = data.reduce((a, b) => a > b ? a : b);
     final count = data.length < labels.length ? data.length : labels.length;
 
     return TweenAnimationBuilder<double>(

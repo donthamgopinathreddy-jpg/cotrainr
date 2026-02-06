@@ -6,6 +6,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../theme/design_tokens.dart';
 import '../../widgets/discover/discover_filter_sheet.dart';
 import 'center_detail_page.dart';
+import '../cocircle/user_profile_page.dart';
 
 class DiscoverPage extends StatefulWidget {
   const DiscoverPage({super.key});
@@ -57,6 +58,27 @@ class _DiscoverPageState extends State<DiscoverPage>
     super.dispose();
   }
 
+  // TODO: Replace mock data with real Supabase query using provider_locations
+  // Integration steps:
+  // 1. Get user's current location (lat/lng) from geolocator
+  // 2. Call ProviderLocationsRepository.fetchNearbyProviders() with:
+  //    - userLat, userLng
+  //    - maxDistanceKm (from filter)
+  //    - locationTypes (filtered by category)
+  // 3. For each result:
+  //    - If location_type='home' and is_public_exact=false: show display_name only, no exact pin
+  //    - For other types or is_public_exact=true: show exact coordinates on map
+  // 4. Calculate distance from user to location for display
+  // 5. Join with provider profiles table to get name, avatar, rating, etc.
+  // Example query structure:
+  //   final repo = ProviderLocationsRepository();
+  //   final nearby = await repo.fetchNearbyProviders(
+  //     userLat: currentLat,
+  //     userLng: currentLng,
+  //     maxDistanceKm: filterDistance,
+  //   );
+  //   // Then join with providers table to get full profile data
+
   void _loadMockData() {
     _trainers.addAll([
       DiscoverItem(
@@ -69,6 +91,7 @@ class _DiscoverPageState extends State<DiscoverPage>
         location: 'Andheri, Mumbai',
         isVerified: true,
         avatarUrl: 'https://i.pravatar.cc/150?img=12',
+        experienceYears: 8,
       ),
       DiscoverItem(
         id: '2',
@@ -80,6 +103,7 @@ class _DiscoverPageState extends State<DiscoverPage>
         location: 'Koramangala, Bangalore',
         isVerified: true,
         avatarUrl: 'https://i.pravatar.cc/150?img=33',
+        experienceYears: 5,
       ),
       DiscoverItem(
         id: '3',
@@ -91,6 +115,7 @@ class _DiscoverPageState extends State<DiscoverPage>
         location: 'Gurgaon, Delhi NCR',
         isVerified: true,
         avatarUrl: 'https://i.pravatar.cc/150?img=47',
+        experienceYears: 10,
       ),
     ]);
 
@@ -105,6 +130,7 @@ class _DiscoverPageState extends State<DiscoverPage>
         location: 'Bandra, Mumbai',
         isVerified: true,
         avatarUrl: 'https://i.pravatar.cc/150?img=47',
+        experienceYears: 12,
       ),
       DiscoverItem(
         id: '5',
@@ -116,6 +142,7 @@ class _DiscoverPageState extends State<DiscoverPage>
         location: 'Powai, Mumbai',
         isVerified: true,
         avatarUrl: 'https://i.pravatar.cc/150?img=51',
+        experienceYears: 6,
       ),
       DiscoverItem(
         id: '6',
@@ -127,6 +154,7 @@ class _DiscoverPageState extends State<DiscoverPage>
         location: 'Indiranagar, Bangalore',
         isVerified: true,
         avatarUrl: 'https://i.pravatar.cc/150?img=20',
+        experienceYears: 7,
       ),
     ]);
 
@@ -141,6 +169,7 @@ class _DiscoverPageState extends State<DiscoverPage>
         location: 'Juhu, Mumbai',
         isVerified: true,
         avatarUrl: null,
+        experienceYears: 0,
       ),
       DiscoverItem(
         id: '8',
@@ -152,6 +181,7 @@ class _DiscoverPageState extends State<DiscoverPage>
         location: 'Whitefield, Bangalore',
         isVerified: true,
         avatarUrl: null,
+        experienceYears: 0,
       ),
       DiscoverItem(
         id: '9',
@@ -163,6 +193,7 @@ class _DiscoverPageState extends State<DiscoverPage>
         location: 'Cyber City, Gurgaon',
         isVerified: true,
         avatarUrl: null,
+        experienceYears: 0,
       ),
     ]);
   }
@@ -342,7 +373,7 @@ class _DiscoverPageState extends State<DiscoverPage>
                             ),
                           );
                         },
-                        child: Padding(
+                          child: Padding(
                           padding: const EdgeInsets.only(bottom: 14),
                           child: _DiscoverResultCard(
                             item: item,
@@ -368,8 +399,19 @@ class _DiscoverPageState extends State<DiscoverPage>
                                     ),
                                   ),
                                 );
+                              } else {
+                                // Navigate to user profile page for trainers/nutritionists
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => UserProfilePage(
+                                      isOwnProfile: false,
+                                      userId: item.id,
+                                      userName: item.name,
+                                    ),
+                                  ),
+                                );
                               }
-                              // No navigation for trainers/nutritionists
                             },
                             onRequest: () {
                               HapticFeedback.mediumImpact();
@@ -738,21 +780,21 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(20),
           splashColor: splash,
           highlightColor: highlight,
           onTap: widget.onTap,
           onHighlightChanged: (value) => setState(() => _pressed = value),
           child: Container(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: colorScheme.surface,
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(20),
               boxShadow: const [
                 BoxShadow(
                   color: Color(0x14000000),
-                  blurRadius: 18,
-                  offset: Offset(0, 10),
+                  blurRadius: 12,
+                  offset: Offset(0, 6),
                 ),
               ],
             ),
@@ -779,8 +821,8 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
               clipBehavior: Clip.none,
               children: [
                 Container(
-                  width: 100,
-                  height: 100,
+                  width: 70,
+                  height: 70,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: colorScheme.surfaceVariant,
@@ -791,14 +833,14 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                             color: colorScheme.surfaceContainerHighest,
                             child: Icon(
                               Icons.person_rounded,
-                              size: 50,
+                              size: 35,
                               color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                             ),
                           )
                         : CachedNetworkImage(
                             imageUrl: widget.item.avatarUrl!,
-                            width: 100,
-                            height: 100,
+                            width: 70,
+                            height: 70,
                             fit: BoxFit.cover,
                             placeholder: (context, url) => Container(
                               color: colorScheme.surfaceContainerHighest,
@@ -810,7 +852,7 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                               color: colorScheme.surfaceContainerHighest,
                               child: Icon(
                                 Icons.person_rounded,
-                                size: 50,
+                                size: 35,
                                 color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                               ),
                             ),
@@ -819,31 +861,31 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                 ),
                 if (widget.item.isVerified)
                   Positioned(
-                    bottom: -6,
+                    bottom: -4,
                     right: -2,
                     child: Container(
-                      width: 20,
-                      height: 20,
+                      width: 18,
+                      height: 18,
                       decoration: BoxDecoration(
                         color: Colors.white,
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
                             color: Colors.black.withValues(alpha: 0.15),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
+                            blurRadius: 3,
+                            offset: const Offset(0, 1.5),
                           ),
                         ],
                       ),
                       child: Container(
-                        margin: const EdgeInsets.all(2),
+                        margin: const EdgeInsets.all(1.5),
                         decoration: BoxDecoration(
                           gradient: widget.accentGradient,
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(
                           Icons.check_rounded,
-                          size: 12,
+                          size: 10,
                           color: Colors.white,
                         ),
                       ),
@@ -851,70 +893,105 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                   ),
               ],
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     widget.item.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 20,
+                      fontSize: 17,
                       fontWeight: FontWeight.w700,
                       color: colorScheme.onSurface,
                       letterSpacing: -0.3,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   Text(
                     widget.item.subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 14,
+                      fontSize: 13,
                       fontWeight: FontWeight.w500,
                       color: colorScheme.onSurface.withOpacity(0.7),
                     ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
                   Row(
                     children: [
                       Icon(
                         Icons.star_rounded,
-                        size: 16,
+                        size: 14,
                         color: widget.accentColor,
                       ),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: 3),
                       Text(
                         '${widget.item.rating.toStringAsFixed(1)}',
                         style: TextStyle(
-                          fontSize: 14,
+                          fontSize: 13,
                           fontWeight: FontWeight.w600,
                           color: colorScheme.onSurface,
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 6),
                       Container(
-                        width: 4,
-                        height: 4,
+                        width: 3,
+                        height: 3,
                         decoration: BoxDecoration(
                           color: colorScheme.onSurface.withOpacity(0.4),
                           shape: BoxShape.circle,
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      if (widget.item.experienceYears > 0) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          width: 3,
+                          height: 3,
+                          decoration: BoxDecoration(
+                            color: colorScheme.onSurface.withOpacity(0.4),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Icon(
+                          Icons.work_outline_rounded,
+                          size: 12,
+                          color: colorScheme.onSurface.withOpacity(0.5),
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          '${widget.item.experienceYears} years',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: colorScheme.onSurface.withOpacity(0.7),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(width: 6),
+                      Container(
+                        width: 3,
+                        height: 3,
+                        decoration: BoxDecoration(
+                          color: colorScheme.onSurface.withOpacity(0.4),
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
                       Icon(
                         Icons.location_on_rounded,
-                        size: 14,
+                        size: 12,
                         color: colorScheme.onSurface.withOpacity(0.5),
                       ),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: 3),
                       Text(
                         '${widget.item.distance.toStringAsFixed(1)} km',
                         style: TextStyle(
-                          fontSize: 13,
+                          fontSize: 12,
                           color: colorScheme.onSurface.withOpacity(0.6),
                         ),
                       ),
@@ -925,84 +1002,86 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         // Request/Chat/Cancel Button
-        Align(
-          alignment: Alignment.centerRight,
-          child: isAccepted
-              ? Container(
-                  decoration: BoxDecoration(
-                    gradient: widget.accentGradient,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: widget.onChat,
-                      borderRadius: BorderRadius.circular(20),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.chat_bubble_outline_rounded, size: 16, color: Colors.white),
-                            const SizedBox(width: 6),
-                            const Text(
-                              'Chat',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            isAccepted
+                ? Container(
+                    decoration: BoxDecoration(
+                      gradient: widget.accentGradient,
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: widget.onChat,
+                        borderRadius: BorderRadius.circular(18),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.chat_bubble_outline_rounded, size: 14, color: Colors.white),
+                              const SizedBox(width: 5),
+                              const Text(
+                                'Chat',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                )
-              : hasRequest
-                  ? OutlinedButton.icon(
-                      onPressed: widget.onCancelRequest,
-                      icon: const Icon(Icons.close_rounded, size: 14),
-                      label: const Text('Cancel'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: colorScheme.onSurfaceVariant,
-                        side: BorderSide(
-                          color: colorScheme.outline.withValues(alpha: 0.3),
+                  )
+                : hasRequest
+                    ? OutlinedButton.icon(
+                        onPressed: widget.onCancelRequest,
+                        icon: const Icon(Icons.close_rounded, size: 12),
+                        label: const Text('Cancel'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: colorScheme.onSurfaceVariant,
+                          side: BorderSide(
+                            color: colorScheme.outline.withValues(alpha: 0.3),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18),
+                          ),
                         ),
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
+                      )
+                    : Container(
+                        decoration: BoxDecoration(
+                          gradient: widget.accentGradient,
+                          borderRadius: BorderRadius.circular(18),
                         ),
-                      ),
-                    )
-                  : Container(
-                      decoration: BoxDecoration(
-                        gradient: widget.accentGradient,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: widget.onRequest,
-                          borderRadius: BorderRadius.circular(20),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            child: const Text(
-                              'Request',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: widget.onRequest,
+                            borderRadius: BorderRadius.circular(18),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                              child: const Text(
+                                'Request',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
                               ),
                             ),
                           ),
                         ),
                       ),
-                    ),
+          ],
         ),
       ],
     );
@@ -1013,27 +1092,27 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          width: 100,
-          height: 100,
+          width: 70,
+          height: 70,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(14),
             color: colorScheme.surfaceVariant,
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(14),
             child: widget.item.avatarUrl == null || widget.item.avatarUrl!.isEmpty
                 ? Container(
                     color: colorScheme.surfaceContainerHighest,
                     child: Icon(
                       Icons.place_rounded,
-                      size: 50,
+                      size: 35,
                       color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                     ),
                   )
                 : CachedNetworkImage(
                     imageUrl: widget.item.avatarUrl!,
-                    width: 100,
-                    height: 100,
+                    width: 70,
+                    height: 70,
                     fit: BoxFit.cover,
                     placeholder: (context, url) => Container(
                       color: colorScheme.surfaceContainerHighest,
@@ -1045,77 +1124,77 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                       color: colorScheme.surfaceContainerHighest,
                       child: Icon(
                         Icons.place_rounded,
-                        size: 50,
+                        size: 35,
                         color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                       ),
                     ),
                   ),
           ),
         ),
-        const SizedBox(width: 16),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 widget.item.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 20,
+                  fontSize: 17,
                   fontWeight: FontWeight.w700,
                   color: colorScheme.onSurface,
                   letterSpacing: -0.3,
                 ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 4),
               Text(
                 widget.item.subtitle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 14,
+                  fontSize: 13,
                   fontWeight: FontWeight.w500,
                   color: colorScheme.onSurface.withOpacity(0.7),
                 ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               Row(
                 children: [
                   Icon(
                     Icons.star_rounded,
-                    size: 16,
+                    size: 14,
                     color: widget.accentColor,
                   ),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 3),
                   Text(
                     '${widget.item.rating.toStringAsFixed(1)}',
                     style: TextStyle(
-                      fontSize: 14,
+                      fontSize: 13,
                       fontWeight: FontWeight.w600,
                       color: colorScheme.onSurface,
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   Container(
-                    width: 4,
-                    height: 4,
+                    width: 3,
+                    height: 3,
                     decoration: BoxDecoration(
                       color: colorScheme.onSurface.withOpacity(0.4),
                       shape: BoxShape.circle,
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   Icon(
                     Icons.location_on_rounded,
-                    size: 14,
+                    size: 12,
                     color: colorScheme.onSurface.withOpacity(0.5),
                   ),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 3),
                   Text(
                     '${widget.item.distance.toStringAsFixed(1)} km',
                     style: TextStyle(
-                      fontSize: 13,
+                      fontSize: 12,
                       color: colorScheme.onSurface.withOpacity(0.6),
                     ),
                   ),
@@ -1124,10 +1203,10 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
             ],
           ),
         ),
-        const SizedBox(width: 8),
+        const SizedBox(width: 6),
         Icon(
           Icons.chevron_right_rounded,
-          size: 18,
+          size: 16,
           color: colorScheme.onSurface.withOpacity(0.4),
         ),
       ],
@@ -1708,6 +1787,7 @@ class DiscoverItem {
   final String location;
   final bool isVerified;
   final String? avatarUrl;
+  final int experienceYears;
 
   DiscoverItem({
     required this.id,
@@ -1719,5 +1799,6 @@ class DiscoverItem {
     required this.location,
     required this.isVerified,
     required this.avatarUrl,
+    required this.experienceYears,
   });
 }

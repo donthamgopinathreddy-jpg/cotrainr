@@ -13,6 +13,7 @@ import '../../widgets/common/logout_confirmation_sheet.dart';
 import '../../pages/help/app_version_page.dart';
 import 'settings/notifications_page.dart';
 import 'settings/privacy_security_page.dart';
+import 'settings/service_locations_page.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -27,6 +28,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   bool _pushNotifications = true;
   bool _communityNotifications = true;
   bool _reminderNotifications = true;
+
+  /// Get current user role from Supabase
+  String? get _userRole {
+    final supabase = Supabase.instance.client;
+    final user = supabase.auth.currentUser;
+    return user?.userMetadata?['role']?.toString().toLowerCase();
+  }
+
+  /// Check if user is a provider (trainer or nutritionist)
+  bool get _isProvider {
+    final role = _userRole;
+    return role == 'trainer' || role == 'nutritionist';
+  }
 
   // (Image picking previously lived here; removed since it's not used in current Settings UI.)
 
@@ -161,6 +175,22 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 title: 'Privacy & Security',
                 onTap: () => _openPrivacySecurity(context),
               ),
+              // Service Locations (only for trainers and nutritionists)
+              if (_isProvider)
+                _SettingsRow(
+                  icon: Icons.location_on_rounded,
+                  title: 'Service Locations',
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    Navigator.push(
+                      context,
+                      PageTransitions.slideRoute(
+                        const ServiceLocationsPage(),
+                        beginOffset: const Offset(0, 0.05),
+                      ),
+                    );
+                  },
+                ),
             ],
           ),
           const SizedBox(height: 16),

@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/design_tokens.dart';
 import '../../providers/profile_images_provider.dart';
+import '../../providers/health_tracking_provider.dart';
 import '../../widgets/home_v3/hero_header_v3.dart';
 import '../../widgets/home_v3/streak_pill_v3.dart';
 import '../../widgets/home_v3/steps_card_v3.dart';
@@ -13,6 +14,7 @@ import '../../widgets/home_v3/feed_preview_v3.dart';
 import '../../widgets/home_v3/nearby_preview_v3.dart';
 import '../insights/insights_detail_page.dart';
 import '../../services/streak_service.dart';
+import '../../services/user_goals_service.dart';
 
 class HomePageV3 extends ConsumerStatefulWidget {
   final VoidCallback? onNavigateToCocircle;
@@ -33,19 +35,16 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
   final String _username = 'John Doe';
   final int _notificationCount = 3;
   int _streakDays = 0;
-  final int _currentSteps = 8234;
-  final int _goalSteps = 10000;
-  final int _currentCalories = 1856;
-  double _currentWater = 1.5;
-  final double _goalWater = 2.5;
-  final double _currentDistance = 4.6;
-  final double _bmi = 22.4;
-  final String _bmiStatus = 'Normal';
+  int _goalSteps = 10000;
+  double _currentWater = 0.0;
+  double _goalWater = 2.5;
+  final double _bmi = 0.0;
+  final String _bmiStatus = '';
 
-  final List<double> _stepsWeeklyData = [6.2, 7.1, 8.3, 7.8, 8.5, 8.2, 8.0];
-  final List<double> _caloriesWeeklyData = [1.8, 2.0, 1.9, 2.1, 1.7, 1.9, 1.8];
-  final List<double> _waterWeeklyData = [1.2, 1.5, 1.8, 1.6, 1.4, 1.7, 1.5];
-  final List<double> _distanceWeeklyData = [3.8, 4.2, 4.0, 4.5, 4.6, 4.1, 4.4];
+  final List<double> _stepsWeeklyData = [];
+  final List<double> _caloriesWeeklyData = [];
+  final List<double> _waterWeeklyData = [];
+  final List<double> _distanceWeeklyData = [];
 
   @override
   void initState() {
@@ -60,6 +59,23 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
     );
     _fadeController.forward();
     _loadStreak();
+    _loadGoals();
+    // Initialize health tracking service for background step counting
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(healthTrackingServiceProvider).initialize();
+    });
+  }
+
+  Future<void> _loadGoals() async {
+    final goalsService = UserGoalsService();
+    final stepsGoal = await goalsService.getStepsGoal();
+    final waterGoal = await goalsService.getWaterGoal();
+    if (mounted) {
+      setState(() {
+        _goalSteps = stepsGoal;
+        _goalWater = waterGoal;
+      });
+    }
   }
 
   Future<void> _loadStreak() async {
@@ -122,6 +138,17 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    // Watch step count from health tracking provider (updates every 30 seconds)
+    final stepsAsync = ref.watch(stepsNotifierProvider);
+    final currentSteps = stepsAsync.value ?? 0;
+    
+    // Watch calories and distance
+    final caloriesAsync = ref.watch(caloriesProvider);
+    final currentCalories = caloriesAsync.value?.toInt() ?? 0;
+    
+    final distanceAsync = ref.watch(distanceProvider);
+    final currentDistance = distanceAsync.value ?? 0.0;
+    
     return FadeTransition(
       opacity: _fadeAnimation,
       child: Scaffold(
@@ -167,7 +194,7 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                   _safeSection(
                     context,
                     StepsCardV3(
-                    steps: _currentSteps,
+                    steps: currentSteps,
                     goal: _goalSteps,
                     sparkline: _stepsWeeklyData,
                     heroTag: 'tile_steps',
@@ -194,11 +221,11 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                 _safeSection(
                   context,
                   MacroRowV3(
-                    calories: _currentCalories,
+                    calories: currentCalories,
                     water: _currentWater,
                     waterGoal: _goalWater,
                     caloriesSpark: _caloriesWeeklyData,
-                    distanceKm: _currentDistance,
+                    distanceKm: currentDistance,
                     caloriesHeroTag: 'tile_calories',
                     waterHeroTag: 'tile_water',
                     distanceHeroTag: 'tile_distance',

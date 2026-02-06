@@ -196,8 +196,9 @@ class _QuestPageState extends State<QuestPage>
                     gradient: _primaryGradient,
                   ),
                   _WeeklySection(quests: _weekly),
-                  _LeaderboardSection(entries: _leaderboard),
+                  _ChallengesSection(),
                   _AchievementsSection(items: _achievements),
+                  _LeaderboardSection(entries: _leaderboard),
                 ],
               ),
             ),
@@ -427,64 +428,119 @@ class _QuestTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const tabs = ['Daily', 'Weekly', 'Leaderboard', 'Achievements'];
     final colorScheme = Theme.of(context).colorScheme;
-    final gradients = [
-      const LinearGradient(colors: [Color(0xFFFF7A00), Color(0xFFFFC300)]),
-      const LinearGradient(colors: [Color(0xFF6C63FF), Color(0xFF3B82F6)]),
-      const LinearGradient(colors: [Color(0xFF00C2A8), Color(0xFF19C37D)]),
-      const LinearGradient(colors: [Color(0xFFFF4D6D), Color(0xFFFF8A00)]),
+    final tabs = [
+      _TabData(
+        icon: Icons.today_outlined,
+        activeIcon: Icons.today,
+        gradient: const LinearGradient(colors: [Color(0xFFFF7A00), Color(0xFFFFC300)]),
+      ),
+      _TabData(
+        icon: Icons.calendar_view_week_outlined,
+        activeIcon: Icons.calendar_view_week,
+        gradient: const LinearGradient(colors: [Color(0xFF6C63FF), Color(0xFF3B82F6)]),
+      ),
+      _TabData(
+        icon: Icons.people_outlined,
+        activeIcon: Icons.people,
+        gradient: const LinearGradient(colors: [Color(0xFF9C27B0), Color(0xFFE91E63)]),
+      ),
+      _TabData(
+        icon: Icons.emoji_events_outlined,
+        activeIcon: Icons.emoji_events,
+        gradient: const LinearGradient(colors: [Color(0xFFFF4D6D), Color(0xFFFF8A00)]),
+      ),
+      _TabData(
+        icon: Icons.leaderboard_outlined,
+        activeIcon: Icons.leaderboard,
+        gradient: const LinearGradient(colors: [Color(0xFF00C2A8), Color(0xFF19C37D)]),
+      ),
     ];
 
-    return Container(
-      height: 44,
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: colorScheme.outline.withOpacity(0.16)),
-      ),
-      child: Container(
-        height: 36,
-        decoration: BoxDecoration(
-          gradient: gradients[selectedIndex],
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          children: [
-            const SizedBox(width: 8),
-            Icon(
-              Icons.chevron_left_rounded,
-              size: 18,
-              color: Colors.white.withOpacity(0.7),
-            ),
-            const Spacer(),
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 180),
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeOutCubic,
-              child: Text(
-                tabs[selectedIndex],
-                key: ValueKey(tabs[selectedIndex]),
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final tabWidth = constraints.maxWidth / tabs.length;
+        final pillWidth = tabWidth - 8;
+        
+        return SizedBox(
+          height: 56,
+          child: Stack(
+            children: [
+              // Sliding pill background
+              AnimatedPositioned(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOutCubic,
+                left: (selectedIndex * tabWidth) + 4,
+                top: 4,
+                bottom: 4,
+                width: pillWidth,
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: tabs[selectedIndex].gradient,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: [
+                      BoxShadow(
+                        color: tabs[selectedIndex].gradient.colors.first.withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            const Spacer(),
-            Icon(
-              Icons.chevron_right_rounded,
-              size: 18,
-              color: Colors.white.withOpacity(0.7),
-            ),
-            const SizedBox(width: 8),
-          ],
-        ),
-      ),
+              // Tab icons
+              Row(
+                children: List.generate(tabs.length, (index) {
+                  final isSelected = index == selectedIndex;
+                  final tab = tabs[index];
+                  
+                  return Expanded(
+                    child: GestureDetector(
+                      onTap: () => onChanged(index),
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                        child: Center(
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 200),
+                            transitionBuilder: (child, animation) {
+                              return ScaleTransition(
+                                scale: animation,
+                                child: child,
+                              );
+                            },
+                            child: Icon(
+                              isSelected ? tab.activeIcon : tab.icon,
+                              key: ValueKey('${tab.icon}_$isSelected'),
+                              size: 24,
+                              color: isSelected
+                                  ? Colors.white
+                                  : colorScheme.onSurface.withOpacity(0.6),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
+}
+
+class _TabData {
+  final IconData icon;
+  final IconData activeIcon;
+  final LinearGradient gradient;
+
+  const _TabData({
+    required this.icon,
+    required this.activeIcon,
+    required this.gradient,
+  });
 }
 
 class _DailySection extends StatelessWidget {
@@ -538,6 +594,68 @@ class _WeeklySection extends StatelessWidget {
         itemBuilder: (context, index) {
           return _WeeklyCard(quest: quests[index]);
         },
+      ),
+    );
+  }
+}
+
+class _ChallengesSection extends StatelessWidget {
+  const _ChallengesSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Active Challenges',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: AppColors.cardShadow,
+            ),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.people_outlined,
+                  size: 48,
+                  color: colorScheme.onSurface.withOpacity(0.5),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'No active challenges',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Join weekend challenges or create one with friends!',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: colorScheme.onSurface.withOpacity(0.6),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -715,7 +833,7 @@ class _AchievementsSection extends StatelessWidget {
   }
 }
 
-class LevelsPage extends StatelessWidget {
+class LevelsPage extends StatefulWidget {
   final int currentXP;
   final List<_LevelInfo> levels;
 
@@ -726,206 +844,1056 @@ class LevelsPage extends StatelessWidget {
   });
 
   @override
+  State<LevelsPage> createState() => _LevelsPageState();
+}
+
+class _LevelsPageState extends State<LevelsPage> with SingleTickerProviderStateMixin {
+  late AnimationController _pulseController;
+  final Map<int, bool> _expandedTiers = {0: true}; // Bronze expanded by default
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final currentIndex = _currentLevelIndex(levels, currentXP);
-    final currentLevel = levels[currentIndex];
-    final nextLevel =
-        currentIndex + 1 < levels.length ? levels[currentIndex + 1] : null;
-    final levelTiles = <Widget>[];
-    for (var i = 0; i < levels.length; i++) {
-      levelTiles.add(_LevelRowLarge(
-        level: levels[i],
-        currentXP: currentXP,
-      ));
-      if (i != levels.length - 1) {
-        levelTiles.add(const SizedBox(height: 12));
+    
+    // Group levels by tier (10 levels per tier)
+    final tierGroups = <List<_LevelInfo>>[];
+    for (var i = 0; i < widget.levels.length; i += 10) {
+      final end = (i + 10).clamp(0, widget.levels.length);
+      tierGroups.add(widget.levels.sublist(i, end));
+    }
+
+    // Find current tier and level
+    int currentTierIndex = 0;
+    int currentLevelIndex = 0;
+    for (var i = 0; i < widget.levels.length; i++) {
+      if (widget.currentXP >= widget.levels[i].xpRequired) {
+        currentLevelIndex = i;
+        currentTierIndex = (i / 10).floor();
+      } else {
+        break;
       }
     }
+    final currentTier = tierGroups.isNotEmpty && currentTierIndex < tierGroups.length
+        ? tierGroups[currentTierIndex]
+        : tierGroups.isNotEmpty ? tierGroups[0] : <_LevelInfo>[];
+    final currentLevel = currentLevelIndex < widget.levels.length
+        ? widget.levels[currentLevelIndex]
+        : null;
+    final nextLevel = currentLevelIndex + 1 < widget.levels.length
+        ? widget.levels[currentLevelIndex + 1]
+        : null;
+
     return Scaffold(
       backgroundColor: colorScheme.background,
       appBar: AppBar(
-        backgroundColor: colorScheme.background,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: colorScheme.onBackground),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
         title: Text(
           'Levels',
           style: TextStyle(
             color: colorScheme.onBackground,
+            fontWeight: FontWeight.w700,
           ),
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-        children: [
-          _LevelHeader(
-            currentLevel: currentLevel,
-            nextLevel: nextLevel,
-            currentXP: currentXP,
-          ),
-          const SizedBox(height: 18),
-          ...levelTiles,
-        ],
-      ),
+      body: widget.levels.isEmpty || tierGroups.isEmpty
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    size: 48,
+                    color: colorScheme.onBackground.withOpacity(0.5),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No levels available',
+                    style: TextStyle(
+                      color: colorScheme.onBackground,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                // Tier Header (Hero Section)
+                if (currentTier.isNotEmpty && currentLevel != null)
+                  _TierHeader(
+                    tierLevels: currentTier,
+                    currentLevel: currentLevel,
+                    nextLevel: nextLevel,
+                    currentXP: widget.currentXP,
+                    pulseAnimation: _pulseController,
+                  ),
+                const SizedBox(height: 24),
+                // Tier Sections (Collapsible)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    children: tierGroups.asMap().entries.map((entry) {
+                      final tierIndex = entry.key;
+                      final tierLevels = entry.value;
+                      if (tierLevels.isEmpty) return const SizedBox.shrink();
+                      
+                      final isUnlocked = tierIndex <= currentTierIndex;
+                      final isExpanded = _expandedTiers[tierIndex] ?? false;
+                      
+                      return _TierSectionCard(
+                        tierIndex: tierIndex,
+                        tierLevels: tierLevels,
+                        currentXP: widget.currentXP,
+                        isUnlocked: isUnlocked,
+                        isExpanded: isExpanded,
+                        onToggle: () {
+                          setState(() {
+                            _expandedTiers[tierIndex] = !isExpanded;
+                          });
+                        },
+                      );
+                    }).toList(),
+                  ),
+                ),
+                const SizedBox(height: 32),
+              ],
+            ),
     );
   }
 }
 
-class _LevelHeader extends StatelessWidget {
+// Tier Header (Hero Section)
+class _TierHeader extends StatelessWidget {
+  final List<_LevelInfo> tierLevels;
   final _LevelInfo currentLevel;
   final _LevelInfo? nextLevel;
   final int currentXP;
+  final Animation<double> pulseAnimation;
 
-  const _LevelHeader({
+  const _TierHeader({
+    required this.tierLevels,
     required this.currentLevel,
     required this.nextLevel,
     required this.currentXP,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final nextXP = nextLevel?.xpRequired ?? currentLevel.xpRequired;
-    final progress =
-        nextXP == 0 ? 1.0 : (currentXP / nextXP).clamp(0.0, 1.0);
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: _tierGradient(currentLevel.tierColor),
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: AppColors.cardShadow,
-      ),
-      child: Row(
-        children: [
-          _MedalBadge(
-            level: currentLevel.level,
-            color: currentLevel.tierColor,
-            symbol: currentLevel.symbol,
-            size: 88,
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Level ${currentLevel.level} · ${currentLevel.name}',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  currentLevel.tierName,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white.withOpacity(0.8),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(999),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 8,
-                    color: Colors.white,
-                    backgroundColor: Colors.white.withOpacity(0.2),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  nextLevel == null
-                      ? 'Max level reached'
-                      : '${currentXP} / ${nextXP} XP to ${nextLevel!.name}',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white.withOpacity(0.8),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _LevelRowLarge extends StatelessWidget {
-  final _LevelInfo level;
-  final int currentXP;
-
-  const _LevelRowLarge({
-    required this.level,
-    required this.currentXP,
+    required this.pulseAnimation,
   });
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final unlocked = currentXP >= level.xpRequired;
-    final needed = (level.xpRequired - currentXP).clamp(0, level.xpRequired);
+    final tierName = currentLevel.tierName;
+    final tierColor = currentLevel.tierColor;
+    final tierGradient = _tierGradient(tierColor);
+    
+    // Calculate progress to next level
+    final nextXP = nextLevel?.xpRequired ?? currentLevel.xpRequired;
+    final progress = nextXP > 0 ? ((currentXP - currentLevel.xpRequired) / 
+        (nextXP - currentLevel.xpRequired)).clamp(0.0, 1.0) : 1.0;
+    final neededXP = (nextXP - currentXP).clamp(0, nextXP);
+    // neededXP is used in the progress display below
+    
+    // Get motivation copy
+    final motivationCopy = _getMotivationCopy(tierName);
+    
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: level.tierColor.withOpacity(0.16),
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: AppColors.cardShadow,
+        color: colorScheme.surface,
       ),
-      child: Row(
+      child: Column(
         children: [
-          _MedalBadge(
-            level: level.level,
-            color: level.tierColor,
-            symbol: level.symbol,
-            size: 64,
+          // Tier badge (no glow)
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: tierGradient,
+              shape: BoxShape.circle,
+            ),
+            child: _InfinityBadge(
+              tierName: tierName,
+              size: 100,
+            ),
           ),
-          const SizedBox(width: 14),
-          Expanded(
+          const SizedBox(height: 16),
+          // Tier name and range
+          Text(
+            tierName,
+            style: TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.w900,
+              color: colorScheme.onSurface,
+              letterSpacing: 1.5,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Levels ${tierLevels.first.level} - ${tierLevels.last.level}',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: colorScheme.onSurface.withOpacity(0.6),
+            ),
+          ),
+          const SizedBox(height: 8),
+          // Motivation copy
+          Text(
+            motivationCopy,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: tierColor.withOpacity(0.8),
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+          const SizedBox(height: 24),
+          // Current level and progress
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: _getTierLightColor(tierName, context),
+              borderRadius: BorderRadius.circular(20),
+            ),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Level ${level.level} · ${level.name}',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: colorScheme.onSurface,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Level ${currentLevel.level}',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: tierColor,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '· ${currentLevel.name}',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: colorScheme.onSurface,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                // Progress bar
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 10,
+                    backgroundColor: colorScheme.surfaceContainerHighest,
+                    valueColor: AlwaysStoppedAnimation<Color>(tierColor),
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 12),
                 Text(
-                  level.tierName,
+                  neededXP > 0
+                      ? '$neededXP XP to next level'
+                      : 'Max level in tier',
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 13,
                     fontWeight: FontWeight.w600,
                     color: colorScheme.onSurface.withOpacity(0.7),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  unlocked ? 'Unlocked' : 'Need $needed XP to unlock',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: colorScheme.onSurface.withOpacity(0.65),
                   ),
                 ),
               ],
             ),
           ),
-          Text(
-            '${level.xpRequired} XP',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: colorScheme.onSurface.withOpacity(0.8),
+        ],
+      ),
+    );
+  }
+
+  String _getMotivationCopy(String tierName) {
+    switch (tierName) {
+      case 'Bronze':
+        return 'Build the habit.';
+      case 'Silver':
+        return 'Consistency wins.';
+      case 'Gold':
+        return "You're outperforming most users.";
+      case 'Platinum':
+        return 'Elite discipline.';
+      case 'Diamond':
+        return 'Top 1% grinders.';
+      default:
+        return 'Keep pushing forward.';
+    }
+  }
+
+  Color _getTierLightColor(String tierName, BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    if (isDark) {
+      // Dark mode: use darker, muted versions
+      switch (tierName) {
+        case 'Bronze':
+          return const Color(0xFF3D2A1A); // Dark orange-tinted
+        case 'Silver':
+          return const Color(0xFF1A2332); // Dark blue-tinted
+        case 'Gold':
+          return const Color(0xFF3D3519); // Dark yellow-tinted
+        case 'Platinum':
+          return const Color(0xFF1A2332); // Dark ice-blue-tinted
+        case 'Diamond':
+          return const Color(0xFF2A1F3D); // Dark purple-tinted
+        default:
+          return const Color(0xFF3D2A1A);
+      }
+    } else {
+      // Light mode: use light pastel colors
+      switch (tierName) {
+        case 'Bronze':
+          return const Color(0xFFFFF4E6); // Light orange
+        case 'Silver':
+          return const Color(0xFFF0F8FF); // Light blue
+        case 'Gold':
+          return const Color(0xFFFFFBE6); // Light yellow
+        case 'Platinum':
+          return const Color(0xFFF0F8FF); // Light ice-blue
+        case 'Diamond':
+          return const Color(0xFFF5F0FF); // Light purple
+        default:
+          return const Color(0xFFFFF4E6);
+      }
+    }
+  }
+}
+
+// Tier Section Card (Collapsible)
+class _TierSectionCard extends StatefulWidget {
+  final int tierIndex;
+  final List<_LevelInfo> tierLevels;
+  final int currentXP;
+  final bool isUnlocked;
+  final bool isExpanded;
+  final VoidCallback onToggle;
+
+  const _TierSectionCard({
+    required this.tierIndex,
+    required this.tierLevels,
+    required this.currentXP,
+    required this.isUnlocked,
+    required this.isExpanded,
+    required this.onToggle,
+  });
+
+  @override
+  State<_TierSectionCard> createState() => _TierSectionCardState();
+}
+
+class _TierSectionCardState extends State<_TierSectionCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _expandController;
+  late Animation<double> _expandAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _expandController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _expandAnimation = CurvedAnimation(
+      parent: _expandController,
+      curve: Curves.easeInOut,
+    );
+    if (widget.isExpanded) {
+      _expandController.value = 1.0;
+    }
+  }
+
+  @override
+  void didUpdateWidget(_TierSectionCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isExpanded != oldWidget.isExpanded) {
+      if (widget.isExpanded) {
+        _expandController.forward();
+      } else {
+        _expandController.reverse();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _expandController.dispose();
+    super.dispose();
+  }
+
+  Color _getTierLightColor(String tierName, BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    if (isDark) {
+      // Dark mode: use darker, muted versions
+      switch (tierName) {
+        case 'Bronze':
+          return const Color(0xFF3D2A1A); // Dark orange-tinted
+        case 'Silver':
+          return const Color(0xFF1A2332); // Dark blue-tinted
+        case 'Gold':
+          return const Color(0xFF3D3519); // Dark yellow-tinted
+        case 'Platinum':
+          return const Color(0xFF1A2332); // Dark ice-blue-tinted
+        case 'Diamond':
+          return const Color(0xFF2A1F3D); // Dark purple-tinted
+        default:
+          return const Color(0xFF3D2A1A);
+      }
+    } else {
+      // Light mode: use light pastel colors
+      switch (tierName) {
+        case 'Bronze':
+          return const Color(0xFFFFF4E6); // Light orange
+        case 'Silver':
+          return const Color(0xFFF0F8FF); // Light blue
+        case 'Gold':
+          return const Color(0xFFFFFBE6); // Light yellow
+        case 'Platinum':
+          return const Color(0xFFF0F8FF); // Light ice-blue
+        case 'Diamond':
+          return const Color(0xFFF5F0FF); // Light purple
+        default:
+          return const Color(0xFFFFF4E6);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final firstLevel = widget.tierLevels.first;
+    final tierName = firstLevel.tierName;
+    final tierColor = firstLevel.tierColor;
+    
+    // Find current level index in this tier
+    int currentLevelIndex = -1;
+    for (var i = 0; i < widget.tierLevels.length; i++) {
+      if (widget.currentXP >= widget.tierLevels[i].xpRequired) {
+        currentLevelIndex = i;
+      } else {
+        break;
+      }
+    }
+
+    final tierLightColor = _getTierLightColor(tierName, context);
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: widget.isUnlocked
+            ? tierLightColor
+            : (Theme.of(context).brightness == Brightness.dark
+                ? colorScheme.surfaceContainerHighest.withOpacity(0.3)
+                : Colors.grey.shade100),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          // Tier header (clickable)
+          InkWell(
+            onTap: widget.isUnlocked ? widget.onToggle : null,
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(16),
+              topRight: Radius.circular(16),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  _InfinityBadge(
+                    tierName: tierName,
+                    size: 40,
+                    isLocked: !widget.isUnlocked,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '$tierName Tier',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: widget.isUnlocked
+                                ? colorScheme.onSurface
+                                : colorScheme.onSurface.withOpacity(0.5),
+                          ),
+                        ),
+                        Text(
+                          'Levels ${widget.tierLevels.first.level} - ${widget.tierLevels.last.level}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: colorScheme.onSurface.withOpacity(0.6),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (!widget.isUnlocked)
+                    Icon(
+                      Icons.lock_rounded,
+                      color: colorScheme.onSurface.withOpacity(0.4),
+                      size: 20,
+                    )
+                  else
+                    AnimatedRotation(
+                      turns: widget.isExpanded ? 0.5 : 0,
+                      duration: const Duration(milliseconds: 300),
+                      child: Icon(
+                        Icons.expand_more_rounded,
+                        color: colorScheme.onSurface,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          // Expandable level list
+          SizeTransition(
+            sizeFactor: _expandAnimation,
+            child: Column(
+              children: widget.tierLevels.asMap().entries.map((entry) {
+                final index = entry.key;
+                final level = entry.value;
+                final isCompleted = index < currentLevelIndex;
+                final isCurrent = index == currentLevelIndex;
+                
+                return _LevelCard(
+                  level: level,
+                  isCompleted: isCompleted,
+                  isCurrent: isCurrent,
+                  isLocked: !isCompleted && !isCurrent,
+                  currentXP: widget.currentXP,
+                  nextLevel: index + 1 < widget.tierLevels.length
+                      ? widget.tierLevels[index + 1]
+                      : null,
+                  tierColor: tierColor,
+                );
+              }).toList(),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+// Level Card Widget
+class _LevelCard extends StatelessWidget {
+  final _LevelInfo level;
+  final bool isCompleted;
+  final bool isCurrent;
+  final bool isLocked;
+  final int currentXP;
+  final _LevelInfo? nextLevel;
+  final Color tierColor;
+
+  const _LevelCard({
+    required this.level,
+    required this.isCompleted,
+    required this.isCurrent,
+    required this.isLocked,
+    required this.currentXP,
+    required this.nextLevel,
+    required this.tierColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
+    // Calculate progress
+    double progress = 0.0;
+    int neededXP = 0;
+    if (isCurrent && nextLevel != null) {
+      progress = ((currentXP - level.xpRequired) / 
+          (nextLevel!.xpRequired - level.xpRequired)).clamp(0.0, 1.0);
+      neededXP = (nextLevel!.xpRequired - currentXP).clamp(0, nextLevel!.xpRequired);
+    } else if (isCompleted) {
+      progress = 1.0;
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _getTierLightColor(_getTierNameFromLevel(level.level), context),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          // Status icon - Infinity badge
+          _InfinityBadge(
+            tierName: _getTierNameFromLevel(level.level),
+            size: 40,
+            isLocked: isLocked,
+            isCompleted: isCompleted,
+            levelNumber: level.level,
+          ),
+          const SizedBox(width: 12),
+          // Level info
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      level.name,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: isCurrent ? FontWeight.w800 : FontWeight.w600,
+                        color: isLocked
+                            ? colorScheme.onSurface.withOpacity(0.4)
+                            : (isCurrent ? tierColor : colorScheme.onSurface),
+                      ),
+                    ),
+                    if (isCurrent) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          gradient: _tierGradient(tierColor),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Text(
+                          'CURRENT',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 8),
+                if (isCurrent && nextLevel != null)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: LinearProgressIndicator(
+                          value: progress,
+                          minHeight: 6,
+                          backgroundColor: colorScheme.surfaceContainerHighest,
+                          valueColor: AlwaysStoppedAnimation<Color>(tierColor),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        '$neededXP XP to Level ${nextLevel!.level}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: colorScheme.onSurface.withOpacity(0.7),
+                        ),
+                      ),
+                    ],
+                  )
+                else if (isLocked)
+                  Text(
+                    'Unlocks at Level ${level.level}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: colorScheme.onSurface.withOpacity(0.5),
+                    ),
+                  )
+                else
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.stars_rounded,
+                        size: 12,
+                        color: tierColor.withOpacity(0.7),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${level.xpRequired} XP',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: colorScheme.onSurface.withOpacity(0.6),
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getTierNameFromLevel(int level) {
+    final tierIndex = ((level - 1) / 10).floor();
+    final tierNames = ['Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond'];
+    return tierIndex < tierNames.length ? tierNames[tierIndex] : 'Bronze';
+  }
+
+  Color _getTierLightColor(String tierName, BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    if (isDark) {
+      // Dark mode: use darker, muted versions
+      switch (tierName) {
+        case 'Bronze':
+          return const Color(0xFF3D2A1A); // Dark orange-tinted
+        case 'Silver':
+          return const Color(0xFF1A2332); // Dark blue-tinted
+        case 'Gold':
+          return const Color(0xFF3D3519); // Dark yellow-tinted
+        case 'Platinum':
+          return const Color(0xFF1A2332); // Dark ice-blue-tinted
+        case 'Diamond':
+          return const Color(0xFF2A1F3D); // Dark purple-tinted
+        default:
+          return const Color(0xFF3D2A1A);
+      }
+    } else {
+      // Light mode: use light pastel colors
+      switch (tierName) {
+        case 'Bronze':
+          return const Color(0xFFFFF4E6); // Light orange
+        case 'Silver':
+          return const Color(0xFFF0F8FF); // Light blue
+        case 'Gold':
+          return const Color(0xFFFFFBE6); // Light yellow
+        case 'Platinum':
+          return const Color(0xFFF0F8FF); // Light ice-blue
+        case 'Diamond':
+          return const Color(0xFFF5F0FF); // Light purple
+        default:
+          return const Color(0xFFFFF4E6);
+      }
+    }
+  }
+}
+
+class _ContinuousLevelBar extends StatefulWidget {
+  final List<_LevelInfo> tierLevels;
+  final int currentXP;
+  final Color tierColor;
+  final LinearGradient tierGradient;
+
+  const _ContinuousLevelBar({
+    required this.tierLevels,
+    required this.currentXP,
+    required this.tierColor,
+    required this.tierGradient,
+  });
+
+  @override
+  State<_ContinuousLevelBar> createState() => _ContinuousLevelBarState();
+}
+
+class _ContinuousLevelBarState extends State<_ContinuousLevelBar>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  late Animation<double> _fillAnimation;
+  int _previousLevelIndex = -1;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+    _fillAnimation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeOutCubic,
+    );
+    _previousLevelIndex = _getCurrentLevelIndex();
+    _animationController.forward();
+  }
+
+  @override
+  void didUpdateWidget(_ContinuousLevelBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final newLevelIndex = _getCurrentLevelIndex();
+    if (newLevelIndex > _previousLevelIndex) {
+      // Level up! Trigger animation
+      _previousLevelIndex = newLevelIndex;
+      _animationController.reset();
+      _animationController.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  int _getCurrentLevelIndex() {
+    int currentLevelIndex = -1;
+    for (var i = 0; i < widget.tierLevels.length; i++) {
+      if (widget.currentXP >= widget.tierLevels[i].xpRequired) {
+        currentLevelIndex = i;
+      } else {
+        break;
+      }
+    }
+    return currentLevelIndex;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
+    // Find current level index
+    final currentLevelIndex = _getCurrentLevelIndex();
+    
+    // Calculate total progress through the tier
+    final lastLevelXP = widget.tierLevels.last.xpRequired;
+    final nextTierFirstXP = (lastLevelXP * 1.12).round(); // Estimate
+    
+    // Calculate how many complete levels + progress to next
+    double totalProgress = 0.0;
+    if (currentLevelIndex == widget.tierLevels.length - 1) {
+      // All levels in tier unlocked, calculate progress to next tier
+      final progressToNext = ((widget.currentXP - lastLevelXP) / (nextTierFirstXP - lastLevelXP)).clamp(0.0, 1.0);
+      totalProgress = 1.0 + (progressToNext * 0.1); // Slight overflow to show progress
+    } else if (currentLevelIndex >= 0) {
+      // Partially through tier
+      final completedLevels = currentLevelIndex + 1;
+      final currentLevel = widget.tierLevels[currentLevelIndex];
+      final nextLevel = widget.tierLevels[currentLevelIndex + 1];
+      final progressInCurrentLevel = ((widget.currentXP - currentLevel.xpRequired) / 
+          (nextLevel.xpRequired - currentLevel.xpRequired)).clamp(0.0, 1.0);
+      totalProgress = (completedLevels + progressInCurrentLevel) / widget.tierLevels.length;
+    }
+    
+    // Bar height: each level gets equal space
+    final barHeight = widget.tierLevels.length * 72.0; // 72px per level
+    final filledHeight = barHeight * totalProgress.clamp(0.0, 1.0);
+    final levelSpacing = 72.0;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Thin vertical bar with level indicators
+        SizedBox(
+          width: 60,
+          height: barHeight,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              // Thin background line
+              Positioned(
+                left: 29,
+                top: 0,
+                bottom: 0,
+                child: Container(
+                  width: 2,
+                  decoration: BoxDecoration(
+                    color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(1),
+                  ),
+                ),
+              ),
+              // Thin filled line (fills downward with animation)
+              AnimatedBuilder(
+                animation: _fillAnimation,
+                builder: (context, child) {
+                  return Positioned(
+                    left: 29,
+                    top: 0,
+                    width: 2,
+                    height: filledHeight * _fillAnimation.value,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            widget.tierGradient.colors.first,
+                            widget.tierGradient.colors.last,
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(1),
+                      ),
+                    ),
+                  );
+                },
+              ),
+              // Level indicators (dots/badges) on the thin line
+              ...widget.tierLevels.asMap().entries.map((entry) {
+                final index = entry.key;
+                final level = entry.value;
+                final isUnlocked = index <= currentLevelIndex;
+                final isCurrentLevel = index == currentLevelIndex;
+                final position = index * levelSpacing + 36.0; // Center of each level section
+                
+                return Positioned(
+                  top: position - 16,
+                  left: 0,
+                  child: AnimatedScale(
+                    scale: isCurrentLevel ? 1.3 : (isUnlocked ? 1.0 : 0.8),
+                    duration: const Duration(milliseconds: 400),
+                    curve: Curves.easeOutBack,
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        gradient: isUnlocked ? widget.tierGradient : null,
+                        color: isUnlocked ? null : colorScheme.surfaceContainerHighest,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: Text(
+                          '${level.level}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w900,
+                            color: isUnlocked
+                                ? Colors.white
+                                : colorScheme.onSurface.withOpacity(0.4),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+        const SizedBox(width: 20),
+        // Level names and details on the right side
+        Expanded(
+          child: SizedBox(
+            height: barHeight,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: widget.tierLevels.asMap().entries.map((entry) {
+              final index = entry.key;
+              final level = entry.value;
+              final isUnlocked = index <= currentLevelIndex;
+              final isCurrentLevel = index == currentLevelIndex;
+              
+              return Container(
+                height: 72,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    // Level info
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              AnimatedDefaultTextStyle(
+                                duration: const Duration(milliseconds: 300),
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: isCurrentLevel ? FontWeight.w900 : FontWeight.w700,
+                                  color: isUnlocked
+                                      ? (isCurrentLevel ? widget.tierColor : colorScheme.onSurface)
+                                      : colorScheme.onSurface.withOpacity(0.4),
+                                  letterSpacing: -0.3,
+                                ),
+                                child: Text(level.name),
+                              ),
+                              if (isCurrentLevel) ...[
+                                const SizedBox(width: 8),
+                                AnimatedBuilder(
+                                  animation: _fillAnimation,
+                                  builder: (context, child) {
+                                    return Transform.scale(
+                                      scale: 0.8 + (_fillAnimation.value * 0.2),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          gradient: widget.tierGradient,
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: const Text(
+                                          'CURRENT',
+                                          style: TextStyle(
+                                            fontSize: 9,
+                                            fontWeight: FontWeight.w800,
+                                            color: Colors.white,
+                                            letterSpacing: 0.5,
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ],
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.stars_rounded,
+                                size: 12,
+                                color: isUnlocked
+                                    ? widget.tierColor.withOpacity(0.8)
+                                    : colorScheme.onSurface.withOpacity(0.3),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${level.xpRequired} XP',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: isUnlocked
+                                      ? colorScheme.onSurface.withOpacity(0.7)
+                                      : colorScheme.onSurface.withOpacity(0.4),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -986,7 +1954,11 @@ class _QuestCard extends StatelessWidget {
             children: [
               if (quest.timeLeft != null) _Chip(text: quest.timeLeft!),
               const Spacer(),
-              _PrimaryButton(label: 'Start', gradient: gradient),
+              _PrimaryButton(
+                label: quest.progress >= 1.0 ? 'Claim' : 'In Progress',
+                gradient: gradient,
+                enabled: quest.progress >= 1.0,
+              ),
             ],
           ),
         ],
@@ -1340,25 +2312,33 @@ class _Chip extends StatelessWidget {
 class _PrimaryButton extends StatelessWidget {
   final String label;
   final LinearGradient gradient;
+  final bool enabled;
 
-  const _PrimaryButton({required this.label, required this.gradient});
+  const _PrimaryButton({
+    required this.label,
+    required this.gradient,
+    this.enabled = true,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
     return Container(
       height: 36,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        gradient: gradient,
+        gradient: enabled ? gradient : null,
+        color: enabled ? null : colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(22),
       ),
       child: Center(
         child: Text(
           label,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: Colors.white,
+            color: enabled ? Colors.white : colorScheme.onSurface.withOpacity(0.5),
           ),
         ),
       ),
@@ -1424,8 +2404,8 @@ List<_LevelInfo> _buildLevels() {
   const tier1 = Color(0xFFCD7F32); // Bronze
   const tier2 = Color(0xFFC0C0C0); // Silver
   const tier3 = Color(0xFFFFD700); // Gold
-  const tier4 = Color(0xFF4FC3F7); // Diamond
-  const tier5 = Color(0xFFE5E4E2); // Platinum
+  const tier4 = Color(0xFFE5E4E2); // Platinum
+  const tier5 = Color(0xFF4FC3F7); // Diamond
 
   final names = [
     'Rookie',
@@ -1557,8 +2537,8 @@ List<_LevelInfo> _buildLevels() {
       'Bronze',
       'Silver',
       'Gold',
-      'Diamond',
       'Platinum',
+      'Diamond',
     ][tierIndex];
     final tierColor = [
       tier1,
@@ -1590,6 +2570,322 @@ LinearGradient _tierGradient(Color base) {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
+}
+
+// Infinity Badge Widget (replaces MedalBadge)
+class _InfinityBadge extends StatelessWidget {
+  final String tierName;
+  final double size;
+  final bool isLocked;
+  final bool isCompleted;
+  final int? levelNumber;
+
+  const _InfinityBadge({
+    required this.tierName,
+    required this.size,
+    this.isLocked = false,
+    this.isCompleted = false,
+    this.levelNumber,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final gradient = _getTierGradient(tierName);
+    
+    return SizedBox(
+      width: size,
+      height: size,
+      child: CustomPaint(
+        painter: _InfinityBadgePainter(
+          tierName: tierName,
+          gradient: gradient,
+          isLocked: isLocked,
+          isCompleted: isCompleted,
+          levelNumber: levelNumber,
+        ),
+      ),
+    );
+  }
+
+  LinearGradient _getTierGradient(String tierName) {
+    switch (tierName) {
+      case 'Bronze':
+        return const LinearGradient(
+          colors: [Color(0xFFFF7A00), Color(0xFFFFC300)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        );
+      case 'Silver':
+        return const LinearGradient(
+          colors: [Color(0xFFC0C0C0), Color(0xFFE8E8E8)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        );
+      case 'Gold':
+        return const LinearGradient(
+          colors: [Color(0xFFFFD700), Color(0xFFFFF44F)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        );
+      case 'Platinum':
+        return const LinearGradient(
+          colors: [Color(0xFFE5E4E2), Color(0xFFFFF8F0)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        );
+      case 'Diamond':
+        return const LinearGradient(
+          colors: [Color(0xFF4FC3F7), Color(0xFF9B7FFF)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        );
+      default:
+        return const LinearGradient(
+          colors: [Color(0xFFFF7A00), Color(0xFFFFC300)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        );
+    }
+  }
+}
+
+// Infinity Badge Painter
+class _InfinityBadgePainter extends CustomPainter {
+  final String tierName;
+  final LinearGradient gradient;
+  final bool isLocked;
+  final bool isCompleted;
+  final int? levelNumber;
+
+  _InfinityBadgePainter({
+    required this.tierName,
+    required this.gradient,
+    required this.isLocked,
+    required this.isCompleted,
+    this.levelNumber,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final scale = size.width / 100.0;
+    final loopRadius = 18 * scale;
+    final spacing = 14 * scale;
+    
+    // Create premium 3D infinity symbol
+    final leftCenter = Offset(center.dx - spacing, center.dy);
+    final rightCenter = Offset(center.dx + spacing, center.dy);
+    
+    // Create smooth infinity path with rounded hexagonal loops
+    final path = Path();
+    
+    // Left loop - rounded hexagon
+    final leftTop = Offset(leftCenter.dx, leftCenter.dy - loopRadius);
+    final leftRight = Offset(leftCenter.dx + loopRadius * 0.85, leftCenter.dy);
+    
+    // Right loop - rounded hexagon
+    final rightTop = Offset(rightCenter.dx, rightCenter.dy - loopRadius);
+    final rightLeft = Offset(rightCenter.dx - loopRadius * 0.85, rightCenter.dy);
+    
+    // Start from top of left loop
+    path.moveTo(leftTop.dx, leftTop.dy);
+    
+    // Left loop - top right curve
+    path.cubicTo(
+      leftCenter.dx + loopRadius * 0.4,
+      leftCenter.dy - loopRadius * 0.6,
+      leftCenter.dx + loopRadius * 0.7,
+      leftCenter.dy - loopRadius * 0.2,
+      leftRight.dx,
+      leftRight.dy - loopRadius * 0.3,
+    );
+    
+    // Left loop - right side
+    path.cubicTo(
+      leftRight.dx + loopRadius * 0.1,
+      leftRight.dy,
+      leftRight.dx + loopRadius * 0.1,
+      leftRight.dy,
+      leftRight.dx,
+      leftRight.dy + loopRadius * 0.3,
+    );
+    
+    // Connect to right loop (bottom curve) - smooth transition
+    path.cubicTo(
+      center.dx - spacing * 0.3,
+      center.dy + loopRadius * 0.4,
+      center.dx + spacing * 0.3,
+      center.dy + loopRadius * 0.4,
+      rightLeft.dx,
+      rightLeft.dy + loopRadius * 0.3,
+    );
+    
+    // Right loop - left side
+    path.cubicTo(
+      rightLeft.dx - loopRadius * 0.1,
+      rightLeft.dy,
+      rightLeft.dx - loopRadius * 0.1,
+      rightLeft.dy,
+      rightLeft.dx,
+      rightLeft.dy - loopRadius * 0.3,
+    );
+    
+    // Right loop - top left curve
+    path.cubicTo(
+      rightCenter.dx - loopRadius * 0.7,
+      rightCenter.dy - loopRadius * 0.2,
+      rightCenter.dx - loopRadius * 0.4,
+      rightCenter.dy - loopRadius * 0.6,
+      rightTop.dx,
+      rightTop.dy,
+    );
+    
+    // Right loop - top
+    path.cubicTo(
+      rightCenter.dx + loopRadius * 0.4,
+      rightCenter.dy - loopRadius * 0.6,
+      rightCenter.dx + loopRadius * 0.7,
+      rightCenter.dy - loopRadius * 0.2,
+      rightLeft.dx,
+      rightLeft.dy - loopRadius * 0.3,
+    );
+    
+    // Connect back to left loop (top curve) - smooth transition
+    path.cubicTo(
+      center.dx + spacing * 0.3,
+      center.dy - loopRadius * 0.4,
+      center.dx - spacing * 0.3,
+      center.dy - loopRadius * 0.4,
+      leftRight.dx,
+      leftRight.dy - loopRadius * 0.3,
+    );
+    
+    // Left loop - left side
+    path.cubicTo(
+      leftCenter.dx - loopRadius * 0.7,
+      leftCenter.dy - loopRadius * 0.2,
+      leftCenter.dx - loopRadius * 0.4,
+      leftCenter.dy - loopRadius * 0.6,
+      leftTop.dx,
+      leftTop.dy,
+    );
+    
+    path.close();
+    
+    // Draw with gradient fill
+    final fillPaint = Paint()
+      ..shader = isLocked
+          ? null
+          : gradient.createShader(Rect.fromLTWH(0, 0, size.width, size.height))
+      ..color = isLocked ? const Color(0xFF555555) : Colors.transparent
+      ..style = PaintingStyle.fill;
+    
+    canvas.drawPath(path, fillPaint);
+    
+    // Add inner highlight for 3D effect
+    if (!isLocked) {
+      final highlightPath = Path();
+      highlightPath.addOval(Rect.fromCircle(
+        center: Offset(center.dx - spacing * 0.5, center.dy - loopRadius * 0.3),
+        radius: loopRadius * 0.3,
+      ));
+      
+      final highlightPaint = Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withOpacity(0.4),
+            Colors.transparent,
+          ],
+        ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
+        ..style = PaintingStyle.fill;
+      
+      canvas.drawPath(highlightPath, highlightPaint);
+    }
+    
+    // Add stroke for definition
+    final strokePaint = Paint()
+      ..color = isLocked
+          ? const Color(0xFF888888)
+          : Colors.white.withOpacity(0.3)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5 * scale
+      ..strokeJoin = StrokeJoin.round;
+    
+    canvas.drawPath(path, strokePaint);
+    
+    // Draw level number or checkmark
+    if (isCompleted) {
+      final checkPaint = Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3 * scale
+        ..strokeCap = StrokeCap.round;
+      
+      final checkPath = Path();
+      checkPath.moveTo(center.dx - 8 * scale, center.dy);
+      checkPath.lineTo(center.dx - 2 * scale, center.dy + 6 * scale);
+      checkPath.lineTo(center.dx + 8 * scale, center.dy - 6 * scale);
+      canvas.drawPath(checkPath, checkPaint);
+    } else if (levelNumber != null && !isLocked) {
+      final textPainter = TextPainter(
+        text: TextSpan(
+          text: '$levelNumber',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 14 * scale,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        textAlign: TextAlign.center,
+        textDirection: TextDirection.ltr,
+      );
+      textPainter.layout();
+      textPainter.paint(
+        canvas,
+        Offset(
+          center.dx - textPainter.width / 2,
+          center.dy - textPainter.height / 2,
+        ),
+      );
+    } else if (isLocked) {
+      // Draw lock icon
+      final lockPaint = Paint()
+        ..color = const Color(0xFF999999)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2 * scale;
+      
+      // Simple lock shape
+      canvas.drawRect(
+        Rect.fromCenter(
+          center: Offset(center.dx, center.dy + 2 * scale),
+          width: 8 * scale,
+          height: 8 * scale,
+        ),
+        lockPaint,
+      );
+      canvas.drawArc(
+        Rect.fromCenter(
+          center: Offset(center.dx, center.dy - 2 * scale),
+          width: 8 * scale,
+          height: 8 * scale,
+        ),
+        math.pi,
+        math.pi,
+        false,
+        lockPaint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _InfinityBadgePainter oldDelegate) {
+    return oldDelegate.tierName != tierName ||
+        oldDelegate.isLocked != isLocked ||
+        oldDelegate.isCompleted != isCompleted ||
+        oldDelegate.levelNumber != levelNumber;
+  }
 }
 
 class _MedalBadge extends StatelessWidget {
@@ -2088,18 +3384,6 @@ enum _SymbolType {
   mobius,
   radiantStar,
   mythicCrest,
-}
-
-int _currentLevelIndex(List<_LevelInfo> levels, int xp) {
-  var index = 0;
-  for (var i = 0; i < levels.length; i++) {
-    if (xp >= levels[i].xpRequired) {
-      index = i;
-    } else {
-      break;
-    }
-  }
-  return index;
 }
 
 _LeaderboardItem? _findRank(List<_LeaderboardItem> entries, int rank) {
