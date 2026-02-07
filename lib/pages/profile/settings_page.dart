@@ -35,6 +35,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   // Profile data
   Map<String, dynamic>? _profile;
   bool _isLoadingProfile = true;
+  bool _isAccountDetailsExpanded = false;
 
   @override
   void initState() {
@@ -167,7 +168,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final themeMode = ref.watch(themeModeProvider);
     final profileImages = ref.watch(profileImagesProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? colorScheme.surface : const Color(0xFFFFF3E0);
+    final bg = isDark 
+        ? Colors.black // Total black
+        : Colors.grey.shade100; // Light grey
 
     return Scaffold(
       backgroundColor: bg,
@@ -196,12 +199,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             avatarUrl: _profile?['avatar_url'] as String?,
             name: _isLoadingProfile ? 'Loading...' : _displayName,
             username: _isLoadingProfile ? '@loading' : '@$_username',
-            onRefresh: _loadProfile,
+            isExpanded: _isAccountDetailsExpanded,
+            onToggleExpanded: () {
+              setState(() {
+                _isAccountDetailsExpanded = !_isAccountDetailsExpanded;
+              });
+            },
           ),
           const SizedBox(height: 16),
           
-          // Account Details Section (shows all signup flow details)
-          if (!_isLoadingProfile && _profile != null) ...[
+          // Account Details Section (shows all signup flow details - collapsible)
+          if (_isAccountDetailsExpanded && !_isLoadingProfile && _profile != null) ...[
             _AccountDetailsSection(profile: _profile!),
             const SizedBox(height: 16),
           ],
@@ -310,17 +318,20 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             },
             style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 14),
-              foregroundColor: colorScheme.error,
+              foregroundColor: Colors.white,
               side: BorderSide.none,
-              backgroundColor: colorScheme.error.withOpacity(0.1),
+              backgroundColor: colorScheme.error,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
             ),
-            icon: const Icon(Icons.logout),
+            icon: const Icon(Icons.logout, color: Colors.white),
             label: const Text(
               'Logout',
-              style: TextStyle(fontWeight: FontWeight.w700),
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
             ),
           ),
         ],
@@ -453,7 +464,7 @@ class _AppearanceRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final selected = _indexFromMode(themeMode);
-    const bg = Color(0xFFFFE0B2); // light orange
+    final bg = Colors.grey.withOpacity(0.3); // grey
 
     Widget seg(int index, IconData icon) {
       final isSelected = index == selected;
@@ -515,14 +526,16 @@ class _ProfileSection extends StatelessWidget {
   final String? avatarUrl;
   final String name;
   final String username;
-  final VoidCallback? onRefresh;
+  final bool isExpanded;
+  final VoidCallback? onToggleExpanded;
 
   const _ProfileSection({
     required this.profileImagePath,
     this.avatarUrl,
     required this.name,
     required this.username,
-    this.onRefresh,
+    this.isExpanded = false,
+    this.onToggleExpanded,
   });
 
   @override
@@ -590,11 +603,13 @@ class _ProfileSection extends StatelessWidget {
               ],
             ),
           ),
-          if (onRefresh != null)
+          if (onToggleExpanded != null)
             IconButton(
-              icon: const Icon(Icons.refresh_rounded),
-              onPressed: onRefresh,
-              tooltip: 'Refresh profile',
+              icon: Icon(
+                isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+              ),
+              onPressed: onToggleExpanded,
+              tooltip: isExpanded ? 'Hide account details' : 'Show account details',
             ),
         ],
       ),
@@ -627,46 +642,18 @@ class _AccountDetailsSection extends StatelessWidget {
     return dob.toString();
   }
 
-  double _calculateBMI() {
-    final heightCm = (profile['height_cm'] as num?)?.toDouble();
-    final weightKg = (profile['weight_kg'] as num?)?.toDouble();
-    if (heightCm == null || weightKg == null || heightCm <= 0 || weightKg <= 0) {
-      return 0.0;
-    }
-    final heightMeters = heightCm / 100.0;
-    return weightKg / (heightMeters * heightMeters);
-  }
-
-  String _getBMIStatus(double bmi) {
-    if (bmi == 0.0) return '';
-    if (bmi < 18.5) return 'Underweight';
-    if (bmi < 25) return 'Normal';
-    if (bmi < 30) return 'Overweight';
-    return 'Obese';
-  }
-
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     final heightCm = (profile['height_cm'] as num?)?.toInt();
     final weightKg = (profile['weight_kg'] as num?)?.toDouble();
     final dob = profile['date_of_birth'];
     final gender = profile['gender'] as String?;
     final phone = profile['phone'] as String?;
     final email = profile['email'] as String?;
-    final username = profile['username'] as String?;
-    final role = profile['role'] as String?;
-    final bmi = _calculateBMI();
-    final bmiStatus = _getBMIStatus(bmi);
 
     return _SettingsGroup(
       title: 'Account Details',
       children: [
-        _DetailRow(
-          label: 'User ID',
-          value: username ?? 'Not set',
-          icon: Icons.alternate_email_rounded,
-        ),
         _DetailRow(
           label: 'Email',
           value: email ?? 'Not set',
@@ -677,57 +664,24 @@ class _AccountDetailsSection extends StatelessWidget {
           value: phone ?? 'Not set',
           icon: Icons.phone_outlined,
         ),
-        _DetailRow(
-          label: 'Role',
-          value: role?.toUpperCase() ?? 'Not set',
-          icon: Icons.person_outline,
+        _CombinedDetailRow(
+          leftLabel: 'Date of Birth',
+          leftValue: _formatDateOfBirth(dob),
+          leftIcon: Icons.calendar_today_outlined,
+          rightLabel: 'Gender',
+          rightValue: gender ?? 'Not set',
+          rightIcon: Icons.wc_outlined,
         ),
-        if (dob != null || gender != null) ...[
-          const Divider(height: 1),
-          if (dob != null)
-            _DetailRow(
-              label: 'Date of Birth',
-              value: _formatDateOfBirth(dob),
-              icon: Icons.calendar_today_outlined,
-            ),
-          if (gender != null)
-            _DetailRow(
-              label: 'Gender',
-              value: gender,
-              icon: Icons.wc_outlined,
-            ),
-        ],
-        if (heightCm != null || weightKg != null) ...[
-          const Divider(height: 1),
-          if (heightCm != null)
-            _DetailRow(
-              label: 'Height',
-              value: '$heightCm cm',
-              icon: Icons.height,
-            ),
-          if (weightKg != null)
-            _DetailRow(
-              label: 'Weight',
-              value: '${weightKg.toStringAsFixed(1)} kg',
-              icon: Icons.monitor_weight_outlined,
-            ),
-          if (bmi > 0)
-            _DetailRow(
-              label: 'BMI',
-              value: '${bmi.toStringAsFixed(1)} ($bmiStatus)',
-              icon: Icons.favorite_outline,
-              valueColor: _getBMIColor(bmi, colorScheme),
-            ),
-        ],
+        _CombinedDetailRow(
+          leftLabel: 'Height',
+          leftValue: heightCm != null ? '$heightCm cm' : 'Not set',
+          leftIcon: Icons.height,
+          rightLabel: 'Weight',
+          rightValue: weightKg != null ? '${weightKg.toStringAsFixed(1)} kg' : 'Not set',
+          rightIcon: Icons.monitor_weight_outlined,
+        ),
       ],
     );
-  }
-
-  Color _getBMIColor(double bmi, ColorScheme colorScheme) {
-    if (bmi < 18.5) return Colors.blue;
-    if (bmi < 25) return Colors.green;
-    if (bmi < 30) return Colors.orange;
-    return Colors.red;
   }
 }
 
@@ -774,6 +728,104 @@ class _DetailRow extends StatelessWidget {
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
                     color: textColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CombinedDetailRow extends StatelessWidget {
+  final String leftLabel;
+  final String leftValue;
+  final IconData leftIcon;
+  final String rightLabel;
+  final String rightValue;
+  final IconData rightIcon;
+
+  const _CombinedDetailRow({
+    required this.leftLabel,
+    required this.leftValue,
+    required this.leftIcon,
+    required this.rightLabel,
+    required this.rightValue,
+    required this.rightIcon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Row(
+        children: [
+          // Left field
+          Expanded(
+            child: Row(
+              children: [
+                Icon(leftIcon, color: colorScheme.onSurface.withOpacity(0.7), size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        leftLabel,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: colorScheme.onSurface.withOpacity(0.6),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        leftValue,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: colorScheme.onSurface,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          // Right field
+          Expanded(
+            child: Row(
+              children: [
+                Icon(rightIcon, color: colorScheme.onSurface.withOpacity(0.7), size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        rightLabel,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: colorScheme.onSurface.withOpacity(0.6),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        rightValue,
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: colorScheme.onSurface,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],

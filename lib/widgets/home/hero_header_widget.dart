@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../theme/design_tokens.dart';
 import '../common/glass_card.dart';
 
@@ -34,11 +35,14 @@ class HeroHeaderWidget extends StatelessWidget {
           // Cover Image or Gradient
           Positioned.fill(
             child: coverImageUrl != null && coverImageUrl!.isNotEmpty
-                ? Image.network(
-                    coverImageUrl!,
+                ? CachedNetworkImage(
+                    imageUrl: coverImageUrl!,
                     fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) =>
-                        _buildGradientFallback(),
+                    placeholder: (context, url) => _buildGradientFallback(),
+                    errorWidget: (context, url, error) {
+                      print('HeroHeader: Error loading cover image: $error');
+                      return _buildGradientFallback();
+                    },
                   )
                 : _buildGradientFallback(),
           ),
@@ -107,11 +111,14 @@ class HeroHeaderWidget extends StatelessWidget {
                 ),
                 child: ClipOval(
                   child: avatarUrl != null && avatarUrl!.isNotEmpty
-                      ? Image.network(
-                          avatarUrl!,
+                      ? CachedNetworkImage(
+                          imageUrl: avatarUrl!,
                           fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) =>
-                              _buildAvatarPlaceholder(),
+                          placeholder: (context, url) => _buildAvatarPlaceholder(),
+                          errorWidget: (context, url, error) {
+                            print('HeroHeader: Error loading avatar: $error');
+                            return _buildAvatarPlaceholder();
+                          },
                         )
                       : _buildAvatarPlaceholder(),
                 ),

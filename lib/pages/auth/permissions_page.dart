@@ -123,13 +123,28 @@ class _PermissionsPageState extends State<PermissionsPage> {
         bool? hasPermissions = await health.hasPermissions(types);
         
         if (hasPermissions == false) {
-          hasPermissions = await health.requestAuthorization(types);
+          try {
+            hasPermissions = await health.requestAuthorization(types);
+          } catch (e) {
+            // Handle "Permission launcher not found" error gracefully
+            // This happens when the health package can't open system settings
+            // User can still grant permission manually through app settings
+            print('Health permission request error (non-critical): $e');
+            // Try to open app settings as fallback
+            try {
+              await openAppSettings();
+            } catch (_) {
+              // Ignore if we can't open settings either
+            }
+            hasPermissions = false;
+          }
         }
         
         status = hasPermissions == true 
             ? PermissionStatus.granted 
             : PermissionStatus.denied;
       } catch (e) {
+        print('Error checking health permissions: $e');
         status = PermissionStatus.denied;
       }
     } else if (item.permission == Permission.location) {

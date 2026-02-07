@@ -43,7 +43,16 @@ class HealthTrackingService {
       bool? hasPermissions = await _health!.hasPermissions(_healthDataTypes);
 
       if (hasPermissions == false) {
-        hasPermissions = await _health!.requestAuthorization(_healthDataTypes);
+        try {
+          hasPermissions = await _health!.requestAuthorization(_healthDataTypes);
+        } catch (e) {
+          // Handle "Permission launcher not found" error gracefully
+          // This happens when the health package can't open system settings
+          // The permission can still be granted manually through app settings
+          print('Health permission request error (non-critical): $e');
+          // Continue - user can grant permission manually if needed
+          hasPermissions = false;
+        }
       }
 
       if (hasPermissions == true) {

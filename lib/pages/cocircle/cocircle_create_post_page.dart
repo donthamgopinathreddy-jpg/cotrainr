@@ -2,7 +2,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../widgets/common/modern_input_box.dart';
+import '../../services/storage_service.dart';
+import '../../repositories/profile_repository.dart';
 
 class CocircleCreatePostPage extends StatefulWidget {
   const CocircleCreatePostPage({super.key});
@@ -14,10 +17,39 @@ class CocircleCreatePostPage extends StatefulWidget {
 class _CocircleCreatePostPageState extends State<CocircleCreatePostPage> {
   final TextEditingController _textController = TextEditingController();
   final ImagePicker _imagePicker = ImagePicker();
+  final StorageService _storageService = StorageService();
+  final ProfileRepository _profileRepo = ProfileRepository();
+  
   XFile? _selectedMedia;
   bool _isImage = false;
   bool _isVideo = false;
   bool _isProcessing = false;
+  bool _isPosting = false;
+  
+  String? _username;
+  String? _fullName;
+  String? _avatarUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserProfile();
+  }
+
+  Future<void> _loadUserProfile() async {
+    try {
+      final profile = await _profileRepo.fetchMyProfile();
+      if (profile != null && mounted) {
+        setState(() {
+          _username = profile['username'] as String?;
+          _fullName = profile['full_name'] as String?;
+          _avatarUrl = profile['avatar_url'] as String?;
+        });
+      }
+    } catch (e) {
+      print('Error loading user profile: $e');
+    }
+  }
 
   Future<void> _openGallery() async {
     if (!mounted || _isProcessing) return;
@@ -305,15 +337,28 @@ class _CocircleCreatePostPageState extends State<CocircleCreatePostPage> {
                   shape: BoxShape.circle,
                   gradient: cocircleGradient,
                 ),
-                child: Icon(Icons.person,
-                    color: Colors.white, size: 24),
+                child: _avatarUrl != null && _avatarUrl!.isNotEmpty
+                    ? ClipOval(
+                        child: Image.network(
+                          _avatarUrl!,
+                          width: 44,
+                          height: 44,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => Icon(
+                            Icons.person,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                        ),
+                      )
+                    : Icon(Icons.person, color: Colors.white, size: 24),
               ),
               const SizedBox(width: 12),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'gopinath',
+                    _fullName ?? _username ?? 'User',
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
@@ -321,7 +366,7 @@ class _CocircleCreatePostPageState extends State<CocircleCreatePostPage> {
                     ),
                   ),
                   Text(
-                    '@alexjohnson',
+                    _username != null ? '@$_username' : '',
                     style: TextStyle(
                       fontSize: 12,
                       color: colorScheme.onSurface.withOpacity(0.55),
@@ -433,11 +478,7 @@ class _CocircleCreatePostPageState extends State<CocircleCreatePostPage> {
               ),
               const Spacer(),
               GestureDetector(
-                onTap: () {
-                  HapticFeedback.mediumImpact();
-                  // TODO: Handle post submission
-                  Navigator.pop(context);
-                },
+                onTap: _isPosting ? null : _createPost,
                 child: Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
@@ -445,14 +486,23 @@ class _CocircleCreatePostPageState extends State<CocircleCreatePostPage> {
                     gradient: cocircleGradient,
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Text(
-                    'Post',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                    ),
-                  ),
+                  child: _isPosting
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : const Text(
+                          'Post',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
                 ),
               ),
             ],
@@ -489,6 +539,96 @@ class _CocircleCreatePostPageState extends State<CocircleCreatePostPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _createPost() async {
+    if (_textController.text.trim().isEmpty && _selectedMedia == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please add text or media to your post'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() => _isPosting = true);
+    HapticFeedback.mediumImpact();
+
+    // Store navigator reference before async operations
+    final navigator = Navigator.of(context, rootNavigator: false);
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+    try {
+      final supabase = Supabase.instance.client;
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null) {
+        throw Exception('User not authenticated');
+      }
+
+      // Create post
+      final postResponse = await supabase
+          .from('posts')
+          .insert({
+            'author_id': userId,
+            'content': _textController.text.trim(),
+            'visibility': 'public',
+          })
+          .select('id')
+          .single();
+
+      final postId = postResponse['id'] as String;
+
+      // Upload media if selected
+      if (_selectedMedia != null) {
+        final mediaFile = File(_selectedMedia!.path);
+        final mediaUrl = await _storageService.uploadPostMedia(
+          mediaFile,
+          isVideo: _isVideo,
+        );
+
+        if (mediaUrl != null && mounted) {
+          // Insert post media record
+          await supabase.from('post_media').insert({
+            'post_id': postId,
+            'media_url': mediaUrl,
+            'media_kind': _isVideo ? 'video' : 'image',
+            'order_index': 0,
+          });
+        }
+      }
+
+      // Check mounted before using context-dependent operations
+      if (mounted) {
+        scaffoldMessenger.showSnackBar(
+          const SnackBar(
+            content: Text('Post created successfully!'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+        // Small delay to ensure snackbar is shown before navigation
+        await Future.delayed(const Duration(milliseconds: 100));
+        if (mounted) {
+          navigator.pop(true); // Return true to indicate post was created
+        }
+      }
+    } catch (e) {
+      print('Error creating post: $e');
+      if (mounted) {
+        scaffoldMessenger.showSnackBar(
+          SnackBar(
+            content: Text('Error creating post: ${e.toString()}'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isPosting = false);
+      }
+    }
   }
 
   @override

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_colors.dart';
 import '../common/pressable_card.dart';
 import '../common/follow_button.dart';
+import '../../repositories/posts_repository.dart';
 
 class CocircleFeedCard extends StatefulWidget {
   final dynamic post; // CocircleFeedPost
@@ -40,8 +42,10 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
   bool _showHeart = false;
   bool _showComments = false;
   bool _isCommentFocused = false;
+  bool _isLoadingComments = false;
   final TextEditingController _commentTextController = TextEditingController();
   final List<Map<String, dynamic>> _comments = [];
+  final PostsRepository _postsRepo = PostsRepository();
 
   @override
   void initState() {
@@ -81,29 +85,40 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
     super.dispose();
   }
 
-  void _loadComments() {
-    // TODO: Load comments from API
-    // For now, using sample data
-    setState(() {
-      _comments.addAll([
-        {
-          'id': '1',
-          'userId': 'user1',
-          'userName': 'John Doe',
-          'avatarUrl': null,
-          'text': 'Great post! Keep it up! 👏',
-          'timestamp': DateTime.now().subtract(const Duration(hours: 2)),
-        },
-        {
-          'id': '2',
-          'userId': 'user2',
-          'userName': 'Jane Smith',
-          'avatarUrl': null,
-          'text': 'Love this! Thanks for sharing.',
-          'timestamp': DateTime.now().subtract(const Duration(hours: 5)),
-        },
-      ]);
-    });
+  Future<void> _loadComments() async {
+    if (_isLoadingComments) return;
+    
+    setState(() => _isLoadingComments = true);
+    
+    try {
+      final comments = await _postsRepo.fetchComments(widget.post.id);
+      
+      if (mounted) {
+        setState(() {
+          _comments.clear();
+          // Transform comments to match expected format
+          for (final comment in comments) {
+            final profile = comment['profiles'] as Map<String, dynamic>?;
+            _comments.add({
+              'id': comment['id'] as String,
+              'userId': comment['author_id'] as String,
+              'userName': profile?['full_name'] as String? ?? 
+                          profile?['username'] as String? ?? 
+                          'User',
+              'avatarUrl': profile?['avatar_url'] as String?,
+              'text': comment['content'] as String,
+              'timestamp': DateTime.parse(comment['created_at'] as String),
+            });
+          }
+          _isLoadingComments = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading comments: $e');
+      if (mounted) {
+        setState(() => _isLoadingComments = false);
+      }
+    }
   }
 
   void _toggleComments() {
@@ -112,28 +127,79 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
       if (_showComments) {
         _commentController.forward();
         widget.onComment?.call();
+        // Load comments when opening
+        if (_comments.isEmpty) {
+          _loadComments();
+        }
       } else {
         _commentController.reverse();
       }
     });
   }
 
-  void _submitComment() {
+  Future<void> _submitComment() async {
     final text = _commentTextController.text.trim();
     if (text.isEmpty) return;
 
+    // Optimistic update
+    final tempId = DateTime.now().millisecondsSinceEpoch.toString();
+    final currentUser = Supabase.instance.client.auth.currentUser;
+    final currentUserId = currentUser?.id ?? 'current_user';
+    
     setState(() {
       _comments.insert(0, {
-        'id': DateTime.now().millisecondsSinceEpoch.toString(),
-        'userId': 'current_user',
+        'id': tempId,
+        'userId': currentUserId,
         'userName': 'You',
         'avatarUrl': null,
         'text': text,
         'timestamp': DateTime.now(),
       });
+      widget.post.commentCount += 1;
       _commentTextController.clear();
     });
-    // TODO: Submit comment to API
+
+    try {
+      // Submit to database
+      final comment = await _postsRepo.createComment(widget.post.id, text);
+      
+      // Update with real comment data
+      if (mounted) {
+        final profile = comment['profiles'] as Map<String, dynamic>?;
+        setState(() {
+          // Remove temp comment
+          _comments.removeWhere((c) => c['id'] == tempId);
+          // Add real comment
+          _comments.insert(0, {
+            'id': comment['id'] as String,
+            'userId': comment['author_id'] as String,
+            'userName': profile?['full_name'] as String? ?? 
+                        profile?['username'] as String? ?? 
+                        'User',
+            'avatarUrl': profile?['avatar_url'] as String?,
+            'text': comment['content'] as String,
+            'timestamp': DateTime.parse(comment['created_at'] as String),
+          });
+          // Update comment count (already incremented in DB)
+        });
+      }
+    } catch (e) {
+      print('Error submitting comment: $e');
+      // Revert optimistic update
+      if (mounted) {
+        setState(() {
+          _comments.removeWhere((c) => c['id'] == tempId);
+          widget.post.commentCount -= 1;
+          _commentTextController.text = text; // Restore text
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error posting comment: ${e.toString()}'),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        });
+      }
+    }
   }
 
   void _showHeartAnimation() {
@@ -153,25 +219,39 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
     final colorScheme = Theme.of(context).colorScheme;
     final hasMedia = widget.post.mediaUrl != null;
 
-    return Column(
+    // Tile design - compact card
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // Header - Clean, minimal
+          // 1. HEADER - Name on top
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
             child: Row(
               children: [
                 // Avatar
                 GestureDetector(
                   onTap: widget.onProfileTap,
                   child: Container(
-                    width: 48,
-                    height: 48,
+                    width: 32,
+                    height: 32,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: _cocircleGradient,
                     ),
-                    padding: const EdgeInsets.all(2.5),
+                    padding: const EdgeInsets.all(2),
                     child: Container(
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
@@ -187,15 +267,14 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
                           ? Icon(
                               Icons.person,
                               color: colorScheme.onSurface.withValues(alpha: 0.6),
-                              size: 24,
+                              size: 16,
                             )
                           : null,
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
-                
-                // User Info
+                const SizedBox(width: 8),
+                // User name
                 Expanded(
                   child: GestureDetector(
                     onTap: widget.onProfileTap,
@@ -206,47 +285,29 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
                         Text(
                           widget.post.userName,
                           style: TextStyle(
-                            fontSize: 16,
+                            fontSize: 14,
                             fontWeight: FontWeight.w700,
                             color: colorScheme.onSurface,
-                            letterSpacing: -0.3,
                           ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
                         ),
-                        const SizedBox(height: 2),
-                        Row(
-                          children: [
-                            Text(
-                              '@${widget.post.userId}',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: colorScheme.onSurface.withValues(alpha: 0.6),
-                              ),
+                        // Only show user ID if NOT own post
+                        if (!widget.isOwnPost)
+                          Text(
+                            '@${widget.post.userId}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: colorScheme.onSurface.withValues(alpha: 0.5),
                             ),
-                            const SizedBox(width: 6),
-                            Container(
-                              width: 3,
-                              height: 3,
-                              decoration: BoxDecoration(
-                                color: colorScheme.onSurface.withValues(alpha: 0.4),
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              _formatTime(widget.post.timestamp),
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: colorScheme.onSurface.withValues(alpha: 0.6),
-                              ),
-                            ),
-                          ],
-                        ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
                       ],
                     ),
                   ),
                 ),
-                
-                // Actions
+                // Follow button (only if not own post)
                 if (!widget.isOwnPost)
                   FollowButton(
                     isFollowing: widget.isFollowing,
@@ -256,58 +317,51 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
             ),
           ),
 
-          // Caption - Above media for better readability
-          if (widget.post.caption.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: Text(
-                widget.post.caption,
-                style: TextStyle(
-                  fontSize: 15,
-                  color: colorScheme.onSurface.withValues(alpha: 0.9),
-                  height: 1.5,
-                  letterSpacing: -0.2,
-                ),
-              ),
-            ),
-
-          // Media - Full width
+          // 2. MEDIA - Picture in the middle
           if (hasMedia)
-            GestureDetector(
-              onDoubleTap: () {
-                widget.onDoubleTap?.call();
-                _showHeartAnimation();
-              },
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Container(
-                    width: double.infinity,
-                    constraints: const BoxConstraints(
-                      minHeight: 500,
-                      maxHeight: 700,
-                    ),
-                    child: Image(
-                      image: CachedNetworkImageProvider(widget.post.mediaUrl!),
-                      fit: BoxFit.cover,
-                      width: double.infinity,
-                      height: double.infinity,
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
-                          height: 500,
-                          color: colorScheme.surfaceContainerHighest,
-                          child: Center(
-                            child: Icon(
-                              Icons.broken_image,
-                              size: 64,
-                              color: colorScheme.onSurface.withValues(alpha: 0.3),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(0), // No border radius for middle section
+              child: GestureDetector(
+                onDoubleTap: () {
+                  widget.onDoubleTap?.call();
+                  _showHeartAnimation();
+                },
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    AspectRatio(
+                      aspectRatio: 1,
+                      child: widget.post.mediaType == 'video'
+                          ? Container(
+                              color: Colors.black,
+                              child: Center(
+                                child: Icon(
+                                  Icons.play_circle_filled,
+                                  size: 48,
+                                  color: Colors.white.withValues(alpha: 0.9),
+                                ),
+                              ),
+                            )
+                          : Image(
+                              image: CachedNetworkImageProvider(widget.post.mediaUrl!),
+                              fit: BoxFit.cover,
+                              width: double.infinity,
+                              height: double.infinity,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Container(
+                                  color: colorScheme.surfaceContainerHighest,
+                                  child: Center(
+                                    child: Icon(
+                                      Icons.broken_image,
+                                      size: 32,
+                                      color: colorScheme.onSurface.withValues(alpha: 0.3),
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
-                          ),
-                        );
-                      },
                     ),
-                  ),
-                  if (_showHeart)
+                    if (_showHeart)
                       ScaleTransition(
                         scale: Tween<double>(begin: 0.0, end: 1.3).animate(
                           CurvedAnimation(
@@ -319,7 +373,7 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
                           shaderCallback: (bounds) => _cocircleGradient.createShader(bounds),
                           child: const Icon(
                             Icons.favorite,
-                            size: 120,
+                            size: 80,
                             color: Colors.white,
                           ),
                         ),
@@ -327,44 +381,86 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
                   ],
                 ),
               ),
+            ),
 
-          // Actions Bar - Modern, spacious
+          // 3. ACTIONS BAR - Like, comment, and badge at bottom
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-            child: Row(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildActionButton(
-                  icon: widget.post.isLiked ? Icons.favorite : Icons.favorite_border,
-                  count: widget.post.likeCount,
-                  isActive: widget.post.isLiked,
-                  onTap: widget.onLike,
-                  useGradient: true,
-                ),
-                const SizedBox(width: 24),
-                _buildActionButton(
-                  icon: _showComments ? Icons.chat_bubble : Icons.chat_bubble_outline,
-                  count: widget.post.commentCount,
-                  onTap: _toggleComments,
-                ),
-                const Spacer(),
-                // Role Badge (if applicable) - aligned with comment box
-                if (widget.post.userRole.isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: AppColors.blue.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(16),
+                // Caption (if exists)
+                if (widget.post.caption.isNotEmpty) ...[
+                  Text(
+                    widget.post.caption,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: colorScheme.onSurface.withValues(alpha: 0.9),
+                      height: 1.4,
                     ),
-                    child: Text(
-                      widget.post.userRole,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                // Time
+                Row(
+                  children: [
+                    Icon(
+                      Icons.access_time,
+                      size: 12,
+                      color: colorScheme.onSurface.withValues(alpha: 0.5),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      _formatTime(widget.post.timestamp),
                       style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.blue,
-                        letterSpacing: 0.5,
+                        fontSize: 11,
+                        color: colorScheme.onSurface.withValues(alpha: 0.5),
                       ),
                     ),
-                  ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                // Actions: Like, Comment, Badge
+                Row(
+                  children: [
+                    _buildActionButton(
+                      icon: widget.post.isLiked ? Icons.favorite : Icons.favorite_border,
+                      count: widget.post.likeCount,
+                      isActive: widget.post.isLiked,
+                      onTap: widget.onLike,
+                      useGradient: true,
+                      compact: true,
+                    ),
+                    const SizedBox(width: 12),
+                    _buildActionButton(
+                      icon: _showComments ? Icons.chat_bubble : Icons.chat_bubble_outline,
+                      count: widget.post.commentCount,
+                      onTap: _toggleComments,
+                      compact: true,
+                    ),
+                    const Spacer(),
+                    // Role Badge
+                    if (widget.post.userRole.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppColors.blue.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          widget.post.userRole,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.blue,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -384,6 +480,7 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
             child: _showComments ? _buildCommentsSection() : const SizedBox.shrink(),
           ),
         ],
+      ),
     );
   }
 
@@ -401,7 +498,17 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
         mainAxisSize: MainAxisSize.min,
         children: [
           // Comments List
-          if (_comments.isNotEmpty)
+          if (_isLoadingComments)
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Center(
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: colorScheme.primary,
+                ),
+              ),
+            )
+          else if (_comments.isNotEmpty)
             Container(
               constraints: const BoxConstraints(maxHeight: 300),
               child: ListView.builder(
@@ -628,6 +735,7 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
     VoidCallback? onTap,
     bool isActive = false,
     bool useGradient = false,
+    bool compact = false,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     
@@ -639,7 +747,7 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
         shaderCallback: (bounds) => _cocircleGradient.createShader(bounds),
         child: Icon(
           icon,
-          size: 26,
+          size: compact ? 20 : 26,
           color: Colors.white,
         ),
       );
@@ -651,29 +759,31 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
       iconWidget = Icon(
         icon,
         color: iconColor,
-        size: 26,
+        size: compact ? 20 : 26,
       );
       textColor = iconColor;
     }
 
     return PressableCard(
       onTap: onTap,
-      borderRadius: 24,
+      borderRadius: compact ? 16 : 24,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: compact 
+            ? const EdgeInsets.symmetric(horizontal: 8, vertical: 6)
+            : const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             iconWidget,
             if (count > 0) ...[
-              const SizedBox(width: 8),
+              SizedBox(width: compact ? 4 : 8),
               isActive && useGradient
                   ? ShaderMask(
                       shaderCallback: (bounds) => _cocircleGradient.createShader(bounds),
                       child: Text(
                         _formatCount(count),
-                        style: const TextStyle(
-                          fontSize: 15,
+                        style: TextStyle(
+                          fontSize: compact ? 12 : 15,
                           color: Colors.white,
                           fontWeight: FontWeight.w600,
                           letterSpacing: -0.2,
@@ -683,7 +793,7 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
                   : Text(
                       _formatCount(count),
                       style: TextStyle(
-                        fontSize: 15,
+                        fontSize: compact ? 12 : 15,
                         color: textColor,
                         fontWeight: FontWeight.w600,
                         letterSpacing: -0.2,

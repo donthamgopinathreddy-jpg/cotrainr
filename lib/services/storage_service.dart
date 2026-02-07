@@ -22,8 +22,8 @@ class StorageService {
     try {
       // Generate unique filename
       final extension = path.extension(imageFile.path);
-      final fileName = '${_currentUserId}_${DateTime.now().millisecondsSinceEpoch}$extension';
-      final filePath = 'avatars/$fileName';
+      // Store in user-specific folder: {userId}/avatar.{ext}
+      final filePath = '$_currentUserId/avatar$extension';
 
       // Read file bytes
       final bytes = await imageFile.readAsBytes();
@@ -57,8 +57,8 @@ class StorageService {
     try {
       // Generate unique filename
       final extension = path.extension(imageFile.path);
-      final fileName = '${_currentUserId}_${DateTime.now().millisecondsSinceEpoch}$extension';
-      final filePath = 'covers/$fileName';
+      // Store in user-specific folder: {userId}/cover.{ext}
+      final filePath = '$_currentUserId/cover$extension';
 
       // Read file bytes
       final bytes = await imageFile.readAsBytes();
@@ -121,6 +121,46 @@ class StorageService {
     } catch (e) {
       print('Error deleting old cover image: $e');
       // Don't throw - deletion is best effort
+    }
+  }
+
+  /// Upload post media (image or video) to Supabase Storage
+  /// Returns the public URL of the uploaded media
+  Future<String?> uploadPostMedia(File mediaFile, {required bool isVideo}) async {
+    if (_currentUserId == null) {
+      throw Exception('User not authenticated');
+    }
+
+    try {
+      // Generate unique filename
+      final extension = path.extension(mediaFile.path);
+      final fileName = '${DateTime.now().millisecondsSinceEpoch}$extension';
+      // Store in user-specific folder: {userId}/{timestamp}.{ext}
+      final filePath = '$_currentUserId/$fileName';
+
+      // Read file bytes
+      final bytes = await mediaFile.readAsBytes();
+
+      // Determine content type
+      final contentType = isVideo ? 'video/mp4' : 'image/jpeg';
+
+      // Upload to Supabase Storage
+      // Use 'posts' bucket (you may need to create this bucket in Supabase)
+      await _supabase.storage.from('posts').uploadBinary(
+        filePath,
+        bytes,
+        fileOptions: FileOptions(
+          upsert: true,
+          contentType: contentType,
+        ),
+      );
+
+      // Get public URL
+      final url = _supabase.storage.from('posts').getPublicUrl(filePath);
+      return url;
+    } catch (e) {
+      print('Error uploading post media: $e');
+      rethrow;
     }
   }
 }

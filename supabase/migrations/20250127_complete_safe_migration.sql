@@ -144,6 +144,7 @@ CREATE TABLE public.profiles (
   username_lower TEXT NOT NULL,        -- derived lower(username)
   full_name TEXT,
   avatar_url TEXT,
+  cover_url TEXT,
   bio TEXT,
   phone TEXT,
   date_of_birth DATE,
@@ -665,14 +666,43 @@ BEGIN
     RAISE EXCEPTION 'Username already exists';
   END IF;
 
-  INSERT INTO public.profiles (id, role, email, username, username_lower, full_name)
+  INSERT INTO public.profiles (
+    id, 
+    role, 
+    email, 
+    username, 
+    username_lower, 
+    full_name,
+    phone,
+    date_of_birth,
+    gender,
+    height_cm,
+    weight_kg
+  )
   VALUES (
     NEW.id,
     'client'::public.user_role,
     NEW.email,
     v_username,
     v_username_lower,
-    COALESCE(NEW.raw_user_meta_data->>'full_name', '')
+    COALESCE(NEW.raw_user_meta_data->>'full_name', ''),
+    NULLIF(NEW.raw_user_meta_data->>'phone', ''),
+    CASE 
+      WHEN NEW.raw_user_meta_data->>'dob' IS NOT NULL 
+      THEN (NEW.raw_user_meta_data->>'dob')::DATE
+      ELSE NULL
+    END,
+    NULLIF(NEW.raw_user_meta_data->>'gender', ''),
+    CASE 
+      WHEN NEW.raw_user_meta_data->>'height_cm' IS NOT NULL 
+      THEN (NEW.raw_user_meta_data->>'height_cm')::INTEGER
+      ELSE NULL
+    END,
+    CASE 
+      WHEN NEW.raw_user_meta_data->>'weight_kg' IS NOT NULL 
+      THEN (NEW.raw_user_meta_data->>'weight_kg')::NUMERIC(5, 2)
+      ELSE NULL
+    END
   );
 
   RETURN NEW;
@@ -805,6 +835,7 @@ ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
 -- Drop policies (rerunnable)
 DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles;
+DROP POLICY IF EXISTS "Authenticated can view basic profiles" ON public.profiles;
 DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
 
@@ -863,9 +894,14 @@ DROP POLICY IF EXISTS "Anyone can view leaderboard" ON public.leaderboard_points
 DROP POLICY IF EXISTS "Users can view own notifications" ON public.notifications;
 DROP POLICY IF EXISTS "Users can update own notifications" ON public.notifications;
 
--- Profiles (self-only)
+-- Profiles: users can view own profile + basic info of other users (for social features)
 CREATE POLICY "Users can view own profile" ON public.profiles
 FOR SELECT USING (auth.uid() = id);
+
+-- Allow authenticated users to view basic profile info of others (for Cocircle, posts, etc.)
+CREATE POLICY "Authenticated can view basic profiles" ON public.profiles
+FOR SELECT TO authenticated
+USING (true);
 
 CREATE POLICY "Users can update own profile" ON public.profiles
 FOR UPDATE USING (auth.uid() = id);

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:crop_your_image/crop_your_image.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../providers/profile_images_provider.dart';
 import '../../services/storage_service.dart';
 import '../../repositories/profile_repository.dart';
@@ -30,13 +31,99 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   String _selectedGender = 'Male';
   final List<String> _genders = ['Male', 'Female', 'Other'];
   
+  // Unit toggles: true = metric (cm/kg), false = imperial (ft/in/lb)
+  bool _useMetricHeight = true;
+  bool _useMetricWeight = true;
+  
+  // Additional controllers for imperial units
+  final _heightFeetController = TextEditingController();
+  final _heightInchesController = TextEditingController();
+  
   final StorageService _storageService = StorageService();
   final ProfileRepository _profileRepo = ProfileRepository();
   bool _isLoading = false;
   bool _isUploadingImage = false;
-  
-  String? _pendingProfileImagePath;
-  String? _pendingCoverImagePath;
+  bool _isInitializing = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfileData();
+  }
+
+  Future<void> _loadProfileData() async {
+    setState(() => _isInitializing = true);
+    try {
+      final profile = await _profileRepo.fetchMyProfile();
+      if (profile != null && mounted) {
+        // Parse full_name into first and last name
+        final fullName = profile['full_name'] as String? ?? '';
+        final nameParts = fullName.split(' ');
+        if (nameParts.isNotEmpty) {
+          _firstNameController.text = nameParts.first;
+          if (nameParts.length > 1) {
+            _lastNameController.text = nameParts.sublist(1).join(' ');
+          }
+        }
+
+        // Set other fields
+        _userIdController.text = profile['username'] as String? ?? '';
+        _emailController.text = profile['email'] as String? ?? '';
+        _phoneController.text = profile['phone'] as String? ?? '';
+        
+        // Date of birth
+        final dob = profile['date_of_birth'];
+        if (dob != null) {
+          // Handle both string and DateTime formats
+          if (dob is String) {
+            _dobController.text = dob;
+          } else if (dob is DateTime) {
+            _dobController.text = '${dob.year}-${dob.month.toString().padLeft(2, '0')}-${dob.day.toString().padLeft(2, '0')}';
+          }
+        }
+
+        // Gender
+        final gender = profile['gender'] as String?;
+        if (gender != null && _genders.contains(gender)) {
+          _selectedGender = gender;
+        }
+
+        // Height and weight - always load in metric, will convert if user toggles
+        final height = profile['height_cm'] as int?;
+        if (height != null) {
+          _heightController.text = height.toString();
+        }
+        final weight = profile['weight_kg'];
+        if (weight != null) {
+          _weightController.text = weight.toString();
+        }
+
+        // Load profile images
+        final avatarUrl = profile['avatar_url'] as String?;
+        final coverUrl = profile['cover_url'] as String?;
+        if (avatarUrl != null && avatarUrl.isNotEmpty) {
+          ref.read(profileImagesProvider.notifier).updateProfileImage(avatarUrl);
+        }
+        if (coverUrl != null && coverUrl.isNotEmpty) {
+          ref.read(profileImagesProvider.notifier).updateCoverImage(coverUrl);
+        }
+      }
+    } catch (e) {
+      print('Error loading profile data: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading profile: $e'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isInitializing = false);
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -49,6 +136,8 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
     _dobController.dispose();
     _heightController.dispose();
     _weightController.dispose();
+    _heightFeetController.dispose();
+    _heightInchesController.dispose();
     super.dispose();
   }
 
@@ -70,9 +159,6 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
       );
       
       if (croppedPath != null && mounted) {
-        setState(() {
-          _pendingProfileImagePath = croppedPath;
-        });
         ref.read(profileImagesProvider.notifier).updateProfileImage(croppedPath);
         // Upload immediately
         await _uploadProfileImage(File(croppedPath));
@@ -98,9 +184,6 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
       );
       
       if (croppedPath != null && mounted) {
-        setState(() {
-          _pendingCoverImagePath = croppedPath;
-        });
         ref.read(profileImagesProvider.notifier).updateCoverImage(croppedPath);
         // Upload immediately
         await _uploadCoverImage(File(croppedPath));
@@ -129,10 +212,68 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
     );
   }
 
+  void _convertHeightUnits(bool toMetric) {
+    if (toMetric) {
+      // Convert from feet/inches to cm
+      final feet = int.tryParse(_heightFeetController.text.trim()) ?? 0;
+      final inches = int.tryParse(_heightInchesController.text.trim()) ?? 0;
+      if (feet > 0 || inches > 0) {
+        final totalInches = (feet * 12) + inches;
+        final heightCm = (totalInches * 2.54).round();
+        _heightController.text = heightCm.toString();
+      }
+    } else {
+      // Convert from cm to feet/inches
+      final heightCm = int.tryParse(_heightController.text.trim());
+      if (heightCm != null && heightCm > 0) {
+        final totalInches = (heightCm / 2.54).round();
+        final feet = totalInches ~/ 12;
+        final inches = totalInches % 12;
+        _heightFeetController.text = feet.toString();
+        _heightInchesController.text = inches.toString();
+      }
+    }
+  }
+
+  void _convertWeightUnits(bool toMetric) {
+    if (toMetric) {
+      // Convert from lbs to kg
+      final weightLb = double.tryParse(_weightController.text.trim());
+      if (weightLb != null && weightLb > 0) {
+        final weightKg = weightLb * 0.453592;
+        _weightController.text = weightKg.toStringAsFixed(1);
+      }
+    } else {
+      // Convert from kg to lbs
+      final weightKg = double.tryParse(_weightController.text.trim());
+      if (weightKg != null && weightKg > 0) {
+        final weightLb = weightKg / 0.453592;
+        _weightController.text = weightLb.toStringAsFixed(1);
+      }
+    }
+  }
+
   Future<void> _selectDate(BuildContext context) async {
+    // Parse existing date if available
+    DateTime initialDate = DateTime(1990, 1, 15);
+    if (_dobController.text.isNotEmpty) {
+      try {
+        final parts = _dobController.text.split('-');
+        if (parts.length == 3) {
+          initialDate = DateTime(
+            int.parse(parts[0]),
+            int.parse(parts[1]),
+            int.parse(parts[2]),
+          );
+        }
+      } catch (e) {
+        // Use default if parsing fails
+      }
+    }
+
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: DateTime(1990, 1, 15),
+      initialDate: initialDate,
       firstDate: DateTime(1900),
       lastDate: DateTime.now(),
     );
@@ -202,20 +343,109 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   }
 
   Future<void> _saveProfile() async {
-    if (_formKey.currentState!.validate()) {
-      HapticFeedback.lightImpact();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Profile saved successfully'),
-          duration: Duration(seconds: 1),
-        ),
-      );
-      // Auto dismiss after 1 second and navigate back to settings
-      Future.delayed(const Duration(seconds: 1), () {
-        if (mounted) {
-          Navigator.pop(context); // Go back to settings
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
+    HapticFeedback.lightImpact();
+
+    try {
+      // Combine first and last name into full_name
+      final fullName = '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}'.trim();
+
+      // Prepare update data
+      final updates = <String, dynamic>{
+        'full_name': fullName,
+        'phone': _phoneController.text.trim(),
+        'gender': _selectedGender,
+      };
+
+      // Add date of birth if provided
+      if (_dobController.text.isNotEmpty) {
+        updates['date_of_birth'] = _dobController.text.trim();
+      }
+
+      // Add height if provided (always convert to cm for storage)
+      if (_useMetricHeight) {
+        if (_heightController.text.isNotEmpty) {
+          final height = int.tryParse(_heightController.text.trim());
+          if (height != null) {
+            updates['height_cm'] = height;
+          }
         }
-      });
+      } else {
+        // Convert from feet and inches to cm
+        final feet = int.tryParse(_heightFeetController.text.trim()) ?? 0;
+        final inches = int.tryParse(_heightInchesController.text.trim()) ?? 0;
+        if (feet > 0 || inches > 0) {
+          final totalInches = (feet * 12) + inches;
+          final heightCm = (totalInches * 2.54).round();
+          updates['height_cm'] = heightCm;
+        }
+      }
+
+      // Add weight if provided (always convert to kg for storage)
+      if (_useMetricWeight) {
+        if (_weightController.text.isNotEmpty) {
+          final weight = double.tryParse(_weightController.text.trim());
+          if (weight != null) {
+            updates['weight_kg'] = weight;
+          }
+        }
+      } else {
+        // Convert from lbs to kg
+        if (_weightController.text.isNotEmpty) {
+          final weightLb = double.tryParse(_weightController.text.trim());
+          if (weightLb != null) {
+            final weightKg = weightLb * 0.453592;
+            updates['weight_kg'] = weightKg;
+          }
+        }
+      }
+
+      // Update profile in Supabase
+      await _profileRepo.updateProfile(updates);
+
+      // Handle password change if provided
+      if (_passwordController.text.isNotEmpty) {
+        try {
+          final supabase = Supabase.instance.client;
+          await supabase.auth.updateUser(
+            UserAttributes(password: _passwordController.text.trim()),
+          );
+        } catch (e) {
+          print('Error updating password: $e');
+          // Continue even if password update fails
+        }
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profile saved successfully'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+        // Navigate back after a short delay
+        Future.delayed(const Duration(seconds: 1), () {
+          if (mounted) {
+            Navigator.pop(context);
+          }
+        });
+      }
+    } catch (e) {
+      print('Error saving profile: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving profile: $e'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -243,43 +473,53 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
         ),
         actions: [
           TextButton(
-            onPressed: _saveProfile,
-            child: Text(
-              'Save',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: colorScheme.primary,
-              ),
-            ),
+            onPressed: _isLoading ? null : _saveProfile,
+            child: _isLoading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Text(
+                    'Save',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: colorScheme.primary,
+                    ),
+                  ),
           ),
         ],
       ),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            // Profile and Cover Photo Section
-            Row(
+      body: _isInitializing
+          ? const Center(child: CircularProgressIndicator())
+          : Stack(
               children: [
-                Expanded(
-                  child: _PhotoSelector(
-                    label: 'Profile Photo',
-                    imagePath: profileImages.profileImagePath,
-                    onTap: _pickProfileImage,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _PhotoSelector(
-                    label: 'Cover Photo',
-                    imagePath: profileImages.coverImagePath,
-                    onTap: _pickCoverImage,
-                  ),
-                ),
-              ],
-            ),
+                Form(
+                  key: _formKey,
+                  child: ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      // Profile and Cover Photo Section
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _PhotoSelector(
+                              label: 'Profile Photo',
+                              imagePath: profileImages.profileImagePath,
+                              onTap: _isUploadingImage ? () {} : () => _pickProfileImage(),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: _PhotoSelector(
+                              label: 'Cover Photo',
+                              imagePath: profileImages.coverImagePath,
+                              onTap: _isUploadingImage ? () {} : () => _pickCoverImage(),
+                            ),
+                          ),
+                        ],
+                      ),
             const SizedBox(height: 24),
             // First Name
             _FormField(
@@ -377,44 +617,62 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
               onChanged: (value) => setState(() => _selectedGender = value),
             ),
             const SizedBox(height: 16),
-            // Height and Weight Row
-            Row(
-              children: [
-                Expanded(
-                  child: _FormField(
-                    controller: _heightController,
-                    label: 'Height (cm)',
-                    icon: Icons.height,
-                    keyboardType: TextInputType.number,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Required';
-                      }
-                      return null;
-                    },
+            // Height Field with Unit Toggle
+            _HeightWeightField(
+              label: 'Height',
+              icon: Icons.height,
+              useMetric: _useMetricHeight,
+              metricController: _heightController,
+              imperialFeetController: _heightFeetController,
+              imperialInchesController: _heightInchesController,
+              onUnitToggle: (useMetric) {
+                setState(() {
+                  _useMetricHeight = useMetric;
+                  _convertHeightUnits(useMetric);
+                });
+              },
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'Required';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+            // Weight Field with Unit Toggle
+            _HeightWeightField(
+              label: 'Weight',
+              icon: Icons.monitor_weight_outlined,
+              useMetric: _useMetricWeight,
+              metricController: _weightController,
+              imperialFeetController: null,
+              imperialInchesController: null,
+              onUnitToggle: (useMetric) {
+                setState(() {
+                  _useMetricWeight = useMetric;
+                  _convertWeightUnits(useMetric);
+                });
+              },
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'Required';
+                }
+                return null;
+              },
+            ),
+                      const SizedBox(height: 24),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _FormField(
-                    controller: _weightController,
-                    label: 'Weight (kg)',
-                    icon: Icons.monitor_weight_outlined,
-                    keyboardType: TextInputType.number,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Required';
-                      }
-                      return null;
-                    },
+                if (_isUploadingImage)
+                  Container(
+                    color: Colors.black.withOpacity(0.3),
+                    child: const Center(
+                      child: CircularProgressIndicator(),
+                    ),
                   ),
-                ),
               ],
             ),
-            const SizedBox(height: 24),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -786,6 +1044,155 @@ class _GenderSelector extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _HeightWeightField extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool useMetric;
+  final TextEditingController metricController;
+  final TextEditingController? imperialFeetController;
+  final TextEditingController? imperialInchesController;
+  final ValueChanged<bool> onUnitToggle;
+  final String? Function(String?)? validator;
+
+  const _HeightWeightField({
+    required this.label,
+    required this.icon,
+    required this.useMetric,
+    required this.metricController,
+    this.imperialFeetController,
+    this.imperialInchesController,
+    required this.onUnitToggle,
+    this.validator,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isHeight = imperialFeetController != null && imperialInchesController != null;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Label and Toggle
+        Padding(
+          padding: const EdgeInsets.only(left: 16, bottom: 8),
+          child: Row(
+            children: [
+              Icon(icon, size: 20, color: colorScheme.onSurface.withOpacity(0.7)),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: colorScheme.onSurface.withOpacity(0.7),
+                ),
+              ),
+              const Spacer(),
+              // Unit Toggle
+              Container(
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _UnitToggleButton(
+                      label: isHeight ? 'cm' : 'kg',
+                      isSelected: useMetric,
+                      onTap: () => onUnitToggle(true),
+                    ),
+                    _UnitToggleButton(
+                      label: isHeight ? 'ft/in' : 'lb',
+                      isSelected: !useMetric,
+                      onTap: () => onUnitToggle(false),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Input Fields
+        if (isHeight && !useMetric)
+          // Height in feet and inches
+          Row(
+            children: [
+              Expanded(
+                child: _FormField(
+                  controller: imperialFeetController!,
+                  label: 'Feet',
+                  icon: Icons.height,
+                  keyboardType: TextInputType.number,
+                  validator: validator,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _FormField(
+                  controller: imperialInchesController!,
+                  label: 'Inches',
+                  icon: Icons.height,
+                  keyboardType: TextInputType.number,
+                  validator: validator,
+                ),
+              ),
+            ],
+          )
+        else
+          // Single input field (metric or weight in lbs)
+          _FormField(
+            controller: metricController,
+            label: useMetric
+                ? (isHeight ? 'Height (cm)' : 'Weight (kg)')
+                : (isHeight ? 'Height' : 'Weight (lb)'),
+            icon: icon,
+            keyboardType: TextInputType.number,
+            validator: validator,
+          ),
+      ],
+    );
+  }
+}
+
+class _UnitToggleButton extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _UnitToggleButton({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? colorScheme.primary : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: isSelected ? Colors.white : colorScheme.onSurface,
+          ),
+        ),
+      ),
     );
   }
 }

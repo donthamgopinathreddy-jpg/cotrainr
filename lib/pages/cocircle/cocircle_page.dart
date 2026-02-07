@@ -7,6 +7,7 @@ import '../../theme/design_tokens.dart';
 import '../../widgets/cocircle/cocircle_feed_card.dart';
 import '../../utils/page_transitions.dart';
 import '../../repositories/posts_repository.dart';
+import '../../repositories/profile_repository.dart';
 import 'cocircle_create_post_page.dart';
 import 'user_profile_page.dart';
 
@@ -31,14 +32,9 @@ class _CocircleSearchBarState extends State<_CocircleSearchBar> {
   final TextEditingController _controller = TextEditingController();
   final LayerLink _layerLink = LayerLink();
   OverlayEntry? _overlayEntry;
-  List<Map<String, String>> _searchResults = [];
-  final List<Map<String, String>> _allUsers = [
-    {'userId': 'fitness_john', 'userName': 'John Doe'},
-    {'userId': 'trainer_sarah', 'userName': 'Sarah Johnson'},
-    {'userId': 'nutritionist_mike', 'userName': 'Dr. Mike Chen'},
-    {'userId': 'client_emma', 'userName': 'Emma Wilson'},
-    {'userId': 'trainer_alex', 'userName': 'Alex Martinez'},
-  ];
+  List<Map<String, dynamic>> _searchResults = [];
+  List<Map<String, dynamic>> _allUsers = [];
+  final ProfileRepository _profileRepo = ProfileRepository();
 
   @override
   void initState() {
@@ -57,8 +53,29 @@ class _CocircleSearchBarState extends State<_CocircleSearchBar> {
     super.dispose();
   }
 
+  Future<void> _loadUsers() async {
+    try {
+      final users = await _profileRepo.searchUsers(_controller.text);
+      setState(() {
+        _allUsers = users
+            .map(
+              (u) => <String, dynamic>{
+                'userId': u['id'] as String,
+                'userName':
+                    (u['full_name'] as String?) ??
+                    (u['username'] as String? ?? 'User'),
+                'username': u['username'] as String?,
+              },
+            )
+            .toList();
+      });
+    } catch (e) {
+      print('Error loading users: $e');
+    }
+  }
+
   void _onSearchChanged() {
-    final query = _controller.text.toLowerCase().trim();
+    final query = _controller.text.trim();
     if (query.isEmpty) {
       setState(() {
         _searchResults = [];
@@ -67,19 +84,27 @@ class _CocircleSearchBarState extends State<_CocircleSearchBar> {
       return;
     }
 
-    setState(() {
-      _searchResults = _allUsers.where((user) {
-        final userId = user['userId']!.toLowerCase();
-        final userName = user['userName']!.toLowerCase();
-        return userId.contains(query) || userName.contains(query);
-      }).toList();
-    });
+    // Load users from database
+    _loadUsers().then((_) {
+      if (!mounted) return;
+      setState(() {
+        _searchResults = _allUsers.where((user) {
+          final userId = (user['userId']?.toString() ?? '').toLowerCase();
+          final userName = (user['userName']?.toString() ?? '').toLowerCase();
+          final username = (user['username']?.toString() ?? '').toLowerCase();
+          final searchTerm = query.toLowerCase();
+          return userId.contains(searchTerm) ||
+              userName.contains(searchTerm) ||
+              username.contains(searchTerm);
+        }).toList();
+      });
 
-    if (_searchResults.isNotEmpty && _focusNode.hasFocus) {
-      _showOverlay();
-    } else {
-      _removeOverlay();
-    }
+      if (_searchResults.isNotEmpty && _focusNode.hasFocus) {
+        _showOverlay();
+      } else {
+        _removeOverlay();
+      }
+    });
   }
 
   void _onFocusChanged() {
@@ -137,10 +162,21 @@ class _CocircleSearchBarState extends State<_CocircleSearchBar> {
                         final user = _searchResults[index];
                         return InkWell(
                           onTap: () {
-                            _controller.text = user['userName']!;
+                            _controller.text =
+                                user['userName']?.toString() ?? '';
                             _focusNode.unfocus();
                             _removeOverlay();
-                            // TODO: Navigate to user profile
+                            // Navigate to user profile
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => UserProfilePage(
+                                  isOwnProfile: false,
+                                  userId: user['userId']?.toString(),
+                                  userName: user['userName']?.toString(),
+                                ),
+                              ),
+                            );
                           },
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
@@ -158,17 +194,20 @@ class _CocircleSearchBarState extends State<_CocircleSearchBar> {
                                   ),
                                   child: Icon(
                                     Icons.person,
-                                    color: colorScheme.onSurface.withValues(alpha: 0.6),
+                                    color: colorScheme.onSurface.withValues(
+                                      alpha: 0.6,
+                                    ),
                                     size: 20,
                                   ),
                                 ),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        user['userName']!,
+                                        user['userName']?.toString() ?? 'User',
                                         style: TextStyle(
                                           fontSize: 15,
                                           fontWeight: FontWeight.w600,
@@ -177,10 +216,13 @@ class _CocircleSearchBarState extends State<_CocircleSearchBar> {
                                       ),
                                       const SizedBox(height: 2),
                                       Text(
-                                        '@${user['userId']!}',
+                                        user['username'] != null
+                                            ? '@${user['username']}'
+                                            : '',
                                         style: TextStyle(
                                           fontSize: 13,
-                                          color: colorScheme.onSurface.withValues(alpha: 0.6),
+                                          color: colorScheme.onSurface
+                                              .withValues(alpha: 0.6),
                                         ),
                                       ),
                                     ],
@@ -241,7 +283,10 @@ class _CocircleSearchBarState extends State<_CocircleSearchBar> {
               disabledBorder: InputBorder.none,
               errorBorder: InputBorder.none,
               focusedErrorBorder: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 18,
+                vertical: 16,
+              ),
             ),
           ),
         ),
@@ -287,26 +332,28 @@ class _CocirclePageState extends State<CocirclePage>
   Future<void> _loadRealData() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
-    
+
     try {
       final posts = await _postsRepo.fetchRecentPosts(limit: 20);
+      print('Loaded ${posts.length} posts from repository');
       if (!mounted) return;
 
       final cocirclePosts = <CocircleFeedPost>[];
-      
+
       for (final post in posts) {
         // Get post media
         final media = await _postsRepo.fetchPostMedia(post['id'] as String);
         final firstMedia = media.isNotEmpty ? media.first : null;
-        
+
         // Get author info
         final author = post['profiles'] as Map<String, dynamic>?;
         final authorId = post['author_id'] as String;
         final authorUsername = author?['username'] as String? ?? 'user';
-        final authorFullName = author?['full_name'] as String? ?? authorUsername;
+        final authorFullName =
+            author?['full_name'] as String? ?? authorUsername;
         final authorAvatar = author?['avatar_url'] as String?;
         final authorRole = author?['role'] as String? ?? 'client';
-        
+
         // Get like status (check if current user liked this post)
         final supabase = Supabase.instance.client;
         final userId = supabase.auth.currentUser?.id;
@@ -325,21 +372,26 @@ class _CocirclePageState extends State<CocirclePage>
           }
         }
 
-        cocirclePosts.add(CocircleFeedPost(
-          id: post['id'] as String,
-          userId: authorId,
-          userName: authorFullName,
-          userRole: authorRole.toUpperCase(),
-          avatarUrl: authorAvatar,
-          timestamp: DateTime.parse(post['created_at'] as String),
-          mediaUrl: firstMedia?['media_url'] as String?,
-          mediaType: firstMedia?['media_kind'] as String? ?? 'image',
-          caption: post['content'] as String? ?? '',
-          likeCount: (post['likes_count'] as int?) ?? 0,
-          commentCount: (post['comments_count'] as int?) ?? 0,
-          shareCount: 0, // Not tracked in current schema
-          isLiked: isLiked,
-        ));
+        final mediaKind = firstMedia?['media_kind'] as String?;
+        final isVideo = mediaKind == 'video';
+
+        cocirclePosts.add(
+          CocircleFeedPost(
+            id: post['id'] as String,
+            userId: authorId,
+            userName: authorFullName,
+            userRole: authorRole.toUpperCase(),
+            avatarUrl: authorAvatar,
+            timestamp: DateTime.parse(post['created_at'] as String),
+            mediaUrl: firstMedia?['media_url'] as String?,
+            mediaType: isVideo ? 'video' : 'image',
+            caption: post['content'] as String? ?? '',
+            likeCount: (post['likes_count'] as int?) ?? 0,
+            commentCount: (post['comments_count'] as int?) ?? 0,
+            shareCount: 0, // Not tracked in current schema
+            isLiked: isLiked,
+          ),
+        );
       }
 
       if (mounted) {
@@ -375,97 +427,102 @@ class _CocirclePageState extends State<CocirclePage>
         opacity: _fadeAnimation,
         child: SafeArea(
           child: RefreshIndicator(
-          onRefresh: _onRefresh,
-          color: const Color(0xFF8B5CF6), // Purple from gradient
-          child: CustomScrollView(
-            controller: _scrollController,
-            physics: const BouncingScrollPhysics(),
-            slivers: [
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.only(
-                    left: DesignTokens.spacing16,
-                    right: DesignTokens.spacing16,
-                    top: DesignTokens.spacing12,
-                  ),
-                  child: Column(
-                    children: [
-                      _CocircleHeaderRow(
-                      onAddTap: () {
-                      HapticFeedback.selectionClick();
-                      Navigator.push(
-                        context,
-                        PageTransitions.slideRoute(
-                          const CocircleCreatePostPage(),
-                          beginOffset: const Offset(0, 0.05),
+            onRefresh: _onRefresh,
+            color: const Color(0xFF8B5CF6), // Purple from gradient
+            child: CustomScrollView(
+              controller: _scrollController,
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.only(
+                      left: DesignTokens.spacing16,
+                      right: DesignTokens.spacing16,
+                      top: DesignTokens.spacing12,
+                    ),
+                    child: Column(
+                      children: [
+                        _CocircleHeaderRow(
+                          onAddTap: () async {
+                            HapticFeedback.selectionClick();
+                            final result = await Navigator.push(
+                              context,
+                              PageTransitions.slideRoute(
+                                const CocircleCreatePostPage(),
+                                beginOffset: const Offset(0, 0.05),
+                              ),
+                            );
+                            // Reload posts if a new post was created
+                            if (result == true) {
+                              await _loadRealData();
+                            }
+                          },
+                          onProfileTap: () {
+                            HapticFeedback.selectionClick();
+                            Navigator.push(
+                              context,
+                              PageTransitions.slideRoute(
+                                const UserProfilePage(),
+                                beginOffset: const Offset(0, 0.05),
+                              ),
+                            );
+                          },
                         ),
-                      );
-                      },
-                      onProfileTap: () {
-                        HapticFeedback.selectionClick();
-                        Navigator.push(
-                          context,
-                          PageTransitions.slideRoute(
-                            const UserProfilePage(),
-                            beginOffset: const Offset(0, 0.05),
+                        const SizedBox(height: DesignTokens.spacing16),
+                        const _CocircleSearchBar(
+                          hintText: 'Search by User ID or name...',
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                    ),
+                  ),
+                ),
+                if (_isLoading)
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.all(32.0),
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                  ),
+                // Empty state
+                if (!_isLoading && _posts.isEmpty)
+                  SliverToBoxAdapter(child: _buildEmptyState()),
+                // Posts list - Single tile per row, continuous scrolling
+                if (!_isLoading && _posts.isNotEmpty)
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate((context, index) {
+                        final post = _posts[index];
+                        return Padding(
+                          padding: EdgeInsets.only(
+                            bottom: index < _posts.length - 1 ? 12 : 0,
+                          ),
+                          child: CocircleFeedCard(
+                            post: post,
+                            onLike: () => _toggleLike(post.id),
+                            onComment: () => _openComments(post.id),
+                            onShare: () => _sharePost(post.id),
+                            onDoubleTap: () => _handleDoubleTap(post.id),
+                            onFollow: () => _toggleFollow(post.userId),
+                            onProfileTap: () =>
+                                _openProfile(post.userId, post.userName),
+                            isFollowing: _followingUserIds.contains(
+                              post.userId,
+                            ),
+                            isOwnPost: post.userId == _currentUserId,
                           ),
                         );
-                      },
+                      }, childCount: _posts.length),
                     ),
-                    const SizedBox(height: DesignTokens.spacing16),
-                    const _CocircleSearchBar(
-                      hintText: 'Search by User ID or name...',
-                    ),
-                    const SizedBox(height: 8),
-                  ],
-                ),
-              ),
+                  ),
+                // Bottom padding
+                const SliverToBoxAdapter(child: SizedBox(height: 100)),
+              ],
             ),
-            if (_isLoading)
-              const SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.all(32.0),
-                  child: Center(child: CircularProgressIndicator()),
-                ),
-              )
-            else if (_posts.isEmpty)
-              SliverToBoxAdapter(child: _buildEmptyState())
-            else
-              SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final post = _posts[index];
-                    return Column(
-                      children: [
-                        CocircleFeedCard(
-                          post: post,
-                          onLike: () => _toggleLike(post.id),
-                          onComment: () => _openComments(post.id),
-                          onShare: () => _sharePost(post.id),
-                          onDoubleTap: () => _handleDoubleTap(post.id),
-                          onFollow: () => _toggleFollow(post.userId),
-                          onProfileTap: () => _openProfile(post.userId, post.userName),
-                          isFollowing: _followingUserIds.contains(post.userId),
-                          isOwnPost: post.userId == _currentUserId,
-                        ),
-                        if (index < _posts.length - 1)
-                          Divider(
-                            height: 1,
-                            thickness: 0.5,
-                            color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.08),
-                          ),
-                      ],
-                    );
-                  },
-                  childCount: _posts.length,
-                ),
-              ),
-            const SliverToBoxAdapter(
-              child: SizedBox(height: 100),
-            ),
-          ],
-        ),
-        ),
+          ),
         ),
       ),
     );
@@ -506,37 +563,69 @@ class _CocirclePageState extends State<CocirclePage>
     );
   }
 
-  void _toggleLike(String postId) {
+  Future<void> _toggleLike(String postId) async {
+    HapticFeedback.lightImpact();
+
+    // Optimistic update
     setState(() {
       final post = _posts.firstWhere((p) => p.id == postId);
       post.isLiked = !post.isLiked;
       post.likeCount += post.isLiked ? 1 : -1;
     });
-    HapticFeedback.lightImpact();
+
+    try {
+      // Update in database
+      final result = await _postsRepo.toggleLike(postId);
+
+      // Update with actual result from database
+      if (mounted) {
+        setState(() {
+          final post = _posts.firstWhere((p) => p.id == postId);
+          post.isLiked = result['isLiked'] as bool;
+          post.likeCount = result['likeCount'] as int;
+        });
+      }
+    } catch (e) {
+      // Revert on error
+      if (mounted) {
+        setState(() {
+          final post = _posts.firstWhere((p) => p.id == postId);
+          post.isLiked = !post.isLiked;
+          post.likeCount += post.isLiked ? 1 : -1;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error updating like: ${e.toString()}'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
   }
 
   void _openComments(String postId) {
     HapticFeedback.lightImpact();
-    // TODO: Open comments bottom sheet
+    // Comments are handled in CocircleFeedCard widget
+    // This is just a callback for analytics/tracking
   }
 
   void _sharePost(String postId) async {
     HapticFeedback.lightImpact();
     final post = _posts.firstWhere((p) => p.id == postId);
-    
+
     try {
       if (post.mediaUrl != null) {
         // Share image with caption
         await Share.shareXFiles(
           [XFile(post.mediaUrl!)],
-          text: post.caption.isNotEmpty 
-              ? '${post.userName}: ${post.caption}' 
+          text: post.caption.isNotEmpty
+              ? '${post.userName}: ${post.caption}'
               : 'Check out this post from ${post.userName} on Cocircle!',
         );
       } else {
         // Share text only
         await Share.share(
-          post.caption.isNotEmpty 
+          post.caption.isNotEmpty
               ? '${post.userName}: ${post.caption}\n\nShared from Cocircle'
               : 'Check out ${post.userName}\'s post on Cocircle!',
         );
@@ -606,11 +695,7 @@ class _CocircleHeaderRow extends StatelessWidget {
       children: [
         ShaderMask(
           shaderCallback: (rect) => cocircleGradient.createShader(rect),
-          child: Icon(
-            Icons.people_outline,
-            size: 26,
-            color: Colors.white,
-          ),
+          child: Icon(Icons.people_outline, size: 26, color: Colors.white),
         ),
         const SizedBox(width: 12),
         ShaderMask(
@@ -641,11 +726,7 @@ class _CocircleHeaderRow extends StatelessWidget {
           onPressed: onAddTap,
           icon: ShaderMask(
             shaderCallback: (rect) => cocircleGradient.createShader(rect),
-            child: Icon(
-              Icons.add,
-              color: Colors.white,
-              size: 26,
-            ),
+            child: Icon(Icons.add, color: Colors.white, size: 26),
           ),
         ),
       ],
@@ -685,4 +766,3 @@ class CocircleFeedPost {
     this.isLiked = false,
   });
 }
-

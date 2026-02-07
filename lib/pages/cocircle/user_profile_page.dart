@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../widgets/common/follow_button.dart';
+import '../../repositories/profile_repository.dart';
+import '../../repositories/posts_repository.dart';
 
 class UserProfilePage extends StatefulWidget {
   final bool isOwnProfile;
@@ -20,19 +24,25 @@ class UserProfilePage extends StatefulWidget {
 }
 
 class _UserProfilePageState extends State<UserProfilePage> {
-  final TextEditingController _bioController = TextEditingController(
-    text: 'Fitness enthusiast on a journey to better health',
-  );
+  final TextEditingController _bioController = TextEditingController();
   final FocusNode _bioFocusNode = FocusNode();
+  final ProfileRepository _profileRepo = ProfileRepository();
+  final PostsRepository _postsRepo = PostsRepository();
+  
   bool _isEditingBio = false;
   int _selectedTabIndex = 0;
+  bool _isLoading = true;
   
-  // Mock data
-  final int _postCount = 1;
-  final int _followerCount = 3;
-  final int _followingCount = 0;
-  final int _level = 12;
-  final String _userHandle = '@alexjohnson';
+  List<Map<String, dynamic>> _userPosts = [];
+  String? _avatarUrl;
+  String? _username;
+  String? _fullName;
+  String? _bio;
+  int _postCount = 0;
+  int _followerCount = 0; // No followers table yet - will be implemented later
+  int _followingCount = 0; // No following table yet - will be implemented later
+  int _level = 1; // TODO: Get from user_profiles table
+  String? _currentUserId; // Store current user ID for delete check
   
   final cocircleGradient = const LinearGradient(
     colors: [Color(0xFF4DA3FF), Color(0xFF8B5CF6)],
@@ -41,10 +51,72 @@ class _UserProfilePageState extends State<UserProfilePage> {
   );
 
   @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  @override
   void dispose() {
     _bioController.dispose();
     _bioFocusNode.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadUserData() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+
+    try {
+      // Get current user ID
+      _currentUserId = Supabase.instance.client.auth.currentUser?.id;
+      
+      final userId = widget.userId ?? _currentUserId;
+      if (userId == null) {
+        if (mounted) setState(() => _isLoading = false);
+        return;
+      }
+
+      // Fetch user profile
+      final profile = await _profileRepo.fetchUserProfile(userId);
+      if (profile != null) {
+        _username = profile['username'] as String?;
+        _fullName = profile['full_name'] as String?;
+        _bio = profile['bio'] as String?;
+        _avatarUrl = profile['avatar_url'] as String?;
+        _bioController.text = _bio ?? '';
+      }
+
+      // Fetch user posts
+      print('Loading posts for user profile: $userId');
+      final posts = await _postsRepo.fetchUserPosts(userId);
+      print('Received ${posts.length} posts for user profile');
+      _userPosts = posts;
+      _postCount = posts.length;
+
+      // TODO: Fetch level from user_profiles table
+      try {
+        final userProfileResponse = await Supabase.instance.client
+            .from('user_profiles')
+            .select('level')
+            .eq('user_id', userId)
+            .maybeSingle();
+        if (userProfileResponse != null) {
+          _level = (userProfileResponse['level'] as int?) ?? 1;
+        }
+      } catch (e) {
+        // Ignore if user_profiles doesn't exist for this user
+      }
+
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      print('Error loading user data: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   void _toggleBioEdit() {
@@ -54,19 +126,42 @@ class _UserProfilePageState extends State<UserProfilePage> {
         _bioFocusNode.requestFocus();
       } else {
         _bioFocusNode.unfocus();
+        // Save bio if it's own profile
+        if (widget.isOwnProfile && _bioController.text != _bio) {
+          _saveBio();
+        }
       }
     });
+  }
+
+  Future<void> _saveBio() async {
+    try {
+      await _profileRepo.updateProfile({'bio': _bioController.text});
+      setState(() {
+        _bio = _bioController.text;
+      });
+    } catch (e) {
+      print('Error saving bio: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to save bio')),
+        );
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final backgroundColor = isDark
+        ? const Color(0xFF1A2335) // Dark blue-black mix
+        : const Color(0xFFE3F2FD); // Very light blue
 
     return Scaffold(
-      backgroundColor: colorScheme.surface,
+      backgroundColor: backgroundColor,
       appBar: AppBar(
-        backgroundColor: colorScheme.surface,
+        backgroundColor: backgroundColor,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
@@ -80,7 +175,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
           },
         ),
         title: Text(
-          widget.userName ?? 'gopinath',
+          _fullName ?? _username ?? widget.userName ?? 'User',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w700,
@@ -89,60 +184,98 @@ class _UserProfilePageState extends State<UserProfilePage> {
         ),
         centerTitle: false,
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            const SizedBox(height: 24),
-            // Profile Picture
-            Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: cocircleGradient,
-                boxShadow: [
-                  BoxShadow(
-                    color: colorScheme.shadow.withValues(alpha: 0.1),
-                    blurRadius: 20,
-                    offset: const Offset(0, 4),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: _loadUserData,
+              child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  const SizedBox(height: 24),
+                  // Profile Picture - shows real user avatar
+                  Container(
+                    width: 120,
+                    height: 120,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: cocircleGradient,
+                      boxShadow: [
+                        BoxShadow(
+                          color: colorScheme.shadow.withValues(alpha: 0.1),
+                          blurRadius: 20,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    padding: const EdgeInsets.all(3),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: colorScheme.surface,
+                      ),
+                      child: _avatarUrl != null && _avatarUrl!.isNotEmpty
+                          ? ClipOval(
+                              child: CachedNetworkImage(
+                                imageUrl: _avatarUrl!,
+                                width: 120,
+                                height: 120,
+                                fit: BoxFit.cover,
+                                placeholder: (context, url) => Container(
+                                  width: 120,
+                                  height: 120,
+                                  color: colorScheme.surfaceContainerHighest,
+                                  child: Icon(
+                                    Icons.person,
+                                    size: 60,
+                                    color: colorScheme.onSurface.withValues(alpha: 0.6),
+                                  ),
+                                ),
+                                errorWidget: (context, url, error) => Container(
+                                  width: 120,
+                                  height: 120,
+                                  color: colorScheme.surfaceContainerHighest,
+                                  child: Icon(
+                                    Icons.person,
+                                    size: 60,
+                                    color: colorScheme.onSurface.withValues(alpha: 0.6),
+                                  ),
+                                ),
+                              ),
+                            )
+                          : Container(
+                              width: 120,
+                              height: 120,
+                              color: colorScheme.surfaceContainerHighest,
+                              child: Icon(
+                                Icons.person,
+                                size: 60,
+                                color: colorScheme.onSurface.withValues(alpha: 0.6),
+                              ),
+                            ),
+                    ),
                   ),
-                ],
-              ),
-              padding: const EdgeInsets.all(3),
-              child: Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: colorScheme.surface,
-                ),
-                child: Icon(
-                  Icons.person,
-                  size: 60,
-                  color: colorScheme.onSurface.withValues(alpha: 0.6),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            // Username
-            Text(
-              widget.userName ?? 'gopinath',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w700,
-                color: colorScheme.onSurface,
-                letterSpacing: -0.5,
-              ),
-            ),
-            const SizedBox(height: 6),
-            // User Handle
-            Text(
-              _userHandle,
-              style: TextStyle(
-                fontSize: 14,
-                color: colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w400,
-              ),
-            ),
+                  const SizedBox(height: 16),
+                  // Username
+                  Text(
+                    _fullName ?? _username ?? widget.userName ?? 'User',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w700,
+                      color: colorScheme.onSurface,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  // User Handle
+                  Text(
+                    _username != null ? '@$_username' : '',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
             const SizedBox(height: 12),
             // Level Badge
             Container(
@@ -246,7 +379,216 @@ class _UserProfilePageState extends State<UserProfilePage> {
           ],
         ),
       ),
+            ),
     );
+  }
+
+  void _showFloatingPostView(Map<String, dynamic> post, int postIndex) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
+    // Handle post_media structure
+    final media = post['post_media'];
+    Map<String, dynamic>? firstMedia;
+    
+    if (media != null) {
+      if (media is List && media.isNotEmpty) {
+        firstMedia = media[0] as Map<String, dynamic>?;
+      } else if (media is Map) {
+        firstMedia = media as Map<String, dynamic>?;
+      }
+    }
+    
+    final mediaUrl = firstMedia?['media_url'] as String?;
+    if (mediaUrl == null || mediaUrl.isEmpty) return;
+
+    final postId = post['id'] as String;
+    final postAuthorId = post['author_id'] as String;
+    final isOwnPost = _currentUserId != null && postAuthorId == _currentUserId;
+
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.9),
+      barrierDismissible: true,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: GestureDetector(
+          onTap: () => Navigator.of(context).pop(),
+          child: Container(
+            width: MediaQuery.of(context).size.width,
+            height: MediaQuery.of(context).size.height,
+            color: Colors.transparent,
+            child: Stack(
+              children: [
+                // Full screen image
+                Center(
+                  child: GestureDetector(
+                    onTap: () => Navigator.of(context).pop(),
+                    child: InteractiveViewer(
+                      minScale: 0.5,
+                      maxScale: 4.0,
+                      child: CachedNetworkImage(
+                        imageUrl: mediaUrl,
+                        fit: BoxFit.contain,
+                        placeholder: (context, url) => Center(
+                          child: CircularProgressIndicator(
+                            color: colorScheme.primary,
+                          ),
+                        ),
+                        errorWidget: (context, url, error) => Center(
+                          child: Icon(
+                            Icons.error_outline,
+                            color: colorScheme.error,
+                            size: 48,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // Delete button (only for own posts, shown at top)
+                if (isOwnPost)
+                  Positioned(
+                    top: MediaQuery.of(context).padding.top + 16,
+                    right: 16,
+                    child: GestureDetector(
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        _showDeleteDialog(postId, postIndex);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.6),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.delete_outline,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                      ),
+                    ),
+                  ),
+                // Close button
+                Positioned(
+                  top: MediaQuery.of(context).padding.top + 16,
+                  left: 16,
+                  child: GestureDetector(
+                    onTap: () => Navigator.of(context).pop(),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.6),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.close,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showDeleteDialog(String postId, int postIndex) async {
+    final colorScheme = Theme.of(context).colorScheme;
+    
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: colorScheme.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        title: Text(
+          'Delete Post',
+          style: TextStyle(
+            color: colorScheme.onSurface,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        content: Text(
+          'Are you sure you want to delete this post? This action cannot be undone.',
+          style: TextStyle(
+            color: colorScheme.onSurface.withValues(alpha: 0.8),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: colorScheme.onSurface.withValues(alpha: 0.7)),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.red,
+            ),
+            child: const Text(
+              'Delete',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _deletePost(postId, postIndex);
+    }
+  }
+
+  Future<void> _deletePost(String postId, int postIndex) async {
+    try {
+      // Show loading indicator
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Deleting post...'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
+
+      // Delete from database
+      await _postsRepo.deletePost(postId);
+
+      // Remove from local list
+      if (mounted) {
+        setState(() {
+          _userPosts.removeAt(postIndex);
+          _postCount = _userPosts.length;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Post deleted successfully'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error deleting post: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error deleting post: ${e.toString()}'),
+            duration: const Duration(seconds: 3),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   Widget _buildTabContent(int index, ColorScheme colorScheme) {
@@ -263,94 +605,19 @@ class _UserProfilePageState extends State<UserProfilePage> {
   }
 
   Widget _buildPostsContent(ColorScheme colorScheme) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: GridView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          crossAxisSpacing: 4,
-          mainAxisSpacing: 4,
-          childAspectRatio: 1,
-        ),
-        itemCount: 1, // Show one post as in the image
-        itemBuilder: (context, index) {
-          return Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              color: colorScheme.surfaceContainerHighest,
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.orange.withValues(alpha: 0.3),
-                      Colors.purple.withValues(alpha: 0.3),
-                    ],
-                  ),
-                ),
-                child: Icon(
-                  Icons.image,
-                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-                  size: 32,
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildFollowersContent(ColorScheme colorScheme) {
-    final followers = [
-      {'name': 'Sarah Johnson', 'handle': '@sarahfit', 'userId': 'sarahfit', 'isFollowing': false},
-      {'name': 'Mike Chen', 'handle': '@mikegains', 'userId': 'mikegains', 'isFollowing': true},
-      {'name': 'Emma Wilson', 'handle': '@emmaworkout', 'userId': 'emmaworkout', 'isFollowing': false},
-    ];
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        children: followers.map((follower) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: _FollowerItem(
-              name: follower['name'] as String,
-              handle: follower['handle'] as String,
-              userId: follower['userId'] as String,
-              gradient: cocircleGradient,
-              isFollowing: follower['isFollowing'] as bool,
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  Widget _buildFollowingContent(ColorScheme colorScheme) {
-    final following = [
-      {'name': 'Alex Trainer', 'handle': '@alextrainer', 'userId': 'alextrainer'},
-    ];
-
-    if (following.isEmpty) {
+    if (_userPosts.isEmpty) {
       return Padding(
         padding: const EdgeInsets.all(40),
         child: Column(
           children: [
             Icon(
-              Icons.person_add_outlined,
+              Icons.grid_view_outlined,
               size: 48,
               color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
             ),
             const SizedBox(height: 16),
             Text(
-              'Not following anyone yet',
+              'No posts yet',
               style: TextStyle(
                 color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
                 fontSize: 14,
@@ -364,18 +631,140 @@ class _UserProfilePageState extends State<UserProfilePage> {
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        children: following.map((user) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: _FollowingItem(
-              name: user['name'] as String,
-              handle: user['handle'] as String,
-              userId: user['userId'] as String,
-              gradient: cocircleGradient,
+      child: GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: 4,
+          mainAxisSpacing: 4,
+          childAspectRatio: 1,
+        ),
+        itemCount: _userPosts.length,
+        itemBuilder: (context, index) {
+          final post = _userPosts[index];
+          // Handle post_media structure - it can be a List or null
+          final media = post['post_media'];
+          Map<String, dynamic>? firstMedia;
+          
+          if (media != null) {
+            if (media is List && media.isNotEmpty) {
+              firstMedia = media[0] as Map<String, dynamic>?;
+            } else if (media is Map) {
+              firstMedia = media as Map<String, dynamic>?;
+            }
+          }
+          
+          final mediaUrl = firstMedia?['media_url'] as String?;
+
+          final postId = post['id'] as String;
+          final postAuthorId = post['author_id'] as String;
+          final isOwnPost = _currentUserId != null && postAuthorId == _currentUserId;
+
+          return GestureDetector(
+            onTap: mediaUrl != null && mediaUrl.isNotEmpty
+                ? () => _showFloatingPostView(post, index)
+                : null,
+            onLongPress: isOwnPost ? () => _showDeleteDialog(postId, index) : null,
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                color: colorScheme.surfaceContainerHighest,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: mediaUrl != null && mediaUrl.isNotEmpty
+                    ? CachedNetworkImage(
+                        imageUrl: mediaUrl,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => Container(
+                          color: colorScheme.surfaceContainerHighest,
+                          child: Icon(
+                            Icons.image,
+                            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                            size: 32,
+                          ),
+                        ),
+                        errorWidget: (context, url, error) => Container(
+                          color: colorScheme.surfaceContainerHighest,
+                          child: Icon(
+                            Icons.image,
+                            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                            size: 32,
+                          ),
+                        ),
+                      )
+                    : Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.orange.withValues(alpha: 0.3),
+                              Colors.purple.withValues(alpha: 0.3),
+                            ],
+                          ),
+                        ),
+                        child: Icon(
+                          Icons.image,
+                          color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                          size: 32,
+                        ),
+                      ),
+              ),
             ),
           );
-        }).toList(),
+        },
+      ),
+    );
+  }
+
+  Widget _buildFollowersContent(ColorScheme colorScheme) {
+    // No followers table yet - show empty state
+    return Padding(
+      padding: const EdgeInsets.all(40),
+      child: Column(
+        children: [
+          Icon(
+            Icons.people_outline,
+            size: 48,
+            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'No followers yet',
+            style: TextStyle(
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFollowingContent(ColorScheme colorScheme) {
+    // No following table yet - show empty state
+    return Padding(
+      padding: const EdgeInsets.all(40),
+      child: Column(
+        children: [
+          Icon(
+            Icons.person_add_outlined,
+            size: 48,
+            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Not following anyone yet',
+            style: TextStyle(
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
       ),
     );
   }

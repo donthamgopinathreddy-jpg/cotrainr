@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -5,6 +6,8 @@ import '../../theme/design_tokens.dart';
 import '../../repositories/profile_repository.dart';
 import '../../repositories/posts_repository.dart';
 import '../../repositories/messages_repository.dart';
+import '../../repositories/metrics_repository.dart';
+import '../../services/health_tracking_service.dart';
 import '../../widgets/home/hero_header_widget.dart';
 import '../../widgets/home/streak_card_v2.dart';
 import '../../widgets/home/steps_card_v2.dart';
@@ -38,6 +41,8 @@ class _HomePageState extends State<HomePage> {
   final ProfileRepository _profileRepo = ProfileRepository();
   final PostsRepository _postsRepo = PostsRepository();
   final MessagesRepository _messagesRepo = MessagesRepository();
+  final MetricsRepository _metricsRepo = MetricsRepository();
+  final HealthTrackingService _healthService = HealthTrackingService();
 
   // Real data from Supabase
   String _username = 'Loading...';
@@ -67,6 +72,19 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _loadAllData();
+    _loadStreak();
+    _loadMetrics();
+    _startMetricsSync();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Reload notifications when returning from notifications page
+    // This ensures the red dot disappears after checking notifications
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadNotificationsCount();
+    });
   }
 
   Future<void> _loadAllData() async {
@@ -77,6 +95,81 @@ class _HomePageState extends State<HomePage> {
     ]);
   }
 
+  Future<void> _loadStreak() async {
+    try {
+      final supabase = Supabase.instance.client;
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null) return;
+
+      // Get today's metrics to check last login date
+      final today = DateTime.now();
+      final todayDate = DateTime(today.year, today.month, today.day);
+      
+      // Get or create today's metrics
+      final todayMetrics = await supabase
+          .from('metrics_daily')
+          .select('id, date, streak_days')
+          .eq('user_id', userId)
+          .eq('date', todayDate.toIso8601String().split('T')[0])
+          .maybeSingle();
+
+      // Get yesterday's metrics to calculate streak
+      final yesterday = todayDate.subtract(const Duration(days: 1));
+      final yesterdayMetrics = await supabase
+          .from('metrics_daily')
+          .select('date, streak_days')
+          .eq('user_id', userId)
+          .eq('date', yesterday.toIso8601String().split('T')[0])
+          .maybeSingle();
+
+      int newStreak = 1;
+      
+      if (yesterdayMetrics != null) {
+        final yesterdayStreak = (yesterdayMetrics['streak_days'] as num?)?.toInt() ?? 0;
+        final yesterdayDate = DateTime.parse(yesterdayMetrics['date'] as String);
+        final daysDiff = todayDate.difference(yesterdayDate).inDays;
+        
+        if (daysDiff == 1) {
+          // Consecutive day, increment streak
+          newStreak = yesterdayStreak + 1;
+        } else {
+          // Gap in login, reset to 1
+          newStreak = 1;
+        }
+      }
+
+      // Update or insert today's metrics with streak
+      if (todayMetrics != null) {
+        await supabase
+            .from('metrics_daily')
+            .update({'streak_days': newStreak})
+            .eq('id', todayMetrics['id'] as String);
+      } else {
+        await supabase
+            .from('metrics_daily')
+            .insert({
+              'user_id': userId,
+              'date': todayDate.toIso8601String().split('T')[0],
+              'streak_days': newStreak,
+            });
+      }
+
+      if (mounted) {
+        setState(() {
+          _streakDays = newStreak;
+        });
+      }
+    } catch (e) {
+      print('Error loading streak: $e');
+      // Fallback to 0 if error
+      if (mounted) {
+        setState(() {
+          _streakDays = 0;
+        });
+      }
+    }
+  }
+
   @override
   void dispose() {
     _scrollController.dispose();
@@ -85,20 +178,42 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _loadProfileData() async {
     try {
+      print('HomePage: Starting to load profile data...');
       final profile = await _profileRepo.fetchMyProfile();
-      if (profile != null && mounted) {
+      
+      if (!mounted) {
+        print('HomePage: Widget not mounted, skipping state update');
+        return;
+      }
+      
+      if (profile != null) {
+        print('HomePage: Full profile data: $profile');
+        
+        // Get full name (first and last name) for welcome message
+        final fullName = profile['full_name'] as String?;
+        final username = profile['username'] as String?;
+        final avatarUrl = profile['avatar_url'] as String?;
+        final coverUrl = profile['cover_url'] as String?;
+        
+        // Prefer full_name, fallback to username, then 'User'
+        // Trim whitespace and check if it's not empty
+        String newUsername;
+        if (fullName != null && fullName.trim().isNotEmpty) {
+          newUsername = fullName.trim();
+        } else if (username != null && username.isNotEmpty) {
+          newUsername = username;
+        } else {
+          newUsername = 'User';
+        }
+        
+        print('HomePage: Loaded name: $newUsername (full_name: "$fullName", username: "$username")');
+        print('HomePage: Avatar URL: $avatarUrl (isNull: ${avatarUrl == null}, isEmpty: ${avatarUrl?.isEmpty ?? true})');
+        print('HomePage: Cover URL: $coverUrl (isNull: ${coverUrl == null}, isEmpty: ${coverUrl?.isEmpty ?? true})');
+        
         setState(() {
-          // Get username - prefer full_name, fallback to username
-          final fullName = profile['full_name'] as String?;
-          final username = profile['username'] as String?;
-          _username = (fullName != null && fullName.isNotEmpty) 
-                      ? fullName 
-                      : (username ?? 'User');
-          
-          print('Loaded username: $_username (full_name: $fullName, username: $username)');
-          
-          _avatarUrl = profile['avatar_url'] as String?;
-          _coverImageUrl = profile['cover_url'] as String?;
+          _username = newUsername;
+          _avatarUrl = avatarUrl;
+          _coverImageUrl = coverUrl;
           
           // Get height and weight
           final heightCm = (profile['height_cm'] as num?)?.toDouble() ?? 0.0;
@@ -113,15 +228,32 @@ class _HomePageState extends State<HomePage> {
           // Get role
           _userRole = (profile['role'] as String?) ?? 'client';
         });
+        
+        // Load notifications count
+        await _loadNotificationsCount();
       } else {
-        print('Profile is null or widget not mounted');
+        print('HomePage: Profile is null - profile may not exist in database');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Profile not found. Please contact support.'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
       }
-      
-      // Load notifications count
-      await _loadNotificationsCount();
     } catch (e) {
-      print('Error loading profile: $e');
-      // Keep default values on error
+      print('HomePage: Error loading profile: $e');
+      print('HomePage: Error stack trace: ${StackTrace.current}');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading profile: ${e.toString()}'),
+            duration: const Duration(seconds: 5),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -149,7 +281,100 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _onRefresh() async {
     HapticFeedback.mediumImpact();
-    await _loadAllData();
+    await Future.wait([
+      _loadAllData(),
+      _loadNotificationsCount(),
+      _loadStreak(),
+      _loadMetrics(),
+    ]);
+  }
+
+  /// Load today's metrics from Supabase
+  Future<void> _loadMetrics() async {
+    try {
+      final todayMetrics = await _metricsRepo.getTodayMetrics();
+      
+      if (todayMetrics != null && mounted) {
+        setState(() {
+          _currentSteps = (todayMetrics['steps'] as num?)?.toInt() ?? 0;
+          _currentCalories = ((todayMetrics['calories_burned'] as num?)?.toDouble() ?? 0.0).toInt();
+          _currentWater = (todayMetrics['water_intake_liters'] as num?)?.toDouble() ?? 0.0;
+        });
+      }
+
+      // Also load weekly data for charts
+      await _loadWeeklyMetrics();
+    } catch (e) {
+      print('Error loading metrics: $e');
+    }
+  }
+
+  /// Load weekly metrics for charts
+  Future<void> _loadWeeklyMetrics() async {
+    try {
+      final weeklyMetrics = await _metricsRepo.getWeeklyMetrics();
+      
+      if (mounted) {
+        setState(() {
+          _stepsWeeklyData.clear();
+          _caloriesWeeklyData.clear();
+          _waterWeeklyData.clear();
+
+          // Fill arrays with 7 days of data
+          final today = DateTime.now();
+          for (int i = 6; i >= 0; i--) {
+            final date = today.subtract(Duration(days: i));
+            final dateString = date.toIso8601String().split('T')[0];
+            
+            final dayMetrics = weeklyMetrics.firstWhere(
+              (m) => (m['date'] as String?) == dateString,
+              orElse: () => <String, dynamic>{},
+            );
+
+            _stepsWeeklyData.add((dayMetrics['steps'] as num?)?.toDouble() ?? 0.0);
+            _caloriesWeeklyData.add((dayMetrics['calories_burned'] as num?)?.toDouble() ?? 0.0);
+            _waterWeeklyData.add((dayMetrics['water_intake_liters'] as num?)?.toDouble() ?? 0.0);
+          }
+        });
+      }
+    } catch (e) {
+      print('Error loading weekly metrics: $e');
+    }
+  }
+
+  /// Start syncing metrics from health service to Supabase
+  void _startMetricsSync() {
+    // Sync metrics every 30 seconds
+    Timer.periodic(const Duration(seconds: 30), (timer) async {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      try {
+        // Get current metrics from health service
+        final steps = await _healthService.getTodaySteps();
+        final calories = await _healthService.getTodayCalories();
+        final distance = await _healthService.getTodayDistance();
+
+        // Update Supabase
+        await _metricsRepo.updateTodayMetrics(
+          steps: steps,
+          caloriesBurned: calories,
+          distanceKm: distance,
+        );
+
+        // Update UI if values changed
+        if (mounted) {
+          setState(() {
+            _currentSteps = steps;
+            _currentCalories = calories.toInt();
+          });
+        }
+      } catch (e) {
+        print('Error syncing metrics: $e');
+      }
+    });
   }
 
   Future<void> _loadCocirclePosts() async {
@@ -225,7 +450,7 @@ class _HomePageState extends State<HomePage> {
                   );
                 },
                 child: HeroHeaderWidget(
-                  key: ValueKey(_username), // Force rebuild when username changes
+                  key: ValueKey('${_username}_${_avatarUrl}_${_coverImageUrl}'), // Force rebuild when data changes
                   coverImageUrl: _coverImageUrl,
                   avatarUrl: _avatarUrl,
                   username: _username,
