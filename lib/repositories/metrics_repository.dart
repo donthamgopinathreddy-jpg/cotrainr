@@ -12,13 +12,17 @@ class MetricsRepository {
 
   /// Get today's metrics for the current user
   Future<Map<String, dynamic>?> getTodayMetrics() async {
-    if (_currentUserId == null) return null;
+    if (_currentUserId == null) {
+      print('MetricsRepository: Cannot fetch metrics - user not authenticated');
+      return null;
+    }
 
     try {
       final today = DateTime.now();
       final todayDate = DateTime(today.year, today.month, today.day);
       final dateString = todayDate.toIso8601String().split('T')[0];
 
+      print('MetricsRepository: Fetching metrics for user: $_currentUserId, date: $dateString');
       final response = await _supabase
           .from('metrics_daily')
           .select()
@@ -26,9 +30,16 @@ class MetricsRepository {
           .eq('date', dateString)
           .maybeSingle();
 
+      if (response != null) {
+        print('MetricsRepository: Found metrics - steps: ${response['steps']}, calories: ${response['calories_burned']}, water: ${response['water_intake_liters']}');
+      } else {
+        print('MetricsRepository: No metrics found for today');
+      }
+
       return response;
-    } catch (e) {
-      print('Error fetching today metrics: $e');
+    } catch (e, stackTrace) {
+      print('MetricsRepository: Error fetching today metrics: $e');
+      print('MetricsRepository: Stack trace: $stackTrace');
       return null;
     }
   }

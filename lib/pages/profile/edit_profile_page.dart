@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -27,18 +28,18 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   final _dobController = TextEditingController();
   final _heightController = TextEditingController();
   final _weightController = TextEditingController();
-  
+
   String _selectedGender = 'Male';
   final List<String> _genders = ['Male', 'Female', 'Other'];
-  
+
   // Unit toggles: true = metric (cm/kg), false = imperial (ft/in/lb)
   bool _useMetricHeight = true;
   bool _useMetricWeight = true;
-  
+
   // Additional controllers for imperial units
   final _heightFeetController = TextEditingController();
   final _heightInchesController = TextEditingController();
-  
+
   final StorageService _storageService = StorageService();
   final ProfileRepository _profileRepo = ProfileRepository();
   bool _isLoading = false;
@@ -52,10 +53,34 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   }
 
   Future<void> _loadProfileData() async {
+    if (!mounted) return;
+
     setState(() => _isInitializing = true);
+
     try {
-      final profile = await _profileRepo.fetchMyProfile();
-      if (profile != null && mounted) {
+      // Auth ready guard: wait a bit if user is null (cold start)
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) {
+        await Future.delayed(const Duration(milliseconds: 300));
+        if (!mounted) return;
+      }
+
+      // Debug: Print current user ID
+      print(
+        'EditProfilePage: user=${Supabase.instance.client.auth.currentUser?.id}',
+      );
+
+      // Hard timeout on profile fetch
+      final profile = await _profileRepo.fetchMyProfile().timeout(
+        const Duration(seconds: 8),
+      );
+
+      // Debug: Print profile data
+      print('EditProfilePage: profile=$profile');
+
+      if (!mounted) return;
+
+      if (profile != null) {
         // Parse full_name into first and last name
         final fullName = profile['full_name'] as String? ?? '';
         final nameParts = fullName.split(' ');
@@ -70,15 +95,15 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
         _userIdController.text = profile['username'] as String? ?? '';
         _emailController.text = profile['email'] as String? ?? '';
         _phoneController.text = profile['phone'] as String? ?? '';
-        
+
         // Date of birth
         final dob = profile['date_of_birth'];
         if (dob != null) {
-          // Handle both string and DateTime formats
           if (dob is String) {
             _dobController.text = dob;
           } else if (dob is DateTime) {
-            _dobController.text = '${dob.year}-${dob.month.toString().padLeft(2, '0')}-${dob.day.toString().padLeft(2, '0')}';
+            _dobController.text =
+                '${dob.year}-${dob.month.toString().padLeft(2, '0')}-${dob.day.toString().padLeft(2, '0')}';
           }
         }
 
@@ -88,28 +113,49 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
           _selectedGender = gender;
         }
 
-        // Height and weight - always load in metric, will convert if user toggles
+        // Height and weight - always load in metric (cm/kg)
         final height = profile['height_cm'] as int?;
         if (height != null) {
           _heightController.text = height.toString();
         }
+
         final weight = profile['weight_kg'];
         if (weight != null) {
-          _weightController.text = weight.toString();
+          if (weight is num) {
+            _weightController.text = weight.toStringAsFixed(1);
+          } else {
+            _weightController.text = weight.toString();
+          }
         }
 
         // Load profile images
-        final avatarUrl = profile['avatar_url'] as String?;
-        final coverUrl = profile['cover_url'] as String?;
-        if (avatarUrl != null && avatarUrl.isNotEmpty) {
-          ref.read(profileImagesProvider.notifier).updateProfileImage(avatarUrl);
+        if (mounted) {
+          try {
+            final avatarUrl = profile['avatar_url'] as String?;
+            final coverUrl = profile['cover_url'] as String?;
+            if (avatarUrl != null && avatarUrl.isNotEmpty) {
+              ref
+                  .read(profileImagesProvider.notifier)
+                  .updateProfileImage(avatarUrl);
+            }
+            if (coverUrl != null && coverUrl.isNotEmpty) {
+              ref
+                  .read(profileImagesProvider.notifier)
+                  .updateCoverImage(coverUrl);
+            }
+          } catch (e) {
+            // Don't fail the whole load if image provider update fails
+          }
         }
-        if (coverUrl != null && coverUrl.isNotEmpty) {
-          ref.read(profileImagesProvider.notifier).updateCoverImage(coverUrl);
+
+        // Force UI rebuild after controller updates
+        if (mounted) {
+          setState(() {});
         }
       }
-    } catch (e) {
-      print('Error loading profile data: $e');
+    } catch (e, st) {
+      print('EditProfilePage: Error loading profile data: $e');
+      print(st);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -157,9 +203,11 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
         aspectRatio: 1.0, // Square for profile picture
         title: 'Crop Profile Picture',
       );
-      
+
       if (croppedPath != null && mounted) {
-        ref.read(profileImagesProvider.notifier).updateProfileImage(croppedPath);
+        ref
+            .read(profileImagesProvider.notifier)
+            .updateProfileImage(croppedPath);
         // Upload immediately
         await _uploadProfileImage(File(croppedPath));
       }
@@ -179,10 +227,11 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
       final croppedPath = await _showCropDialog(
         context,
         image.path,
-        aspectRatio: 2.0, // 2:1 aspect ratio for cover image (recommended for better UX)
+        aspectRatio:
+            2.0, // 2:1 aspect ratio for cover image (recommended for better UX)
         title: 'Crop Cover Picture',
       );
-      
+
       if (croppedPath != null && mounted) {
         ref.read(profileImagesProvider.notifier).updateCoverImage(croppedPath);
         // Upload immediately
@@ -279,27 +328,36 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
     );
     if (picked != null && mounted) {
       setState(() {
-        _dobController.text = '${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
+        _dobController.text =
+            '${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
       });
     }
   }
 
   Future<void> _uploadProfileImage(File imageFile) async {
+    // Store reference before async operation
+    ScaffoldMessengerState? scaffoldMessenger;
+    if (mounted) {
+      scaffoldMessenger = ScaffoldMessenger.of(context);
+    }
+
     setState(() => _isUploadingImage = true);
     try {
       final url = await _storageService.uploadAvatar(imageFile);
       if (url != null && mounted) {
         await _profileRepo.updateProfile({'avatar_url': url});
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Profile picture uploaded successfully'),
-            duration: Duration(seconds: 2),
-          ),
-        );
+        if (mounted && scaffoldMessenger != null) {
+          scaffoldMessenger.showSnackBar(
+            const SnackBar(
+              content: Text('Profile picture uploaded successfully'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+      if (mounted && scaffoldMessenger != null) {
+        scaffoldMessenger.showSnackBar(
           SnackBar(
             content: Text('Error uploading profile picture: $e'),
             duration: const Duration(seconds: 3),
@@ -314,21 +372,29 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   }
 
   Future<void> _uploadCoverImage(File imageFile) async {
+    // Store reference before async operation
+    ScaffoldMessengerState? scaffoldMessenger;
+    if (mounted) {
+      scaffoldMessenger = ScaffoldMessenger.of(context);
+    }
+
     setState(() => _isUploadingImage = true);
     try {
       final url = await _storageService.uploadCoverImage(imageFile);
       if (url != null && mounted) {
         await _profileRepo.updateProfile({'cover_url': url});
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Cover picture uploaded successfully'),
-            duration: Duration(seconds: 2),
-          ),
-        );
+        if (mounted && scaffoldMessenger != null) {
+          scaffoldMessenger.showSnackBar(
+            const SnackBar(
+              content: Text('Cover picture uploaded successfully'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+      if (mounted && scaffoldMessenger != null) {
+        scaffoldMessenger.showSnackBar(
           SnackBar(
             content: Text('Error uploading cover picture: $e'),
             duration: const Duration(seconds: 3),
@@ -344,20 +410,45 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
 
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
+    if (!mounted) return;
+
+    // Store references before async operations - must be done while widget is mounted
+    final navigator = Navigator.of(context);
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
 
     setState(() => _isLoading = true);
     HapticFeedback.lightImpact();
 
     try {
       // Combine first and last name into full_name
-      final fullName = '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}'.trim();
+      final fullName =
+          '${_firstNameController.text.trim()} ${_lastNameController.text.trim()}'
+              .trim();
 
       // Prepare update data
       final updates = <String, dynamic>{
         'full_name': fullName,
+        'email': _emailController.text.trim(), // Update email in profiles table
         'phone': _phoneController.text.trim(),
         'gender': _selectedGender,
       };
+
+      // Also update email in auth.users if it changed
+      final currentEmail = Supabase.instance.client.auth.currentUser?.email;
+      final newEmail = _emailController.text.trim();
+      if (currentEmail != null &&
+          currentEmail != newEmail &&
+          newEmail.isNotEmpty) {
+        try {
+          await Supabase.instance.client.auth.updateUser(
+            UserAttributes(email: newEmail),
+          );
+          print('EditProfilePage: Updated email in auth.users');
+        } catch (e) {
+          print('EditProfilePage: Error updating email in auth.users: $e');
+          // Continue even if email update in auth fails
+        }
+      }
 
       // Add date of birth if provided
       if (_dobController.text.isNotEmpty) {
@@ -403,7 +494,9 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
       }
 
       // Update profile in Supabase
+      print('EditProfilePage: Saving profile updates to Supabase: $updates');
       await _profileRepo.updateProfile(updates);
+      print('EditProfilePage: Profile saved successfully to Supabase');
 
       // Handle password change if provided
       if (_passwordController.text.isNotEmpty) {
@@ -419,28 +512,34 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Profile saved successfully'),
-            duration: Duration(seconds: 2),
-          ),
-        );
-        // Navigate back after a short delay
-        Future.delayed(const Duration(seconds: 1), () {
-          if (mounted) {
-            Navigator.pop(context);
-          }
-        });
+        try {
+          scaffoldMessenger.showSnackBar(
+            const SnackBar(
+              content: Text('Profile saved successfully'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+          // Navigate back immediately - no delay needed
+          navigator.pop();
+        } catch (e) {
+          // Widget was disposed, ignore
+          print('Widget disposed during save completion: $e');
+        }
       }
     } catch (e) {
       print('Error saving profile: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error saving profile: $e'),
-            duration: const Duration(seconds: 3),
-          ),
-        );
+        try {
+          scaffoldMessenger.showSnackBar(
+            SnackBar(
+              content: Text('Error saving profile: $e'),
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        } catch (e2) {
+          // Widget was disposed, ignore
+          print('Widget disposed during error handling: $e2');
+        }
       }
     } finally {
       if (mounted) {
@@ -492,7 +591,19 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
         ],
       ),
       body: _isInitializing
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 12),
+                  TextButton(
+                    onPressed: _loadProfileData,
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            )
           : Stack(
               children: [
                 Form(
@@ -507,7 +618,9 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                             child: _PhotoSelector(
                               label: 'Profile Photo',
                               imagePath: profileImages.profileImagePath,
-                              onTap: _isUploadingImage ? () {} : () => _pickProfileImage(),
+                              onTap: _isUploadingImage
+                                  ? () {}
+                                  : () => _pickProfileImage(),
                             ),
                           ),
                           const SizedBox(width: 16),
@@ -515,151 +628,154 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                             child: _PhotoSelector(
                               label: 'Cover Photo',
                               imagePath: profileImages.coverImagePath,
-                              onTap: _isUploadingImage ? () {} : () => _pickCoverImage(),
+                              onTap: _isUploadingImage
+                                  ? () {}
+                                  : () => _pickCoverImage(),
                             ),
                           ),
                         ],
                       ),
-            const SizedBox(height: 24),
-            // First Name
-            _FormField(
-              controller: _firstNameController,
-              label: 'First Name',
-              icon: Icons.person_outline,
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please enter your first name';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-            // Last Name
-            _FormField(
-              controller: _lastNameController,
-              label: 'Last Name',
-              icon: Icons.person_outline,
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please enter your last name';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-            // User ID (non-editable)
-            _FormField(
-              controller: _userIdController,
-              label: 'User ID',
-              icon: Icons.badge_outlined,
-              enabled: false,
-            ),
-            const SizedBox(height: 16),
-            // Email
-            _FormField(
-              controller: _emailController,
-              label: 'Email Address',
-              icon: Icons.email_outlined,
-              keyboardType: TextInputType.emailAddress,
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please enter your email';
-                }
-                if (!value.contains('@')) {
-                  return 'Please enter a valid email';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-            // Password
-            _FormField(
-              controller: _passwordController,
-              label: 'Password',
-              icon: Icons.lock_outline,
-              obscureText: true,
-              hintText: 'Leave empty to keep current password',
-            ),
-            const SizedBox(height: 16),
-            // Phone Number
-            _FormField(
-              controller: _phoneController,
-              label: 'Phone Number',
-              icon: Icons.phone_outlined,
-              keyboardType: TextInputType.phone,
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please enter your phone number';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-            // Date of Birth
-            _FormField(
-              controller: _dobController,
-              label: 'Date of Birth',
-              icon: Icons.calendar_today_outlined,
-              readOnly: true,
-              onTap: () => _selectDate(context),
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please select your date of birth';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-            // Gender
-            _GenderSelector(
-              selectedGender: _selectedGender,
-              genders: _genders,
-              onChanged: (value) => setState(() => _selectedGender = value),
-            ),
-            const SizedBox(height: 16),
-            // Height Field with Unit Toggle
-            _HeightWeightField(
-              label: 'Height',
-              icon: Icons.height,
-              useMetric: _useMetricHeight,
-              metricController: _heightController,
-              imperialFeetController: _heightFeetController,
-              imperialInchesController: _heightInchesController,
-              onUnitToggle: (useMetric) {
-                setState(() {
-                  _useMetricHeight = useMetric;
-                  _convertHeightUnits(useMetric);
-                });
-              },
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Required';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-            // Weight Field with Unit Toggle
-            _HeightWeightField(
-              label: 'Weight',
-              icon: Icons.monitor_weight_outlined,
-              useMetric: _useMetricWeight,
-              metricController: _weightController,
-              imperialFeetController: null,
-              imperialInchesController: null,
-              onUnitToggle: (useMetric) {
-                setState(() {
-                  _useMetricWeight = useMetric;
-                  _convertWeightUnits(useMetric);
-                });
-              },
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Required';
-                }
-                return null;
-              },
-            ),
+                      const SizedBox(height: 24),
+                      // First Name
+                      _FormField(
+                        controller: _firstNameController,
+                        label: 'First Name',
+                        icon: Icons.person_outline,
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please enter your first name';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      // Last Name
+                      _FormField(
+                        controller: _lastNameController,
+                        label: 'Last Name',
+                        icon: Icons.person_outline,
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please enter your last name';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      // User ID (non-editable)
+                      _FormField(
+                        controller: _userIdController,
+                        label: 'User ID',
+                        icon: Icons.badge_outlined,
+                        enabled: false,
+                      ),
+                      const SizedBox(height: 16),
+                      // Email
+                      _FormField(
+                        controller: _emailController,
+                        label: 'Email Address',
+                        icon: Icons.email_outlined,
+                        keyboardType: TextInputType.emailAddress,
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please enter your email';
+                          }
+                          if (!value.contains('@')) {
+                            return 'Please enter a valid email';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      // Password
+                      _FormField(
+                        controller: _passwordController,
+                        label: 'Password',
+                        icon: Icons.lock_outline,
+                        obscureText: true,
+                        hintText: 'Leave empty to keep current password',
+                      ),
+                      const SizedBox(height: 16),
+                      // Phone Number
+                      _FormField(
+                        controller: _phoneController,
+                        label: 'Phone Number',
+                        icon: Icons.phone_outlined,
+                        keyboardType: TextInputType.phone,
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please enter your phone number';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      // Date of Birth
+                      _FormField(
+                        controller: _dobController,
+                        label: 'Date of Birth',
+                        icon: Icons.calendar_today_outlined,
+                        readOnly: true,
+                        onTap: () => _selectDate(context),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please select your date of birth';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      // Gender
+                      _GenderSelector(
+                        selectedGender: _selectedGender,
+                        genders: _genders,
+                        onChanged: (value) =>
+                            setState(() => _selectedGender = value),
+                      ),
+                      const SizedBox(height: 16),
+                      // Height Field with Unit Toggle
+                      _HeightWeightField(
+                        label: 'Height',
+                        icon: Icons.height,
+                        useMetric: _useMetricHeight,
+                        metricController: _heightController,
+                        imperialFeetController: _heightFeetController,
+                        imperialInchesController: _heightInchesController,
+                        onUnitToggle: (useMetric) {
+                          setState(() {
+                            _useMetricHeight = useMetric;
+                            _convertHeightUnits(useMetric);
+                          });
+                        },
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Required';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      // Weight Field with Unit Toggle
+                      _HeightWeightField(
+                        label: 'Weight',
+                        icon: Icons.monitor_weight_outlined,
+                        useMetric: _useMetricWeight,
+                        metricController: _weightController,
+                        imperialFeetController: null,
+                        imperialInchesController: null,
+                        onUnitToggle: (useMetric) {
+                          setState(() {
+                            _useMetricWeight = useMetric;
+                            _convertWeightUnits(useMetric);
+                          });
+                        },
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Required';
+                          }
+                          return null;
+                        },
+                      ),
                       const SizedBox(height: 24),
                     ],
                   ),
@@ -667,9 +783,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                 if (_isUploadingImage)
                   Container(
                     color: Colors.black.withOpacity(0.3),
-                    child: const Center(
-                      child: CircularProgressIndicator(),
-                    ),
+                    child: const Center(child: CircularProgressIndicator()),
                   ),
               ],
             ),
@@ -753,7 +867,7 @@ class _CropDialogState extends State<_CropDialog> {
                         // In crop_your_image 2.0.0, CropResult is a sealed class
                         // Use pattern matching to extract croppedImage from CropSuccess
                         Uint8List? imageData;
-                        
+
                         // Pattern match on CropResult variants
                         if (result is CropSuccess) {
                           // CropSuccess has croppedImage property
@@ -762,30 +876,45 @@ class _CropDialogState extends State<_CropDialog> {
                         } else {
                           // Handle error case
                           final error = result as dynamic;
-                          throw Exception('Crop failed: ${error.error?.toString() ?? 'Unknown error'}');
+                          throw Exception(
+                            'Crop failed: ${error.error?.toString() ?? 'Unknown error'}',
+                          );
                         }
-                        
+
                         if (imageData == null || imageData.isEmpty) {
-                          throw Exception('Invalid crop result: cropped image is empty.');
+                          throw Exception(
+                            'Invalid crop result: cropped image is empty.',
+                          );
                         }
-                        
-                        debugPrint('Successfully extracted ${imageData.length} bytes from crop result');
-                        
+
+                        debugPrint(
+                          'Successfully extracted ${imageData.length} bytes from crop result',
+                        );
+
                         // Save cropped image to temporary file
                         final directory = Directory.systemTemp;
-                        final fileName = 'cropped_${DateTime.now().millisecondsSinceEpoch}.png';
+                        final fileName =
+                            'cropped_${DateTime.now().millisecondsSinceEpoch}.png';
                         final file = File('${directory.path}/$fileName');
                         await file.writeAsBytes(imageData);
-                        
+
                         if (mounted) {
-                          Navigator.pop(context, file.path);
+                          // Store navigator reference before async operation
+                          final navigator = Navigator.of(context);
+                          navigator.pop(file.path);
                         }
                       } catch (e) {
                         debugPrint('Crop error: $e');
                         if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
+                          // Store scaffold messenger reference before showing snackbar
+                          final scaffoldMessenger = ScaffoldMessenger.of(
+                            context,
+                          );
+                          scaffoldMessenger.showSnackBar(
                             SnackBar(
-                              content: Text('Error cropping image: ${e.toString()}'),
+                              content: Text(
+                                'Error cropping image: ${e.toString()}',
+                              ),
                               duration: const Duration(seconds: 2),
                             ),
                           );
@@ -882,7 +1011,10 @@ class _PhotoSelector extends StatelessWidget {
                     : null,
               ),
               child: imagePath == null || imagePath!.isEmpty
-                  ? Icon(Icons.add_photo_alternate, color: colorScheme.onSurface.withOpacity(0.5))
+                  ? Icon(
+                      Icons.add_photo_alternate,
+                      color: colorScheme.onSurface.withOpacity(0.5),
+                    )
                   : null,
             ),
             const SizedBox(height: 8),
@@ -939,7 +1071,9 @@ class _FormField extends StatelessWidget {
       validator: validator,
       onTap: onTap,
       style: TextStyle(
-        color: enabled ? colorScheme.onSurface : colorScheme.onSurface.withOpacity(0.5),
+        color: enabled
+            ? colorScheme.onSurface
+            : colorScheme.onSurface.withOpacity(0.5),
         fontSize: 16,
       ),
       decoration: InputDecoration(
@@ -995,7 +1129,11 @@ class _GenderSelector extends StatelessWidget {
           padding: const EdgeInsets.only(left: 16, bottom: 8),
           child: Row(
             children: [
-              Icon(Icons.person_outline, size: 20, color: colorScheme.onSurface.withOpacity(0.7)),
+              Icon(
+                Icons.person_outline,
+                size: 20,
+                color: colorScheme.onSurface.withOpacity(0.7),
+              ),
               const SizedBox(width: 8),
               Text(
                 'Gender',
@@ -1024,7 +1162,9 @@ class _GenderSelector extends StatelessWidget {
                   borderRadius: BorderRadius.circular(16),
                   child: Container(
                     decoration: BoxDecoration(
-                      color: isSelected ? colorScheme.primary : Colors.transparent,
+                      color: isSelected
+                          ? colorScheme.primary
+                          : Colors.transparent,
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Center(
@@ -1033,7 +1173,9 @@ class _GenderSelector extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
-                          color: isSelected ? Colors.white : colorScheme.onSurface,
+                          color: isSelected
+                              ? Colors.white
+                              : colorScheme.onSurface,
                         ),
                       ),
                     ),
@@ -1072,7 +1214,8 @@ class _HeightWeightField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final isHeight = imperialFeetController != null && imperialInchesController != null;
+    final isHeight =
+        imperialFeetController != null && imperialInchesController != null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1082,7 +1225,11 @@ class _HeightWeightField extends StatelessWidget {
           padding: const EdgeInsets.only(left: 16, bottom: 8),
           child: Row(
             children: [
-              Icon(icon, size: 20, color: colorScheme.onSurface.withOpacity(0.7)),
+              Icon(
+                icon,
+                size: 20,
+                color: colorScheme.onSurface.withOpacity(0.7),
+              ),
               const SizedBox(width: 8),
               Text(
                 label,

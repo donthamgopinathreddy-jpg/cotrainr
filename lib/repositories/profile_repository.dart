@@ -19,9 +19,10 @@ class ProfileRepository {
 
     try {
       print('ProfileRepository: Fetching profile for user: $_currentUserId');
+      // Explicitly select columns to avoid issues with missing columns
       final response = await _supabase
           .from('profiles')
-          .select()
+          .select('id, role, email, username, username_lower, full_name, avatar_url, cover_url, bio, phone, date_of_birth, gender, height_cm, weight_kg, created_at, updated_at')
           .eq('id', _currentUserId!)
           .maybeSingle();
 
@@ -30,6 +31,10 @@ class ProfileRepository {
         print('ProfileRepository: This might mean the profile was not created during signup');
       } else {
         print('ProfileRepository: Successfully fetched profile: ${response['username']}');
+        print('ProfileRepository: Profile fields - full_name: ${response['full_name']}, avatar_url: ${response['avatar_url']}, cover_url: ${response['cover_url']}');
+        print('ProfileRepository: Profile fields - height_cm: ${response['height_cm']}, weight_kg: ${response['weight_kg']}');
+        print('ProfileRepository: Profile fields - email: ${response['email']}, phone: ${response['phone']}, gender: ${response['gender']}, dob: ${response['date_of_birth']}');
+        print('ProfileRepository: Full profile data: $response');
       }
 
       return response;
@@ -82,11 +87,17 @@ class ProfileRepository {
     }
 
     try {
-      await _supabase
+      print('ProfileRepository: Updating profile for user: $_currentUserId');
+      print('ProfileRepository: Updates: $updates');
+      final response = await _supabase
           .from('profiles')
           .update(updates)
-          .eq('id', _currentUserId!);
+          .eq('id', _currentUserId!)
+          .select()
+          .single();
+      print('ProfileRepository: Profile updated successfully: $response');
     } catch (e) {
+      print('ProfileRepository: Error updating profile: $e');
       throw Exception('Failed to update profile: $e');
     }
   }

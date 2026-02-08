@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
 import '../common/pressable_card.dart';
+import '../../repositories/posts_repository.dart';
 
 class FeedPreviewV3 extends StatefulWidget {
   final VoidCallback? onViewAllTap;
@@ -41,81 +44,102 @@ class _FeedPreviewPost {
 
 class _FeedPreviewV3State extends State<FeedPreviewV3> {
   final List<_FeedPreviewPost> _posts = [];
+  final PostsRepository _postsRepo = PostsRepository();
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadMockPosts();
+    _loadRealPosts();
   }
 
-  void _loadMockPosts() {
-    _posts.addAll([
-      _FeedPreviewPost(
-        id: '1',
-        userId: 'fitness_john',
-        userName: 'John Doe',
-        caption: 'Just completed my first 10K run! 🏃‍♂️',
-        likeCount: 24,
-        commentCount: 5,
-        isLiked: false,
-        isSaved: false,
-      ),
-      _FeedPreviewPost(
-        id: '2',
-        userId: 'trainer_sarah',
-        userName: 'Sarah Johnson',
-        caption: 'New workout routine for my clients! 💪',
-        likeCount: 56,
-        commentCount: 12,
-        isLiked: true,
-        isSaved: true,
-      ),
-      _FeedPreviewPost(
-        id: '3',
-        userId: 'nutritionist_mike',
-        userName: 'Dr. Mike Chen',
-        caption: 'Meal prep Sunday! Healthy and delicious 🥗',
-        likeCount: 89,
-        commentCount: 15,
-        isLiked: false,
-        isSaved: false,
-      ),
-      _FeedPreviewPost(
-        id: '4',
-        userId: 'fitness_anna',
-        userName: 'Anna Martinez',
-        caption: 'Morning yoga session complete! 🧘‍♀️',
-        likeCount: 42,
-        commentCount: 8,
-        isLiked: true,
-        isSaved: false,
-      ),
-      _FeedPreviewPost(
-        id: '5',
-        userId: 'trainer_alex',
-        userName: 'Alex Thompson',
-        caption: 'Strength training tips for beginners 💪',
-        likeCount: 67,
-        commentCount: 11,
-        isLiked: false,
-        isSaved: true,
-      ),
-      _FeedPreviewPost(
-        id: '6',
-        userId: 'nutritionist_lisa',
-        userName: 'Lisa Park',
-        caption: 'Healthy breakfast ideas to start your day right! 🍳',
-        likeCount: 93,
-        commentCount: 18,
-        isLiked: true,
-        isSaved: true,
-      ),
-    ]);
+  Future<void> _loadRealPosts() async {
+    setState(() => _isLoading = true);
+    try {
+      // Fetch recent posts (limit to 6 for preview)
+      final posts = await _postsRepo.fetchRecentPosts(limit: 6);
+      
+      final supabase = Supabase.instance.client;
+      final currentUserId = supabase.auth.currentUser?.id;
+      
+      // Get user's liked posts to check if posts are liked
+      Set<String> likedPostIds = {};
+      if (currentUserId != null) {
+        try {
+          final likedPosts = await supabase
+              .from('post_likes')
+              .select('post_id')
+              .eq('user_id', currentUserId);
+          likedPostIds = (likedPosts as List)
+              .map((p) => p['post_id'] as String)
+              .toSet();
+        } catch (e) {
+          print('Error fetching liked posts: $e');
+        }
+      }
+      
+      final realPosts = <_FeedPreviewPost>[];
+      
+      for (final post in posts) {
+        final postId = post['id'] as String;
+        final author = post['profiles'] as Map<String, dynamic>?;
+        final content = post['content'] as String? ?? '';
+        final likeCount = (post['likes_count'] as num?)?.toInt() ?? 0;
+        final commentCount = (post['comments_count'] as num?)?.toInt() ?? 0;
+        
+        // Get author info
+        final userName = author?['full_name'] as String? ?? 
+                        author?['username'] as String? ?? 
+                        'User';
+        final username = author?['username'] as String? ?? 'user';
+        final avatarUrl = author?['avatar_url'] as String?;
+        
+        // Get post media (first image)
+        String? mediaUrl;
+        try {
+          final media = await _postsRepo.fetchPostMedia(postId);
+          if (media.isNotEmpty) {
+            mediaUrl = media.first['media_url'] as String?;
+          }
+        } catch (e) {
+          print('Error fetching media for post $postId: $e');
+        }
+        
+        realPosts.add(_FeedPreviewPost(
+          id: postId,
+          userId: username,
+          userName: userName,
+          avatarUrl: avatarUrl,
+          caption: content,
+          mediaUrl: mediaUrl,
+          likeCount: likeCount,
+          commentCount: commentCount,
+          isLiked: likedPostIds.contains(postId),
+          isSaved: false, // Saved posts not implemented yet
+        ));
+      }
+      
+      if (mounted) {
+        setState(() {
+          _posts.clear();
+          _posts.addAll(realPosts);
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading real posts: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
-  void _toggleLike(int index) {
+  Future<void> _toggleLike(int index) async {
+    final post = _posts[index];
+    final wasLiked = post.isLiked;
+    
+    // Optimistic update
     setState(() {
-      final post = _posts[index];
       if (post.isLiked) {
         post.likeCount--;
         post.isLiked = false;
@@ -125,6 +149,24 @@ class _FeedPreviewV3State extends State<FeedPreviewV3> {
       }
     });
     HapticFeedback.lightImpact();
+    
+    // Update in database
+    try {
+      await _postsRepo.toggleLike(post.id);
+    } catch (e) {
+      // Revert on error
+      if (mounted) {
+        setState(() {
+          post.isLiked = wasLiked;
+          if (wasLiked) {
+            post.likeCount++;
+          } else {
+            post.likeCount--;
+          }
+        });
+      }
+      print('Error toggling like: $e');
+    }
   }
 
   void _toggleSave(int index) {
@@ -191,21 +233,37 @@ class _FeedPreviewV3State extends State<FeedPreviewV3> {
         const SizedBox(height: 12),
         SizedBox(
           height: 280,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            itemCount: _posts.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
-            itemBuilder: (context, index) {
-              final post = _posts[index];
-              return _PostPreviewCard(
-                post: post,
-                onLike: () => _toggleLike(index),
-                onComment: () => _onComment(index),
-                onSave: () => _toggleSave(index),
-              );
-            },
-          ),
+          child: _isLoading
+              ? Center(
+                  child: CircularProgressIndicator(
+                    color: AppColors.orange,
+                  ),
+                )
+              : _posts.isEmpty
+                  ? Center(
+                      child: Text(
+                        'No posts yet',
+                        style: TextStyle(
+                          color: cs.onSurfaceVariant,
+                          fontSize: 14,
+                        ),
+                      ),
+                    )
+                  : ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      itemCount: _posts.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 12),
+                      itemBuilder: (context, index) {
+                        final post = _posts[index];
+                        return _PostPreviewCard(
+                          post: post,
+                          onLike: () => _toggleLike(index),
+                          onComment: () => _onComment(index),
+                          onSave: () => _toggleSave(index),
+                        );
+                      },
+                    ),
         ),
       ],
     );
@@ -256,11 +314,31 @@ class _PostPreviewCard extends StatelessWidget {
                     ),
                     shape: BoxShape.circle,
                   ),
-                  child: post.avatarUrl != null
+                  child: post.avatarUrl != null && post.avatarUrl!.isNotEmpty
                       ? ClipOval(
-                          child: Image.network(
-                            post.avatarUrl!,
+                          child: CachedNetworkImage(
+                            imageUrl: post.avatarUrl!,
                             fit: BoxFit.cover,
+                            placeholder: (context, url) => Center(
+                              child: Text(
+                                post.userName.substring(0, 1).toUpperCase(),
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                            errorWidget: (context, url, error) => Center(
+                              child: Text(
+                                post.userName.substring(0, 1).toUpperCase(),
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
                           ),
                         )
                       : Center(
@@ -312,13 +390,29 @@ class _PostPreviewCard extends StatelessWidget {
                 gradient: AppColors.heroGradient,
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: post.mediaUrl != null
+              child: post.mediaUrl != null && post.mediaUrl!.isNotEmpty
                   ? ClipRRect(
                       borderRadius: BorderRadius.circular(16),
-                      child: Image.network(
-                        post.mediaUrl!,
+                      child: CachedNetworkImage(
+                        imageUrl: post.mediaUrl!,
                         fit: BoxFit.cover,
                         width: double.infinity,
+                        placeholder: (context, url) => Container(
+                          color: AppColors.orange.withOpacity(0.1),
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              color: AppColors.orange,
+                              strokeWidth: 2,
+                            ),
+                          ),
+                        ),
+                        errorWidget: (context, url, error) => Container(
+                          color: AppColors.orange.withOpacity(0.1),
+                          child: Icon(
+                            Icons.image_outlined,
+                            color: AppColors.orange.withOpacity(0.5),
+                          ),
+                        ),
                       ),
                     )
                   : null,

@@ -26,6 +26,8 @@ class HeroHeaderWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    print('HeroHeader: Building with username: "$username", avatarUrl: "$avatarUrl", coverImageUrl: "$coverImageUrl"');
+    
     return Container(
       height: 320,
       clipBehavior: Clip.none,
@@ -38,9 +40,12 @@ class HeroHeaderWidget extends StatelessWidget {
                 ? CachedNetworkImage(
                     imageUrl: coverImageUrl!,
                     fit: BoxFit.cover,
-                    placeholder: (context, url) => _buildGradientFallback(),
+                    placeholder: (context, url) {
+                      print('HeroHeader: Loading cover image from: $url');
+                      return _buildGradientFallback();
+                    },
                     errorWidget: (context, url, error) {
-                      print('HeroHeader: Error loading cover image: $error');
+                      print('HeroHeader: Error loading cover image from "$url": $error');
                       return _buildGradientFallback();
                     },
                   )
@@ -114,9 +119,12 @@ class HeroHeaderWidget extends StatelessWidget {
                       ? CachedNetworkImage(
                           imageUrl: avatarUrl!,
                           fit: BoxFit.cover,
-                          placeholder: (context, url) => _buildAvatarPlaceholder(),
+                          placeholder: (context, url) {
+                            print('HeroHeader: Loading avatar from: $url');
+                            return _buildAvatarPlaceholder();
+                          },
                           errorWidget: (context, url, error) {
-                            print('HeroHeader: Error loading avatar: $error');
+                            print('HeroHeader: Error loading avatar from "$url": $error');
                             return _buildAvatarPlaceholder();
                           },
                         )

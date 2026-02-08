@@ -38,7 +38,6 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final ScrollController _scrollController = ScrollController();
-  final ProfileRepository _profileRepo = ProfileRepository();
   final PostsRepository _postsRepo = PostsRepository();
   final MessagesRepository _messagesRepo = MessagesRepository();
   final MetricsRepository _metricsRepo = MetricsRepository();
@@ -71,18 +70,54 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    _loadAllData();
-    _loadStreak();
-    _loadMetrics();
+    // Load all data in sequence to ensure proper initialization
+    _initializeData();
+  }
+
+  Future<void> _initializeData() async {
+    // DEBUG: Check current user session
+    final user = Supabase.instance.client.auth.currentUser;
+    print('HOME currentUser: ${user?.id}');
+    print('HOME email: ${user?.email}');
+    print('HOME metadata: ${user?.userMetadata}');
+    
+    if (user == null) {
+      print('HOME ERROR: No authenticated user found!');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Not logged in. Please log in again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+    
+    // First load profile (needed for BMI calculation)
+    await _loadProfileData();
+    // Then load notifications
+    await _loadNotificationsCount();
+    // Load streak
+    await _loadStreak();
+    // Load metrics
+    await _loadMetrics();
+    // Load other data
+    await Future.wait([
+      _loadCocirclePosts(),
+      _loadUnreadMessages(),
+    ]);
+    // Start periodic sync
     _startMetricsSync();
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Reload notifications when returning from notifications page
-    // This ensures the red dot disappears after checking notifications
+    // Reload profile and notifications when page becomes visible
+    // This ensures data is fresh when returning from other pages
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadProfileData();
       _loadNotificationsCount();
     });
   }
@@ -92,6 +127,9 @@ class _HomePageState extends State<HomePage> {
       _loadProfileData(),
       _loadCocirclePosts(),
       _loadUnreadMessages(),
+      _loadNotificationsCount(),
+      _loadStreak(),
+      _loadMetrics(),
     ]);
   }
 
@@ -178,8 +216,30 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _loadProfileData() async {
     try {
-      print('HomePage: Starting to load profile data...');
-      final profile = await _profileRepo.fetchMyProfile();
+      final supabase = Supabase.instance.client;
+      final currentUser = supabase.auth.currentUser;
+      
+      if (currentUser == null) {
+        print('HOME ERROR: currentUser is null - session not available');
+        if (mounted) {
+          setState(() {
+            _username = 'Not logged in';
+          });
+        }
+        return;
+      }
+      
+      final uid = currentUser.id;
+      print('HOME: Fetching profile for user ID: $uid');
+      
+      // Fetch profile EXACTLY like Profile page does - direct query, no repository abstraction
+      final profile = await supabase
+          .from('profiles')
+          .select('id, full_name, username, avatar_url, cover_url, height_cm, weight_kg, role')
+          .eq('id', uid)
+          .maybeSingle();
+      
+      print('HOME profile query result: $profile');
       
       if (!mounted) {
         print('HomePage: Widget not mounted, skipping state update');
@@ -187,64 +247,68 @@ class _HomePageState extends State<HomePage> {
       }
       
       if (profile != null) {
-        print('HomePage: Full profile data: $profile');
-        
-        // Get full name (first and last name) for welcome message
+        // Extract data EXACTLY like Profile page does
         final fullName = profile['full_name'] as String?;
         final username = profile['username'] as String?;
         final avatarUrl = profile['avatar_url'] as String?;
         final coverUrl = profile['cover_url'] as String?;
+        final heightCm = (profile['height_cm'] as num?)?.toDouble();
+        final weightKg = (profile['weight_kg'] as num?)?.toDouble();
+        final role = profile['role'] as String?;
         
-        // Prefer full_name, fallback to username, then 'User'
-        // Trim whitespace and check if it's not empty
-        String newUsername;
-        if (fullName != null && fullName.trim().isNotEmpty) {
-          newUsername = fullName.trim();
-        } else if (username != null && username.isNotEmpty) {
-          newUsername = username;
-        } else {
-          newUsername = 'User';
+        // Use EXACT same logic as Profile page
+        final newUsername = fullName != null && fullName.trim().isNotEmpty
+            ? fullName.trim()
+            : (username != null && username.isNotEmpty
+                ? username
+                : 'User');
+        
+        print('HOME profile loaded:');
+        print('  - full_name: "$fullName"');
+        print('  - username: "$username"');
+        print('  - display name: "$newUsername"');
+        print('  - avatar_url: "$avatarUrl" (null: ${avatarUrl == null}, empty: ${avatarUrl?.isEmpty ?? true})');
+        print('  - cover_url: "$coverUrl" (null: ${coverUrl == null}, empty: ${coverUrl?.isEmpty ?? true})');
+        print('  - height_cm: $heightCm, weight_kg: $weightKg');
+        
+        // Calculate BMI
+        double newBmi = 0.0;
+        String newBmiStatus = '';
+        if (heightCm != null && heightCm > 0 && weightKg != null && weightKg > 0) {
+          newBmi = ProfileRepository.calculateBMI(heightCm, weightKg);
+          newBmiStatus = ProfileRepository.getBMIStatus(newBmi);
         }
         
-        print('HomePage: Loaded name: $newUsername (full_name: "$fullName", username: "$username")');
-        print('HomePage: Avatar URL: $avatarUrl (isNull: ${avatarUrl == null}, isEmpty: ${avatarUrl?.isEmpty ?? true})');
-        print('HomePage: Cover URL: $coverUrl (isNull: ${coverUrl == null}, isEmpty: ${coverUrl?.isEmpty ?? true})');
-        
-        setState(() {
-          _username = newUsername;
-          _avatarUrl = avatarUrl;
-          _coverImageUrl = coverUrl;
-          
-          // Get height and weight
-          final heightCm = (profile['height_cm'] as num?)?.toDouble() ?? 0.0;
-          final weightKg = (profile['weight_kg'] as num?)?.toDouble() ?? 0.0;
-          
-          // Calculate BMI
-          if (heightCm > 0 && weightKg > 0) {
-            _bmi = ProfileRepository.calculateBMI(heightCm, weightKg);
-            _bmiStatus = ProfileRepository.getBMIStatus(_bmi);
-          }
-          
-          // Get role
-          _userRole = (profile['role'] as String?) ?? 'client';
-        });
-        
-        // Load notifications count
-        await _loadNotificationsCount();
-      } else {
-        print('HomePage: Profile is null - profile may not exist in database');
+        // Update state
         if (mounted) {
+          setState(() {
+            _username = newUsername;
+            _avatarUrl = avatarUrl;
+            _coverImageUrl = coverUrl;
+            _bmi = newBmi;
+            _bmiStatus = newBmiStatus;
+            _userRole = role ?? 'client';
+          });
+          print('HOME state updated successfully: username="$newUsername"');
+        }
+      } else {
+        print('HOME ERROR: Profile query returned null - profile does not exist in database');
+        if (mounted) {
+          setState(() {
+            _username = 'Profile not found';
+          });
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Profile not found. Please contact support.'),
               duration: Duration(seconds: 3),
+              backgroundColor: Colors.red,
             ),
           );
         }
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       print('HomePage: Error loading profile: $e');
-      print('HomePage: Error stack trace: ${StackTrace.current}');
+      print('HomePage: Error stack trace: $stackTrace');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -261,21 +325,29 @@ class _HomePageState extends State<HomePage> {
     try {
       final supabase = Supabase.instance.client;
       final userId = supabase.auth.currentUser?.id;
-      if (userId == null) return;
+      if (userId == null) {
+        print('HomePage: Cannot load notifications - user not authenticated');
+        return;
+      }
 
+      print('HomePage: Loading notifications for user: $userId');
       final response = await supabase
           .from('notifications')
           .select('id')
           .eq('user_id', userId)
           .eq('read', false);
 
+      final count = (response as List).length;
+      print('HomePage: Found $count unread notifications');
+
       if (mounted) {
         setState(() {
-          _notificationCount = (response as List).length;
+          _notificationCount = count;
         });
       }
-    } catch (e) {
-      print('Error loading notifications: $e');
+    } catch (e, stackTrace) {
+      print('HomePage: Error loading notifications: $e');
+      print('HomePage: Error stack trace: $stackTrace');
     }
   }
 
@@ -292,20 +364,40 @@ class _HomePageState extends State<HomePage> {
   /// Load today's metrics from Supabase
   Future<void> _loadMetrics() async {
     try {
+      print('HomePage: Loading today\'s metrics...');
       final todayMetrics = await _metricsRepo.getTodayMetrics();
       
-      if (todayMetrics != null && mounted) {
-        setState(() {
-          _currentSteps = (todayMetrics['steps'] as num?)?.toInt() ?? 0;
-          _currentCalories = ((todayMetrics['calories_burned'] as num?)?.toDouble() ?? 0.0).toInt();
-          _currentWater = (todayMetrics['water_intake_liters'] as num?)?.toDouble() ?? 0.0;
-        });
+      if (todayMetrics != null) {
+        final steps = (todayMetrics['steps'] as num?)?.toInt() ?? 0;
+        final calories = ((todayMetrics['calories_burned'] as num?)?.toDouble() ?? 0.0).toInt();
+        final water = (todayMetrics['water_intake_liters'] as num?)?.toDouble() ?? 0.0;
+        
+        print('HomePage: Loaded metrics - Steps: $steps, Calories: $calories, Water: $water L');
+        
+        if (mounted) {
+          setState(() {
+            _currentSteps = steps;
+            _currentCalories = calories;
+            _currentWater = water;
+          });
+        }
+      } else {
+        print('HomePage: No metrics found for today - will be created on first sync');
+        // Initialize with 0 if no metrics exist yet
+        if (mounted) {
+          setState(() {
+            _currentSteps = 0;
+            _currentCalories = 0;
+            _currentWater = 0.0;
+          });
+        }
       }
 
       // Also load weekly data for charts
       await _loadWeeklyMetrics();
-    } catch (e) {
-      print('Error loading metrics: $e');
+    } catch (e, stackTrace) {
+      print('HomePage: Error loading metrics: $e');
+      print('HomePage: Error stack trace: $stackTrace');
     }
   }
 
@@ -426,6 +518,9 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    // DEBUG: Print current state values in build method
+    print('HOME build() called - username: "$_username", avatar: "$_avatarUrl", cover: "$_coverImageUrl"');
+    
     return Container(
       color: DesignTokens.backgroundOf(context),
       child: RefreshIndicator(
@@ -449,12 +544,17 @@ class _HomePageState extends State<HomePage> {
                     ),
                   );
                 },
-                child: HeroHeaderWidget(
-                  key: ValueKey('${_username}_${_avatarUrl}_${_coverImageUrl}'), // Force rebuild when data changes
-                  coverImageUrl: _coverImageUrl,
-                  avatarUrl: _avatarUrl,
-                  username: _username,
-                  notificationCount: _notificationCount + _unreadMessagesCount,
+                child: Builder(
+                  builder: (context) {
+                    print('HOME HeroHeaderWidget being built with: username="$_username", avatarUrl="$_avatarUrl", coverImageUrl="$_coverImageUrl"');
+                    return HeroHeaderWidget(
+                      key: ValueKey('home_header_${_username}_${_avatarUrl ?? 'no_avatar'}_${_coverImageUrl ?? 'no_cover'}'),
+                      coverImageUrl: _coverImageUrl,
+                      avatarUrl: _avatarUrl,
+                      username: _username,
+                      notificationCount: _notificationCount + _unreadMessagesCount,
+                    );
+                  },
                 ),
               ),
             ),

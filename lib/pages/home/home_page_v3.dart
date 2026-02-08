@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/design_tokens.dart';
+import '../../theme/app_colors.dart';
 import '../../providers/profile_images_provider.dart';
 import '../../providers/health_tracking_provider.dart';
 import '../../widgets/home_v3/hero_header_v3.dart';
@@ -15,6 +18,7 @@ import '../../widgets/home_v3/nearby_preview_v3.dart';
 import '../insights/insights_detail_page.dart';
 import '../../services/streak_service.dart';
 import '../../services/user_goals_service.dart';
+import '../../repositories/profile_repository.dart';
 
 class HomePageV3 extends ConsumerStatefulWidget {
   final VoidCallback? onNavigateToCocircle;
@@ -31,15 +35,19 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
 
-  // Mock data
-  final String _username = 'John Doe';
-  final int _notificationCount = 3;
+  // Real data from Supabase
+  String _username = 'Loading...';
+  String? _avatarUrl;
+  String? _coverImageUrl;
+  int _notificationCount = 0;
   int _streakDays = 0;
   int _goalSteps = 10000;
   double _currentWater = 0.0;
   double _goalWater = 2.5;
-  final double _bmi = 0.0;
-  final String _bmiStatus = '';
+  double _bmi = 0.0;
+  String _bmiStatus = '';
+  double? _heightCm;
+  double? _weightKg;
 
   final List<double> _stepsWeeklyData = [];
   final List<double> _caloriesWeeklyData = [];
@@ -58,12 +66,132 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
       curve: Curves.easeOut,
     );
     _fadeController.forward();
+    
+    // Load profile data first
+    _loadProfileData();
+    _loadNotificationsCount();
     _loadStreak();
     _loadGoals();
+    
     // Initialize health tracking service for background step counting
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(healthTrackingServiceProvider).initialize();
     });
+  }
+  
+  Future<void> _loadProfileData() async {
+    try {
+      final supabase = Supabase.instance.client;
+      final currentUser = supabase.auth.currentUser;
+      
+      if (currentUser == null) {
+        print('HOME_V3 ERROR: currentUser is null');
+        if (mounted) {
+          setState(() {
+            _username = 'Not logged in';
+          });
+        }
+        return;
+      }
+      
+      final uid = currentUser.id;
+      print('HOME_V3: Fetching profile for user ID: $uid');
+      
+      // Fetch profile directly from Supabase
+      final profile = await supabase
+          .from('profiles')
+          .select('id, full_name, username, avatar_url, cover_url, height_cm, weight_kg, role')
+          .eq('id', uid)
+          .maybeSingle();
+      
+      print('HOME_V3 profile query result: $profile');
+      
+      if (!mounted) return;
+      
+      if (profile != null) {
+        final fullName = profile['full_name'] as String?;
+        final username = profile['username'] as String?;
+        final avatarUrl = profile['avatar_url'] as String?;
+        final coverUrl = profile['cover_url'] as String?;
+        final heightCm = (profile['height_cm'] as num?)?.toDouble();
+        final weightKg = (profile['weight_kg'] as num?)?.toDouble();
+        
+        // Use same logic as Profile page
+        final newUsername = fullName != null && fullName.trim().isNotEmpty
+            ? fullName.trim()
+            : (username != null && username.isNotEmpty
+                ? username
+                : 'User');
+        
+        // Calculate BMI
+        double newBmi = 0.0;
+        String newBmiStatus = '';
+        if (heightCm != null && heightCm > 0 && weightKg != null && weightKg > 0) {
+          newBmi = ProfileRepository.calculateBMI(heightCm, weightKg);
+          newBmiStatus = ProfileRepository.getBMIStatus(newBmi);
+          print('HOME_V3: Calculated BMI: $newBmi ($newBmiStatus) from height: $heightCm cm, weight: $weightKg kg');
+        } else {
+          print('HOME_V3: Cannot calculate BMI - height: $heightCm, weight: $weightKg');
+        }
+        
+        print('HOME_V3: Loaded - name: "$newUsername", avatar: "$avatarUrl", cover: "$coverUrl"');
+        
+        setState(() {
+          _username = newUsername;
+          _avatarUrl = avatarUrl;
+          _coverImageUrl = coverUrl;
+          _bmi = newBmi;
+          _bmiStatus = newBmiStatus;
+          _heightCm = heightCm;
+          _weightKg = weightKg;
+        });
+        
+        // Update profile images provider if URLs exist
+        if (avatarUrl != null && avatarUrl.isNotEmpty) {
+          ref.read(profileImagesProvider.notifier).updateProfileImage(avatarUrl);
+        }
+        if (coverUrl != null && coverUrl.isNotEmpty) {
+          ref.read(profileImagesProvider.notifier).updateCoverImage(coverUrl);
+        }
+      } else {
+        print('HOME_V3 ERROR: Profile not found');
+        if (mounted) {
+          setState(() {
+            _username = 'Profile not found';
+          });
+        }
+      }
+    } catch (e, stackTrace) {
+      print('HOME_V3 ERROR loading profile: $e');
+      print('HOME_V3 stack trace: $stackTrace');
+      if (mounted) {
+        setState(() {
+          _username = 'Error loading profile';
+        });
+      }
+    }
+  }
+  
+  Future<void> _loadNotificationsCount() async {
+    try {
+      final supabase = Supabase.instance.client;
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null) return;
+
+      final response = await supabase
+          .from('notifications')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('read', false);
+
+      if (mounted) {
+        setState(() {
+          _notificationCount = (response as List).length;
+        });
+      }
+    } catch (e) {
+      print('HOME_V3: Error loading notifications: $e');
+    }
   }
 
   Future<void> _loadGoals() async {
@@ -153,17 +281,23 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
       opacity: _fadeAnimation,
       child: Scaffold(
         backgroundColor: cs.background,
-        body: CustomScrollView(
-        controller: _scrollController,
-        physics: const BouncingScrollPhysics(),
-        slivers: [
+        body: RefreshIndicator(
+          onRefresh: _onRefresh,
+          color: AppColors.orange,
+          child: CustomScrollView(
+            controller: _scrollController,
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
+            slivers: [
           SliverToBoxAdapter(
             child: _animated(
               HeroHeaderV3(
                 username: _username,
                 notificationCount: _notificationCount,
-                coverImageUrl: ref.watch(profileImagesProvider).coverImagePath,
-                avatarUrl: ref.watch(profileImagesProvider).profileImagePath,
+                // Use database URLs first, fallback to provider (for local edits)
+                coverImageUrl: _coverImageUrl ?? ref.watch(profileImagesProvider).coverImagePath,
+                avatarUrl: _avatarUrl ?? ref.watch(profileImagesProvider).profileImagePath,
                 streakDays: 0, // Remove streak from header
                 onNotificationTap: () => context.push('/notifications'),
               ),
@@ -270,7 +404,15 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: _animated(
-                _safeSection(context, BmiCardV3(bmi: _bmi, status: _bmiStatus)),
+                _safeSection(
+                  context,
+                  BmiCardV3(
+                    bmi: _bmi,
+                    status: _bmiStatus,
+                    heightCm: _heightCm,
+                    weightKg: _weightKg,
+                  ),
+                ),
                 180,
               ),
             ),
@@ -300,9 +442,27 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
             ),
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 96)),
-        ],
-      ),
+            ],
+          ),
+        ),
       ),
     );
+  }
+
+  Future<void> _onRefresh() async {
+    HapticFeedback.mediumImpact();
+    
+    // Reload all data
+    await Future.wait([
+      _loadProfileData(),
+      _loadNotificationsCount(),
+      _loadStreak(),
+      _loadGoals(),
+    ]);
+    
+    // Refresh health tracking data
+    ref.read(stepsNotifierProvider.notifier).refresh();
+    ref.invalidate(caloriesProvider);
+    ref.invalidate(distanceProvider);
   }
 }

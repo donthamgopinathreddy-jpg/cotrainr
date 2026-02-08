@@ -1,6 +1,8 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
 
@@ -13,6 +15,10 @@ class NearbyPreviewV3 extends StatefulWidget {
 
 class _NearbyPreviewV3State extends State<NearbyPreviewV3> {
   String _selectedFilter = 'All';
+  List<_NearbyPlace> _allPlaces = [];
+  bool _isLoading = true;
+  String? _errorMessage;
+  Position? _userPosition;
 
   final List<_FilterChip> _allChips = [
     _FilterChip('All', Icons.business, 'All'),
@@ -21,14 +27,118 @@ class _NearbyPreviewV3State extends State<NearbyPreviewV3> {
     _FilterChip('Parks', Icons.park, 'Parks'),
   ];
 
-  final List<_NearbyPlace> _allPlaces = [
-    _NearbyPlace('Gold\'s Gym', '0.8 km', 'Gyms'),
-    _NearbyPlace('The Yoga Institute', '1.2 km', 'Yoga'),
-    _NearbyPlace('Cult.fit Center', '1.5 km', 'Gyms'),
-    _NearbyPlace('Anytime Fitness', '2.1 km', 'Gyms'),
-    _NearbyPlace('Talwalkars Gym', '2.5 km', 'Gyms'),
-    _NearbyPlace('Central Park', '3.1 km', 'Parks'),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadNearbyPlaces();
+  }
+
+  Future<void> _loadNearbyPlaces() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      // Get user's current location
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        setState(() {
+          _errorMessage = 'Location services are disabled';
+          _isLoading = false;
+        });
+        return;
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.deniedForever || 
+          permission == LocationPermission.denied) {
+        setState(() {
+          _errorMessage = 'Location permission denied';
+          _isLoading = false;
+        });
+        return;
+      }
+
+      _userPosition = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      // Fetch nearby places using nearby_providers RPC
+      final supabase = Supabase.instance.client;
+      
+      // Map filter to location types
+      List<String>? locationTypes;
+      if (_selectedFilter == 'Gyms') {
+        locationTypes = ['gym'];
+      } else if (_selectedFilter == 'Yoga') {
+        locationTypes = ['studio'];
+      } else if (_selectedFilter == 'Parks') {
+        locationTypes = ['park'];
+      }
+      // 'All' means null (no filter)
+
+      final results = await supabase.rpc(
+        'nearby_providers',
+        params: {
+          'user_lat': _userPosition!.latitude,
+          'user_lng': _userPosition!.longitude,
+          'max_distance_km': 10.0, // 10km radius
+          'provider_types': null, // All provider types
+          'location_types': locationTypes,
+        },
+      );
+
+      final places = <_NearbyPlace>[];
+      
+      for (final result in results as List) {
+        final displayName = result['display_name'] as String? ?? 'Unknown';
+        final distanceKm = (result['distance_km'] as num?)?.toDouble() ?? 0.0;
+        final locationType = result['location_type'] as String? ?? 'other';
+        
+        // Format distance
+        String distanceStr;
+        if (distanceKm < 1.0) {
+          distanceStr = '${(distanceKm * 1000).toStringAsFixed(0)} m';
+        } else {
+          distanceStr = '${distanceKm.toStringAsFixed(1)} km';
+        }
+        
+        // Map location type to category
+        String category;
+        if (locationType == 'gym') {
+          category = 'Gyms';
+        } else if (locationType == 'studio') {
+          category = 'Yoga';
+        } else if (locationType == 'park') {
+          category = 'Parks';
+        } else {
+          category = 'All';
+        }
+        
+        places.add(_NearbyPlace(displayName, distanceStr, category));
+      }
+
+      if (mounted) {
+        setState(() {
+          _allPlaces = places;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading nearby places: $e');
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Failed to load nearby places';
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   List<_NearbyPlace> get _filteredPlaces {
     if (_selectedFilter == 'All') {
@@ -88,6 +198,8 @@ class _NearbyPreviewV3State extends State<NearbyPreviewV3> {
                   setState(() {
                     _selectedFilter = chip.value;
                   });
+                  // Reload places when filter changes
+                  _loadNearbyPlaces();
                 },
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
@@ -125,8 +237,59 @@ class _NearbyPreviewV3State extends State<NearbyPreviewV3> {
           ),
         ),
         const SizedBox(height: 12),
-        Column(
-          children: _filteredPlaces.map((place) {
+        _isLoading
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: CircularProgressIndicator(
+                    color: AppColors.orange,
+                  ),
+                ),
+              )
+            : _errorMessage != null
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(20.0),
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons.location_off,
+                            color: cs.onSurfaceVariant,
+                            size: 32,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _errorMessage!,
+                            style: TextStyle(
+                              color: cs.onSurfaceVariant,
+                              fontSize: 14,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 8),
+                          TextButton(
+                            onPressed: _loadNearbyPlaces,
+                            child: const Text('Retry'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : _filteredPlaces.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(20.0),
+                          child: Text(
+                            'No nearby places found',
+                            style: TextStyle(
+                              color: cs.onSurfaceVariant,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                      )
+                    : Column(
+                        children: _filteredPlaces.map((place) {
             final textColor = isDark ? Colors.white : Colors.black;
             return Container(
               height: 90,
