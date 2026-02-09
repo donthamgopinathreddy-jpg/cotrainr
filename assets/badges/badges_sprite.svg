@@ -1,0 +1,128 @@
+<svg width="640" height="128" viewBox="0 0 640 128" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Bronze gradients -->
+    <linearGradient id="bronzeGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#8B5A2B;stop-opacity:1" />
+      <stop offset="30%" style="stop-color:#CD7F32;stop-opacity:1" />
+      <stop offset="60%" style="stop-color:#E6A052;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#8B5A2B;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="bronzeShine" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:0.35" />
+      <stop offset="50%" style="stop-color:#FFFFFF;stop-opacity:0.15" />
+      <stop offset="100%" style="stop-color:#FFFFFF;stop-opacity:0" />
+    </linearGradient>
+    <linearGradient id="bronzeStarGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFF8E1;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#FFFFFF;stop-opacity:0.9" />
+    </linearGradient>
+    <!-- Silver gradients -->
+    <linearGradient id="silverGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#9A9A9A;stop-opacity:1" />
+      <stop offset="30%" style="stop-color:#C0C0C0;stop-opacity:1" />
+      <stop offset="60%" style="stop-color:#E8E8E8;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#9A9A9A;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="silverShine" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:0.4" />
+      <stop offset="50%" style="stop-color:#FFFFFF;stop-opacity:0.2" />
+      <stop offset="100%" style="stop-color:#FFFFFF;stop-opacity:0" />
+    </linearGradient>
+    <linearGradient id="silverStarGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#F5F5F5;stop-opacity:0.95" />
+    </linearGradient>
+    <!-- Gold gradients -->
+    <linearGradient id="goldGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#D4AF37;stop-opacity:1" />
+      <stop offset="30%" style="stop-color:#FFD700;stop-opacity:1" />
+      <stop offset="60%" style="stop-color:#FFF44F;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#D4AF37;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="goldShine" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:0.45" />
+      <stop offset="50%" style="stop-color:#FFFFFF;stop-opacity:0.25" />
+      <stop offset="100%" style="stop-color:#FFFFFF;stop-opacity:0" />
+    </linearGradient>
+    <linearGradient id="goldStarGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#FFF8DC;stop-opacity:0.95" />
+    </linearGradient>
+    <!-- Platinum gradients -->
+    <linearGradient id="platinumGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#C8C8C8;stop-opacity:1" />
+      <stop offset="30%" style="stop-color:#E5E4E2;stop-opacity:1" />
+      <stop offset="60%" style="stop-color:#F5F5F5;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#C8C8C8;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="platinumShine" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:0.4" />
+      <stop offset="50%" style="stop-color:#FFFFFF;stop-opacity:0.2" />
+      <stop offset="100%" style="stop-color:#FFFFFF;stop-opacity:0" />
+    </linearGradient>
+    <linearGradient id="platinumStarGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#F8F8F8;stop-opacity:0.95" />
+    </linearGradient>
+    <!-- Diamond gradients -->
+    <linearGradient id="diamondGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#4A9FC7;stop-opacity:1" />
+      <stop offset="30%" style="stop-color:#5BC0EB;stop-opacity:1" />
+      <stop offset="60%" style="stop-color:#7DD3FC;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4A9FC7;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="diamondShine" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:0.4" />
+      <stop offset="50%" style="stop-color:#FFFFFF;stop-opacity:0.2" />
+      <stop offset="100%" style="stop-color:#FFFFFF;stop-opacity:0" />
+    </linearGradient>
+    <linearGradient id="diamondStarGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#E0F7FF;stop-opacity:0.95" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Bronze Badge -->
+  <g id="badge_bronze" transform="translate(0, 0)">
+    <path d="M 64 8 C 64 8, 20 20, 20 50 L 20 70 C 20 90, 40 110, 64 120 C 88 110, 108 90, 108 70 L 108 50 C 108 20, 64 8, 64 8 Z" fill="url(#bronzeGradient)" stroke="#8B5A2B" stroke-width="1.5"/>
+    <path d="M 64 8 C 64 8, 20 20, 20 50 L 20 70 C 20 90, 40 110, 64 120 C 88 110, 108 90, 108 70 L 108 50 C 108 20, 64 8, 64 8 Z" fill="url(#bronzeShine)"/>
+    <path d="M 64 12 C 64 12, 24 22, 24 50 L 24 70 C 24 88, 42 106, 64 116 C 86 106, 104 88, 104 70 L 104 50 C 104 22, 64 12, 64 12 Z" fill="none" stroke="#E6A052" stroke-width="0.8" opacity="0.4"/>
+    <path d="M 64 40 L 68 52 L 80 52 L 70 60 L 74 72 L 64 64 L 54 72 L 58 60 L 48 52 L 60 52 Z" fill="url(#bronzeStarGrad)" stroke="#FFF8E1" stroke-width="0.5" opacity="0.95"/>
+  </g>
+  
+  <!-- Silver Badge -->
+  <g id="badge_silver" transform="translate(128, 0)">
+    <path d="M 64 8 C 64 8, 20 20, 20 50 L 20 70 C 20 90, 40 110, 64 120 C 88 110, 108 90, 108 70 L 108 50 C 108 20, 64 8, 64 8 Z" fill="url(#silverGradient)" stroke="#9A9A9A" stroke-width="1.5"/>
+    <path d="M 64 8 C 64 8, 20 20, 20 50 L 20 70 C 20 90, 40 110, 64 120 C 88 110, 108 90, 108 70 L 108 50 C 108 20, 64 8, 64 8 Z" fill="url(#silverShine)"/>
+    <path d="M 64 12 C 64 12, 24 22, 24 50 L 24 70 C 24 88, 42 106, 64 116 C 86 106, 104 88, 104 70 L 104 50 C 104 22, 64 12, 64 12 Z" fill="none" stroke="#E8E8E8" stroke-width="0.8" opacity="0.5"/>
+    <path d="M 64 40 L 68 52 L 80 52 L 70 60 L 74 72 L 64 64 L 54 72 L 58 60 L 48 52 L 60 52 Z" fill="url(#silverStarGrad)" stroke="#FFFFFF" stroke-width="0.5" opacity="0.95"/>
+  </g>
+  
+  <!-- Gold Badge -->
+  <g id="badge_gold" transform="translate(256, 0)">
+    <path d="M 64 8 C 64 8, 20 20, 20 50 L 20 70 C 20 90, 40 110, 64 120 C 88 110, 108 90, 108 70 L 108 50 C 108 20, 64 8, 64 8 Z" fill="url(#goldGradient)" stroke="#D4AF37" stroke-width="1.5"/>
+    <path d="M 64 8 C 64 8, 20 20, 20 50 L 20 70 C 20 90, 40 110, 64 120 C 88 110, 108 90, 108 70 L 108 50 C 108 20, 64 8, 64 8 Z" fill="url(#goldShine)"/>
+    <path d="M 64 12 C 64 12, 24 22, 24 50 L 24 70 C 24 88, 42 106, 64 116 C 86 106, 104 88, 104 70 L 104 50 C 104 22, 64 12, 64 12 Z" fill="none" stroke="#FFF44F" stroke-width="0.8" opacity="0.5"/>
+    <path d="M 64 40 L 68 52 L 80 52 L 70 60 L 74 72 L 64 64 L 54 72 L 58 60 L 48 52 L 60 52 Z" fill="url(#goldStarGrad)" stroke="#FFFFFF" stroke-width="0.5" opacity="0.95"/>
+  </g>
+  
+  <!-- Platinum Badge -->
+  <g id="badge_platinum" transform="translate(384, 0)">
+    <path d="M 64 8 C 64 8, 20 20, 20 50 L 20 70 C 20 90, 40 110, 64 120 C 88 110, 108 90, 108 70 L 108 50 C 108 20, 64 8, 64 8 Z" fill="url(#platinumGradient)" stroke="#C8C8C8" stroke-width="1.5"/>
+    <path d="M 64 8 C 64 8, 20 20, 20 50 L 20 70 C 20 90, 40 110, 64 120 C 88 110, 108 90, 108 70 L 108 50 C 108 20, 64 8, 64 8 Z" fill="url(#platinumShine)"/>
+    <path d="M 64 12 C 64 12, 24 22, 24 50 L 24 70 C 24 88, 42 106, 64 116 C 86 106, 104 88, 104 70 L 104 50 C 104 22, 64 12, 64 12 Z" fill="none" stroke="#F5F5F5" stroke-width="0.8" opacity="0.5"/>
+    <path d="M 64 40 L 68 52 L 80 52 L 70 60 L 74 72 L 64 64 L 54 72 L 58 60 L 48 52 L 60 52 Z" fill="url(#platinumStarGrad)" stroke="#FFFFFF" stroke-width="0.5" opacity="0.95"/>
+  </g>
+  
+  <!-- Diamond Badge -->
+  <g id="badge_diamond" transform="translate(512, 0)">
+    <path d="M 64 8 C 64 8, 20 20, 20 50 L 20 70 C 20 90, 40 110, 64 120 C 88 110, 108 90, 108 70 L 108 50 C 108 20, 64 8, 64 8 Z" fill="url(#diamondGradient)" stroke="#4A9FC7" stroke-width="1.5"/>
+    <path d="M 64 8 C 64 8, 20 20, 20 50 L 20 70 C 20 90, 40 110, 64 120 C 88 110, 108 90, 108 70 L 108 50 C 108 20, 64 8, 64 8 Z" fill="url(#diamondShine)"/>
+    <path d="M 64 12 C 64 12, 24 22, 24 50 L 24 70 C 24 88, 42 106, 64 116 C 86 106, 104 88, 104 70 L 104 50 C 104 22, 64 12, 64 12 Z" fill="none" stroke="#7DD3FC" stroke-width="0.8" opacity="0.5"/>
+    <path d="M 64 20 L 40 50 L 64 80 L 88 50 Z" fill="none" stroke="#4A9FC7" stroke-width="0.5" opacity="0.4"/>
+    <path d="M 64 20 L 50 65 L 64 80" fill="none" stroke="#4A9FC7" stroke-width="0.5" opacity="0.4"/>
+    <path d="M 64 20 L 78 65 L 64 80" fill="none" stroke="#4A9FC7" stroke-width="0.5" opacity="0.4"/>
+    <path d="M 40 50 L 50 65 L 64 80 L 78 65 L 88 50" fill="none" stroke="#4A9FC7" stroke-width="0.5" opacity="0.4"/>
+    <path d="M 64 40 L 68 52 L 80 52 L 70 60 L 74 72 L 64 64 L 54 72 L 58 60 L 48 52 L 60 52 Z" fill="url(#diamondStarGrad)" stroke="#FFFFFF" stroke-width="0.5" opacity="0.95"/>
+  </g>
+</svg>

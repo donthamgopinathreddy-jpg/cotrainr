@@ -1,0 +1,79 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Rim gradient - Gold -->
+    <linearGradient id="rimGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#8B6914;stop-opacity:1" />
+      <stop offset="22%" style="stop-color:#FFD700;stop-opacity:1" />
+      <stop offset="48%" style="stop-color:#FFF8DC;stop-opacity:1" />
+      <stop offset="70%" style="stop-color:#D4AF37;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#5A4A0A;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- Face gradient - Gold -->
+    <radialGradient id="faceGrad" cx="35%" cy="25%" r="80%">
+      <stop offset="0%" style="stop-color:#FFF8DC;stop-opacity:1" />
+      <stop offset="40%" style="stop-color:#FFD700;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#8B6914;stop-opacity:1" />
+    </radialGradient>
+    
+    <!-- Shine gradient -->
+    <linearGradient id="shineGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:0.55" />
+      <stop offset="55%" style="stop-color:#FFFFFF;stop-opacity:0.12" />
+      <stop offset="100%" style="stop-color:#FFFFFF;stop-opacity:0.0" />
+    </linearGradient>
+    
+    <!-- Drop shadow filter -->
+    <filter id="ds" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="12"/>
+      <feOffset dx="0" dy="14" result="offsetblur"/>
+      <feFlood flood-color="#000000" flood-opacity="0.35"/>
+      <feComposite in2="offsetblur" operator="in"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    
+    <!-- Inner shadow filter -->
+    <filter id="inner" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="6"/>
+      <feOffset dx="0" dy="3" result="offsetblur"/>
+      <feFlood flood-color="#000000" flood-opacity="0.22"/>
+      <feComposite in2="offsetblur" operator="in"/>
+    </filter>
+  </defs>
+  
+  <!-- Badge group with drop shadow -->
+  <g filter="url(#ds)">
+    <!-- Outer hex (rim) -->
+    <path d="M 446,256 L 351,420 L 161,420 L 66,256 L 161,92 L 351,92 Z" 
+          fill="url(#rimGrad)" 
+          filter="url(#inner)"/>
+    
+    <!-- Inner hex (face) -->
+    <path d="M 428,256 L 342,405 L 170,405 L 84,256 L 170,107 L 342,107 Z" 
+          fill="url(#faceGrad)" 
+          stroke="#FFFFFF" 
+          stroke-opacity="0.18" 
+          stroke-width="2"/>
+    
+    <!-- Shine overlay -->
+    <path d="M 110,150 L 300,110 L 350,210 L 150,260 Z" 
+          fill="url(#shineGrad)" 
+          opacity="0.55"/>
+    
+    <!-- 5-point star -->
+    <path d="M 256,178 L 275,230 L 330,240 L 300,288 L 256,290 L 212,288 L 182,240 L 237,230 Z" 
+          fill="#FFFFFF" 
+          opacity="0.95"/>
+    
+    <!-- Star shadow -->
+    <path d="M 258,180 L 277,232 L 332,242 L 302,290 L 258,292 L 214,290 L 184,242 L 239,232 Z" 
+          fill="#000000" 
+          opacity="0.12"/>
+    
+    <!-- Specular dot -->
+    <circle cx="380" cy="140" r="8" fill="#FFFFFF" opacity="0.25"/>
+  </g>
+</svg>

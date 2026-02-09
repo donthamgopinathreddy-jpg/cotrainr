@@ -2,40 +2,29 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
 import '../../utils/page_transitions.dart';
-import '../../services/quest_service.dart';
+import '../../providers/quest_provider.dart';
 
-class QuestPage extends StatefulWidget {
+class QuestPage extends ConsumerStatefulWidget {
   const QuestPage({super.key});
 
   @override
-  State<QuestPage> createState() => _QuestPageState();
+  ConsumerState<QuestPage> createState() => _QuestPageState();
 }
 
-class _QuestPageState extends State<QuestPage>
+class _QuestPageState extends ConsumerState<QuestPage>
     with SingleTickerProviderStateMixin {
   int _tabIndex = 0;
   late final PageController _tabController;
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
 
-  int _currentXP = 250;
-  int _level = 4;
-  String _levelTitle = 'Foundation';
-
   late final List<_LevelInfo> _levels;
-  List<_QuestItem> _daily = [];
-  List<_QuestItem> _weekly = [];
-  late final List<_LeaderboardItem> _leaderboard;
-  late final List<_AchievementItem> _achievements;
-  
-  final QuestService _questService = QuestService();
-  bool _isLoading = false;
-  String? _currentUserId;
 
   final LinearGradient _primaryGradient = const LinearGradient(
     colors: [Color(0xFFFF7A00), Color(0xFFFFC300)],
@@ -57,20 +46,6 @@ class _QuestPageState extends State<QuestPage>
     _fadeController.forward();
     _tabController = PageController(viewportFraction: 1.0);
     _levels = _buildLevels();
-    _currentUserId = Supabase.instance.client.auth.currentUser?.id;
-    _loadRealQuestData();
-    _leaderboard = [
-      _LeaderboardItem('Mia', 12, 1320, 1),
-      _LeaderboardItem('Noah', 11, 1210, 2),
-      _LeaderboardItem('Aria', 10, 1170, 3),
-      _LeaderboardItem('You', 9, 980, 12),
-    ];
-    _achievements = [
-      _AchievementItem('Consistency', Icons.verified_outlined, 0.8, true),
-      _AchievementItem('Hydration', Icons.water_drop_outlined, 0.6, false),
-      _AchievementItem('Steps', Icons.directions_walk_outlined, 0.5, false),
-      _AchievementItem('Nutrition', Icons.restaurant_outlined, 0.3, false),
-    ];
   }
 
   @override
@@ -79,62 +54,6 @@ class _QuestPageState extends State<QuestPage>
     super.dispose();
   }
 
-  Future<void> _loadRealQuestData() async {
-    if (_currentUserId == null) return;
-    
-    setState(() => _isLoading = true);
-    
-    try {
-      // Load daily quests
-      final dailyQuests = await _questService.getDailyQuests(_currentUserId!);
-      final dailyItems = dailyQuests.map((quest) => _QuestItem(
-        title: quest.title,
-        subtitle: quest.description,
-        icon: quest.icon,
-        progress: quest.maxProgress > 0 ? (quest.progress / quest.maxProgress).clamp(0.0, 1.0) : 0.0,
-        rewardXP: quest.rewardXP,
-        timeLeft: quest.timeLeft,
-      )).toList();
-
-      // Load weekly quests
-      final weeklyQuests = await _questService.getWeeklyQuests(_currentUserId!);
-      final weeklyItems = weeklyQuests.map((quest) => _QuestItem(
-        title: quest.title,
-        subtitle: quest.description,
-        icon: quest.icon,
-        progress: quest.maxProgress > 0 ? (quest.progress / quest.maxProgress).clamp(0.0, 1.0) : 0.0,
-        rewardXP: quest.rewardXP,
-        timeLeft: quest.timeLeft,
-      )).toList();
-
-      // Load user XP and level
-      final supabase = Supabase.instance.client;
-      final profileResponse = await supabase
-          .from('user_profiles')
-          .select('total_xp, level')
-          .eq('user_id', _currentUserId!)
-          .maybeSingle();
-
-      if (profileResponse != null) {
-        _currentXP = (profileResponse['total_xp'] as int?) ?? 0;
-        _level = (profileResponse['level'] as int?) ?? 1;
-        _levelTitle = _getLevelTitle(_level);
-      }
-
-      if (mounted) {
-        setState(() {
-          _daily = dailyItems;
-          _weekly = weeklyItems;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      print('Error loading quest data: $e');
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
 
   String _getLevelTitle(int level) {
     if (level < 5) return 'Foundation';
@@ -144,21 +63,119 @@ class _QuestPageState extends State<QuestPage>
     return 'Master';
   }
 
-  void _openLevelsPage() {
+  void _openLevelsPage(int currentXP) {
     Navigator.of(context).push(
       PageTransitions.slideRoute(
         LevelsPage(
-          currentXP: _currentXP,
+          currentXP: currentXP,
           levels: _levels,
         ),
         beginOffset: const Offset(0, 0.05),
       ),
     );
   }
+  
+  Future<void> _claimQuest(String questId) async {
+    try {
+      final repo = ref.read(questRepositoryProvider);
+      final result = await repo.claimQuestRewards(questId);
+      
+      // Refresh quests and XP
+      ref.invalidate(dailyQuestsProvider);
+      ref.invalidate(weeklyQuestsProvider);
+      ref.invalidate(userXPProvider);
+      ref.invalidate(userLevelProvider);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Quest claimed! +${result['xp_awarded']} XP'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error claiming quest: $e'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    
+    // Watch providers for real data
+    final dailyQuestsAsync = ref.watch(dailyQuestsProvider);
+    final weeklyQuestsAsync = ref.watch(weeklyQuestsProvider);
+    final challengesAsync = ref.watch(activeChallengesProvider);
+    final achievementsAsync = ref.watch(achievementsProvider);
+    final leaderboardAsync = ref.watch(dailyLeaderboardProvider);
+    final xpAsync = ref.watch(userXPProvider);
+    final levelAsync = ref.watch(userLevelProvider);
+    
+    final currentXP = xpAsync.value ?? 0;
+    final level = levelAsync.value ?? 1;
+    final levelTitle = _getLevelTitle(level);
+    
+    // Convert to UI models
+    final dailyItems = dailyQuestsAsync.value?.map((quest) => _QuestItem(
+      title: quest.title,
+      subtitle: quest.description,
+      icon: quest.icon,
+      progress: quest.maxProgress > 0 ? (quest.progress / quest.maxProgress).clamp(0.0, 1.0) : 0.0,
+      rewardXP: quest.rewardXP,
+      timeLeft: quest.timeLeft,
+      canClaim: quest.canClaim,
+      questId: quest.id,
+    )).toList() ?? [];
+    
+    final weeklyItems = weeklyQuestsAsync.value?.map((quest) => _QuestItem(
+      title: quest.title,
+      subtitle: quest.description,
+      icon: quest.icon,
+      progress: quest.maxProgress > 0 ? (quest.progress / quest.maxProgress).clamp(0.0, 1.0) : 0.0,
+      rewardXP: quest.rewardXP,
+      timeLeft: quest.timeLeft,
+      canClaim: quest.canClaim,
+      questId: quest.id,
+    )).toList() ?? [];
+    
+    final challengeItems = challengesAsync.value?.map((challenge) => _ChallengeItem(
+      id: challenge.id,
+      title: challenge.title,
+      description: challenge.description,
+      progress: challenge.maxProgress > 0 ? (challenge.progress / challenge.maxProgress).clamp(0.0, 1.0) : 0.0,
+      participants: challenge.participants,
+      timeLeft: challenge.timeLeft,
+    )).toList() ?? [];
+    
+    final achievementItems = achievementsAsync.value?.map((achievement) => _AchievementItem(
+      title: achievement.title,
+      icon: achievement.icon,
+      progress: achievement.progressRatio,
+      unlocked: achievement.isUnlocked,
+      tier: achievement.tier,
+    )).toList() ?? [];
+    
+    final leaderboardItems = leaderboardAsync.value?.map((entry) => _LeaderboardItem(
+      entry.username,
+      entry.level,
+      entry.points,
+      entry.rank,
+      avatarUrl: entry.avatarUrl,
+    )).toList() ?? [];
+    
+    final isLoading = dailyQuestsAsync.isLoading || 
+                     weeklyQuestsAsync.isLoading || 
+                     challengesAsync.isLoading ||
+                     achievementsAsync.isLoading ||
+                     leaderboardAsync.isLoading;
 
     return Scaffold(
       backgroundColor: colorScheme.background,
@@ -171,20 +188,20 @@ class _QuestPageState extends State<QuestPage>
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
               child: _HeaderRow(
                 onHelpTap: () => HapticFeedback.selectionClick(),
-                currentXP: _currentXP,
+                currentXP: currentXP,
               ),
             ),
             const SizedBox(height: DesignTokens.spacing16),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: _XpHero(
-                currentXP: _currentXP,
-                level: _level,
-                title: _levelTitle,
-                currentLevelInfo: _levels[_level - 1],
+                currentXP: currentXP,
+                level: level,
+                title: levelTitle,
+                currentLevelInfo: _levels[level.clamp(1, _levels.length) - 1],
                 nextLevelInfo:
-                    _level < _levels.length ? _levels[_level] : _levels.last,
-                onTapRing: _openLevelsPage,
+                    level < _levels.length ? _levels[level] : _levels.last,
+                onTapRing: () => _openLevelsPage(currentXP),
               ),
             ),
             Padding(
@@ -210,18 +227,28 @@ class _QuestPageState extends State<QuestPage>
                   setState(() => _tabIndex = index);
                 },
                 children: [
-                  _isLoading
+                  isLoading
                       ? const Center(child: CircularProgressIndicator())
                       : _DailySection(
-                          quests: _daily,
+                          quests: dailyItems,
                           gradient: _primaryGradient,
+                          onClaim: _claimQuest,
                         ),
-                  _isLoading
+                  isLoading
                       ? const Center(child: CircularProgressIndicator())
-                      : _WeeklySection(quests: _weekly),
-                  _ChallengesSection(),
-                  _AchievementsSection(items: _achievements),
-                  _LeaderboardSection(entries: _leaderboard),
+                      : _WeeklySection(
+                          quests: weeklyItems,
+                          onClaim: _claimQuest,
+                        ),
+                  isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _ChallengesSection(challenges: challengeItems),
+                  isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _AchievementsSection(items: achievementItems),
+                  isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _LeaderboardSection(entries: leaderboardItems),
                 ],
               ),
             ),
@@ -325,18 +352,11 @@ class _XpHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     final nextXP = nextLevelInfo.xpRequired;
     final progress = currentXP / nextXP;
-    final needed = (nextXP - currentXP).clamp(0, nextXP);
-    final gradient = _tierGradient(currentLevelInfo.tierColor);
-    return Container(
+    return SizedBox(
       height: 140,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: gradient,
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: AppColors.cardShadow,
-      ),
       child: Row(
         children: [
           GestureDetector(
@@ -356,27 +376,35 @@ class _XpHero extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 220),
-                      switchInCurve: Curves.easeOutBack,
-                      switchOutCurve: Curves.easeOutCubic,
-                      transitionBuilder: (child, animation) =>
-                          ScaleTransition(scale: animation, child: child),
-                      child: _MedalBadge(
-                        key: ValueKey(currentLevelInfo.level),
-                        level: currentLevelInfo.level,
-                        color: currentLevelInfo.tierColor,
-                        symbol: currentLevelInfo.symbol,
-                        size: 28,
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: currentLevelInfo.tierColor.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: currentLevelInfo.tierColor.withOpacity(0.5),
+                          width: 1,
+                        ),
+                      ),
+                      child: Text(
+                        'Lv $level',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: currentLevelInfo.tierColor,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      'Level $level',
-                      style: const TextStyle(
+                      title,
+                      style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
-                        color: Colors.white,
+                        color: colorScheme.onSurface,
                       ),
                     ),
                   ],
@@ -384,55 +412,13 @@ class _XpHero extends StatelessWidget {
                 const SizedBox(height: 6),
                 _XpBar(progress: progress),
                 const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Text(
-                      '$currentXP / $nextXP',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        'Need $needed XP',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    const Icon(
-                      Icons.stars_rounded,
-                      color: Colors.white,
-                      size: 14,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Next: ${nextLevelInfo.name} ($nextXP XP)',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white.withOpacity(0.85),
-                      ),
-                    ),
-                  ],
+                Text(
+                  '$currentXP / $nextXP to unlock LV ${level + 1}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: colorScheme.onSurface.withOpacity(0.75),
+                  ),
                 ),
               ],
             ),
@@ -569,10 +555,12 @@ class _TabData {
 class _DailySection extends StatelessWidget {
   final List<_QuestItem> quests;
   final LinearGradient gradient;
+  final Function(String) onClaim;
 
   const _DailySection({
     required this.quests,
     required this.gradient,
+    required this.onClaim,
   });
 
   @override
@@ -585,7 +573,11 @@ class _DailySection extends StatelessWidget {
               .map(
                 (quest) => Padding(
                   padding: const EdgeInsets.only(bottom: 12),
-                  child: _QuestCard(quest: quest, gradient: gradient),
+                  child: _QuestCard(
+                    quest: quest,
+                    gradient: gradient,
+                    onClaim: () => onClaim(quest.questId),
+                  ),
                 ),
               )
               .toList(),
@@ -597,8 +589,12 @@ class _DailySection extends StatelessWidget {
 
 class _WeeklySection extends StatelessWidget {
   final List<_QuestItem> quests;
+  final Function(String) onClaim;
 
-  const _WeeklySection({required this.quests});
+  const _WeeklySection({
+    required this.quests,
+    required this.onClaim,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -615,7 +611,10 @@ class _WeeklySection extends StatelessWidget {
           childAspectRatio: 1.2,
         ),
         itemBuilder: (context, index) {
-          return _WeeklyCard(quest: quests[index]);
+          return _WeeklyCard(
+            quest: quests[index],
+            onClaim: () => onClaim(quests[index].questId),
+          );
         },
       ),
     );
@@ -623,7 +622,9 @@ class _WeeklySection extends StatelessWidget {
 }
 
 class _ChallengesSection extends StatelessWidget {
-  const _ChallengesSection();
+  final List<_ChallengeItem> challenges;
+
+  const _ChallengesSection({required this.challenges});
 
   @override
   Widget build(BuildContext context) {
@@ -643,41 +644,120 @@ class _ChallengesSection extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: colorScheme.surface,
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: AppColors.cardShadow,
-            ),
-            child: Column(
-              children: [
-                Icon(
-                  Icons.people_outlined,
-                  size: 48,
-                  color: colorScheme.onSurface.withOpacity(0.5),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'No active challenges',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: colorScheme.onSurface,
+          challenges.isEmpty
+              ? Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: colorScheme.surface,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: AppColors.cardShadow,
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Join weekend challenges or create one with friends!',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: colorScheme.onSurface.withOpacity(0.6),
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.people_outlined,
+                        size: 48,
+                        color: colorScheme.onSurface.withOpacity(0.5),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'No active challenges',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: colorScheme.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Join weekend challenges or create one with friends!',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: colorScheme.onSurface.withOpacity(0.6),
+                        ),
+                      ),
+                    ],
                   ),
+                )
+              : Column(
+                  children: challenges.map((challenge) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: colorScheme.surface,
+                          borderRadius: BorderRadius.circular(24),
+                          boxShadow: AppColors.cardShadow,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.emoji_events,
+                                  color: AppColors.orange,
+                                  size: 24,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    challenge.title,
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w700,
+                                      color: colorScheme.onSurface,
+                                    ),
+                                  ),
+                                ),
+                                Text(
+                                  '${challenge.participants}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: colorScheme.onSurface.withOpacity(0.6),
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Icon(
+                                  Icons.people,
+                                  size: 16,
+                                  color: colorScheme.onSurface.withOpacity(0.6),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              challenge.description,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: colorScheme.onSurface.withOpacity(0.7),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            _ProgressBar(
+                              progress: challenge.progress,
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF9C27B0), Color(0xFFE91E63)],
+                              ),
+                            ),
+                            if (challenge.timeLeft != null) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                challenge.timeLeft!,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: colorScheme.onSurface.withOpacity(0.6),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
                 ),
-              ],
-            ),
-          ),
         ],
       ),
     );
@@ -772,21 +852,14 @@ class _LeaderboardPodiumItem extends StatelessWidget {
         Stack(
           alignment: Alignment.topCenter,
           children: [
-            Container(
-              width: size + 18,
-              height: size + 18,
-              decoration: BoxDecoration(
-                color: colorScheme.surface,
-                shape: BoxShape.circle,
-                boxShadow: AppColors.cardShadow,
-              ),
-              child: Center(
-                child: _MedalBadge(
-                  level: entry!.level,
-                  color: tierColor,
-                  symbol: _SymbolType.star,
-                  size: size,
-                ),
+            SizedBox(
+              width: size,
+              height: size,
+              child: SvgPicture.asset(
+                _getBadgePathFromLevel(entry!.level),
+                width: size,
+                height: size,
+                fit: BoxFit.contain,
               ),
             ),
             Container(
@@ -1027,7 +1100,6 @@ class _TierHeader extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final tierName = currentLevel.tierName;
     final tierColor = currentLevel.tierColor;
-    final tierGradient = _tierGradient(tierColor);
     
     // Calculate progress to next level
     final nextXP = nextLevel?.xpRequired ?? currentLevel.xpRequired;
@@ -1047,15 +1119,14 @@ class _TierHeader extends StatelessWidget {
       child: Column(
         children: [
           // Tier badge (no glow)
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: tierGradient,
-              shape: BoxShape.circle,
-            ),
-            child: _InfinityBadge(
-              tierName: tierName,
-              size: 100,
+          SizedBox(
+            width: 100,
+            height: 100,
+            child: SvgPicture.asset(
+              _getBadgePathFromTierName(tierName),
+              width: 100,
+              height: 100,
+              fit: BoxFit.contain,
             ),
           ),
           const SizedBox(height: 16),
@@ -1348,10 +1419,30 @@ class _TierSectionCardState extends State<_TierSectionCard>
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
-                  _InfinityBadge(
-                    tierName: tierName,
-                    size: 40,
-                    isLocked: !widget.isUnlocked,
+                  SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: widget.isUnlocked
+                        ? SvgPicture.asset(
+                            _getBadgePathFromTierName(tierName),
+                            width: 40,
+                            height: 40,
+                            fit: BoxFit.contain,
+                          )
+                        : ColorFiltered(
+                            colorFilter: const ColorFilter.matrix([
+                              0.2126, 0.7152, 0.0722, 0, 0,
+                              0.2126, 0.7152, 0.0722, 0, 0,
+                              0.2126, 0.7152, 0.0722, 0, 0,
+                              0, 0, 0, 0.3, 0,
+                            ]),
+                            child: SvgPicture.asset(
+                              _getBadgePathFromTierName(tierName),
+                              width: 40,
+                              height: 40,
+                              fit: BoxFit.contain,
+                            ),
+                          ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -1472,13 +1563,31 @@ class _LevelCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Status icon - Infinity badge
-          _InfinityBadge(
-            tierName: _getTierNameFromLevel(level.level),
-            size: 40,
-            isLocked: isLocked,
-            isCompleted: isCompleted,
-            levelNumber: level.level,
+          // Status icon - Badge SVG
+          SizedBox(
+            width: 40,
+            height: 40,
+            child: isLocked
+                ? ColorFiltered(
+                    colorFilter: const ColorFilter.matrix([
+                      0.2126, 0.7152, 0.0722, 0, 0,
+                      0.2126, 0.7152, 0.0722, 0, 0,
+                      0.2126, 0.7152, 0.0722, 0, 0,
+                      0, 0, 0, 0.3, 0,
+                    ]),
+                    child: SvgPicture.asset(
+                      _getBadgePathFromLevel(level.level),
+                      width: 40,
+                      height: 40,
+                      fit: BoxFit.contain,
+                    ),
+                  )
+                : SvgPicture.asset(
+                    _getBadgePathFromLevel(level.level),
+                    width: 40,
+                    height: 40,
+                    fit: BoxFit.contain,
+                  ),
           ),
           const SizedBox(width: 12),
           // Level info
@@ -1925,8 +2034,13 @@ class _ContinuousLevelBarState extends State<_ContinuousLevelBar>
 class _QuestCard extends StatelessWidget {
   final _QuestItem quest;
   final LinearGradient gradient;
+  final VoidCallback? onClaim;
 
-  const _QuestCard({required this.quest, required this.gradient});
+  const _QuestCard({
+    required this.quest,
+    required this.gradient,
+    this.onClaim,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1978,9 +2092,10 @@ class _QuestCard extends StatelessWidget {
               if (quest.timeLeft != null) _Chip(text: quest.timeLeft!),
               const Spacer(),
               _PrimaryButton(
-                label: quest.progress >= 1.0 ? 'Claim' : 'In Progress',
+                label: quest.canClaim ? 'Claim' : (quest.progress >= 1.0 ? 'Claim' : 'In Progress'),
                 gradient: gradient,
-                enabled: quest.progress >= 1.0,
+                enabled: quest.canClaim || quest.progress >= 1.0,
+                onTap: (quest.canClaim || quest.progress >= 1.0) && onClaim != null ? onClaim! : null,
               ),
             ],
           ),
@@ -1992,8 +2107,12 @@ class _QuestCard extends StatelessWidget {
 
 class _WeeklyCard extends StatelessWidget {
   final _QuestItem quest;
+  final VoidCallback? onClaim;
 
-  const _WeeklyCard({required this.quest});
+  const _WeeklyCard({
+    required this.quest,
+    this.onClaim,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -2100,42 +2219,114 @@ class _AchievementCard extends StatelessWidget {
 
   const _AchievementCard({required this.item});
 
+  String _getBadgePath(int tier) {
+    switch (tier) {
+      case 1:
+        return 'assets/badges/badge_bronze.svg';
+      case 2:
+        return 'assets/badges/badge_silver.svg';
+      case 3:
+        return 'assets/badges/badge_gold.svg';
+      case 4:
+        return 'assets/badges/badge_platinum.svg';
+      case 5:
+        return 'assets/badges/badge_diamond.svg';
+      default:
+        return 'assets/badges/badge_bronze.svg';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: AppColors.cardShadow,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _IconBadge(icon: item.icon, size: 32, iconSize: 18),
-          const SizedBox(height: 8),
-          Text(
-            item.title,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: colorScheme.onSurface,
-            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Badge SVG
+        SizedBox(
+          width: 32,
+          height: 32,
+          child: item.unlocked
+              ? SvgPicture.asset(
+                  _getBadgePath(item.tier),
+                  width: 32,
+                  height: 32,
+                  fit: BoxFit.contain,
+                )
+              : ColorFiltered(
+                  colorFilter: const ColorFilter.matrix([
+                    0.2126, 0.7152, 0.0722, 0, 0, // Red channel
+                    0.2126, 0.7152, 0.0722, 0, 0, // Green channel
+                    0.2126, 0.7152, 0.0722, 0, 0, // Blue channel
+                    0, 0, 0, 0.3, 0, // Alpha channel (30% opacity)
+                  ]),
+                  child: SvgPicture.asset(
+                    _getBadgePath(item.tier),
+                    width: 32,
+                    height: 32,
+                    fit: BoxFit.contain,
+                  ),
+                ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          item.title,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: colorScheme.onSurface,
           ),
-          const Spacer(),
-          _ProgressBar(
-            progress: item.progress,
-            gradient: const LinearGradient(
-              colors: [Color(0xFFFF7A00), Color(0xFFFFC300)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+        ),
+        const Spacer(),
+        _ProgressBar(
+          progress: item.progress,
+          gradient: const LinearGradient(
+            colors: [Color(0xFFFF7A00), Color(0xFFFFC300)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
-        ],
-      ),
+        ),
+      ],
     );
+  }
+}
+
+// Helper function to get badge path from level
+String _getBadgePathFromLevel(int level) {
+  final tierIndex = ((level - 1) / 10).floor();
+  final badgeTier = tierIndex + 1; // Convert 0-based to 1-based
+  switch (badgeTier) {
+    case 1:
+      return 'assets/badges/badge_bronze.svg';
+    case 2:
+      return 'assets/badges/badge_silver.svg';
+    case 3:
+      return 'assets/badges/badge_gold.svg';
+    case 4:
+      return 'assets/badges/badge_platinum.svg';
+    case 5:
+      return 'assets/badges/badge_diamond.svg';
+    default:
+      return 'assets/badges/badge_bronze.svg';
+  }
+}
+
+// Helper function to get badge path from tier name
+String _getBadgePathFromTierName(String tierName) {
+  switch (tierName) {
+    case 'Bronze':
+      return 'assets/badges/badge_bronze.svg';
+    case 'Silver':
+      return 'assets/badges/badge_silver.svg';
+    case 'Gold':
+      return 'assets/badges/badge_gold.svg';
+    case 'Platinum':
+      return 'assets/badges/badge_platinum.svg';
+    case 'Diamond':
+      return 'assets/badges/badge_diamond.svg';
+    default:
+      return 'assets/badges/badge_bronze.svg';
   }
 }
 
@@ -2169,35 +2360,17 @@ class _LevelBadge extends StatelessWidget {
           ),
         ],
       ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _MedalBadge(
-            level: level,
-            color: color.withOpacity(0.95),
-            symbol: symbol,
-            size: 42,
+      child: Center(
+        child: SizedBox(
+          width: 42,
+          height: 42,
+          child: SvgPicture.asset(
+            _getBadgePathFromLevel(level),
+            width: 42,
+            height: 42,
+            fit: BoxFit.contain,
           ),
-          const SizedBox(height: 6),
-          Text(
-            'Lv $level',
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-            ),
-          ),
-          Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: Colors.white.withOpacity(0.8),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -2210,16 +2383,25 @@ class _XpBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return SizedBox(
       height: 10,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(10),
         child: Stack(
           children: [
-            Container(color: Colors.white.withOpacity(0.12)),
+            Container(color: colorScheme.surfaceVariant.withOpacity(0.5)),
             FractionallySizedBox(
               widthFactor: progress.clamp(0.0, 1.0),
-              child: Container(color: Colors.white),
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFFF7A00), Color(0xFFFFC300)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+              ),
             ),
           ],
         ),
@@ -2336,32 +2518,37 @@ class _PrimaryButton extends StatelessWidget {
   final String label;
   final LinearGradient gradient;
   final bool enabled;
+  final VoidCallback? onTap;
 
   const _PrimaryButton({
     required this.label,
     required this.gradient,
     this.enabled = true,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     
-    return Container(
-      height: 36,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        gradient: enabled ? gradient : null,
-        color: enabled ? null : colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(22),
-      ),
-      child: Center(
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: enabled ? Colors.white : colorScheme.onSurface.withOpacity(0.5),
+    return GestureDetector(
+      onTap: enabled && onTap != null ? onTap : null,
+      child: Container(
+        height: 36,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+          gradient: enabled ? gradient : null,
+          color: enabled ? null : colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(22),
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: enabled ? Colors.white : colorScheme.onSurface.withOpacity(0.5),
+            ),
           ),
         ),
       ),
@@ -2376,6 +2563,8 @@ class _QuestItem {
   final double progress;
   final int rewardXP;
   final String? timeLeft;
+  final bool canClaim;
+  final String questId;
 
   _QuestItem({
     required this.title,
@@ -2384,6 +2573,8 @@ class _QuestItem {
     required this.progress,
     required this.rewardXP,
     this.timeLeft,
+    this.canClaim = false,
+    required this.questId,
   });
 }
 
@@ -2392,8 +2583,27 @@ class _LeaderboardItem {
   final int level;
   final int xp;
   final int rank;
+  final String? avatarUrl;
 
-  _LeaderboardItem(this.name, this.level, this.xp, this.rank);
+  _LeaderboardItem(this.name, this.level, this.xp, this.rank, {this.avatarUrl});
+}
+
+class _ChallengeItem {
+  final String id;
+  final String title;
+  final String description;
+  final double progress;
+  final int participants;
+  final String? timeLeft;
+
+  _ChallengeItem({
+    required this.id,
+    required this.title,
+    required this.description,
+    required this.progress,
+    required this.participants,
+    this.timeLeft,
+  });
 }
 
 class _AchievementItem {
@@ -2401,8 +2611,15 @@ class _AchievementItem {
   final IconData icon;
   final double progress;
   final bool unlocked;
+  final int tier;
 
-  _AchievementItem(this.title, this.icon, this.progress, this.unlocked);
+  _AchievementItem({
+    required this.title,
+    required this.icon,
+    required this.progress,
+    required this.unlocked,
+    required this.tier,
+  });
 }
 
 class _LevelInfo {
