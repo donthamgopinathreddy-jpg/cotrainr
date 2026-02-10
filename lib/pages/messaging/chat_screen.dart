@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:io';
 import '../../theme/app_colors.dart';
+import '../../repositories/messages_repository.dart';
 import '../cocircle/user_profile_page.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -29,9 +32,13 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final ImagePicker _imagePicker = ImagePicker();
+  final MessagesRepository _messagesRepo = MessagesRepository();
+  final SupabaseClient _supabase = Supabase.instance.client;
   String? _previewImagePath;
   String? _previewVideoPath;
   bool _isEmojiPickerOpen = false;
+  bool _isLoading = true;
+  RealtimeChannel? _messagesChannel;
 
   static const List<String> _commonEmojis = [
     // Smileys & People
@@ -89,52 +96,118 @@ class _ChatScreenState extends State<ChatScreen> {
     '🎺', '🎸', '🪕', '🎻', '🎲', '♟️', '🎯', '🎳',
     '🎮', '🎰', '🧩',
   ];
-  final List<_ChatMessage> _messages = [
-    _ChatMessage(
-      text: 'Hey! How can I help you with your fitness journey today?',
-      isSent: false,
-      time: '2h ago',
-    ),
-    _ChatMessage(
-      text: 'Hi! I\'d like to know more about the workout plan.',
-      isSent: true,
-      time: '2h ago',
-    ),
-    _ChatMessage(
-      text: 'Great progress on your workouts! Keep it up.',
-      isSent: false,
-      time: '2h ago',
-    ),
-    _ChatMessage(
-      text: 'Thanks! I\'ve been following the routine consistently.',
-      isSent: true,
-      time: '1h ago',
-    ),
-  ];
+  final List<_ChatMessage> _messages = [];
 
-  void _sendMessage() {
-    final text = _messageController.text.trim();
-    if (text.isEmpty && _previewImagePath == null && _previewVideoPath == null) return;
+  @override
+  void initState() {
+    super.initState();
+    _loadMessages();
+    _setupRealtimeSubscription();
+    _markMessagesAsRead();
+  }
 
+  Future<void> _loadMessages() async {
     setState(() {
-      _messages.add(
-        _ChatMessage(
-          text: text,
-          isSent: true,
-          time: 'Just now',
-          imagePath: _previewImagePath,
-          videoPath: _previewVideoPath,
-        ),
-      );
+      _isLoading = true;
     });
 
-    // Haptic feedback for sent message
-    HapticFeedback.selectionClick();
+    try {
+      final messages = await _messagesRepo.fetchMessages(widget.conversationId);
+      final currentUserId = _supabase.auth.currentUser?.id;
+      
+      final List<_ChatMessage> chatMessages = [];
+      for (final msg in messages) {
+        final senderId = msg['sender_id'] as String;
+        final isSent = senderId == currentUserId;
+        final content = msg['content'] as String? ?? '';
+        final createdAt = msg['created_at'] as String?;
+        final time = _formatTime(createdAt);
+        
+        chatMessages.add(_ChatMessage(
+          text: content,
+          isSent: isSent,
+          time: time,
+          messageId: msg['id'] as String?,
+        ));
+      }
 
-    _messageController.clear();
-    _clearPreview();
+      if (mounted) {
+        setState(() {
+          _messages.clear();
+          _messages.addAll(chatMessages);
+          _isLoading = false;
+        });
+        _scrollToBottom();
+      }
+    } catch (e) {
+      print('Error loading messages: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
-    // Scroll to bottom
+  void _setupRealtimeSubscription() {
+    _messagesChannel = _messagesRepo.subscribeToMessages(widget.conversationId, (newMessage) {
+      final currentUserId = _supabase.auth.currentUser?.id;
+      final senderId = newMessage['sender_id'] as String;
+      final isSent = senderId == currentUserId;
+      final content = newMessage['content'] as String? ?? '';
+      final createdAt = newMessage['created_at'] as String?;
+      final time = _formatTime(createdAt);
+      
+      if (mounted) {
+        setState(() {
+          _messages.add(_ChatMessage(
+            text: content,
+            isSent: isSent,
+            time: time,
+            messageId: newMessage['id'] as String?,
+          ));
+        });
+        _scrollToBottom();
+        if (!isSent) {
+          _markMessagesAsRead();
+        }
+      }
+    });
+  }
+
+  Future<void> _markMessagesAsRead() async {
+    await _messagesRepo.markMessagesAsRead(widget.conversationId);
+  }
+
+  String _formatTime(String? timestamp) {
+    if (timestamp == null) return 'Just now';
+    
+    try {
+      final dateTime = DateTime.parse(timestamp);
+      final now = DateTime.now();
+      final difference = now.difference(dateTime);
+
+      if (difference.inDays == 0) {
+        if (difference.inHours == 0) {
+          if (difference.inMinutes == 0) {
+            return 'Just now';
+          }
+          return '${difference.inMinutes}m ago';
+        }
+        return '${difference.inHours}h ago';
+      } else if (difference.inDays == 1) {
+        return '1d ago';
+      } else if (difference.inDays < 7) {
+        return '${difference.inDays}d ago';
+      } else {
+        return DateFormat('MMM d, h:mm a').format(dateTime);
+      }
+    } catch (e) {
+      return 'Just now';
+    }
+  }
+
+  void _scrollToBottom() {
     Future.delayed(const Duration(milliseconds: 100), () {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
@@ -144,6 +217,54 @@ class _ChatScreenState extends State<ChatScreen> {
         );
       }
     });
+  }
+
+  Future<void> _sendMessage() async {
+    final text = _messageController.text.trim();
+    if (text.isEmpty && _previewImagePath == null && _previewVideoPath == null) return;
+
+    // Optimistically add message to UI
+    final tempMessage = _ChatMessage(
+      text: text,
+      isSent: true,
+      time: 'Just now',
+      imagePath: _previewImagePath,
+      videoPath: _previewVideoPath,
+    );
+
+    setState(() {
+      _messages.add(tempMessage);
+    });
+
+    // Haptic feedback for sent message
+    HapticFeedback.selectionClick();
+
+    _messageController.clear();
+    _clearPreview();
+    _scrollToBottom();
+
+    // Send to Supabase
+    try {
+      await _messagesRepo.sendMessage(
+        conversationId: widget.conversationId,
+        content: text,
+        mediaUrl: _previewImagePath, // TODO: Upload image to storage first
+      );
+    } catch (e) {
+      print('Error sending message: $e');
+      // Remove optimistic message on error
+      if (mounted) {
+        setState(() {
+          _messages.removeLast();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to send message. Please try again.'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _pickImage() async {
@@ -403,6 +524,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    _messagesChannel?.unsubscribe();
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -566,20 +688,54 @@ class _ChatScreenState extends State<ChatScreen> {
       body: Column(
         children: [
           Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(16),
-              itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                final message = _messages[index];
-                return _ChatBubble(
-                  message: message,
-                  onLongPress: message.isSent
-                      ? () => _showDeleteOptions(context, index)
-                      : null,
-                );
-              },
-            ),
+            child: _isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(),
+                  )
+                : _messages.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.chat_bubble_outline_rounded,
+                              size: 64,
+                              color: cs.onSurfaceVariant,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No messages yet',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: cs.onSurfaceVariant,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Start the conversation!',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: cs.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _messages.length,
+                        itemBuilder: (context, index) {
+                          final message = _messages[index];
+                          return _ChatBubble(
+                            message: message,
+                            onLongPress: message.isSent
+                                ? () => _showDeleteOptions(context, index)
+                                : null,
+                          );
+                        },
+                      ),
           ),
           // Preview
           if (_previewImagePath != null || _previewVideoPath != null)
@@ -816,7 +972,7 @@ class _ChatMessage {
   final String time;
   final String? imagePath;
   final String? videoPath;
-  final String id;
+  final String? messageId;
 
   _ChatMessage({
     required this.text,
@@ -824,8 +980,8 @@ class _ChatMessage {
     required this.time,
     this.imagePath,
     this.videoPath,
-    String? id,
-  }) : id = id ?? DateTime.now().millisecondsSinceEpoch.toString();
+    this.messageId,
+  });
 }
 
 class _ChatBubble extends StatefulWidget {

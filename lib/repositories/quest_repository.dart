@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/quest_models.dart';
@@ -21,14 +22,21 @@ class QuestRepository {
 
     // Ensure daily quests are allocated
     try {
-      await _supabase.rpc('allocate_daily_quests', params: {
+      final result = await _supabase.rpc('allocate_daily_quests', params: {
         'p_user_id': userId,
       });
-    } catch (e) {
-      // Ignore if already allocated today
+      print('QuestRepository: allocate_daily_quests returned: $result');
+      if (result == null || result == 0) {
+        print('QuestRepository: No new quests allocated (might already exist)');
+      }
+    } catch (e, stackTrace) {
+      print('QuestRepository: Error allocating daily quests: $e');
+      print('QuestRepository: Stack trace: $stackTrace');
+      // Continue even if allocation fails - might already be allocated
     }
 
-    // Fetch active daily quests
+    // Fetch active daily quests (include requirements for dynamic quests)
+    // Use left join so dynamic quests (NULL quest_definition_id) are included
     final response = await _supabase
         .from('user_quests')
         .select('''
@@ -44,35 +52,126 @@ class QuestRepository {
           reward_coins,
           assigned_at,
           expires_at,
-          quests:quest_definition_id (
-            title,
-            description,
-            icon_name,
-            icon_color,
-            requirements,
-            category
-          )
+          requirements
         ''')
         .eq('user_id', userId)
         .eq('type', 'daily')
         .or('status.eq.available,status.eq.in_progress,status.eq.completed')
         .order('assigned_at');
+    
+    print('QuestRepository: Found ${response.length} daily quests');
+    if (response.isEmpty) {
+      print('QuestRepository: No quests found - user_id: $userId');
+      // Try to manually check what's in the database
+      try {
+        final allQuests = await _supabase
+            .from('user_quests')
+            .select('id, type, status, assigned_at, quest_definition_id')
+            .eq('user_id', userId);
+        print('QuestRepository: All user_quests for user: ${allQuests.length}');
+        for (final quest in allQuests) {
+          print('QuestRepository: Quest - type: ${quest['type']}, status: ${quest['status']}, assigned_at: ${quest['assigned_at']}');
+        }
+      } catch (e) {
+        print('QuestRepository: Error checking all quests: $e');
+      }
+    } else {
+      // Log first quest details for debugging
+      final firstQuest = response.first;
+      print('QuestRepository: First quest - id: ${firstQuest['id']}, title from requirements: ${firstQuest['requirements']?['title']}');
+    }
+    
+    // For quests with quest_definition_id, fetch the quest definition separately
+    final questDefIds = response
+        .where((row) => row['quest_definition_id'] != null)
+        .map((row) => row['quest_definition_id'] as String)
+        .toSet()
+        .toList();
+    
+    Map<String, Map<String, dynamic>> questDefs = {};
+    if (questDefIds.isNotEmpty) {
+      try {
+        // Build OR filter for multiple IDs
+        var query = _supabase
+            .from('quests')
+            .select('id, title, description, icon_name, icon_color, requirements, category');
+        
+        // Use OR filter for multiple IDs
+        if (questDefIds.length == 1) {
+          query = query.eq('id', questDefIds.first);
+        } else {
+          // Build OR condition: id = 'id1' OR id = 'id2' OR ...
+          final orConditions = questDefIds.map((id) => 'id.eq.$id').join(',');
+          query = query.or(orConditions);
+        }
+        
+        final defResponse = await query;
+        
+        for (final def in defResponse) {
+          questDefs[def['id'] as String] = Map<String, dynamic>.from(def);
+        }
+      } catch (e) {
+        print('Error fetching quest definitions: $e');
+      }
+    }
 
     return response.map<ActiveQuest>((row) {
-      final def = row['quests'] as Map<String, dynamic>? ?? {};
+      final questDefId = row['quest_definition_id'] as String?;
+      final def = questDefId != null ? (questDefs[questDefId] ?? {}) : <String, dynamic>{};
+      
+      // Parse requirements - dynamic quests store metadata here
+      final rawRequirements = row['requirements'];
+      Map<String, dynamic> requirements = {};
+      if (rawRequirements != null) {
+        if (rawRequirements is Map) {
+          requirements = Map<String, dynamic>.from(rawRequirements);
+        } else if (rawRequirements is String) {
+          try {
+            requirements = Map<String, dynamic>.from(
+              jsonDecode(rawRequirements) as Map
+            );
+          } catch (e) {
+            print('Error parsing requirements JSON: $e');
+          }
+        }
+      }
+      
+      // Merge with quest definition requirements if available
+      if (def['requirements'] != null) {
+        final defReqs = def['requirements'];
+        if (defReqs is Map) {
+          requirements = {...requirements, ...Map<String, dynamic>.from(defReqs)};
+        }
+      }
+      
+      // Dynamic quests store title/description in requirements
+      final isDynamicQuest = questDefId == null;
+      final title = isDynamicQuest 
+          ? (requirements['title'] as String? ?? 'Quest')
+          : (def['title'] as String? ?? 'Quest');
+      final description = isDynamicQuest
+          ? (requirements['description'] as String? ?? '')
+          : (def['description'] as String? ?? '');
+      final iconName = isDynamicQuest
+          ? (requirements['icon_name'] as String?)
+          : (def['icon_name'] as String?);
+      final iconColor = isDynamicQuest
+          ? (requirements['icon_color'] as String?)
+          : (def['icon_color'] as String?);
+      
       return ActiveQuest(
         id: row['id'] as String,
-        questDefinitionId: row['quest_definition_id'] as String,
+        questDefinitionId: questDefId ?? '',
         type: QuestType.daily,
-        title: def['title'] as String? ?? 'Quest',
-        description: def['description'] as String? ?? '',
+        title: title,
+        description: description,
         category: _parseCategory((def['category'] ?? row['category']) as String? ?? ''),
-        icon: _parseIcon(def['icon_name'] as String?),
-        iconColor: _parseColor(def['icon_color'] as String?),
+        icon: _parseIcon(iconName),
+        iconColor: _parseColor(iconColor),
         progress: (row['progress_current'] as num?)?.toDouble() ?? 0.0,
         maxProgress: (row['progress_target'] as num?)?.toDouble() ?? 1.0,
         rewardXP: row['reward_xp'] as int? ?? 0,
-        rewardPoints: 0, // TODO: Add reward_points to user_quests table
+        rewardPoints: row['reward_coins'] as int? ?? 0,
         status: _parseStatus(row['status'] as String? ?? 'available'),
         assignedAt: DateTime.parse(row['assigned_at'] as String),
         expiresAt: row['expires_at'] != null
@@ -84,7 +183,7 @@ class QuestRepository {
               : DateTime.now().add(const Duration(days: 1)),
         ),
         canClaim: (row['status'] as String) == 'completed',
-        requirements: def['requirements'] as Map<String, dynamic>? ?? {},
+        requirements: requirements,
       );
     }).toList();
   }
@@ -100,11 +199,17 @@ class QuestRepository {
 
     // Ensure weekly quests are allocated
     try {
-      await _supabase.rpc('allocate_weekly_quests', params: {
+      final result = await _supabase.rpc('allocate_weekly_quests', params: {
         'p_user_id': userId,
       });
-    } catch (e) {
-      // Ignore if already allocated this week
+      print('QuestRepository: allocate_weekly_quests returned: $result');
+      if (result == null || result == 0) {
+        print('QuestRepository: No new weekly quests allocated (might already exist)');
+      }
+    } catch (e, stackTrace) {
+      print('QuestRepository: Error allocating weekly quests: $e');
+      print('QuestRepository: Stack trace: $stackTrace');
+      // Continue even if allocation fails - might already be allocated
     }
 
     final response = await _supabase
@@ -122,35 +227,109 @@ class QuestRepository {
           reward_coins,
           assigned_at,
           expires_at,
-          quests:quest_definition_id (
-            title,
-            description,
-            icon_name,
-            icon_color,
-            requirements,
-            category
-          )
+          requirements
         ''')
         .eq('user_id', userId)
         .eq('type', 'weekly')
         .or('status.eq.available,status.eq.in_progress,status.eq.completed')
         .order('assigned_at');
+    
+    print('QuestRepository: Found ${response.length} weekly quests');
+    if (response.isEmpty) {
+      print('QuestRepository: No weekly quests found - user_id: $userId');
+    }
+    
+    // For quests with quest_definition_id, fetch the quest definition separately
+    final questDefIds = response
+        .where((row) => row['quest_definition_id'] != null)
+        .map((row) => row['quest_definition_id'] as String)
+        .toSet()
+        .toList();
+    
+    Map<String, Map<String, dynamic>> questDefs = {};
+    if (questDefIds.isNotEmpty) {
+      try {
+        // Build OR filter for multiple IDs
+        var query = _supabase
+            .from('quests')
+            .select('id, title, description, icon_name, icon_color, requirements, category');
+        
+        // Use OR filter for multiple IDs
+        if (questDefIds.length == 1) {
+          query = query.eq('id', questDefIds.first);
+        } else {
+          // Build OR condition: id = 'id1' OR id = 'id2' OR ...
+          final orConditions = questDefIds.map((id) => 'id.eq.$id').join(',');
+          query = query.or(orConditions);
+        }
+        
+        final defResponse = await query;
+        
+        for (final def in defResponse) {
+          questDefs[def['id'] as String] = Map<String, dynamic>.from(def);
+        }
+      } catch (e) {
+        print('Error fetching quest definitions: $e');
+      }
+    }
 
     return response.map<ActiveQuest>((row) {
-      final def = row['quests'] as Map<String, dynamic>? ?? {};
+      final questDefId = row['quest_definition_id'] as String?;
+      final def = questDefId != null ? (questDefs[questDefId] ?? {}) : <String, dynamic>{};
+      
+      // Parse requirements - dynamic quests store metadata here
+      final rawRequirements = row['requirements'];
+      Map<String, dynamic> requirements = {};
+      if (rawRequirements != null) {
+        if (rawRequirements is Map) {
+          requirements = Map<String, dynamic>.from(rawRequirements);
+        } else if (rawRequirements is String) {
+          try {
+            requirements = Map<String, dynamic>.from(
+              jsonDecode(rawRequirements) as Map
+            );
+          } catch (e) {
+            print('Error parsing requirements JSON: $e');
+          }
+        }
+      }
+      
+      // Merge with quest definition requirements if available
+      if (def['requirements'] != null) {
+        final defReqs = def['requirements'];
+        if (defReqs is Map) {
+          requirements = {...requirements, ...Map<String, dynamic>.from(defReqs)};
+        }
+      }
+      
+      // Dynamic quests store title/description in requirements
+      final isDynamicQuest = questDefId == null;
+      final title = isDynamicQuest 
+          ? (requirements['title'] as String? ?? 'Quest')
+          : (def['title'] as String? ?? 'Quest');
+      final description = isDynamicQuest
+          ? (requirements['description'] as String? ?? '')
+          : (def['description'] as String? ?? '');
+      final iconName = isDynamicQuest
+          ? (requirements['icon_name'] as String?)
+          : (def['icon_name'] as String?);
+      final iconColor = isDynamicQuest
+          ? (requirements['icon_color'] as String?)
+          : (def['icon_color'] as String?);
+      
       return ActiveQuest(
         id: row['id'] as String,
-        questDefinitionId: row['quest_definition_id'] as String,
+        questDefinitionId: questDefId ?? '',
         type: QuestType.weekly,
-        title: def['title'] as String? ?? 'Quest',
-        description: def['description'] as String? ?? '',
+        title: title,
+        description: description,
         category: _parseCategory((def['category'] ?? row['category']) as String? ?? ''),
-        icon: _parseIcon(def['icon_name'] as String?),
-        iconColor: _parseColor(def['icon_color'] as String?),
+        icon: _parseIcon(iconName),
+        iconColor: _parseColor(iconColor),
         progress: (row['progress_current'] as num?)?.toDouble() ?? 0.0,
         maxProgress: (row['progress_target'] as num?)?.toDouble() ?? 1.0,
         rewardXP: row['reward_xp'] as int? ?? 0,
-        rewardPoints: 0,
+        rewardPoints: row['reward_coins'] as int? ?? 0,
         status: _parseStatus(row['status'] as String? ?? 'available'),
         assignedAt: DateTime.parse(row['assigned_at'] as String),
         expiresAt: row['expires_at'] != null
@@ -162,7 +341,7 @@ class QuestRepository {
               : DateTime.now().add(const Duration(days: 7)),
         ),
         canClaim: (row['status'] as String) == 'completed',
-        requirements: def['requirements'] as Map<String, dynamic>? ?? {},
+        requirements: requirements,
       );
     }).toList();
   }

@@ -40,33 +40,48 @@ class HealthTrackingService {
       _health = Health();
 
       // Request health data permissions (uses mobile sensors)
-      bool? hasPermissions = await _health!.hasPermissions(_healthDataTypes);
+      bool? hasPermissions;
+      try {
+        hasPermissions = await _health!.hasPermissions(_healthDataTypes);
+        print('HealthTrackingService: Initial permission check: $hasPermissions');
+      } catch (e) {
+        print('HealthTrackingService: Error checking initial permissions: $e');
+        hasPermissions = null;
+      }
 
-      if (hasPermissions == false) {
+      if (hasPermissions == false || hasPermissions == null) {
         try {
+          print('HealthTrackingService: Requesting health permissions...');
           hasPermissions = await _health!.requestAuthorization(_healthDataTypes);
+          print('HealthTrackingService: Permission request result: $hasPermissions');
         } catch (e) {
           // Handle "Permission launcher not found" error gracefully
-          // This happens when the health package can't open system settings
-          // The permission can still be granted manually through app settings
-          print('Health permission request error (non-critical): $e');
-          // Continue - user can grant permission manually if needed
-          hasPermissions = false;
+          // This happens when:
+          // 1. Google Fit/Samsung Health is not installed
+          // 2. The health package can't open system settings
+          // 3. The device doesn't support health data
+          print('HealthTrackingService: Permission request error: $e');
+          print('HealthTrackingService: This may mean Google Fit/Samsung Health is not installed');
+          print('HealthTrackingService: User can grant permissions manually through app settings');
+          print('HealthTrackingService: Continuing anyway - will attempt to read data on first request');
+          
+          // Don't fail initialization - we'll try to read data anyway
+          // Some devices allow reading without explicit permission
+          hasPermissions = null; // Set to null to indicate we'll try anyway
         }
       }
 
-      if (hasPermissions == true) {
-        _isInitialized = true;
-        _dayStart = DateTime(
-          DateTime.now().year,
-          DateTime.now().month,
-          DateTime.now().day,
-        );
-        _startLocationTracking();
-        return true;
-      }
-
-      return false;
+      // Initialize the service regardless of permission status
+      // We'll verify permissions when actually reading data
+      print('HealthTrackingService: Initializing service (permission status: $hasPermissions)');
+      _isInitialized = true;
+      _dayStart = DateTime(
+        DateTime.now().year,
+        DateTime.now().month,
+        DateTime.now().day,
+      );
+      _startLocationTracking();
+      return true;
     } catch (e) {
       print('Error initializing health tracking: $e');
       return false;
@@ -174,31 +189,100 @@ class HealthTrackingService {
   /// Uses device step counter sensor (pedometer) for accurate step tracking
   Future<int> getTodaySteps() async {
     if (!_isInitialized || _health == null) {
+      print('HealthTrackingService: Not initialized, attempting to initialize...');
       await initialize();
-      if (!_isInitialized) return 0;
+      if (!_isInitialized || _health == null) {
+        print('HealthTrackingService: Failed to initialize, returning 0 steps');
+        return 0;
+      }
     }
 
     try {
       final now = DateTime.now();
       final startOfDay = DateTime(now.year, now.month, now.day);
+      
+      print('HealthTrackingService: Fetching steps from $startOfDay to $now');
+
+      // Check permissions first - but don't fail if permission check fails
+      bool? hasPermissions;
+      try {
+        hasPermissions = await _health!.hasPermissions([HealthDataType.STEPS]);
+        print('HealthTrackingService: Steps permission check: $hasPermissions');
+      } catch (e) {
+        print('HealthTrackingService: Error checking steps permission: $e');
+        // Continue anyway - try to read data
+        hasPermissions = null;
+      }
+      
+      // If permissions are explicitly denied, return 0
+      if (hasPermissions == false) {
+        print('HealthTrackingService: Steps permission explicitly denied');
+        return 0;
+      }
+      
+      // If permission check failed or is null, try to read anyway
+      // Some devices allow reading without explicit permission
 
       // Get steps from mobile sensor (step counter)
-      final steps = await _health!.getHealthDataFromTypes(
-        types: [HealthDataType.STEPS],
-        startTime: startOfDay,
-        endTime: now,
-      );
+      List<HealthDataPoint> steps;
+      try {
+        steps = await _health!.getHealthDataFromTypes(
+          types: [HealthDataType.STEPS],
+          startTime: startOfDay,
+          endTime: now,
+        );
+      } catch (e) {
+        print('HealthTrackingService: Error reading steps data: $e');
+        // If we get a permission error, try to request permission again
+        if (e.toString().contains('permission') || 
+            e.toString().contains('Permission') ||
+            e.toString().contains('not authorized') ||
+            e.toString().contains('launcher not found')) {
+          print('HealthTrackingService: Permission error detected, attempting to request again...');
+          try {
+            final requested = await _health!.requestAuthorization([HealthDataType.STEPS]);
+            if (requested == true) {
+              // Retry reading
+              steps = await _health!.getHealthDataFromTypes(
+                types: [HealthDataType.STEPS],
+                startTime: startOfDay,
+                endTime: now,
+              );
+            } else {
+              print('HealthTrackingService: Permission request failed, returning 0 steps');
+              print('HealthTrackingService: User may need to grant permission manually in app settings');
+              return 0;
+            }
+          } catch (e2) {
+            print('HealthTrackingService: Error requesting permission: $e2');
+            print('HealthTrackingService: User may need to grant permission manually in app settings');
+            return 0;
+          }
+        } else {
+          // Other error, return 0
+          print('HealthTrackingService: Non-permission error reading steps, returning 0');
+          return 0;
+        }
+      }
+
+      print('HealthTrackingService: Received ${steps.length} step data entries');
 
       int totalSteps = 0;
       for (var data in steps) {
         if (data.value is NumericHealthValue) {
-          totalSteps += (data.value as NumericHealthValue).numericValue.toInt();
+          final stepValue = (data.value as NumericHealthValue).numericValue.toInt();
+          totalSteps += stepValue;
+          print('HealthTrackingService: Step entry - value: $stepValue, date: ${data.dateFrom} to ${data.dateTo}');
+        } else {
+          print('HealthTrackingService: Unexpected step value type: ${data.value.runtimeType}');
         }
       }
 
+      print('HealthTrackingService: Total steps today: $totalSteps');
       return totalSteps;
-    } catch (e) {
-      print('Error getting steps from sensor: $e');
+    } catch (e, stackTrace) {
+      print('HealthTrackingService: Error getting steps from sensor: $e');
+      print('HealthTrackingService: Stack trace: $stackTrace');
       return 0;
     }
   }
@@ -209,30 +293,46 @@ class HealthTrackingService {
   Future<double> getTodayCalories() async {
     if (!_isInitialized || _health == null) {
       await initialize();
-      if (!_isInitialized) return 0.0;
+      if (!_isInitialized) {
+        print('HealthTrackingService: Not initialized for calories, returning 0');
+        return 0.0;
+      }
     }
 
     try {
       // First try to get actual calories from health data
       final now = DateTime.now();
       final startOfDay = DateTime(now.year, now.month, now.day);
+      
+      print('HealthTrackingService: Fetching calories from $startOfDay to $now');
 
-      final calories = await _health!.getHealthDataFromTypes(
-        types: [HealthDataType.ACTIVE_ENERGY_BURNED],
-        startTime: startOfDay,
-        endTime: now,
-      );
+      // Check permissions
+      final hasPermissions = await _health!.hasPermissions([HealthDataType.ACTIVE_ENERGY_BURNED]);
+      if (hasPermissions == true) {
+        final calories = await _health!.getHealthDataFromTypes(
+          types: [HealthDataType.ACTIVE_ENERGY_BURNED],
+          startTime: startOfDay,
+          endTime: now,
+        );
 
-      double totalCalories = 0.0;
-      for (var data in calories) {
-        if (data.value is NumericHealthValue) {
-          totalCalories += (data.value as NumericHealthValue).numericValue;
+        print('HealthTrackingService: Received ${calories.length} calorie data entries');
+
+        double totalCalories = 0.0;
+        for (var data in calories) {
+          if (data.value is NumericHealthValue) {
+            final calorieValue = (data.value as NumericHealthValue).numericValue;
+            totalCalories += calorieValue;
+            print('HealthTrackingService: Calorie entry - value: $calorieValue, date: ${data.dateFrom} to ${data.dateTo}');
+          }
         }
-      }
 
-      // If we have actual calories from sensors, return them
-      if (totalCalories > 0) {
-        return totalCalories;
+        // If we have actual calories from sensors, return them
+        if (totalCalories > 0) {
+          print('HealthTrackingService: Total calories from sensor: $totalCalories');
+          return totalCalories;
+        }
+      } else {
+        print('HealthTrackingService: No permission for ACTIVE_ENERGY_BURNED, will calculate from steps');
       }
 
       // Otherwise, auto-calculate from steps using improved formula
@@ -259,12 +359,16 @@ class HealthTrackingService {
 
       // Calculate calories: steps * base_calories_per_step * intensity_factor
       final calculatedCalories = steps * 0.04 * intensityFactor;
+      print('HealthTrackingService: Calculated calories from steps: $calculatedCalories (steps: $steps, intensity: $intensityFactor)');
       return calculatedCalories;
-    } catch (e) {
-      print('Error getting calories: $e');
+    } catch (e, stackTrace) {
+      print('HealthTrackingService: Error getting calories: $e');
+      print('HealthTrackingService: Stack trace: $stackTrace');
       // Fallback to simple step-based calculation
       final steps = await getTodaySteps();
-      return steps * 0.04;
+      final fallbackCalories = steps * 0.04;
+      print('HealthTrackingService: Fallback calories: $fallbackCalories');
+      return fallbackCalories;
     }
   }
 
@@ -273,7 +377,10 @@ class HealthTrackingService {
   Future<double> getTodayDistance() async {
     if (!_isInitialized || _health == null) {
       await initialize();
-      if (!_isInitialized) return 0.0;
+      if (!_isInitialized) {
+        print('HealthTrackingService: Not initialized for distance, returning 0');
+        return 0.0;
+      }
     }
 
     try {
@@ -287,32 +394,51 @@ class HealthTrackingService {
 
       // First try to get distance from health data (if available)
       final startOfDay = DateTime(now.year, now.month, now.day);
+      
+      print('HealthTrackingService: Fetching distance from $startOfDay to $now');
 
-      final distance = await _health!.getHealthDataFromTypes(
-        types: [HealthDataType.DISTANCE_WALKING_RUNNING],
-        startTime: startOfDay,
-        endTime: now,
-      );
+      // Check permissions
+      final hasPermissions = await _health!.hasPermissions([HealthDataType.DISTANCE_WALKING_RUNNING]);
+      if (hasPermissions == true) {
+        final distance = await _health!.getHealthDataFromTypes(
+          types: [HealthDataType.DISTANCE_WALKING_RUNNING],
+          startTime: startOfDay,
+          endTime: now,
+        );
 
-      double totalDistance = 0.0;
-      for (var data in distance) {
-        if (data.value is NumericHealthValue) {
-          totalDistance += (data.value as NumericHealthValue).numericValue;
+        print('HealthTrackingService: Received ${distance.length} distance data entries');
+
+        double totalDistance = 0.0;
+        for (var data in distance) {
+          if (data.value is NumericHealthValue) {
+            final distanceValue = (data.value as NumericHealthValue).numericValue;
+            totalDistance += distanceValue;
+            print('HealthTrackingService: Distance entry - value: $distanceValue meters, date: ${data.dateFrom} to ${data.dateTo}');
+          }
         }
-      }
 
-      // If we have distance from health data, return it (in meters, convert to km)
-      if (totalDistance > 0) {
-        return totalDistance / 1000.0; // Convert meters to kilometers
+        // If we have distance from health data, return it (in meters, convert to km)
+        if (totalDistance > 0) {
+          final distanceKm = totalDistance / 1000.0;
+          print('HealthTrackingService: Total distance from sensor: $distanceKm km');
+          return distanceKm;
+        }
+      } else {
+        print('HealthTrackingService: No permission for DISTANCE_WALKING_RUNNING, using GPS distance');
       }
 
       // Otherwise, use GPS-based distance tracking (calculated from location)
       // This is more accurate as it uses actual GPS coordinates
-      return _totalDistance / 1000.0; // Convert meters to kilometers
-    } catch (e) {
-      print('Error getting distance: $e');
+      final gpsDistanceKm = _totalDistance / 1000.0;
+      print('HealthTrackingService: GPS distance: $gpsDistanceKm km (total meters: $_totalDistance)');
+      return gpsDistanceKm;
+    } catch (e, stackTrace) {
+      print('HealthTrackingService: Error getting distance: $e');
+      print('HealthTrackingService: Stack trace: $stackTrace');
       // Fallback to GPS-based distance
-      return _totalDistance / 1000.0;
+      final fallbackDistance = _totalDistance / 1000.0;
+      print('HealthTrackingService: Fallback GPS distance: $fallbackDistance km');
+      return fallbackDistance;
     }
   }
 
@@ -337,25 +463,94 @@ class HealthTrackingService {
       if (_health != null) {
         final hasHealth = await _health!.hasPermissions(_healthDataTypes);
         permissions['health'] = hasHealth == true;
+        print('HealthTrackingService: Health permissions: $hasHealth');
+        
+        // Check individual data types
+        for (var dataType in _healthDataTypes) {
+          final hasType = await _health!.hasPermissions([dataType]);
+          permissions['health_${dataType.name}'] = hasType == true;
+          print('HealthTrackingService: Permission for ${dataType.name}: $hasType');
+        }
       } else {
         permissions['health'] = false;
+        print('HealthTrackingService: Health service not initialized');
       }
     } catch (e) {
       permissions['health'] = false;
+      print('HealthTrackingService: Error checking health permissions: $e');
     }
 
     // Check location permission
-    final locationPermission = await Geolocator.checkPermission();
-    permissions['location'] =
-        locationPermission == LocationPermission.whileInUse ||
-        locationPermission == LocationPermission.always;
+    try {
+      final locationPermission = await Geolocator.checkPermission();
+      permissions['location'] =
+          locationPermission == LocationPermission.whileInUse ||
+          locationPermission == LocationPermission.always;
+      print('HealthTrackingService: Location permission: ${permissions['location']} (status: $locationPermission)');
+    } catch (e) {
+      permissions['location'] = false;
+      print('HealthTrackingService: Error checking location permission: $e');
+    }
 
     // Check other permissions
-    permissions['notification'] = await Permission.notification.isGranted;
-    permissions['camera'] = await Permission.camera.isGranted;
-    permissions['microphone'] = await Permission.microphone.isGranted;
+    try {
+      permissions['notification'] = await Permission.notification.isGranted;
+      permissions['camera'] = await Permission.camera.isGranted;
+      permissions['microphone'] = await Permission.microphone.isGranted;
+      print('HealthTrackingService: Other permissions - notification: ${permissions['notification']}, camera: ${permissions['camera']}, microphone: ${permissions['microphone']}');
+    } catch (e) {
+      print('HealthTrackingService: Error checking other permissions: $e');
+    }
 
     return permissions;
+  }
+
+  /// Test sensor functionality - returns detailed diagnostics
+  Future<Map<String, dynamic>> testSensors() async {
+    final results = <String, dynamic>{
+      'initialized': _isInitialized,
+      'health_available': _health != null,
+      'permissions': await checkPermissions(),
+      'sensor_data': <String, dynamic>{},
+    };
+
+    if (!_isInitialized) {
+      results['error'] = 'Service not initialized';
+      return results;
+    }
+
+    try {
+      // Test steps
+      print('HealthTrackingService: Testing steps sensor...');
+      final steps = await getTodaySteps();
+      results['sensor_data']['steps'] = steps;
+      results['sensor_data']['steps_working'] = steps >= 0;
+
+      // Test calories
+      print('HealthTrackingService: Testing calories sensor...');
+      final calories = await getTodayCalories();
+      results['sensor_data']['calories'] = calories;
+      results['sensor_data']['calories_working'] = calories >= 0;
+
+      // Test distance
+      print('HealthTrackingService: Testing distance sensor...');
+      final distance = await getTodayDistance();
+      results['sensor_data']['distance'] = distance;
+      results['sensor_data']['distance_working'] = distance >= 0;
+
+      results['all_sensors_working'] = 
+          (results['sensor_data']['steps_working'] as bool) &&
+          (results['sensor_data']['calories_working'] as bool) &&
+          (results['sensor_data']['distance_working'] as bool);
+
+      print('HealthTrackingService: Sensor test complete - all working: ${results['all_sensors_working']}');
+    } catch (e, stackTrace) {
+      results['error'] = e.toString();
+      results['stack_trace'] = stackTrace.toString();
+      print('HealthTrackingService: Sensor test error: $e');
+    }
+
+    return results;
   }
 
   /// Dispose resources

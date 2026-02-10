@@ -90,6 +90,30 @@ class MetricsRepository {
     }
   }
 
+  /// Get monthly metrics (last 30 days)
+  Future<List<Map<String, dynamic>>> getMonthlyMetrics() async {
+    if (_currentUserId == null) return [];
+
+    try {
+      final today = DateTime.now();
+      final monthAgo = today.subtract(const Duration(days: 29));
+      final monthAgoDate = DateTime(monthAgo.year, monthAgo.month, monthAgo.day);
+      final monthAgoString = monthAgoDate.toIso8601String().split('T')[0];
+
+      final response = await _supabase
+          .from('metrics_daily')
+          .select()
+          .eq('user_id', _currentUserId!)
+          .gte('date', monthAgoString)
+          .order('date', ascending: true);
+
+      return (response as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      print('Error fetching monthly metrics: $e');
+      return [];
+    }
+  }
+
   /// Update or insert today's metrics
   Future<void> updateTodayMetrics({
     int? steps,

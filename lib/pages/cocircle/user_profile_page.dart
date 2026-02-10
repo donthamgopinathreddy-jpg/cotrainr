@@ -4,8 +4,12 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../widgets/common/follow_button.dart';
+import '../../widgets/common/pressable_card.dart';
 import '../../repositories/profile_repository.dart';
 import '../../repositories/posts_repository.dart';
+import '../../repositories/follow_repository.dart';
+import '../../repositories/messages_repository.dart';
+import '../../pages/messaging/chat_screen.dart';
 
 class UserProfilePage extends StatefulWidget {
   final bool isOwnProfile;
@@ -28,10 +32,14 @@ class _UserProfilePageState extends State<UserProfilePage> {
   final FocusNode _bioFocusNode = FocusNode();
   final ProfileRepository _profileRepo = ProfileRepository();
   final PostsRepository _postsRepo = PostsRepository();
+  final FollowRepository _followRepo = FollowRepository();
+  final MessagesRepository _messagesRepo = MessagesRepository();
   
   bool _isEditingBio = false;
   int _selectedTabIndex = 0;
   bool _isLoading = true;
+  bool _isFollowing = false;
+  bool _isLoadingFollow = false;
   
   List<Map<String, dynamic>> _userPosts = [];
   String? _avatarUrl;
@@ -39,10 +47,11 @@ class _UserProfilePageState extends State<UserProfilePage> {
   String? _fullName;
   String? _bio;
   int _postCount = 0;
-  int _followerCount = 0; // No followers table yet - will be implemented later
-  int _followingCount = 0; // No following table yet - will be implemented later
+  int _followerCount = 0;
+  int _followingCount = 0;
   int _level = 1; // TODO: Get from user_profiles table
   String? _currentUserId; // Store current user ID for delete check
+  String? _profileUserId; // The user ID of the profile being viewed
   
   final cocircleGradient = const LinearGradient(
     colors: [Color(0xFF4DA3FF), Color(0xFF8B5CF6)],
@@ -77,6 +86,8 @@ class _UserProfilePageState extends State<UserProfilePage> {
         return;
       }
 
+      _profileUserId = userId;
+
       // Fetch user profile
       final profile = await _profileRepo.fetchUserProfile(userId);
       if (profile != null) {
@@ -93,6 +104,15 @@ class _UserProfilePageState extends State<UserProfilePage> {
       print('Received ${posts.length} posts for user profile');
       _userPosts = posts;
       _postCount = posts.length;
+
+      // Fetch follower and following counts
+      _followerCount = await _followRepo.getFollowerCount(userId);
+      _followingCount = await _followRepo.getFollowingCount(userId);
+
+      // Check if current user is following this profile user
+      if (!widget.isOwnProfile && _currentUserId != null) {
+        _isFollowing = await _followRepo.isFollowing(userId);
+      }
 
       // TODO: Fetch level from user_profiles table
       try {
@@ -148,6 +168,156 @@ class _UserProfilePageState extends State<UserProfilePage> {
         );
       }
     }
+  }
+
+  Future<void> _handleFollowToggle() async {
+    if (_profileUserId == null || _currentUserId == null) return;
+    if (_isLoadingFollow) return;
+
+    setState(() {
+      _isLoadingFollow = true;
+    });
+
+    try {
+      bool success;
+      if (_isFollowing) {
+        success = await _followRepo.unfollowUser(_profileUserId!);
+        if (success) {
+          setState(() {
+            _isFollowing = false;
+            _followerCount = (_followerCount - 1).clamp(0, double.infinity).toInt();
+          });
+        }
+      } else {
+        success = await _followRepo.followUser(_profileUserId!);
+        if (success) {
+          setState(() {
+            _isFollowing = true;
+            _followerCount++;
+          });
+        }
+      }
+
+      if (!success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_isFollowing ? 'Failed to unfollow' : 'Failed to follow'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error toggling follow: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingFollow = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _handleMessage() async {
+    if (_profileUserId == null || _currentUserId == null) return;
+    if (_profileUserId == _currentUserId) return;
+
+    try {
+      // Show loading indicator
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Opening chat...'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
+
+      // Create or find conversation with the profile user
+      final conversationId = await _messagesRepo.createOrFindConversation(_profileUserId!);
+      
+      if (conversationId == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Unable to create conversation. Please try again.'),
+              duration: Duration(seconds: 2),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Navigate to chat screen
+      if (mounted) {
+        final name = _fullName ?? _username ?? widget.userName ?? 'User';
+        final gradient = _getGradientForName(name);
+        
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ChatScreen(
+              conversationId: conversationId,
+              userName: name,
+              avatarGradient: gradient,
+              isOnline: false,
+              avatarUrl: _avatarUrl,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error opening message: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error opening chat: ${e.toString()}'),
+            duration: const Duration(seconds: 2),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  LinearGradient _getGradientForName(String name) {
+    final hash = name.hashCode;
+    final gradients = [
+      const LinearGradient(
+        colors: [Color(0xFFFF6B6B), Color(0xFFFF8E8E)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+      const LinearGradient(
+        colors: [Color(0xFF4DA3FF), Color(0xFF8B5CF6)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+      const LinearGradient(
+        colors: [Color(0xFF4ECDC4), Color(0xFF44A08D)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+      const LinearGradient(
+        colors: [Color(0xFFFFA726), Color(0xFFFFB74D)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+      const LinearGradient(
+        colors: [Color(0xFFAB47BC), Color(0xFFBA68C8)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
+    ];
+    return gradients[hash.abs() % gradients.length];
   }
 
   @override
@@ -354,6 +524,57 @@ class _UserProfilePageState extends State<UserProfilePage> {
                 ],
               ),
             ),
+            // Follow and Message buttons for other users
+            if (!widget.isOwnProfile && _profileUserId != null) ...[
+              const SizedBox(height: 24),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: FollowButton(
+                        isFollowing: _isFollowing,
+                        onTap: _isLoadingFollow ? null : _handleFollowToggle,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: PressableCard(
+                        onTap: _handleMessage,
+                        borderRadius: 16,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            gradient: cocircleGradient,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.chat_bubble_outline_rounded,
+                                color: Colors.white,
+                                size: 18,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Message',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 32),
             // Tab Navigation
             Padding(
@@ -720,52 +941,198 @@ class _UserProfilePageState extends State<UserProfilePage> {
   }
 
   Widget _buildFollowersContent(ColorScheme colorScheme) {
-    // No followers table yet - show empty state
-    return Padding(
-      padding: const EdgeInsets.all(40),
-      child: Column(
-        children: [
-          Icon(
-            Icons.people_outline,
-            size: 48,
-            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No followers yet',
-            style: TextStyle(
-              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
+    if (_profileUserId == null) {
+      return Padding(
+        padding: const EdgeInsets.all(40),
+        child: Column(
+          children: [
+            Icon(
+              Icons.people_outline,
+              size: 48,
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
             ),
-          ),
-        ],
-      ),
+            const SizedBox(height: 16),
+            Text(
+              'No followers yet',
+              style: TextStyle(
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _followRepo.getFollowers(_profileUserId!),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (snapshot.hasError) {
+          return Center(
+            child: Text(
+              'Error loading followers',
+              style: TextStyle(color: colorScheme.error),
+            ),
+          );
+        }
+
+        final followers = snapshot.data ?? [];
+        if (followers.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.all(40),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.people_outline,
+                  size: 48,
+                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'No followers yet',
+                  style: TextStyle(
+                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          itemCount: followers.length,
+          itemBuilder: (context, index) {
+            final follower = followers[index];
+            final profile = follower['profiles'] as Map<String, dynamic>?;
+            if (profile == null) return const SizedBox.shrink();
+
+            final followerId = follower['follower_id'] as String;
+            final name = profile['full_name'] as String? ?? 
+                        profile['username'] as String? ?? 
+                        'Unknown User';
+            final username = profile['username'] as String? ?? '';
+            final avatarUrl = profile['avatar_url'] as String?;
+            final isFollowing = follower['is_following'] as bool? ?? false;
+
+            return _FollowerItem(
+              name: name,
+              handle: '@$username',
+              userId: followerId,
+              gradient: _getGradientForName(name),
+              isFollowing: isFollowing,
+              avatarUrl: avatarUrl,
+            );
+          },
+        );
+      },
     );
   }
 
   Widget _buildFollowingContent(ColorScheme colorScheme) {
-    // No following table yet - show empty state
-    return Padding(
-      padding: const EdgeInsets.all(40),
-      child: Column(
-        children: [
-          Icon(
-            Icons.person_add_outlined,
-            size: 48,
-            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Not following anyone yet',
-            style: TextStyle(
-              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
+    if (_profileUserId == null) {
+      return Padding(
+        padding: const EdgeInsets.all(40),
+        child: Column(
+          children: [
+            Icon(
+              Icons.person_add_outlined,
+              size: 48,
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
             ),
-          ),
-        ],
-      ),
+            const SizedBox(height: 16),
+            Text(
+              'Not following anyone yet',
+              style: TextStyle(
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _followRepo.getFollowing(_profileUserId!),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (snapshot.hasError) {
+          return Center(
+            child: Text(
+              'Error loading following',
+              style: TextStyle(color: colorScheme.error),
+            ),
+          );
+        }
+
+        final following = snapshot.data ?? [];
+        if (following.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.all(40),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.person_add_outlined,
+                  size: 48,
+                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.3),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Not following anyone yet',
+                  style: TextStyle(
+                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          itemCount: following.length,
+          itemBuilder: (context, index) {
+            final follow = following[index];
+            final profile = follow['profiles'] as Map<String, dynamic>?;
+            if (profile == null) return const SizedBox.shrink();
+
+            final followingId = follow['following_id'] as String;
+            final name = profile['full_name'] as String? ?? 
+                        profile['username'] as String? ?? 
+                        'Unknown User';
+            final username = profile['username'] as String? ?? '';
+            final avatarUrl = profile['avatar_url'] as String?;
+            final isFollowing = follow['is_following'] as bool? ?? true; // Profile user is already following them
+
+            return _FollowingItem(
+              name: name,
+              handle: '@$username',
+              userId: followingId,
+              gradient: _getGradientForName(name),
+              isFollowing: isFollowing,
+              avatarUrl: avatarUrl,
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -855,6 +1222,7 @@ class _FollowerItem extends StatefulWidget {
   final String userId;
   final LinearGradient gradient;
   final bool isFollowing;
+  final String? avatarUrl;
 
   const _FollowerItem({
     required this.name,
@@ -862,6 +1230,7 @@ class _FollowerItem extends StatefulWidget {
     required this.userId,
     required this.gradient,
     this.isFollowing = false,
+    this.avatarUrl,
   });
 
   @override
@@ -870,6 +1239,7 @@ class _FollowerItem extends StatefulWidget {
 
 class _FollowerItemState extends State<_FollowerItem> {
   late bool _isFollowing;
+  final FollowRepository _followRepo = FollowRepository();
 
   @override
   void initState() {
@@ -877,9 +1247,42 @@ class _FollowerItemState extends State<_FollowerItem> {
     _isFollowing = widget.isFollowing;
   }
 
+  Future<void> _handleFollowToggle() async {
+    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    if (currentUserId == null || currentUserId == widget.userId) return;
+
+    setState(() {
+      _isFollowing = !_isFollowing;
+    });
+
+    try {
+      bool success;
+      if (_isFollowing) {
+        success = await _followRepo.followUser(widget.userId);
+      } else {
+        success = await _followRepo.unfollowUser(widget.userId);
+      }
+
+      if (!success) {
+        // Revert on failure
+        setState(() {
+          _isFollowing = !_isFollowing;
+        });
+      }
+    } catch (e) {
+      print('Error toggling follow: $e');
+      // Revert on error
+      setState(() {
+        _isFollowing = !_isFollowing;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    final isOwnProfile = currentUserId == widget.userId;
 
     return GestureDetector(
       onTap: () {
@@ -902,20 +1305,40 @@ class _FollowerItemState extends State<_FollowerItem> {
             height: 48,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              gradient: widget.gradient,
+              gradient: widget.avatarUrl == null ? widget.gradient : null,
             ),
             padding: const EdgeInsets.all(2),
-            child: Container(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: colorScheme.surface,
-              ),
-              child: Icon(
-                Icons.person,
-                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-                size: 24,
-              ),
-            ),
+            child: widget.avatarUrl != null
+                ? ClipOval(
+                    child: CachedNetworkImage(
+                      imageUrl: widget.avatarUrl!,
+                      width: 48,
+                      height: 48,
+                      fit: BoxFit.cover,
+                      errorWidget: (context, url, error) => Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: widget.gradient,
+                        ),
+                        child: Icon(
+                          Icons.person,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                      ),
+                    ),
+                  )
+                : Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: colorScheme.surface,
+                    ),
+                    child: Icon(
+                      Icons.person,
+                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                      size: 24,
+                    ),
+                  ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -941,38 +1364,85 @@ class _FollowerItemState extends State<_FollowerItem> {
               ],
             ),
           ),
-          FollowButton(
-            isFollowing: _isFollowing,
-            onTap: () {
-              HapticFeedback.lightImpact();
-              setState(() {
-                _isFollowing = !_isFollowing;
-              });
-            },
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-          ),
+          if (!isOwnProfile)
+            FollowButton(
+              isFollowing: _isFollowing,
+              onTap: _handleFollowToggle,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            ),
         ],
       ),
     );
   }
 }
 
-class _FollowingItem extends StatelessWidget {
+class _FollowingItem extends StatefulWidget {
   final String name;
   final String handle;
   final String userId;
   final LinearGradient gradient;
+  final bool isFollowing;
+  final String? avatarUrl;
 
   const _FollowingItem({
     required this.name,
     required this.handle,
     required this.userId,
     required this.gradient,
+    this.isFollowing = true,
+    this.avatarUrl,
   });
+
+  @override
+  State<_FollowingItem> createState() => _FollowingItemState();
+}
+
+class _FollowingItemState extends State<_FollowingItem> {
+  late bool _isFollowing;
+  final FollowRepository _followRepo = FollowRepository();
+
+  @override
+  void initState() {
+    super.initState();
+    _isFollowing = widget.isFollowing;
+  }
+
+  Future<void> _handleFollowToggle() async {
+    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    if (currentUserId == null || currentUserId == widget.userId) return;
+
+    setState(() {
+      _isFollowing = !_isFollowing;
+    });
+
+    try {
+      bool success;
+      if (_isFollowing) {
+        success = await _followRepo.followUser(widget.userId);
+      } else {
+        success = await _followRepo.unfollowUser(widget.userId);
+      }
+
+      if (!success) {
+        // Revert on failure
+        setState(() {
+          _isFollowing = !_isFollowing;
+        });
+      }
+    } catch (e) {
+      print('Error toggling follow: $e');
+      // Revert on error
+      setState(() {
+        _isFollowing = !_isFollowing;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+    final isOwnProfile = currentUserId == widget.userId;
 
     return GestureDetector(
       onTap: () {
@@ -982,8 +1452,8 @@ class _FollowingItem extends StatelessWidget {
           MaterialPageRoute(
             builder: (context) => UserProfilePage(
               isOwnProfile: false,
-              userId: userId,
-              userName: name,
+              userId: widget.userId,
+              userName: widget.name,
             ),
           ),
         );
@@ -995,20 +1465,40 @@ class _FollowingItem extends StatelessWidget {
             height: 48,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              gradient: gradient,
+              gradient: widget.avatarUrl == null ? widget.gradient : null,
             ),
             padding: const EdgeInsets.all(2),
-            child: Container(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: colorScheme.surface,
-              ),
-              child: Icon(
-                Icons.person,
-                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-                size: 24,
-              ),
-            ),
+            child: widget.avatarUrl != null
+                ? ClipOval(
+                    child: CachedNetworkImage(
+                      imageUrl: widget.avatarUrl!,
+                      width: 48,
+                      height: 48,
+                      fit: BoxFit.cover,
+                      errorWidget: (context, url, error) => Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: widget.gradient,
+                        ),
+                        child: Icon(
+                          Icons.person,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                      ),
+                    ),
+                  )
+                : Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: colorScheme.surface,
+                    ),
+                    child: Icon(
+                      Icons.person,
+                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                      size: 24,
+                    ),
+                  ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1016,7 +1506,7 @@ class _FollowingItem extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  name,
+                  widget.name,
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w700,
@@ -1025,7 +1515,7 @@ class _FollowingItem extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  handle,
+                  widget.handle,
                   style: TextStyle(
                     fontSize: 12,
                     color: colorScheme.onSurfaceVariant,
@@ -1034,13 +1524,12 @@ class _FollowingItem extends StatelessWidget {
               ],
             ),
           ),
-          FollowButton(
-            isFollowing: true,
-            onTap: () {
-              // Already following
-            },
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-          ),
+          if (!isOwnProfile)
+            FollowButton(
+              isFollowing: _isFollowing,
+              onTap: _handleFollowToggle,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            ),
         ],
       ),
     );

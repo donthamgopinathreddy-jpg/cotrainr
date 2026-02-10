@@ -1,79 +1,173 @@
 <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <!-- Rim gradient -->
-    <linearGradient id="rimGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#5A2A0A;stop-opacity:1" />
-      <stop offset="22%" style="stop-color:#D9934A;stop-opacity:1" />
-      <stop offset="48%" style="stop-color:#F7D0A2;stop-opacity:1" />
-      <stop offset="70%" style="stop-color:#B86A2C;stop-opacity:1" />
+    <!-- Rim metallic gradient -->
+    <linearGradient id="gRim" x1="140" y1="120" x2="380" y2="410">
+      <stop offset="0%" style="stop-color:#3B1606;stop-opacity:1" />
+      <stop offset="20%" style="stop-color:#B86A2C;stop-opacity:1" />
+      <stop offset="45%" style="stop-color:#F7D0A2;stop-opacity:1" />
+      <stop offset="70%" style="stop-color:#D9934A;stop-opacity:1" />
       <stop offset="100%" style="stop-color:#3B1606;stop-opacity:1" />
     </linearGradient>
     
-    <!-- Face gradient -->
-    <radialGradient id="faceGrad" cx="35%" cy="25%" r="80%">
-      <stop offset="0%" style="stop-color:#FFD9B0;stop-opacity:1" />
-      <stop offset="40%" style="stop-color:#D18A45;stop-opacity:1" />
+    <!-- Face radial gradient -->
+    <radialGradient id="gFace" cx="210" cy="175" r="220">
+      <stop offset="0%" style="stop-color:#F7D0A2;stop-opacity:1" />
+      <stop offset="35%" style="stop-color:#D9934A;stop-opacity:1" />
       <stop offset="100%" style="stop-color:#5A2A0A;stop-opacity:1" />
     </radialGradient>
     
-    <!-- Shine gradient -->
-    <linearGradient id="shineGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+    <!-- Rim stroke highlight gradient -->
+    <linearGradient id="gStroke" x1="180" y1="120" x2="340" y2="220">
       <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:0.55" />
-      <stop offset="55%" style="stop-color:#FFFFFF;stop-opacity:0.12" />
-      <stop offset="100%" style="stop-color:#FFFFFF;stop-opacity:0.0" />
+      <stop offset="100%" style="stop-color:#FFFFFF;stop-opacity:0.00" />
     </linearGradient>
     
-    <!-- Drop shadow filter -->
-    <filter id="ds" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur in="SourceAlpha" stdDeviation="12"/>
-      <feOffset dx="0" dy="14" result="offsetblur"/>
-      <feFlood flood-color="#000000" flood-opacity="0.35"/>
-      <feComposite in2="offsetblur" operator="in"/>
-      <feMerge>
-        <feMergeNode/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
+    <!-- Star gradient -->
+    <linearGradient id="gStar" x1="220" y1="175" x2="300" y2="290">
+      <stop offset="0%" style="stop-color:#F7D0A2;stop-opacity:1" />
+      <stop offset="60%" style="stop-color:#D9934A;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#B86A2C;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- Inner rim dark fill -->
+    <linearGradient id="gInnerRim" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4A1D08;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2A0F05;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- Global drop shadow filter -->
+    <filter id="dsBadge" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="18" stdDeviation="14" flood-color="#000000" flood-opacity="0.38"/>
     </filter>
     
-    <!-- Inner shadow filter -->
-    <filter id="inner" x="-50%" y="-50%" width="200%" height="200%">
+    <!-- Rim inner shadow filter -->
+    <filter id="innerRim" x="-50%" y="-50%" width="200%" height="200%">
       <feGaussianBlur in="SourceAlpha" stdDeviation="6"/>
-      <feOffset dx="0" dy="3" result="offsetblur"/>
-      <feFlood flood-color="#000000" flood-opacity="0.22"/>
+      <feOffset dx="0" dy="6" result="offsetblur"/>
       <feComposite in2="offsetblur" operator="in"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.25 0"/>
+    </filter>
+    
+    <!-- Star shadow filter -->
+    <filter id="dsStar" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="6" stdDeviation="4" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+    
+    <!-- Glass highlight blur -->
+    <filter id="glassBlur" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="1.2"/>
     </filter>
   </defs>
   
-  <!-- Badge group with drop shadow -->
-  <g filter="url(#ds)">
-    <!-- Outer hex (rim) -->
-    <path d="M 446,256 L 351,420 L 161,420 L 66,256 L 161,92 L 351,92 Z" 
-          fill="url(#rimGrad)" 
-          filter="url(#inner)"/>
-    
-    <!-- Inner hex (face) -->
-    <path d="M 428,256 L 342,405 L 170,405 L 84,256 L 170,107 L 342,107 Z" 
-          fill="url(#faceGrad)" 
-          stroke="#FFFFFF" 
+  <!-- 1) Outer hex back shadow plate -->
+  <path d="M 426 256 L 341 403 L 171 403 L 86 256 L 171 109 L 341 109 Z" 
+        fill="#2A0F05" 
+        filter="url(#dsBadge)"/>
+  
+  <!-- 2) Outer hex rim -->
+  <path d="M 426 256 L 341 403 L 171 403 L 86 256 L 171 109 L 341 109 Z" 
+        fill="url(#gRim)" 
+        stroke="#2A0F05" 
+        stroke-opacity="0.55" 
+        stroke-width="6" 
+        stroke-linejoin="round"/>
+  
+  <!-- 3) Inner rim hex overlay (fake cavity) -->
+  <path d="M 404 256 L 330 384 L 182 384 L 108 256 L 182 128 L 330 128 Z" 
+        fill="url(#gInnerRim)" 
+        filter="url(#innerRim)"/>
+  
+  <!-- 4) Face hex -->
+  <path d="M 386 256 L 320 370 L 192 370 L 126 256 L 192 142 L 320 142 Z" 
+        fill="url(#gFace)" 
+        stroke="#000000" 
+        stroke-opacity="0.18" 
+        stroke-width="3"/>
+  
+  <!-- Inner rim stroke highlight -->
+  <path d="M 404 256 L 330 384 L 182 384 L 108 256 L 182 128 L 330 128 Z" 
+        fill="none" 
+        stroke="url(#gStroke)" 
+        stroke-width="4" 
+        stroke-opacity="0.25"/>
+  
+  <!-- 5) Glass highlight polygon -->
+  <polygon points="150,170 320,125 362,170 190,215" 
+           fill="#FFFFFF" 
+           opacity="0.18" 
+           filter="url(#glassBlur)"/>
+  
+  <!-- 6) Left side indent ellipses -->
+  <g>
+    <ellipse cx="152" cy="175" rx="7" ry="15" fill="#2A0F05" opacity="0.35" transform="rotate(-20 152 175)"/>
+    <ellipse cx="152" cy="175" rx="5" ry="12" fill="#F7D0A2" opacity="0.18" transform="rotate(-20 152 175)"/>
+    <ellipse cx="152" cy="200" rx="7" ry="15" fill="#2A0F05" opacity="0.35" transform="rotate(-20 152 200)"/>
+    <ellipse cx="152" cy="200" rx="5" ry="12" fill="#F7D0A2" opacity="0.18" transform="rotate(-20 152 200)"/>
+    <ellipse cx="152" cy="225" rx="7" ry="15" fill="#2A0F05" opacity="0.35" transform="rotate(-20 152 225)"/>
+    <ellipse cx="152" cy="225" rx="5" ry="12" fill="#F7D0A2" opacity="0.18" transform="rotate(-20 152 225)"/>
+    <ellipse cx="152" cy="250" rx="7" ry="15" fill="#2A0F05" opacity="0.35" transform="rotate(-20 152 250)"/>
+    <ellipse cx="152" cy="250" rx="5" ry="12" fill="#F7D0A2" opacity="0.18" transform="rotate(-20 152 250)"/>
+    <ellipse cx="152" cy="275" rx="7" ry="15" fill="#2A0F05" opacity="0.35" transform="rotate(-20 152 275)"/>
+    <ellipse cx="152" cy="275" rx="5" ry="12" fill="#F7D0A2" opacity="0.18" transform="rotate(-20 152 275)"/>
+    <ellipse cx="152" cy="300" rx="7" ry="15" fill="#2A0F05" opacity="0.35" transform="rotate(-20 152 300)"/>
+    <ellipse cx="152" cy="300" rx="5" ry="12" fill="#F7D0A2" opacity="0.18" transform="rotate(-20 152 300)"/>
+    <ellipse cx="152" cy="325" rx="7" ry="15" fill="#2A0F05" opacity="0.35" transform="rotate(-20 152 325)"/>
+    <ellipse cx="152" cy="325" rx="5" ry="12" fill="#F7D0A2" opacity="0.18" transform="rotate(-20 152 325)"/>
+  </g>
+  
+  <!-- Right side indent ellipses -->
+  <g>
+    <ellipse cx="360" cy="175" rx="7" ry="15" fill="#2A0F05" opacity="0.35" transform="rotate(20 360 175)"/>
+    <ellipse cx="360" cy="175" rx="5" ry="12" fill="#F7D0A2" opacity="0.18" transform="rotate(20 360 175)"/>
+    <ellipse cx="360" cy="200" rx="7" ry="15" fill="#2A0F05" opacity="0.35" transform="rotate(20 360 200)"/>
+    <ellipse cx="360" cy="200" rx="5" ry="12" fill="#F7D0A2" opacity="0.18" transform="rotate(20 360 200)"/>
+    <ellipse cx="360" cy="225" rx="7" ry="15" fill="#2A0F05" opacity="0.35" transform="rotate(20 360 225)"/>
+    <ellipse cx="360" cy="225" rx="5" ry="12" fill="#F7D0A2" opacity="0.18" transform="rotate(20 360 225)"/>
+    <ellipse cx="360" cy="250" rx="7" ry="15" fill="#2A0F05" opacity="0.35" transform="rotate(20 360 250)"/>
+    <ellipse cx="360" cy="250" rx="5" ry="12" fill="#F7D0A2" opacity="0.18" transform="rotate(20 360 250)"/>
+    <ellipse cx="360" cy="275" rx="7" ry="15" fill="#2A0F05" opacity="0.35" transform="rotate(20 360 275)"/>
+    <ellipse cx="360" cy="275" rx="5" ry="12" fill="#F7D0A2" opacity="0.18" transform="rotate(20 360 275)"/>
+    <ellipse cx="360" cy="300" rx="7" ry="15" fill="#2A0F05" opacity="0.35" transform="rotate(20 360 300)"/>
+    <ellipse cx="360" cy="300" rx="5" ry="12" fill="#F7D0A2" opacity="0.18" transform="rotate(20 360 300)"/>
+    <ellipse cx="360" cy="325" rx="7" ry="15" fill="#2A0F05" opacity="0.35" transform="rotate(20 360 325)"/>
+    <ellipse cx="360" cy="325" rx="5" ry="12" fill="#F7D0A2" opacity="0.18" transform="rotate(20 360 325)"/>
+  </g>
+  
+  <!-- 7) Star stack -->
+  <!-- Star shadow (translated down) -->
+  <g transform="translate(0,5)">
+    <path d="M 256.0,163.0 L 273.6,210.7 L 324.5,212.8 L 284.5,244.3 L 298.3,293.2 L 256.0,265.0 L 213.7,293.2 L 227.5,244.3 L 187.5,212.8 L 238.4,210.7 Z" 
+          fill="#000000" 
+          opacity="0.22" 
+          filter="url(#dsStar)"/>
+  </g>
+  
+  <!-- Star inner shadow line -->
+  <g transform="translate(0,2)">
+    <path d="M 256.0,163.0 L 273.6,210.7 L 324.5,212.8 L 284.5,244.3 L 298.3,293.2 L 256.0,265.0 L 213.7,293.2 L 227.5,244.3 L 187.5,212.8 L 238.4,210.7 Z" 
+          fill="none" 
+          stroke="#000000" 
           stroke-opacity="0.18" 
           stroke-width="2"/>
-    
-    <!-- Shine overlay (top-left quadrant highlight) -->
-    <path d="M 110,150 L 300,110 L 350,210 L 150,260 Z" 
-          fill="url(#shineGrad)" 
-          opacity="0.55"/>
-    
-    <!-- 5-point star (flat-top, centered at 256,256, outer radius 78, inner radius 32) -->
-    <path d="M 256,178 L 275,230 L 330,240 L 300,288 L 256,290 L 212,288 L 182,240 L 237,230 Z" 
-          fill="#FFFFFF" 
-          opacity="0.95"/>
-    
-    <!-- Star shadow for emboss effect -->
-    <path d="M 258,180 L 277,232 L 332,242 L 302,290 L 258,292 L 214,290 L 184,242 L 239,232 Z" 
-          fill="#000000" 
-          opacity="0.12"/>
-    
-    <!-- Tiny specular dot on rim -->
-    <circle cx="380" cy="140" r="8" fill="#FFFFFF" opacity="0.25"/>
+  </g>
+  
+  <!-- Star base -->
+  <path d="M 256.0,163.0 L 273.6,210.7 L 324.5,212.8 L 284.5,244.3 L 298.3,293.2 L 256.0,265.0 L 213.7,293.2 L 227.5,244.3 L 187.5,212.8 L 238.4,210.7 Z" 
+        fill="url(#gStar)"/>
+  
+  <!-- Star inner depth (scaled 0.92) -->
+  <g transform="translate(256,235) scale(0.92) translate(-256,-235)">
+    <path d="M 256.0,163.0 L 273.6,210.7 L 324.5,212.8 L 284.5,244.3 L 298.3,293.2 L 256.0,265.0 L 213.7,293.2 L 227.5,244.3 L 187.5,212.8 L 238.4,210.7 Z" 
+          fill="#5A2A0A" 
+          opacity="0.42"/>
+  </g>
+  
+  <!-- Star top highlight (scaled 0.98) -->
+  <g transform="translate(256,235) scale(0.98) translate(-256,-235)">
+    <path d="M 256.0,163.0 L 273.6,210.7 L 324.5,212.8 L 284.5,244.3 L 298.3,293.2 L 256.0,265.0 L 213.7,293.2 L 227.5,244.3 L 187.5,212.8 L 238.4,210.7 Z" 
+          fill="none" 
+          stroke="#FFFFFF" 
+          stroke-opacity="0.20" 
+          stroke-width="2"/>
   </g>
 </svg>

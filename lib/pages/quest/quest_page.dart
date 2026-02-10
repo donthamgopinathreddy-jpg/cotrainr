@@ -9,6 +9,7 @@ import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
 import '../../utils/page_transitions.dart';
 import '../../providers/quest_provider.dart';
+import '../../services/quest_progress_sync_service.dart';
 
 class QuestPage extends ConsumerStatefulWidget {
   const QuestPage({super.key});
@@ -46,6 +47,26 @@ class _QuestPageState extends ConsumerState<QuestPage>
     _fadeController.forward();
     _tabController = PageController(viewportFraction: 1.0);
     _levels = _buildLevels();
+    
+    // Trigger initial sync when page loads
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncQuestProgress();
+    });
+  }
+  
+  /// Sync quest progress with current metrics
+  Future<void> _syncQuestProgress() async {
+    try {
+      final syncService = ref.read(questProgressSyncServiceProvider);
+      await syncService.triggerSync();
+      
+      // Refresh quest data after sync
+      ref.invalidate(dailyQuestsProvider);
+      ref.invalidate(weeklyQuestsProvider);
+      ref.invalidate(achievementsProvider);
+    } catch (e) {
+      print('Error syncing quest progress: $e');
+    }
   }
 
   @override
@@ -118,6 +139,16 @@ class _QuestPageState extends ConsumerState<QuestPage>
     final leaderboardAsync = ref.watch(dailyLeaderboardProvider);
     final xpAsync = ref.watch(userXPProvider);
     final levelAsync = ref.watch(userLevelProvider);
+    
+    // Trigger sync periodically when data is loaded
+    if (dailyQuestsAsync.hasValue && mounted) {
+      // Sync every 60 seconds while on this page
+      Future.delayed(const Duration(seconds: 60), () {
+        if (mounted) {
+          _syncQuestProgress();
+        }
+      });
+    }
     
     final currentXP = xpAsync.value ?? 0;
     final level = levelAsync.value ?? 1;
@@ -945,7 +976,7 @@ class LevelsPage extends StatefulWidget {
 
 class _LevelsPageState extends State<LevelsPage> with SingleTickerProviderStateMixin {
   late AnimationController _pulseController;
-  final Map<int, bool> _expandedTiers = {0: true}; // Bronze expanded by default
+  final Map<int, bool> _expandedTiers = {0: true}; // Rookie expanded by default
 
   @override
   void initState() {
@@ -1224,15 +1255,15 @@ class _TierHeader extends StatelessWidget {
 
   String _getMotivationCopy(String tierName) {
     switch (tierName) {
-      case 'Bronze':
+      case 'Rookie':
         return 'Build the habit.';
-      case 'Silver':
+      case 'Challenger':
         return 'Consistency wins.';
-      case 'Gold':
+      case 'Pro':
         return "You're outperforming most users.";
-      case 'Platinum':
+      case 'Elite':
         return 'Elite discipline.';
-      case 'Diamond':
+      case 'Legendary':
         return 'Top 1% grinders.';
       default:
         return 'Keep pushing forward.';
@@ -1245,15 +1276,15 @@ class _TierHeader extends StatelessWidget {
     if (isDark) {
       // Dark mode: use darker, muted versions
       switch (tierName) {
-        case 'Bronze':
+        case 'Rookie':
           return const Color(0xFF3D2A1A); // Dark orange-tinted
-        case 'Silver':
+        case 'Challenger':
           return const Color(0xFF1A2332); // Dark blue-tinted
-        case 'Gold':
+        case 'Pro':
           return const Color(0xFF3D3519); // Dark yellow-tinted
-        case 'Platinum':
+        case 'Elite':
           return const Color(0xFF1A2332); // Dark ice-blue-tinted
-        case 'Diamond':
+        case 'Legendary':
           return const Color(0xFF2A1F3D); // Dark purple-tinted
         default:
           return const Color(0xFF3D2A1A);
@@ -1261,15 +1292,15 @@ class _TierHeader extends StatelessWidget {
     } else {
       // Light mode: use light pastel colors
       switch (tierName) {
-        case 'Bronze':
+        case 'Rookie':
           return const Color(0xFFFFF4E6); // Light orange
-        case 'Silver':
+        case 'Challenger':
           return const Color(0xFFF0F8FF); // Light blue
-        case 'Gold':
+        case 'Pro':
           return const Color(0xFFFFFBE6); // Light yellow
-        case 'Platinum':
+        case 'Elite':
           return const Color(0xFFF0F8FF); // Light ice-blue
-        case 'Diamond':
+        case 'Legendary':
           return const Color(0xFFF5F0FF); // Light purple
         default:
           return const Color(0xFFFFF4E6);
@@ -1345,15 +1376,15 @@ class _TierSectionCardState extends State<_TierSectionCard>
     if (isDark) {
       // Dark mode: use darker, muted versions
       switch (tierName) {
-        case 'Bronze':
+        case 'Rookie':
           return const Color(0xFF3D2A1A); // Dark orange-tinted
-        case 'Silver':
+        case 'Challenger':
           return const Color(0xFF1A2332); // Dark blue-tinted
-        case 'Gold':
+        case 'Pro':
           return const Color(0xFF3D3519); // Dark yellow-tinted
-        case 'Platinum':
+        case 'Elite':
           return const Color(0xFF1A2332); // Dark ice-blue-tinted
-        case 'Diamond':
+        case 'Legendary':
           return const Color(0xFF2A1F3D); // Dark purple-tinted
         default:
           return const Color(0xFF3D2A1A);
@@ -1361,15 +1392,15 @@ class _TierSectionCardState extends State<_TierSectionCard>
     } else {
       // Light mode: use light pastel colors
       switch (tierName) {
-        case 'Bronze':
+        case 'Rookie':
           return const Color(0xFFFFF4E6); // Light orange
-        case 'Silver':
+        case 'Challenger':
           return const Color(0xFFF0F8FF); // Light blue
-        case 'Gold':
+        case 'Pro':
           return const Color(0xFFFFFBE6); // Light yellow
-        case 'Platinum':
+        case 'Elite':
           return const Color(0xFFF0F8FF); // Light ice-blue
-        case 'Diamond':
+        case 'Legendary':
           return const Color(0xFFF5F0FF); // Light purple
         default:
           return const Color(0xFFFFF4E6);
@@ -1691,8 +1722,8 @@ class _LevelCard extends StatelessWidget {
 
   String _getTierNameFromLevel(int level) {
     final tierIndex = ((level - 1) / 10).floor();
-    final tierNames = ['Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond'];
-    return tierIndex < tierNames.length ? tierNames[tierIndex] : 'Bronze';
+    final tierNames = ['Rookie', 'Challenger', 'Pro', 'Elite', 'Legendary'];
+    return tierIndex < tierNames.length ? tierNames[tierIndex] : 'Rookie';
   }
 
   Color _getTierLightColor(String tierName, BuildContext context) {
@@ -1701,15 +1732,15 @@ class _LevelCard extends StatelessWidget {
     if (isDark) {
       // Dark mode: use darker, muted versions
       switch (tierName) {
-        case 'Bronze':
+        case 'Rookie':
           return const Color(0xFF3D2A1A); // Dark orange-tinted
-        case 'Silver':
+        case 'Challenger':
           return const Color(0xFF1A2332); // Dark blue-tinted
-        case 'Gold':
+        case 'Pro':
           return const Color(0xFF3D3519); // Dark yellow-tinted
-        case 'Platinum':
+        case 'Elite':
           return const Color(0xFF1A2332); // Dark ice-blue-tinted
-        case 'Diamond':
+        case 'Legendary':
           return const Color(0xFF2A1F3D); // Dark purple-tinted
         default:
           return const Color(0xFF3D2A1A);
@@ -1717,15 +1748,15 @@ class _LevelCard extends StatelessWidget {
     } else {
       // Light mode: use light pastel colors
       switch (tierName) {
-        case 'Bronze':
+        case 'Rookie':
           return const Color(0xFFFFF4E6); // Light orange
-        case 'Silver':
+        case 'Challenger':
           return const Color(0xFFF0F8FF); // Light blue
-        case 'Gold':
+        case 'Pro':
           return const Color(0xFFFFFBE6); // Light yellow
-        case 'Platinum':
+        case 'Elite':
           return const Color(0xFFF0F8FF); // Light ice-blue
-        case 'Diamond':
+        case 'Legendary':
           return const Color(0xFFF5F0FF); // Light purple
         default:
           return const Color(0xFFFFF4E6);
@@ -2315,15 +2346,15 @@ String _getBadgePathFromLevel(int level) {
 // Helper function to get badge path from tier name
 String _getBadgePathFromTierName(String tierName) {
   switch (tierName) {
-    case 'Bronze':
+    case 'Rookie':
       return 'assets/badges/badge_bronze.svg';
-    case 'Silver':
+    case 'Challenger':
       return 'assets/badges/badge_silver.svg';
-    case 'Gold':
+    case 'Pro':
       return 'assets/badges/badge_gold.svg';
-    case 'Platinum':
+    case 'Elite':
       return 'assets/badges/badge_platinum.svg';
-    case 'Diamond':
+    case 'Legendary':
       return 'assets/badges/badge_diamond.svg';
     default:
       return 'assets/badges/badge_bronze.svg';
@@ -2641,11 +2672,11 @@ class _LevelInfo {
 }
 
 List<_LevelInfo> _buildLevels() {
-  const tier1 = Color(0xFFCD7F32); // Bronze
-  const tier2 = Color(0xFFC0C0C0); // Silver
-  const tier3 = Color(0xFFFFD700); // Gold
-  const tier4 = Color(0xFFE5E4E2); // Platinum
-  const tier5 = Color(0xFF4FC3F7); // Diamond
+  const tier1 = Color(0xFFCD7F32); // Rookie
+  const tier2 = Color(0xFFC0C0C0); // Challenger
+  const tier3 = Color(0xFFFFD700); // Pro
+  const tier4 = Color(0xFFE5E4E2); // Elite
+  const tier5 = Color(0xFF4FC3F7); // Legendary
 
   final names = [
     'Rookie',
@@ -2774,11 +2805,11 @@ List<_LevelInfo> _buildLevels() {
     final level = i + 1;
     final tierIndex = (i / 10).floor();
     final tierName = [
-      'Bronze',
-      'Silver',
-      'Gold',
-      'Platinum',
-      'Diamond',
+      'Rookie',
+      'Challenger',
+      'Pro',
+      'Elite',
+      'Legendary',
     ][tierIndex];
     final tierColor = [
       tier1,
@@ -2849,31 +2880,31 @@ class _InfinityBadge extends StatelessWidget {
 
   LinearGradient _getTierGradient(String tierName) {
     switch (tierName) {
-      case 'Bronze':
+      case 'Rookie':
         return const LinearGradient(
           colors: [Color(0xFFFF7A00), Color(0xFFFFC300)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         );
-      case 'Silver':
+      case 'Challenger':
         return const LinearGradient(
           colors: [Color(0xFFC0C0C0), Color(0xFFE8E8E8)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         );
-      case 'Gold':
+      case 'Pro':
         return const LinearGradient(
           colors: [Color(0xFFFFD700), Color(0xFFFFF44F)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         );
-      case 'Platinum':
+      case 'Elite':
         return const LinearGradient(
           colors: [Color(0xFFE5E4E2), Color(0xFFFFF8F0)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         );
-      case 'Diamond':
+      case 'Legendary':
         return const LinearGradient(
           colors: [Color(0xFF4FC3F7), Color(0xFF9B7FFF)],
           begin: Alignment.topLeft,

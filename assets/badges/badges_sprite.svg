@@ -87,7 +87,8 @@
     <path d="M 64 8 C 64 8, 20 20, 20 50 L 20 70 C 20 90, 40 110, 64 120 C 88 110, 108 90, 108 70 L 108 50 C 108 20, 64 8, 64 8 Z" fill="url(#bronzeGradient)" stroke="#8B5A2B" stroke-width="1.5"/>
     <path d="M 64 8 C 64 8, 20 20, 20 50 L 20 70 C 20 90, 40 110, 64 120 C 88 110, 108 90, 108 70 L 108 50 C 108 20, 64 8, 64 8 Z" fill="url(#bronzeShine)"/>
     <path d="M 64 12 C 64 12, 24 22, 24 50 L 24 70 C 24 88, 42 106, 64 116 C 86 106, 104 88, 104 70 L 104 50 C 104 22, 64 12, 64 12 Z" fill="none" stroke="#E6A052" stroke-width="0.8" opacity="0.4"/>
-    <path d="M 64 40 L 68 52 L 80 52 L 70 60 L 74 72 L 64 64 L 54 72 L 58 60 L 48 52 L 60 52 Z" fill="url(#bronzeStarGrad)" stroke="#FFF8E1" stroke-width="0.5" opacity="0.95"/>
+    <circle cx="64" cy="60" r="18" fill="#000000" opacity="0.25"/>
+    <path d="M 64 40 L 68 52 L 80 52 L 70 60 L 74 72 L 64 64 L 54 72 L 58 60 L 48 52 L 60 52 Z" fill="#FFFFFF" stroke="#8B5A2B" stroke-width="1.2" stroke-opacity="0.4" opacity="1.0"/>
   </g>
   
   <!-- Silver Badge -->
@@ -95,7 +96,8 @@
     <path d="M 64 8 C 64 8, 20 20, 20 50 L 20 70 C 20 90, 40 110, 64 120 C 88 110, 108 90, 108 70 L 108 50 C 108 20, 64 8, 64 8 Z" fill="url(#silverGradient)" stroke="#9A9A9A" stroke-width="1.5"/>
     <path d="M 64 8 C 64 8, 20 20, 20 50 L 20 70 C 20 90, 40 110, 64 120 C 88 110, 108 90, 108 70 L 108 50 C 108 20, 64 8, 64 8 Z" fill="url(#silverShine)"/>
     <path d="M 64 12 C 64 12, 24 22, 24 50 L 24 70 C 24 88, 42 106, 64 116 C 86 106, 104 88, 104 70 L 104 50 C 104 22, 64 12, 64 12 Z" fill="none" stroke="#E8E8E8" stroke-width="0.8" opacity="0.5"/>
-    <path d="M 64 40 L 68 52 L 80 52 L 70 60 L 74 72 L 64 64 L 54 72 L 58 60 L 48 52 L 60 52 Z" fill="url(#silverStarGrad)" stroke="#FFFFFF" stroke-width="0.5" opacity="0.95"/>
+    <circle cx="64" cy="60" r="18" fill="#000000" opacity="0.25"/>
+    <path d="M 64 40 L 68 52 L 80 52 L 70 60 L 74 72 L 64 64 L 54 72 L 58 60 L 48 52 L 60 52 Z" fill="#FFFFFF" stroke="#4A4A4A" stroke-width="1.2" stroke-opacity="0.4" opacity="1.0"/>
   </g>
   
   <!-- Gold Badge -->
@@ -103,7 +105,8 @@
     <path d="M 64 8 C 64 8, 20 20, 20 50 L 20 70 C 20 90, 40 110, 64 120 C 88 110, 108 90, 108 70 L 108 50 C 108 20, 64 8, 64 8 Z" fill="url(#goldGradient)" stroke="#D4AF37" stroke-width="1.5"/>
     <path d="M 64 8 C 64 8, 20 20, 20 50 L 20 70 C 20 90, 40 110, 64 120 C 88 110, 108 90, 108 70 L 108 50 C 108 20, 64 8, 64 8 Z" fill="url(#goldShine)"/>
     <path d="M 64 12 C 64 12, 24 22, 24 50 L 24 70 C 24 88, 42 106, 64 116 C 86 106, 104 88, 104 70 L 104 50 C 104 22, 64 12, 64 12 Z" fill="none" stroke="#FFF44F" stroke-width="0.8" opacity="0.5"/>
-    <path d="M 64 40 L 68 52 L 80 52 L 70 60 L 74 72 L 64 64 L 54 72 L 58 60 L 48 52 L 60 52 Z" fill="url(#goldStarGrad)" stroke="#FFFFFF" stroke-width="0.5" opacity="0.95"/>
+    <circle cx="64" cy="60" r="18" fill="#000000" opacity="0.25"/>
+    <path d="M 64 40 L 68 52 L 80 52 L 70 60 L 74 72 L 64 64 L 54 72 L 58 60 L 48 52 L 60 52 Z" fill="#FFFFFF" stroke="#5A4A0A" stroke-width="1.2" stroke-opacity="0.4" opacity="1.0"/>
   </g>
   
   <!-- Platinum Badge -->
@@ -111,7 +114,8 @@
     <path d="M 64 8 C 64 8, 20 20, 20 50 L 20 70 C 20 90, 40 110, 64 120 C 88 110, 108 90, 108 70 L 108 50 C 108 20, 64 8, 64 8 Z" fill="url(#platinumGradient)" stroke="#C8C8C8" stroke-width="1.5"/>
     <path d="M 64 8 C 64 8, 20 20, 20 50 L 20 70 C 20 90, 40 110, 64 120 C 88 110, 108 90, 108 70 L 108 50 C 108 20, 64 8, 64 8 Z" fill="url(#platinumShine)"/>
     <path d="M 64 12 C 64 12, 24 22, 24 50 L 24 70 C 24 88, 42 106, 64 116 C 86 106, 104 88, 104 70 L 104 50 C 104 22, 64 12, 64 12 Z" fill="none" stroke="#F5F5F5" stroke-width="0.8" opacity="0.5"/>
-    <path d="M 64 40 L 68 52 L 80 52 L 70 60 L 74 72 L 64 64 L 54 72 L 58 60 L 48 52 L 60 52 Z" fill="url(#platinumStarGrad)" stroke="#FFFFFF" stroke-width="0.5" opacity="0.95"/>
+    <circle cx="64" cy="60" r="18" fill="#000000" opacity="0.25"/>
+    <path d="M 64 40 L 68 52 L 80 52 L 70 60 L 74 72 L 64 64 L 54 72 L 58 60 L 48 52 L 60 52 Z" fill="#FFFFFF" stroke="#707070" stroke-width="1.2" stroke-opacity="0.4" opacity="1.0"/>
   </g>
   
   <!-- Diamond Badge -->
@@ -123,6 +127,7 @@
     <path d="M 64 20 L 50 65 L 64 80" fill="none" stroke="#4A9FC7" stroke-width="0.5" opacity="0.4"/>
     <path d="M 64 20 L 78 65 L 64 80" fill="none" stroke="#4A9FC7" stroke-width="0.5" opacity="0.4"/>
     <path d="M 40 50 L 50 65 L 64 80 L 78 65 L 88 50" fill="none" stroke="#4A9FC7" stroke-width="0.5" opacity="0.4"/>
-    <path d="M 64 40 L 68 52 L 80 52 L 70 60 L 74 72 L 64 64 L 54 72 L 58 60 L 48 52 L 60 52 Z" fill="url(#diamondStarGrad)" stroke="#FFFFFF" stroke-width="0.5" opacity="0.95"/>
+    <circle cx="64" cy="60" r="18" fill="#000000" opacity="0.25"/>
+    <path d="M 64 40 L 68 52 L 80 52 L 70 60 L 74 72 L 64 64 L 54 72 L 58 60 L 48 52 L 60 52 Z" fill="#FFFFFF" stroke="#1A3A5A" stroke-width="1.2" stroke-opacity="0.4" opacity="1.0"/>
   </g>
 </svg>

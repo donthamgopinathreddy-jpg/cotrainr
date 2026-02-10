@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/quest_models.dart';
 import '../repositories/quest_repository.dart';
+import '../services/quest_progress_sync_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Provider for QuestRepository
@@ -112,4 +113,36 @@ final userLevelProvider = FutureProvider<int>((ref) async {
   } catch (e) {
     return 1;
   }
+});
+
+/// Provider for XP needed for next level
+final xpForNextLevelProvider = FutureProvider<int>((ref) async {
+  final userId = ref.watch(currentUserIdProvider);
+  final levelAsync = ref.watch(userLevelProvider);
+  final xpAsync = ref.watch(userXPProvider);
+  
+  if (userId == null) return 100;
+  
+  final level = levelAsync.value ?? 1;
+  final totalXP = xpAsync.value ?? 0;
+  
+  try {
+    final response = await Supabase.instance.client.rpc(
+      'get_xp_for_next_level',
+      params: {
+        'p_current_level': level,
+        'p_total_xp': totalXP,
+      },
+    );
+    
+    return (response as int?) ?? 100;
+  } catch (e) {
+    // Fallback calculation
+    return (100 * (1.15 * (level - 1))).round();
+  }
+});
+
+/// Provider for quest progress sync service
+final questProgressSyncServiceProvider = Provider<QuestProgressSyncService>((ref) {
+  return QuestProgressSyncService();
 });

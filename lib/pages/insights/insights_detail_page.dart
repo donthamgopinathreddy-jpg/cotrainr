@@ -1,9 +1,11 @@
 import 'dart:ui';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../services/user_goals_service.dart';
+import '../../repositories/metrics_repository.dart';
 
 enum MetricType { steps, water, calories, distance }
 
@@ -31,8 +33,10 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
   bool _caloriesConsumed = true;
   late final List<DateTime> _weekDates;
   late final List<DateTime> _monthDates;
-  late final List<double> _monthData;
+  List<double>? _monthData;
+  bool _isLoadingMonthData = false;
   double? _currentGoal;
+  final MetricsRepository _metricsRepo = MetricsRepository();
 
   @override
   void initState() {
@@ -54,11 +58,8 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
       final day = now.subtract(Duration(days: 29 - index));
       return DateTime(day.year, day.month, day.day);
     });
-    _monthData = List.generate(30, (index) {
-      final base = 5 + (index % 7);
-      return base.toDouble();
-    });
     _loadGoal();
+    _loadMonthlyData();
   }
 
   Future<void> _loadGoal() async {
@@ -82,6 +83,64 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
       setState(() {
         _currentGoal = goal;
       });
+    }
+  }
+
+  Future<void> _loadMonthlyData() async {
+    if (_isLoadingMonthData || _monthData != null) return;
+    
+    setState(() {
+      _isLoadingMonthData = true;
+    });
+
+    try {
+      final monthlyMetrics = await _metricsRepo.getMonthlyMetrics();
+      
+      // Create a map of date -> metric value for quick lookup
+      final metricsMap = <String, double>{};
+      for (final metric in monthlyMetrics) {
+        final dateStr = metric['date'] as String?;
+        if (dateStr == null) continue;
+        
+        double value = 0.0;
+        switch (widget.args.t) {
+          case MetricType.steps:
+            value = (metric['steps'] as num?)?.toDouble() ?? 0.0;
+            break;
+          case MetricType.water:
+            value = (metric['water_intake_liters'] as num?)?.toDouble() ?? 0.0;
+            break;
+          case MetricType.calories:
+            value = (metric['calories_burned'] as num?)?.toDouble() ?? 0.0;
+            break;
+          case MetricType.distance:
+            value = (metric['distance_km'] as num?)?.toDouble() ?? 0.0;
+            break;
+        }
+        metricsMap[dateStr] = value;
+      }
+      
+      // Build monthly data array matching _monthDates
+      final monthData = <double>[];
+      for (final date in _monthDates) {
+        final dateStr = date.toIso8601String().split('T')[0];
+        monthData.add(metricsMap[dateStr] ?? 0.0);
+      }
+      
+      if (mounted) {
+        setState(() {
+          _monthData = monthData;
+          _isLoadingMonthData = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading monthly data: $e');
+      if (mounted) {
+        setState(() {
+          _monthData = List.filled(30, 0.0); // Default to zeros on error
+          _isLoadingMonthData = false;
+        });
+      }
     }
   }
 
@@ -370,12 +429,45 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
   Widget build(BuildContext context) {
     final config = _MetricConfig.from(widget.args.t);
     final isMonth = _rangeController.index == 1;
-    final data = isMonth ? _monthData : widget.args.w;
+    
+    // Load monthly data if needed when month tab is selected
+    if (isMonth && _monthData == null && !_isLoadingMonthData) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _loadMonthlyData();
+      });
+    }
+    
+    final data = isMonth ? (_monthData ?? List.filled(30, 0.0)) : widget.args.w;
     final dates = isMonth ? _monthDates : _weekDates;
     final goal = _currentGoal ?? widget.args.goal;
     final total = data.isEmpty ? 0.0 : data.fold<double>(0, (a, b) => a + b);
     final average = data.isEmpty ? 0.0 : total / data.length;
     final peak = data.isEmpty ? 0.0 : data.reduce((a, b) => a > b ? a : b);
+    
+    // Calculate consistency (how consistent the values are - lower variance = higher consistency)
+    double consistency = 0.0;
+    if (data.isNotEmpty && average > 0) {
+      // Calculate standard deviation
+      final variance = data.map((v) => (v - average) * (v - average)).fold<double>(0.0, (a, b) => a + b) / data.length;
+      final stdDev = variance > 0 ? math.sqrt(variance) : 0.0; // Standard deviation = sqrt(variance)
+      // Calculate coefficient of variation (CV) - lower CV = higher consistency
+      final cv = stdDev > 0 && average > 0 ? (stdDev / average) : 0.0;
+      // Convert to consistency score (0-1): lower CV = higher consistency
+      // Use a more forgiving scale: CV of 0 = 1.0, CV of 0.5 = 0.5, CV >= 1.0 = 0
+      consistency = (1.0 - (cv * 2).clamp(0.0, 1.0)).clamp(0.0, 1.0);
+    } else if (data.isNotEmpty) {
+      // If average is 0 but we have data, check if all values are the same (perfect consistency)
+      final allSame = data.every((v) => v == data.first);
+      consistency = allSame ? 1.0 : 0.0;
+    }
+    
+    // Calculate goal hit rate (percentage of days that met or exceeded goal)
+    double goalHitRate = 0.0;
+    if (data.isNotEmpty && goal != null && goal > 0) {
+      final daysHitGoal = data.where((v) => v >= goal).length;
+      goalHitRate = daysHitGoal / data.length;
+    }
+    
     final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
@@ -494,8 +586,8 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
                         config: config,
                         average: average,
                         peak: peak,
-                        consistency: 0.78,
-                        goalHitRate: 0.64,
+                        consistency: consistency,
+                        goalHitRate: goalHitRate,
                         unit: config.unit,
                       ),
                       const SizedBox(height: 24),

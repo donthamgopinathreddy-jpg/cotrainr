@@ -1554,11 +1554,11 @@ List<_LevelInfo> _buildLevels() {
     final level = i + 1;
     final tierIndex = (i / 10).floor();
     final tierName = [
-      'Bronze',
-      'Silver',
-      'Gold',
-      'Diamond',
-      'Platinum',
+      'Rookie',
+      'Challenger',
+      'Pro',
+      'Legendary',
+      'Elite',
     ][tierIndex];
     final tierColor = [
       tier1,

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_colors.dart';
+import '../../repositories/messages_repository.dart';
 import 'chat_screen.dart';
 
 class MessagingPage extends StatefulWidget {
@@ -12,90 +15,136 @@ class MessagingPage extends StatefulWidget {
 
 class _MessagingPageState extends State<MessagingPage> {
   final TextEditingController _searchController = TextEditingController();
-  final List<_ConversationItem> _allConversations = [
-    _ConversationItem(
-      id: '1',
-      name: 'Coach Mia',
-      lastMessage: 'Great progress on your workouts! Keep it up.',
-      time: '2h ago',
-      unreadCount: 2,
-      avatarGradient: LinearGradient(
-        colors: [AppColors.orange, AppColors.pink],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ),
-      isOnline: true,
-    ),
-    _ConversationItem(
-      id: '2',
-      name: 'Trainer Alex',
-      lastMessage: 'Here\'s your updated meal plan.',
-      time: '1d ago',
-      unreadCount: 0,
-      avatarGradient: LinearGradient(
-        colors: [AppColors.blue, AppColors.cyan],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ),
-      isOnline: false,
-    ),
-    _ConversationItem(
-      id: '3',
-      name: 'Nutritionist Sarah',
-      lastMessage: 'Your weekly report is ready.',
-      time: '2d ago',
-      unreadCount: 1,
-      avatarGradient: LinearGradient(
-        colors: [AppColors.green, Color(0xFF65E6B3)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ),
-      isOnline: true,
-    ),
-    _ConversationItem(
-      id: '4',
-      name: 'Support Team',
-      lastMessage: 'Thank you for your feedback!',
-      time: '3d ago',
-      unreadCount: 0,
-      avatarGradient: LinearGradient(
-        colors: [AppColors.purple, Color(0xFFB38CFF)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ),
-      isOnline: false,
-    ),
-    _ConversationItem(
-      id: '5',
-      name: 'Fitness Group',
-      lastMessage: 'John shared a new workout routine.',
-      time: '1w ago',
-      unreadCount: 0,
-      avatarGradient: LinearGradient(
-        colors: [AppColors.orange, AppColors.yellow],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ),
-      isOnline: false,
-    ),
-  ];
-
+  final MessagesRepository _messagesRepo = MessagesRepository();
+  final List<_ConversationItem> _allConversations = [];
   List<_ConversationItem> _filteredConversations = [];
   _ConversationItem? _deletedConversation;
   int? _deletedIndex;
+  bool _isLoading = true;
+  RealtimeChannel? _conversationsChannel;
 
   @override
   void initState() {
     super.initState();
     _filteredConversations = _allConversations;
     _searchController.addListener(_filterConversations);
+    _loadConversations();
+    _setupRealtimeSubscription();
   }
 
   @override
   void dispose() {
     _searchController.removeListener(_filterConversations);
     _searchController.dispose();
+    _conversationsChannel?.unsubscribe();
     super.dispose();
+  }
+
+  Future<void> _loadConversations() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final conversations = await _messagesRepo.fetchConversations();
+      final List<_ConversationItem> items = [];
+
+      for (final convData in conversations) {
+        final conv = convData['conversation'] as Map<String, dynamic>;
+        final lastMessage = convData['lastMessage'] as Map<String, dynamic>?;
+        final unreadCount = convData['unreadCount'] as int? ?? 0;
+        final otherUser = convData['otherUser'] as Map<String, dynamic>?;
+        final updatedAt = convData['updatedAt'] as String?;
+
+        if (otherUser == null) continue;
+
+        final name = otherUser['full_name'] as String? ?? 
+                    otherUser['username'] as String? ?? 
+                    'Unknown User';
+        final avatarUrl = otherUser['avatar_url'] as String?;
+        final lastMessageText = lastMessage?['content'] as String? ?? 'No messages yet';
+        final time = _formatTime(updatedAt ?? lastMessage?['created_at'] as String?);
+
+        // Generate gradient based on name hash for consistency
+        final gradient = _getGradientForName(name);
+
+        items.add(_ConversationItem(
+          id: conv['id'] as String,
+          name: name,
+          lastMessage: lastMessageText,
+          time: time,
+          unreadCount: unreadCount,
+          avatarGradient: gradient,
+          isOnline: false, // TODO: Implement online status
+          avatarUrl: avatarUrl,
+        ));
+      }
+
+      if (mounted) {
+        setState(() {
+          _allConversations.clear();
+          _allConversations.addAll(items);
+          _filteredConversations = _allConversations;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading conversations: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _setupRealtimeSubscription() {
+    _conversationsChannel = _messagesRepo.subscribeToConversations((update) {
+      // Reload conversations when updated
+      _loadConversations();
+    });
+  }
+
+  String _formatTime(String? timestamp) {
+    if (timestamp == null) return '';
+    
+    try {
+      final dateTime = DateTime.parse(timestamp);
+      final now = DateTime.now();
+      final difference = now.difference(dateTime);
+
+      if (difference.inDays == 0) {
+        if (difference.inHours == 0) {
+          if (difference.inMinutes == 0) {
+            return 'Just now';
+          }
+          return '${difference.inMinutes}m ago';
+        }
+        return '${difference.inHours}h ago';
+      } else if (difference.inDays == 1) {
+        return '1d ago';
+      } else if (difference.inDays < 7) {
+        return '${difference.inDays}d ago';
+      } else if (difference.inDays < 30) {
+        return '${(difference.inDays / 7).floor()}w ago';
+      } else {
+        return DateFormat('MMM d').format(dateTime);
+      }
+    } catch (e) {
+      return '';
+    }
+  }
+
+  LinearGradient _getGradientForName(String name) {
+    final hash = name.hashCode;
+    final gradients = [
+      LinearGradient(colors: [AppColors.orange, AppColors.pink], begin: Alignment.topLeft, end: Alignment.bottomRight),
+      LinearGradient(colors: [AppColors.blue, AppColors.cyan], begin: Alignment.topLeft, end: Alignment.bottomRight),
+      LinearGradient(colors: [AppColors.green, Color(0xFF65E6B3)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+      LinearGradient(colors: [AppColors.purple, Color(0xFFB38CFF)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+      LinearGradient(colors: [AppColors.orange, AppColors.yellow], begin: Alignment.topLeft, end: Alignment.bottomRight),
+    ];
+    return gradients[hash.abs() % gradients.length];
   }
 
   void _filterConversations() {
@@ -270,16 +319,51 @@ class _MessagingPageState extends State<MessagingPage> {
               ),
             ),
             Expanded(
-              child: ListView.separated(
-                padding: EdgeInsets.zero,
-                itemCount: _filteredConversations.length,
-                separatorBuilder: (_, __) => Divider(
-                  height: 1,
-                  indent: 76,
-                  color: AppColors.blue.withOpacity(0.2),
-                ),
-                itemBuilder: (context, index) {
-                  final item = _filteredConversations[index];
+              child: _isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(),
+                    )
+                  : _filteredConversations.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.chat_bubble_outline_rounded,
+                                size: 64,
+                                color: cs.onSurfaceVariant,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No conversations yet',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: cs.onSurfaceVariant,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Start a conversation with your trainer or nutritionist',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: cs.onSurfaceVariant,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
+                        )
+                      : ListView.separated(
+                          padding: EdgeInsets.zero,
+                          itemCount: _filteredConversations.length,
+                          separatorBuilder: (_, __) => Divider(
+                            height: 1,
+                            indent: 76,
+                            color: AppColors.blue.withOpacity(0.2),
+                          ),
+                          itemBuilder: (context, index) {
+                            final item = _filteredConversations[index];
                   return TweenAnimationBuilder<double>(
                     tween: Tween(begin: 0.0, end: 1.0),
                     duration: Duration(milliseconds: 200 + (index * 30)),

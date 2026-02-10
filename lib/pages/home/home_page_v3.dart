@@ -19,6 +19,9 @@ import '../insights/insights_detail_page.dart';
 import '../../services/streak_service.dart';
 import '../../services/user_goals_service.dart';
 import '../../repositories/profile_repository.dart';
+import '../../services/metrics_sync_service.dart';
+import '../../repositories/metrics_repository.dart';
+import '../../providers/quest_provider.dart';
 
 class HomePageV3 extends ConsumerStatefulWidget {
   final VoidCallback? onNavigateToCocircle;
@@ -44,6 +47,9 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
   int _goalSteps = 10000;
   double _currentWater = 0.0;
   double _goalWater = 2.5;
+  int _currentSteps = 0;
+  double _currentCalories = 0.0;
+  double _currentDistance = 0.0;
   double _bmi = 0.0;
   String _bmiStatus = '';
   double? _heightCm;
@@ -72,10 +78,13 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
     _loadNotificationsCount();
     _loadStreak();
     _loadGoals();
+    _loadMetrics();
     
     // Initialize health tracking service for background step counting
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(healthTrackingServiceProvider).initialize();
+      // Start metrics sync service
+      ref.read(metricsSyncServiceProvider).startSync();
     });
   }
   
@@ -215,6 +224,30 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
     }
   }
 
+  Future<void> _loadMetrics() async {
+    try {
+      final metricsRepo = MetricsRepository();
+      final todayMetrics = await metricsRepo.getTodayMetrics();
+      
+      if (mounted) {
+        if (todayMetrics != null) {
+          setState(() {
+            _currentSteps = (todayMetrics['steps'] as int?) ?? 0;
+            _currentCalories = (todayMetrics['calories_burned'] as num?)?.toDouble() ?? 0.0;
+            _currentDistance = (todayMetrics['distance_km'] as num?)?.toDouble() ?? 0.0;
+            _currentWater = (todayMetrics['water_intake_liters'] as num?)?.toDouble() ?? 0.0;
+          });
+          print('HomePageV3: Loaded metrics from Supabase - Steps: $_currentSteps, Water: $_currentWater L, Calories: $_currentCalories, Distance: $_currentDistance km');
+        } else {
+          print('HomePageV3: No metrics found for today, keeping current values');
+          // Don't reset to 0 if no metrics found - keep current values
+        }
+      }
+    } catch (e) {
+      print('HomePageV3: Error loading metrics: $e');
+    }
+  }
+
   @override
   void dispose() {
     _scrollController.dispose();
@@ -268,14 +301,26 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
     final cs = Theme.of(context).colorScheme;
     // Watch step count from health tracking provider (updates every 30 seconds)
     final stepsAsync = ref.watch(stepsNotifierProvider);
-    final currentSteps = stepsAsync.value ?? 0;
+    final providerSteps = stepsAsync.value ?? 0;
     
     // Watch calories and distance
     final caloriesAsync = ref.watch(caloriesProvider);
-    final currentCalories = caloriesAsync.value?.toInt() ?? 0;
+    final providerCalories = caloriesAsync.value ?? 0.0;
     
     final distanceAsync = ref.watch(distanceProvider);
-    final currentDistance = distanceAsync.value ?? 0.0;
+    final providerDistance = distanceAsync.value ?? 0.0;
+    
+    // Use provider values if available, otherwise use loaded values from Supabase
+    final currentSteps = providerSteps > 0 ? providerSteps : _currentSteps;
+    final currentCalories = providerCalories > 0 ? providerCalories.toInt() : _currentCalories.toInt();
+    final currentDistance = providerDistance > 0 ? providerDistance : _currentDistance;
+    
+    // Sync metrics to Supabase when provider values change
+    if (providerSteps > 0 || providerCalories > 0 || providerDistance > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(metricsSyncServiceProvider).syncNow();
+      });
+    }
     
     return FadeTransition(
       opacity: _fadeAnimation,
@@ -385,13 +430,34 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                         _distanceWeeklyData,
                       ),
                     ),
-                    onAddWater: () {
+                    onAddWater: () async {
+                      // Add 250ml (0.25L) to water intake
+                      final waterToAdd = 0.25;
+                      final oldWater = _currentWater;
+                      final newWater = (_currentWater + waterToAdd).clamp(0.0, _goalWater);
+                      
+                      // Update local state immediately for UI responsiveness
                       setState(() {
-                        _currentWater += 0.25; // Add 250ml (0.25L)
-                        if (_currentWater > _goalWater) {
-                          _currentWater = _goalWater; // Cap at goal
-                        }
+                        _currentWater = newWater;
                       });
+                      
+                      // Save to Supabase - use updateTodayMetrics to set the total value
+                      try {
+                        final metricsRepo = MetricsRepository();
+                        await metricsRepo.updateTodayMetrics(waterIntakeLiters: newWater);
+                        print('HomePageV3: Saved water intake to Supabase: $newWater L (was $oldWater L)');
+                        
+                        // Also sync to quest progress
+                        ref.read(questProgressSyncServiceProvider).onWaterUpdated(newWater);
+                      } catch (e) {
+                        print('HomePageV3: Error saving water intake: $e');
+                        // Revert on error
+                        if (mounted) {
+                          setState(() {
+                            _currentWater = oldWater;
+                          });
+                        }
+                      }
                     },
                   ),
                 ),
@@ -452,12 +518,16 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
   Future<void> _onRefresh() async {
     HapticFeedback.mediumImpact();
     
+    // Sync metrics immediately
+    await ref.read(metricsSyncServiceProvider).syncNow();
+    
     // Reload all data
     await Future.wait([
       _loadProfileData(),
       _loadNotificationsCount(),
       _loadStreak(),
       _loadGoals(),
+      _loadMetrics(),
     ]);
     
     // Refresh health tracking data

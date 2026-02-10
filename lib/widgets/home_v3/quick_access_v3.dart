@@ -1,15 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
+import '../../repositories/messages_repository.dart';
 import '../common/pressable_card.dart';
 
-class QuickAccessV3 extends StatelessWidget {
+final unreadMessagesCountProvider = FutureProvider<int>((ref) async {
+  final messagesRepo = MessagesRepository();
+  return await messagesRepo.getUnreadMessagesCount();
+});
+
+class QuickAccessV3 extends ConsumerWidget {
   const QuickAccessV3({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
     
     // Get user role from Supabase
@@ -71,6 +78,11 @@ class QuickAccessV3 extends StatelessWidget {
                 onTap = () => context.push('/meal-tracker');
               } else if (item.title == 'MESSAGING') {
                 onTap = () => context.push('/messaging');
+                // Show badge for unread messages
+                final unreadCountAsync = ref.watch(unreadMessagesCountProvider);
+                unreadCountAsync.whenData((count) {
+                  showBadge = count > 0;
+                });
               } else if (item.title == 'BECOME A TRAINER') {
                 onTap = () => context.push('/trainer/become');
               } else if (item.title == 'VIDEO SESSIONS') {
@@ -82,6 +94,20 @@ class QuickAccessV3 extends StatelessWidget {
                 } else {
                   onTap = () => context.push('/video?role=client');
                 }
+              }
+              // For messaging, watch unread count
+              if (item.title == 'MESSAGING') {
+                final unreadCountAsync = ref.watch(unreadMessagesCountProvider);
+                return unreadCountAsync.when(
+                  data: (count) => _QuickTile(
+                    item: item,
+                    onTap: onTap,
+                    showBadge: count > 0,
+                    badgeCount: count > 0 ? count : null,
+                  ),
+                  loading: () => _QuickTile(item: item, onTap: onTap, showBadge: false),
+                  error: (_, __) => _QuickTile(item: item, onTap: onTap, showBadge: false),
+                );
               }
               return _QuickTile(item: item, onTap: onTap, showBadge: showBadge);
             },
@@ -104,8 +130,9 @@ class _QuickTile extends StatelessWidget {
   final _QuickTileData item;
   final VoidCallback? onTap;
   final bool showBadge;
+  final int? badgeCount;
 
-  const _QuickTile({required this.item, this.onTap, this.showBadge = false});
+  const _QuickTile({required this.item, this.onTap, this.showBadge = false, this.badgeCount});
 
   @override
   Widget build(BuildContext context) {
@@ -142,12 +169,38 @@ class _QuickTile extends StatelessWidget {
                     top: 0,
                     right: 0,
                     child: Container(
-                      width: 10,
-                      height: 10,
+                      padding: badgeCount != null && badgeCount! > 9
+                          ? const EdgeInsets.symmetric(horizontal: 4, vertical: 2)
+                          : const EdgeInsets.all(2),
+                      constraints: const BoxConstraints(
+                        minWidth: 16,
+                        minHeight: 16,
+                      ),
                       decoration: const BoxDecoration(
                         color: AppColors.red,
                         shape: BoxShape.circle,
                       ),
+                      child: badgeCount != null && badgeCount! > 9
+                          ? Text(
+                              '9+',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 8,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              textAlign: TextAlign.center,
+                            )
+                          : badgeCount != null
+                              ? Text(
+                                  '$badgeCount',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                )
+                              : null,
                     ),
                   ),
               ],
