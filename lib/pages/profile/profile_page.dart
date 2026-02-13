@@ -7,11 +7,12 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_colors.dart';
 import '../../repositories/profile_repository.dart';
+import '../../repositories/metrics_repository.dart';
+import '../../services/streak_service.dart';
 import '../../utils/page_transitions.dart';
 import '../../widgets/common/pressable_card.dart';
 import '../../widgets/common/cover_with_blur_bridge.dart';
 import '../../providers/profile_images_provider.dart';
-import '../../pages/insights/insights_detail_page.dart';
 import '../../pages/trainer/become_trainer_page.dart';
 import '../../pages/trainer/verification_submission_page.dart';
 import '../../pages/refer/refer_friend_page.dart';
@@ -27,12 +28,19 @@ class ProfilePage extends ConsumerStatefulWidget {
 class _ProfilePageState extends ConsumerState<ProfilePage>
     with SingleTickerProviderStateMixin {
   final ProfileRepository _profileRepo = ProfileRepository();
+  final MetricsRepository _metricsRepo = MetricsRepository();
   
   String _username = 'Loading...';
   String _handle = '@loading';
   final bool _isSubscribed = false;
   Map<String, dynamic>? _profile;
   bool _isLoadingProfile = true;
+  
+  // Real stats from Supabase
+  int _steps = 0;
+  int _streak = 0;
+  int _level = 1;
+  int _xp = 0;
   
   // Check verification status - in real app, fetch from Supabase
   String? get _verificationStatus {
@@ -86,14 +94,50 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                       'User';
           final username = profile['username'] as String? ?? '';
           _handle = '@$username';
-          _isLoadingProfile = false;
         });
-      } else {
-        setState(() => _isLoadingProfile = false);
+      }
+
+      // Fetch real stats from Supabase
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId != null) {
+        // Steps: today's steps from metrics_daily
+        final todayMetrics = await _metricsRepo.getTodayMetrics();
+        final steps = (todayMetrics?['steps'] as num?)?.toInt() ?? 0;
+
+        // Streak: from user_streaks
+        final streak = await StreakService.getCurrentStreak();
+
+        // Level & XP: from user_profiles
+        int level = 1;
+        int xp = 0;
+        try {
+          final userProfile = await Supabase.instance.client
+              .from('user_profiles')
+              .select('level, total_xp, xp')
+              .eq('user_id', userId)
+              .maybeSingle();
+          if (userProfile != null) {
+            level = (userProfile['level'] as num?)?.toInt() ?? 1;
+            xp = (userProfile['total_xp'] as num?)?.toInt() ??
+                 (userProfile['xp'] as num?)?.toInt() ?? 0;
+          }
+        } catch (_) {}
+
+        if (mounted) {
+          setState(() {
+            _steps = steps;
+            _streak = streak;
+            _level = level;
+            _xp = xp;
+          });
+        }
       }
     } catch (e) {
-      setState(() => _isLoadingProfile = false);
       print('Error loading profile: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingProfile = false);
+      }
     }
   }
   
@@ -130,16 +174,17 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                   role: _role,
                   username: _username,
                   handle: _handle,
+                  level: _level,
                 ),
                 Transform.translate(
                   offset: const Offset(0, -20),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: _ProfileStatsStrip(
-                      avgSteps: 7.2,
-                      streakDays: 12,
-                      level: 8,
-                      xp: 1240,
+                      steps: _steps,
+                      streakDays: _streak,
+                      level: _level,
+                      xp: _xp,
                     ),
                   ),
                 ),
@@ -276,6 +321,7 @@ class _ProfileCoverHeader extends StatelessWidget {
   final String role;
   final String username;
   final String handle;
+  final int level;
 
   const _ProfileCoverHeader({
     required this.coverImageUrl,
@@ -283,6 +329,7 @@ class _ProfileCoverHeader extends StatelessWidget {
     required this.role,
     required this.username,
     required this.handle,
+    this.level = 1,
   });
 
   @override
@@ -431,7 +478,7 @@ class _ProfileCoverHeader extends StatelessWidget {
                       ),
                     ),
                     child: Text(
-                      'LVL 1 Beginner',
+                      'LVL $level',
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
@@ -466,23 +513,23 @@ class _ProfileCoverHeader extends StatelessWidget {
 
 
 class _ProfileStatsStrip extends StatelessWidget {
-  final double avgSteps;
+  final int steps;
   final int streakDays;
   final int level;
   final int xp;
 
   const _ProfileStatsStrip({
-    required this.avgSteps,
+    required this.steps,
     required this.streakDays,
     required this.level,
     required this.xp,
   });
 
-  String _formatSteps(double steps) {
+  String _formatSteps(int steps) {
     if (steps >= 1000) {
       return '${(steps / 1000).toStringAsFixed(1)}k';
     }
-    return steps.toStringAsFixed(0);
+    return steps.toString();
   }
 
   String _formatXP(int xp) {
@@ -527,20 +574,13 @@ class _ProfileStatsStrip extends StatelessWidget {
         children: [
           _StatItem(
             icon: Icons.directions_walk_rounded,
-            label: 'Avg Steps',
-            value: _formatSteps(avgSteps),
+            label: 'Steps',
+            value: _formatSteps(steps),
             iconColor: AppColors.orange,
             onTap: () {
               HapticFeedback.lightImpact();
-              // Navigate to steps insights
-              context.push(
-                '/insights/steps',
-                extra: InsightArgs(
-                  MetricType.steps,
-                  const [6, 7, 8, 7, 9, 8, 7],
-                  goal: 10000,
-                ),
-              );
+              // Navigate to home page (same steps as home page)
+              context.push('/home');
             },
           ),
           _StatItem(
@@ -548,7 +588,11 @@ class _ProfileStatsStrip extends StatelessWidget {
             label: 'Streak',
             value: '$streakDays days',
             iconColor: AppColors.orange,
-            onTap: null, // No action for streak
+            onTap: () {
+              HapticFeedback.lightImpact();
+              // Navigate to home page (same streak as home page)
+              context.push('/home');
+            },
           ),
           _StatItem(
             icon: Icons.emoji_events_rounded,

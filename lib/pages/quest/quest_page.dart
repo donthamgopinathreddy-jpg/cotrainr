@@ -9,7 +9,6 @@ import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
 import '../../utils/page_transitions.dart';
 import '../../providers/quest_provider.dart';
-import '../../services/quest_progress_sync_service.dart';
 
 class QuestPage extends ConsumerStatefulWidget {
   const QuestPage({super.key});
@@ -60,10 +59,13 @@ class _QuestPageState extends ConsumerState<QuestPage>
       final syncService = ref.read(questProgressSyncServiceProvider);
       await syncService.triggerSync();
       
-      // Refresh quest data after sync
+      // Refresh quest data and XP (XP is auto-awarded when quest completes)
       ref.invalidate(dailyQuestsProvider);
       ref.invalidate(weeklyQuestsProvider);
       ref.invalidate(achievementsProvider);
+      ref.invalidate(userXPProvider);
+      ref.invalidate(userLevelProvider);
+      ref.invalidate(xpForNextLevelProvider);
     } catch (e) {
       print('Error syncing quest progress: $e');
     }
@@ -96,37 +98,6 @@ class _QuestPageState extends ConsumerState<QuestPage>
     );
   }
   
-  Future<void> _claimQuest(String questId) async {
-    try {
-      final repo = ref.read(questRepositoryProvider);
-      final result = await repo.claimQuestRewards(questId);
-      
-      // Refresh quests and XP
-      ref.invalidate(dailyQuestsProvider);
-      ref.invalidate(weeklyQuestsProvider);
-      ref.invalidate(userXPProvider);
-      ref.invalidate(userLevelProvider);
-      
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Quest claimed! +${result['xp_awarded']} XP'),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error claiming quest: $e'),
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -140,10 +111,9 @@ class _QuestPageState extends ConsumerState<QuestPage>
     final xpAsync = ref.watch(userXPProvider);
     final levelAsync = ref.watch(userLevelProvider);
     
-    // Trigger sync periodically when data is loaded
+    // Trigger sync periodically when data is loaded (XP updates when quests complete)
     if (dailyQuestsAsync.hasValue && mounted) {
-      // Sync every 60 seconds while on this page
-      Future.delayed(const Duration(seconds: 60), () {
+      Future.delayed(const Duration(seconds: 15), () {
         if (mounted) {
           _syncQuestProgress();
         }
@@ -263,13 +233,11 @@ class _QuestPageState extends ConsumerState<QuestPage>
                       : _DailySection(
                           quests: dailyItems,
                           gradient: _primaryGradient,
-                          onClaim: _claimQuest,
                         ),
                   isLoading
                       ? const Center(child: CircularProgressIndicator())
                       : _WeeklySection(
                           quests: weeklyItems,
-                          onClaim: _claimQuest,
                         ),
                   isLoading
                       ? const Center(child: CircularProgressIndicator())
@@ -384,8 +352,11 @@ class _XpHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final nextXP = nextLevelInfo.xpRequired;
-    final progress = currentXP / nextXP;
+    final currentLevelXP = currentLevelInfo.xpRequired;
+    final nextLevelXP = nextLevelInfo.xpRequired;
+    final progress = (nextLevelXP - currentLevelXP) > 0
+        ? ((currentXP - currentLevelXP) / (nextLevelXP - currentLevelXP)).clamp(0.0, 1.0)
+        : 1.0;
     return SizedBox(
       height: 140,
       child: Row(
@@ -444,7 +415,7 @@ class _XpHero extends StatelessWidget {
                 _XpBar(progress: progress),
                 const SizedBox(height: 8),
                 Text(
-                  '$currentXP / $nextXP to unlock LV ${level + 1}',
+                  '$currentXP / $nextLevelXP XP to unlock LV ${level + 1}',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -586,12 +557,10 @@ class _TabData {
 class _DailySection extends StatelessWidget {
   final List<_QuestItem> quests;
   final LinearGradient gradient;
-  final Function(String) onClaim;
 
   const _DailySection({
     required this.quests,
     required this.gradient,
-    required this.onClaim,
   });
 
   @override
@@ -607,7 +576,6 @@ class _DailySection extends StatelessWidget {
                   child: _QuestCard(
                     quest: quest,
                     gradient: gradient,
-                    onClaim: () => onClaim(quest.questId),
                   ),
                 ),
               )
@@ -620,11 +588,9 @@ class _DailySection extends StatelessWidget {
 
 class _WeeklySection extends StatelessWidget {
   final List<_QuestItem> quests;
-  final Function(String) onClaim;
 
   const _WeeklySection({
     required this.quests,
-    required this.onClaim,
   });
 
   @override
@@ -644,7 +610,6 @@ class _WeeklySection extends StatelessWidget {
         itemBuilder: (context, index) {
           return _WeeklyCard(
             quest: quests[index],
-            onClaim: () => onClaim(quests[index].questId),
           );
         },
       ),
@@ -2065,17 +2030,16 @@ class _ContinuousLevelBarState extends State<_ContinuousLevelBar>
 class _QuestCard extends StatelessWidget {
   final _QuestItem quest;
   final LinearGradient gradient;
-  final VoidCallback? onClaim;
 
   const _QuestCard({
     required this.quest,
     required this.gradient,
-    this.onClaim,
   });
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isCompleted = quest.progress >= 1.0 || quest.canClaim;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -2122,12 +2086,19 @@ class _QuestCard extends StatelessWidget {
             children: [
               if (quest.timeLeft != null) _Chip(text: quest.timeLeft!),
               const Spacer(),
-              _PrimaryButton(
-                label: quest.canClaim ? 'Claim' : (quest.progress >= 1.0 ? 'Claim' : 'In Progress'),
-                gradient: gradient,
-                enabled: quest.canClaim || quest.progress >= 1.0,
-                onTap: (quest.canClaim || quest.progress >= 1.0) && onClaim != null ? onClaim! : null,
-              ),
+              if (isCompleted)
+                Icon(Icons.check_circle_rounded, color: AppColors.green, size: 20),
+              if (isCompleted)
+                const SizedBox(width: 4),
+              if (isCompleted)
+                Text(
+                  'Completed',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.green,
+                  ),
+                ),
             ],
           ),
         ],
@@ -2138,11 +2109,9 @@ class _QuestCard extends StatelessWidget {
 
 class _WeeklyCard extends StatelessWidget {
   final _QuestItem quest;
-  final VoidCallback? onClaim;
 
   const _WeeklyCard({
     required this.quest,
-    this.onClaim,
   });
 
   @override

@@ -1,14 +1,18 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:io';
 import '../../theme/app_colors.dart';
 import '../../repositories/messages_repository.dart';
+import '../../services/storage_service.dart';
+import '../../widgets/home_v3/quick_access_v3.dart';
 import '../cocircle/user_profile_page.dart';
 
-class ChatScreen extends StatefulWidget {
+class ChatScreen extends ConsumerStatefulWidget {
   final String conversationId;
   final String userName;
   final LinearGradient avatarGradient;
@@ -25,14 +29,15 @@ class ChatScreen extends StatefulWidget {
   });
 
   @override
-  State<ChatScreen> createState() => _ChatScreenState();
+  ConsumerState<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatScreenState extends ConsumerState<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final ImagePicker _imagePicker = ImagePicker();
   final MessagesRepository _messagesRepo = MessagesRepository();
+  final StorageService _storageService = StorageService();
   final SupabaseClient _supabase = Supabase.instance.client;
   String? _previewImagePath;
   String? _previewVideoPath;
@@ -123,11 +128,16 @@ class _ChatScreenState extends State<ChatScreen> {
         final createdAt = msg['created_at'] as String?;
         final time = _formatTime(createdAt);
         
+        final mediaUrl = msg['media_url'] as String?;
+        final mediaKind = msg['media_kind'] as String?;
+        final isImage = mediaKind == 'image' || (mediaUrl != null && !mediaUrl.toLowerCase().contains('.mp4'));
         chatMessages.add(_ChatMessage(
           text: content,
           isSent: isSent,
           time: time,
           messageId: msg['id'] as String?,
+          imageUrl: mediaUrl != null && isImage ? mediaUrl : null,
+          videoUrl: mediaUrl != null && !isImage ? mediaUrl : null,
         ));
       }
 
@@ -158,6 +168,9 @@ class _ChatScreenState extends State<ChatScreen> {
       final createdAt = newMessage['created_at'] as String?;
       final time = _formatTime(createdAt);
       
+      final mediaUrl = newMessage['media_url'] as String?;
+      final mediaKind = newMessage['media_kind'] as String?;
+      final isImage = mediaKind == 'image' || (mediaUrl != null && !mediaUrl.toLowerCase().contains('.mp4'));
       if (mounted) {
         setState(() {
           _messages.add(_ChatMessage(
@@ -165,6 +178,8 @@ class _ChatScreenState extends State<ChatScreen> {
             isSent: isSent,
             time: time,
             messageId: newMessage['id'] as String?,
+            imageUrl: mediaUrl != null && isImage ? mediaUrl : null,
+            videoUrl: mediaUrl != null && !isImage ? mediaUrl : null,
           ));
         });
         _scrollToBottom();
@@ -177,6 +192,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _markMessagesAsRead() async {
     await _messagesRepo.markMessagesAsRead(widget.conversationId);
+    ref.invalidate(unreadMessagesCountProvider);
   }
 
   String _formatTime(String? timestamp) {
@@ -223,13 +239,17 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = _messageController.text.trim();
     if (text.isEmpty && _previewImagePath == null && _previewVideoPath == null) return;
 
+    // Capture paths before clearing (needed for upload)
+    final imagePath = _previewImagePath;
+    final videoPath = _previewVideoPath;
+
     // Optimistically add message to UI
     final tempMessage = _ChatMessage(
       text: text,
       isSent: true,
       time: 'Just now',
-      imagePath: _previewImagePath,
-      videoPath: _previewVideoPath,
+      imagePath: imagePath,
+      videoPath: videoPath,
     );
 
     setState(() {
@@ -243,12 +263,22 @@ class _ChatScreenState extends State<ChatScreen> {
     _clearPreview();
     _scrollToBottom();
 
-    // Send to Supabase
+    // Upload media to storage and send to Supabase
     try {
+      String? mediaUrl;
+      if (imagePath != null) {
+        final file = File(imagePath);
+        mediaUrl = await _storageService.uploadChatMedia(file, isVideo: false);
+      } else if (videoPath != null) {
+        final file = File(videoPath);
+        mediaUrl = await _storageService.uploadChatMedia(file, isVideo: true);
+      }
+
       await _messagesRepo.sendMessage(
         conversationId: widget.conversationId,
         content: text,
-        mediaUrl: _previewImagePath, // TODO: Upload image to storage first
+        mediaUrl: mediaUrl,
+        mediaKind: imagePath != null ? 'image' : (videoPath != null ? 'video' : null),
       );
     } catch (e) {
       print('Error sending message: $e');
@@ -972,6 +1002,8 @@ class _ChatMessage {
   final String time;
   final String? imagePath;
   final String? videoPath;
+  final String? imageUrl;
+  final String? videoUrl;
   final String? messageId;
 
   _ChatMessage({
@@ -980,6 +1012,8 @@ class _ChatMessage {
     required this.time,
     this.imagePath,
     this.videoPath,
+    this.imageUrl,
+    this.videoUrl,
     this.messageId,
   });
 }
@@ -1040,17 +1074,36 @@ class _ChatBubbleState extends State<_ChatBubble> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (widget.message.imagePath != null)
+            if (widget.message.imagePath != null || widget.message.imageUrl != null)
               Stack(
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                    child: Image.file(
-                      File(widget.message.imagePath!),
-                      width: 200,
-                      height: 200,
-                      fit: BoxFit.cover,
-                    ),
+                    child: widget.message.imagePath != null
+                        ? Image.file(
+                            File(widget.message.imagePath!),
+                            width: 200,
+                            height: 200,
+                            fit: BoxFit.cover,
+                          )
+                        : CachedNetworkImage(
+                            imageUrl: widget.message.imageUrl!,
+                            width: 200,
+                            height: 200,
+                            fit: BoxFit.cover,
+                            placeholder: (_, __) => Container(
+                              width: 200,
+                              height: 200,
+                              color: Colors.grey.shade300,
+                              child: const Center(child: CircularProgressIndicator()),
+                            ),
+                            errorWidget: (_, __, ___) => Container(
+                              width: 200,
+                              height: 200,
+                              color: Colors.grey.shade300,
+                              child: const Icon(Icons.broken_image, size: 48),
+                            ),
+                          ),
                   ),
                   if (widget.message.text.isEmpty)
                     Positioned(
@@ -1071,7 +1124,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
                     ),
                 ],
               ),
-            if (widget.message.videoPath != null)
+            if (widget.message.videoPath != null || widget.message.videoUrl != null)
               Stack(
                 children: [
                   Container(
@@ -1132,7 +1185,10 @@ class _ChatBubbleState extends State<_ChatBubble> {
                 ],
               ),
             if (widget.message.text.isNotEmpty) ...[
-              if (widget.message.imagePath != null || widget.message.videoPath != null)
+              if (widget.message.imagePath != null ||
+                  widget.message.videoPath != null ||
+                  widget.message.imageUrl != null ||
+                  widget.message.videoUrl != null)
                 const SizedBox(height: 8),
               Text(
                 widget.message.text,

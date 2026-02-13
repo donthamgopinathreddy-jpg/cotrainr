@@ -318,13 +318,14 @@ final GoRouter appRouter = GoRouter(
       path: '/messaging/chat/:userId',
       name: 'chatScreen',
       pageBuilder: (context, state) {
-        final userId = state.pathParameters['userId'] ?? '';
+        // userId path param can be conversationId (from cocircle) or userId (from trainer/nutritionist)
+        final id = state.pathParameters['userId'] ?? '';
         final extra = state.extra as Map<String, dynamic>?;
         return _fadeSlidePage(
           child: ChatScreen(
-            conversationId: userId,
+            conversationId: id,
             userName: extra?['userName'] ?? 'User',
-            avatarGradient: DesignTokens.primaryGradient,
+            avatarGradient: extra?['avatarGradient'] as LinearGradient? ?? DesignTokens.primaryGradient,
             isOnline: extra?['isOnline'] ?? false,
             avatarUrl: extra?['avatarUrl'],
           ),

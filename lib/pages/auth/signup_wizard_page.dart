@@ -457,7 +457,7 @@ class _SignupWizardPageState extends State<SignupWizardPage>
             children: [
               // Header Section
               Container(
-                padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                 child: Column(
                   children: [
                     Row(
@@ -478,7 +478,7 @@ class _SignupWizardPageState extends State<SignupWizardPage>
                           Text(
                             _getStepTitle(_step),
                             style: TextStyle(
-                              fontSize: 32,
+                              fontSize: 18,
                               fontWeight: FontWeight.bold,
                               color: textPrimary,
                               height: 1.1,
@@ -500,7 +500,7 @@ class _SignupWizardPageState extends State<SignupWizardPage>
                     ),
                       ],
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
                     // Animated Gradient Progress indicator
                     Row(
                       children: List.generate(5, (index) {
@@ -510,7 +510,7 @@ class _SignupWizardPageState extends State<SignupWizardPage>
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 300),
                             curve: Curves.easeInOut,
-                            height: isCurrent ? 4 : 3,
+                            height: isCurrent ? 3 : 2,
                             margin: EdgeInsets.only(
                               right: index < 4 ? 6 : 0,
                             ),
@@ -629,7 +629,7 @@ class _SignupWizardPageState extends State<SignupWizardPage>
 
               // Navigation button
               Container(
-                padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                 child: SafeArea(
                   top: false,
                   child: SizedBox(
@@ -637,7 +637,7 @@ class _SignupWizardPageState extends State<SignupWizardPage>
                     child: GestureDetector(
                       onTap: _isSubmitting ? null : _next,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
                             colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
@@ -671,7 +671,7 @@ class _SignupWizardPageState extends State<SignupWizardPage>
                                 const Text(
                                   '>',
                                   style: TextStyle(
-                                    fontSize: 20,
+                                    fontSize: 16,
                                     fontWeight: FontWeight.w600,
                                     color: Colors.black,
                                   ),
@@ -805,7 +805,7 @@ class _Step1ContentState extends State<_Step1Content> {
               : null,
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
 
           _TextFieldCard(
             label: 'Email',
@@ -843,7 +843,7 @@ class _Step1ContentState extends State<_Step1Content> {
               : null,
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
 
           _TextFieldCard(
             label: 'Password',
@@ -958,7 +958,7 @@ class _Step2Content extends StatelessWidget {
             prefixIcon: Icons.person_outline_rounded,
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
 
           _TextFieldCard(
             label: 'Last Name',
@@ -967,7 +967,7 @@ class _Step2Content extends StatelessWidget {
             prefixIcon: Icons.person_outline_rounded,
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
 
           _TextFieldCard(
             label: 'Phone Number',
@@ -1063,7 +1063,7 @@ class _Step3Content extends StatelessWidget {
         children: [
           const SizedBox(height: 8),
           SizedBox(
-            height: 220,
+            height: 180,
             child: ShaderMask(
               shaderCallback: (bounds) => LinearGradient(
                 begin: Alignment.centerLeft,
@@ -1084,7 +1084,7 @@ class _Step3Content extends StatelessWidget {
                   textTheme: CupertinoTextThemeData(
                     pickerTextStyle: TextStyle(
                       color: textPrimary,
-                      fontSize: 20,
+                      fontSize: 18,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -1304,7 +1304,7 @@ class _Step4ContentState extends State<_Step4Content> {
           const SizedBox(height: 16),
 
           SizedBox(
-            height: 200,
+            height: 160,
             child: widget.heightInCm
               ? ShaderMask(
                   shaderCallback: (bounds) => LinearGradient(
@@ -1326,14 +1326,14 @@ class _Step4ContentState extends State<_Step4Content> {
                       textTheme: CupertinoTextThemeData(
                         pickerTextStyle: TextStyle(
                           color: textPrimary,
-                          fontSize: 20,
+                          fontSize: 16,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
                     child: _LoopingPicker(
                       scrollController: _heightCmController,
-                      itemExtent: 50,
+                      itemExtent: 40,
                       itemCount: 151,
                       initialIndex: (widget.heightCm - 80).round().clamp(0, 150),
                       onSelectedItemChanged: (index) {
@@ -1359,7 +1359,7 @@ class _Step4ContentState extends State<_Step4Content> {
                                   '$value cm',
                                   style: TextStyle(
                                     color: Colors.white, // This will be masked by the gradient
-                                    fontSize: 24,
+                                    fontSize: 18,
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
@@ -1368,7 +1368,7 @@ class _Step4ContentState extends State<_Step4Content> {
                                 '$value cm',
                                 style: TextStyle(
                                   color: textPrimary.withOpacity(0.8),
-                                  fontSize: 20,
+                                  fontSize: 16,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -1400,14 +1400,14 @@ class _Step4ContentState extends State<_Step4Content> {
                             textTheme: CupertinoTextThemeData(
                               pickerTextStyle: TextStyle(
                                 color: textPrimary,
-                                fontSize: 20,
+                                fontSize: 16,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
                           child: _LoopingPicker(
                             scrollController: _feetController,
-                            itemExtent: 50,
+                            itemExtent: 40,
                             itemCount: 6,
                             initialIndex: (widget.feet - 3).clamp(0, 5),
                             onSelectedItemChanged: (index) {
@@ -1427,7 +1427,7 @@ class _Step4ContentState extends State<_Step4Content> {
                                         '$value ft',
                                         style: TextStyle(
                                           color: Colors.white, // This will be masked by the gradient
-                                          fontSize: 24,
+                                          fontSize: 18,
                                           fontWeight: FontWeight.w700,
                                         ),
                                       ),
@@ -1436,7 +1436,7 @@ class _Step4ContentState extends State<_Step4Content> {
                                       '$value ft',
                                       style: TextStyle(
                                         color: textPrimary.withOpacity(0.8),
-                                        fontSize: 20,
+                                        fontSize: 16,
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
@@ -1467,14 +1467,14 @@ class _Step4ContentState extends State<_Step4Content> {
                             textTheme: CupertinoTextThemeData(
                               pickerTextStyle: TextStyle(
                                 color: textPrimary,
-                                fontSize: 20,
+                                fontSize: 16,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
                           child: _LoopingPicker(
                             scrollController: _inchController,
-                            itemExtent: 50,
+                            itemExtent: 40,
                             itemCount: 12,
                             initialIndex: widget.inch.clamp(0, 11),
                             onSelectedItemChanged: (index) {
@@ -1494,7 +1494,7 @@ class _Step4ContentState extends State<_Step4Content> {
                                         '$value in',
                                         style: TextStyle(
                                           color: Colors.white, // This will be masked by the gradient
-                                          fontSize: 24,
+                                          fontSize: 18,
                                           fontWeight: FontWeight.w700,
                                         ),
                                       ),
@@ -1503,7 +1503,7 @@ class _Step4ContentState extends State<_Step4Content> {
                                       '$value in',
                                       style: TextStyle(
                                         color: textPrimary.withOpacity(0.8),
-                                        fontSize: 20,
+                                        fontSize: 16,
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
@@ -1564,7 +1564,7 @@ class _Step4ContentState extends State<_Step4Content> {
           const SizedBox(height: 16),
 
           SizedBox(
-            height: 200,
+            height: 160,
             child: widget.weightInKg
               ? ShaderMask(
                   shaderCallback: (bounds) => LinearGradient(
@@ -1586,14 +1586,14 @@ class _Step4ContentState extends State<_Step4Content> {
                       textTheme: CupertinoTextThemeData(
                         pickerTextStyle: TextStyle(
                           color: textPrimary,
-                          fontSize: 20,
+                          fontSize: 16,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
                     child: _LoopingPicker(
                       scrollController: _weightKgController,
-                      itemExtent: 50,
+                      itemExtent: 40,
                       itemCount: 1151,
                       initialIndex: _selectedWeightKgIndex,
                       onSelectedItemChanged: (index) {
@@ -1620,7 +1620,7 @@ class _Step4ContentState extends State<_Step4Content> {
                                   '$value kg',
                                   style: TextStyle(
                                     color: Colors.white, // This will be masked by the gradient
-                                    fontSize: 24,
+                                    fontSize: 18,
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
@@ -1629,7 +1629,7 @@ class _Step4ContentState extends State<_Step4Content> {
                                 '$value kg',
                                 style: TextStyle(
                                   color: textPrimary.withOpacity(0.8),
-                                  fontSize: 20,
+                                  fontSize: 16,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -1658,14 +1658,14 @@ class _Step4ContentState extends State<_Step4Content> {
                       textTheme: CupertinoTextThemeData(
                         pickerTextStyle: TextStyle(
                           color: textPrimary,
-                          fontSize: 20,
+                          fontSize: 16,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
                     child: _LoopingPicker(
                     scrollController: _weightLbsController,
-                    itemExtent: 50,
+                    itemExtent: 40,
                     itemCount: 2531,
                     initialIndex: _selectedWeightLbsIndex,
                     onSelectedItemChanged: (index) {
@@ -1692,7 +1692,7 @@ class _Step4ContentState extends State<_Step4Content> {
                                 '$value lbs',
                                 style: TextStyle(
                                   color: Colors.white, // This will be masked by the gradient
-                                  fontSize: 24,
+                                  fontSize: 18,
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
@@ -1701,7 +1701,7 @@ class _Step4ContentState extends State<_Step4Content> {
                               '$value lbs',
                               style: TextStyle(
                                 color: textPrimary.withOpacity(0.8),
-                                fontSize: 20,
+                                fontSize: 16,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -1789,7 +1789,7 @@ class _Step5ContentState extends State<_Step5Content> {
             }).toList(),
           ),
 
-          const SizedBox(height: 36),
+          const SizedBox(height: 24),
 
           Text(
             'Role',
@@ -1804,7 +1804,7 @@ class _Step5ContentState extends State<_Step5Content> {
           const SizedBox(height: 16),
 
           SizedBox(
-            height: 180,
+            height: 150,
             child: ShaderMask(
               shaderCallback: (bounds) => LinearGradient(
                 begin: Alignment.centerLeft,
@@ -1825,14 +1825,14 @@ class _Step5ContentState extends State<_Step5Content> {
                   textTheme: CupertinoTextThemeData(
                     pickerTextStyle: TextStyle(
                       color: DesignTokens.textPrimaryOf(context),
-                      fontSize: 20,
+                      fontSize: 16,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
                 child: _LoopingPicker(
                   scrollController: _roleController,
-                  itemExtent: 50,
+                  itemExtent: 40,
                   itemCount: 3,
                   initialIndex: ['Client', 'Trainer', 'Nutritionist'].indexOf(widget.role).clamp(0, 2),
                   onSelectedItemChanged: (index) {
@@ -1855,7 +1855,7 @@ class _Step5ContentState extends State<_Step5Content> {
                               role,
                               style: TextStyle(
                                 color: Colors.white, // This will be masked by the gradient
-                                fontSize: 24,
+                                fontSize: 18,
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
@@ -1864,7 +1864,7 @@ class _Step5ContentState extends State<_Step5Content> {
                             role,
                             style: TextStyle(
                               color: textPrimary.withOpacity(0.8),
-                              fontSize: 20,
+                              fontSize: 16,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -2000,8 +2000,8 @@ class _TextFieldCardState extends State<_TextFieldCard> {
               borderSide: BorderSide(color: borderColor, width: 1),
             ),
             contentPadding: const EdgeInsets.symmetric(
-              horizontal: DesignTokens.spacing16,
-              vertical: DesignTokens.spacing16,
+              horizontal: DesignTokens.spacing12,
+              vertical: DesignTokens.spacing12,
             ),
           ),
         ),
@@ -2148,7 +2148,7 @@ class _GenderOption extends StatelessWidget {
                     symbol,
                     style: TextStyle(
                       color: Colors.white, // This will be masked by the gradient
-                      fontSize: 28,
+                      fontSize: 24,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -2162,7 +2162,7 @@ class _GenderOption extends StatelessWidget {
                     symbol,
                     style: TextStyle(
                       color: symbolColor, // White in dark mode, black in light mode
-                      fontSize: 28,
+                      fontSize: 24,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -2513,7 +2513,7 @@ class _GradientPickerState extends State<_GradientPicker> {
                   text,
                   style: TextStyle(
                     color: Colors.white, // This will be masked by the gradient
-                    fontSize: 20,
+                    fontSize: 16,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -2522,7 +2522,7 @@ class _GradientPickerState extends State<_GradientPicker> {
                 text,
                 style: TextStyle(
                   color: textPrimary.withOpacity(0.5),
-                  fontSize: 20,
+                  fontSize: 16,
                   fontWeight: FontWeight.w600,
                 ),
               ),

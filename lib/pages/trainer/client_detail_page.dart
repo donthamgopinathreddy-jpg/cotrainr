@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter/services.dart';
 import '../../theme/design_tokens.dart';
+import '../../repositories/messages_repository.dart';
 import 'create_client_page.dart';
 
 class ClientDetailPage extends StatefulWidget {
@@ -307,13 +308,20 @@ class _ClientDetailPageState extends State<ClientDetailPage>
           _buildActionButton(
             icon: Icons.message_outlined,
             label: 'Message',
-            onTap: () {
+            onTap: () async {
               HapticFeedback.lightImpact();
-              context.push('/messaging/chat/${_client.id}', extra: {
-                'userName': _client.name,
-                'isOnline': true,
-                'avatarUrl': _client.avatar,
-              });
+              final convId = await MessagesRepository().createOrFindConversation(_client.id);
+              if (convId != null && context.mounted) {
+                context.push('/messaging/chat/$convId', extra: {
+                  'userName': _client.name,
+                  'isOnline': true,
+                  'avatarUrl': _client.avatar,
+                });
+              } else if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Unable to open chat. Please try again.')),
+                );
+              }
             },
             textPrimary: textPrimary,
             surfaceColor: surfaceColor,

@@ -87,11 +87,14 @@ final userXPProvider = FutureProvider<int>((ref) async {
   try {
     final response = await Supabase.instance.client
         .from('user_profiles')
-        .select('total_xp')
+        .select('total_xp, xp')
         .eq('user_id', userId)
         .maybeSingle();
     
-    return (response?['total_xp'] as int?) ?? 0;
+    if (response == null) return 0;
+    return (response['total_xp'] as int?) ??
+        (response['xp'] as num?)?.toInt() ??
+        0;
   } catch (e) {
     return 0;
   }

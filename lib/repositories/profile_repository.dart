@@ -46,16 +46,30 @@ class ProfileRepository {
   }
 
   /// Fetch any user's profile by ID
+  /// Includes followers_count, following_count when migration 20250213_follower_counts_on_profiles has run
   Future<Map<String, dynamic>?> fetchUserProfile(String userId) async {
     try {
       final response = await _supabase
           .from('profiles')
-          .select('id, username, full_name, avatar_url, bio, role, created_at')
+          .select('id, username, full_name, avatar_url, bio, role, created_at, followers_count, following_count')
           .eq('id', userId)
           .maybeSingle();
-
       return response;
     } catch (e) {
+      // Fallback if followers_count/following_count columns don't exist (migration not run)
+      final msg = e.toString().toLowerCase();
+      if (msg.contains('followers_count') || msg.contains('following_count') || msg.contains('does not exist')) {
+        try {
+          return await _supabase
+              .from('profiles')
+              .select('id, username, full_name, avatar_url, bio, role, created_at')
+              .eq('id', userId)
+              .maybeSingle();
+        } catch (e2) {
+          print('Error fetching user profile: $e2');
+          return null;
+        }
+      }
       print('Error fetching user profile: $e');
       return null;
     }

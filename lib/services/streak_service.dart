@@ -1,58 +1,106 @@
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+/// Streak service: per-user login streak stored in Supabase user_streaks table.
+/// Each user has their own streak; new users start at 1.
 class StreakService {
-  static const String _lastLoginDateKey = 'last_login_date';
-  static const String _currentStreakKey = 'current_streak';
-
-  /// Get the current streak count
+  /// Get the current streak count for the logged-in user from Supabase
   static Future<int> getCurrentStreak() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_currentStreakKey) ?? 0;
+    final supabase = Supabase.instance.client;
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return 0;
+
+    try {
+      final row = await supabase
+          .from('user_streaks')
+          .select('current_streak')
+          .eq('user_id', userId)
+          .maybeSingle();
+      return (row?['current_streak'] as num?)?.toInt() ?? 0;
+    } catch (_) {
+      return 0;
+    }
   }
 
-  /// Update streak when user logs in
-  /// Returns the updated streak count
+  /// Update streak when user logs in. Uses Supabase user_streaks table (per-user).
+  /// Returns the updated streak count. New users get streak = 1.
   static Future<int> updateStreakOnLogin() async {
-    final prefs = await SharedPreferences.getInstance();
+    final supabase = Supabase.instance.client;
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return 0;
+
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    
-    final lastLoginDateString = prefs.getString(_lastLoginDateKey);
-    final currentStreak = prefs.getInt(_currentStreakKey) ?? 0;
+    final todayStr = today.toIso8601String().split('T')[0];
 
-    if (lastLoginDateString == null) {
-      // First time login
-      await prefs.setString(_lastLoginDateKey, today.toIso8601String());
-      await prefs.setInt(_currentStreakKey, 1);
-      return 1;
-    }
+    try {
+      final existing = await supabase
+          .from('user_streaks')
+          .select('current_streak, last_login_date')
+          .eq('user_id', userId)
+          .maybeSingle();
 
-    final lastLoginDate = DateTime.parse(lastLoginDateString);
-    final lastLogin = DateTime(lastLoginDate.year, lastLoginDate.month, lastLoginDate.day);
-    
-    final daysDifference = today.difference(lastLogin).inDays;
+      int newStreak;
+      if (existing == null) {
+        // New user: first login = streak 1
+        newStreak = 1;
+      } else {
+        final lastLoginStr = existing['last_login_date'] as String?;
+        final currentStreak = (existing['current_streak'] as num?)?.toInt() ?? 0;
+        if (lastLoginStr == null) {
+          newStreak = 1;
+        } else {
+          final lastLogin = DateTime.parse(lastLoginStr);
+          final lastLoginDate = DateTime(lastLogin.year, lastLogin.month, lastLogin.day);
+          final daysDifference = today.difference(lastLoginDate).inDays;
 
-    if (daysDifference == 0) {
-      // Already logged in today, don't increment
-      return currentStreak;
-    } else if (daysDifference == 1) {
-      // Consecutive day, increment streak
-      final newStreak = currentStreak + 1;
-      await prefs.setString(_lastLoginDateKey, today.toIso8601String());
-      await prefs.setInt(_currentStreakKey, newStreak);
+          if (daysDifference == 0) {
+            // Already logged in today, don't increment
+            return currentStreak;
+          } else if (daysDifference == 1) {
+            // Consecutive day, increment streak
+            newStreak = currentStreak + 1;
+          } else {
+            // Gap in login, reset streak to 1
+            newStreak = 1;
+          }
+        }
+      }
+
+      await supabase.from('user_streaks').upsert(
+        {
+          'user_id': userId,
+          'current_streak': newStreak,
+          'last_login_date': todayStr,
+          'updated_at': DateTime.now().toIso8601String(),
+        },
+        onConflict: 'user_id',
+      );
+
       return newStreak;
-    } else {
-      // Gap in login, reset streak to 1
-      await prefs.setString(_lastLoginDateKey, today.toIso8601String());
-      await prefs.setInt(_currentStreakKey, 1);
-      return 1;
+    } catch (e) {
+      print('StreakService error: $e');
+      return 0;
     }
   }
 
-  /// Reset streak (for testing or manual reset)
+  /// Reset streak for the current user (for testing or manual reset)
   static Future<void> resetStreak() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_lastLoginDateKey);
-    await prefs.remove(_currentStreakKey);
+    final supabase = Supabase.instance.client;
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    try {
+      final today = DateTime.now();
+      final todayStr = DateTime(today.year, today.month, today.day).toIso8601String().split('T')[0];
+      await supabase.from('user_streaks').upsert(
+        {
+          'user_id': userId,
+          'current_streak': 0,
+          'last_login_date': todayStr,
+          'updated_at': DateTime.now().toIso8601String(),
+        },
+        onConflict: 'user_id',
+      );
+    } catch (_) {}
   }
 }

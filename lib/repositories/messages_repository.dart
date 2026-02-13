@@ -19,7 +19,7 @@ class MessagesRepository {
       final conversationsResponse = await _supabase
           .from('conversations')
           .select('id')
-          .or('client_id.eq.$_currentUserId,provider_id.eq.$_currentUserId');
+          .or('client_id.eq.$_currentUserId,provider_id.eq.$_currentUserId,other_user_id.eq.$_currentUserId');
 
       if (conversationsResponse.isEmpty) return 0;
 
@@ -54,12 +54,8 @@ class MessagesRepository {
     try {
       final conversations = await _supabase
           .from('conversations')
-          .select('''
-            *,
-            profiles!conversations_client_id_fkey(id, username, avatar_url, full_name),
-            providers!conversations_provider_id_fkey(user_id, provider_type)
-          ''')
-          .or('client_id.eq.$_currentUserId,provider_id.eq.$_currentUserId')
+          .select('*')
+          .or('client_id.eq.$_currentUserId,provider_id.eq.$_currentUserId,other_user_id.eq.$_currentUserId')
           .order('updated_at', ascending: false);
 
       final List<Map<String, dynamic>> result = [];
@@ -86,11 +82,13 @@ class MessagesRepository {
         
         final unreadCount = (unreadResponse as List).length;
         
-        // Determine the other participant
+        // Determine the other participant (cocircle uses other_user_id, client-provider uses provider_id)
         final clientId = conv['client_id'] as String;
-        final providerId = conv['provider_id'] as String;
+        final providerId = conv['provider_id'] as String?;
+        final otherUserIdCol = conv['other_user_id'] as String?;
         final isClient = clientId == _currentUserId;
-        final otherUserId = isClient ? providerId : clientId;
+        final otherUserId = otherUserIdCol ?? (isClient ? providerId : clientId);
+        if (otherUserId == null) continue;
         
         // Get other participant's profile
         final profileResponse = await _supabase
@@ -139,18 +137,23 @@ class MessagesRepository {
     required String conversationId,
     required String content,
     String? mediaUrl,
+    String? mediaKind,
   }) async {
     if (_currentUserId == null) return null;
 
     try {
+      final Map<String, dynamic> insertData = {
+        'conversation_id': conversationId,
+        'sender_id': _currentUserId!,
+        'content': content,
+      };
+      if (mediaUrl != null) {
+        insertData['media_url'] = mediaUrl;
+        if (mediaKind != null) insertData['media_kind'] = mediaKind;
+      }
       final response = await _supabase
           .from('messages')
-          .insert({
-            'conversation_id': conversationId,
-            'sender_id': _currentUserId!,
-            'content': content,
-            'media_url': mediaUrl,
-          })
+          .insert(insertData)
           .select()
           .single();
 
@@ -224,14 +227,38 @@ class MessagesRepository {
 
   /// Create or find a conversation between two users (for cocircle messaging)
   /// Returns the conversation ID
+  /// Supports both: client-provider (trainer/nutritionist) and cocircle user-to-user
   Future<String?> createOrFindConversation(String otherUserId) async {
     if (_currentUserId == null) return null;
     if (_currentUserId == otherUserId) return null;
 
     try {
-      // First, try to find an existing conversation
-      // Check if current user is client and other user is provider
+      // 1. Find existing cocircle conversation (client_id + other_user_id)
       var existingConv = await _supabase
+          .from('conversations')
+          .select('id')
+          .eq('client_id', _currentUserId!)
+          .eq('other_user_id', otherUserId)
+          .maybeSingle();
+
+      if (existingConv != null) {
+        return existingConv['id'] as String;
+      }
+
+      // 2. Find existing cocircle conversation (other way around)
+      existingConv = await _supabase
+          .from('conversations')
+          .select('id')
+          .eq('client_id', otherUserId)
+          .eq('other_user_id', _currentUserId!)
+          .maybeSingle();
+
+      if (existingConv != null) {
+        return existingConv['id'] as String;
+      }
+
+      // 3. Find existing client-provider conversation
+      existingConv = await _supabase
           .from('conversations')
           .select('id')
           .eq('client_id', _currentUserId!)
@@ -242,7 +269,6 @@ class MessagesRepository {
         return existingConv['id'] as String;
       }
 
-      // Check if current user is provider and other user is client
       existingConv = await _supabase
           .from('conversations')
           .select('id')
@@ -254,36 +280,21 @@ class MessagesRepository {
         return existingConv['id'] as String;
       }
 
-      // No existing conversation found, create a new one
-      // For cocircle users, we'll use a workaround:
-      // Create a conversation with current user as client and other user as provider
-      // We need a lead_id, so we'll try to create one or use a dummy approach
-      // Note: This requires lead_id to be nullable or we need to handle it differently
-      
-      // Try to create conversation - if lead_id is required, we'll need to handle it
-      // For now, let's try creating without lead_id (if it's nullable)
-      try {
-        final newConv = await _supabase
-            .from('conversations')
-            .insert({
-              'client_id': _currentUserId!,
-              'provider_id': otherUserId,
-              // lead_id might be required - we'll handle the error if it is
-            })
-            .select('id')
-            .single();
+      // 4. Create new cocircle conversation (user-to-user, no provider)
+      final newConv = await _supabase
+          .from('conversations')
+          .insert({
+            'client_id': _currentUserId!,
+            'other_user_id': otherUserId,
+            // lead_id and provider_id are null for cocircle DMs
+          })
+          .select('id')
+          .single();
 
-        return newConv['id'] as String;
-      } catch (e) {
-        // If lead_id is required, we need a different approach
-        // For cocircle, we might need a separate user_conversations table
-        // For now, let's show an error message
-        print('Error creating conversation (lead_id may be required): $e');
-        print('Note: Conversations table may require lead_id. Consider creating a user_conversations table for cocircle messaging.');
-        return null;
-      }
-    } catch (e) {
+      return newConv['id'] as String;
+    } catch (e, stack) {
       print('Error creating or finding conversation: $e');
+      print('Stack trace: $stack');
       return null;
     }
   }

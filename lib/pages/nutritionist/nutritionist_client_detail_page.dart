@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter/services.dart';
 import '../../theme/design_tokens.dart';
+import '../../repositories/messages_repository.dart';
 import '../trainer/create_client_page.dart';
 
 class NutritionistClientDetailPage extends StatefulWidget {
@@ -115,13 +116,20 @@ class _NutritionistClientDetailPageState extends State<NutritionistClientDetailP
         actions: [
           IconButton(
             icon: Icon(Icons.message_outlined, color: textPrimary),
-            onPressed: () {
+            onPressed: () async {
               HapticFeedback.lightImpact();
-              context.push('/messaging/chat/${_client.id}', extra: {
-                'userName': _client.name,
-                'isOnline': true,
-                'avatarUrl': _client.avatar,
-              });
+              final convId = await MessagesRepository().createOrFindConversation(_client.id);
+              if (convId != null && context.mounted) {
+                context.push('/messaging/chat/$convId', extra: {
+                  'userName': _client.name,
+                  'isOnline': true,
+                  'avatarUrl': _client.avatar,
+                });
+              } else if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Unable to open chat. Please try again.')),
+                );
+              }
             },
             tooltip: 'Message',
           ),
@@ -224,13 +232,20 @@ class _NutritionistClientDetailPageState extends State<NutritionistClientDetailP
                     _buildActionButton(
                       icon: Icons.message_outlined,
                       label: 'Chat',
-                      onTap: () {
+                      onTap: () async {
                         HapticFeedback.lightImpact();
-                        context.push('/messaging/chat/${_client.id}', extra: {
-                          'userName': _client.name,
-                          'isOnline': true,
-                          'avatarUrl': _client.avatar,
-                        });
+                        final convId = await MessagesRepository().createOrFindConversation(_client.id);
+                        if (convId != null && context.mounted) {
+                          context.push('/messaging/chat/$convId', extra: {
+                            'userName': _client.name,
+                            'isOnline': true,
+                            'avatarUrl': _client.avatar,
+                          });
+                        } else if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Unable to open chat. Please try again.')),
+                          );
+                        }
                       },
                       textPrimary: textPrimary,
                       surfaceColor: surfaceColor,

@@ -56,7 +56,7 @@ class QuestRepository {
         ''')
         .eq('user_id', userId)
         .eq('type', 'daily')
-        .or('status.eq.available,status.eq.in_progress,status.eq.completed')
+        .or('status.eq.available,status.eq.in_progress,status.eq.completed,status.eq.claimed')
         .order('assigned_at');
     
     print('QuestRepository: Found ${response.length} daily quests');
@@ -231,7 +231,7 @@ class QuestRepository {
         ''')
         .eq('user_id', userId)
         .eq('type', 'weekly')
-        .or('status.eq.available,status.eq.in_progress,status.eq.completed')
+        .or('status.eq.available,status.eq.in_progress,status.eq.completed,status.eq.claimed')
         .order('assigned_at');
     
     print('QuestRepository: Found ${response.length} weekly quests');

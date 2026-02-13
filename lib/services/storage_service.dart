@@ -124,6 +124,44 @@ class StorageService {
     }
   }
 
+  /// Upload chat media (image or video) to Supabase Storage
+  /// Returns the public URL of the uploaded media
+  Future<String?> uploadChatMedia(File mediaFile, {required bool isVideo}) async {
+    if (_currentUserId == null) {
+      throw Exception('User not authenticated');
+    }
+
+    try {
+      final extension = path.extension(mediaFile.path);
+      final fileName = '${DateTime.now().millisecondsSinceEpoch}$extension';
+      final filePath = '$_currentUserId/chat/$fileName';
+
+      final bytes = await mediaFile.readAsBytes();
+      final ext = extension.toLowerCase();
+      final contentType = isVideo
+          ? 'video/mp4'
+          : (ext == '.png'
+              ? 'image/png'
+              : ext == '.gif'
+                  ? 'image/gif'
+                  : 'image/jpeg');
+
+      await _supabase.storage.from('posts').uploadBinary(
+        filePath,
+        bytes,
+        fileOptions: FileOptions(
+          upsert: true,
+          contentType: contentType,
+        ),
+      );
+
+      return _supabase.storage.from('posts').getPublicUrl(filePath);
+    } catch (e) {
+      print('Error uploading chat media: $e');
+      rethrow;
+    }
+  }
+
   /// Upload post media (image or video) to Supabase Storage
   /// Returns the public URL of the uploaded media
   Future<String?> uploadPostMedia(File mediaFile, {required bool isVideo}) async {

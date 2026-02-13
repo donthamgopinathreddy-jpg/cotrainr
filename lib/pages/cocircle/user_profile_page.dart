@@ -9,7 +9,6 @@ import '../../repositories/profile_repository.dart';
 import '../../repositories/posts_repository.dart';
 import '../../repositories/follow_repository.dart';
 import '../../repositories/messages_repository.dart';
-import '../../pages/messaging/chat_screen.dart';
 
 class UserProfilePage extends StatefulWidget {
   final bool isOwnProfile;
@@ -88,7 +87,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
 
       _profileUserId = userId;
 
-      // Fetch user profile
+      // Fetch user profile (includes followers_count, following_count when migration has run)
       final profile = await _profileRepo.fetchUserProfile(userId);
       if (profile != null) {
         _username = profile['username'] as String?;
@@ -96,6 +95,11 @@ class _UserProfilePageState extends State<UserProfilePage> {
         _bio = profile['bio'] as String?;
         _avatarUrl = profile['avatar_url'] as String?;
         _bioController.text = _bio ?? '';
+        // Use cached counts when available (after follower_counts migration)
+        if (profile.containsKey('followers_count') && profile.containsKey('following_count')) {
+          _followerCount = (profile['followers_count'] as num?)?.toInt() ?? 0;
+          _followingCount = (profile['following_count'] as num?)?.toInt() ?? 0;
+        }
       }
 
       // Fetch user posts
@@ -105,9 +109,11 @@ class _UserProfilePageState extends State<UserProfilePage> {
       _userPosts = posts;
       _postCount = posts.length;
 
-      // Fetch follower and following counts
-      _followerCount = await _followRepo.getFollowerCount(userId);
-      _followingCount = await _followRepo.getFollowingCount(userId);
+      // Fetch follower and following counts if not from profile (migration not run)
+      if (!(profile?.containsKey('followers_count') ?? false)) {
+        _followerCount = await _followRepo.getFollowerCount(userId);
+        _followingCount = await _followRepo.getFollowingCount(userId);
+      }
 
       // Check if current user is following this profile user
       if (!widget.isOwnProfile && _currentUserId != null) {
@@ -247,8 +253,8 @@ class _UserProfilePageState extends State<UserProfilePage> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Unable to create conversation. Please try again.'),
-              duration: Duration(seconds: 2),
+              content: Text('Unable to create conversation. Please run: supabase db push'),
+              duration: Duration(seconds: 4),
               backgroundColor: Colors.red,
             ),
           );
@@ -256,23 +262,17 @@ class _UserProfilePageState extends State<UserProfilePage> {
         return;
       }
 
-      // Navigate to chat screen
+      // Navigate to chat screen (uses go_router for consistency)
       if (mounted) {
         final name = _fullName ?? _username ?? widget.userName ?? 'User';
         final gradient = _getGradientForName(name);
         
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ChatScreen(
-              conversationId: conversationId,
-              userName: name,
-              avatarGradient: gradient,
-              isOnline: false,
-              avatarUrl: _avatarUrl,
-            ),
-          ),
-        );
+        context.push('/messaging/chat/$conversationId', extra: {
+          'userName': name,
+          'avatarGradient': gradient,
+          'isOnline': false,
+          'avatarUrl': _avatarUrl,
+        });
       }
     } catch (e) {
       print('Error opening message: $e');

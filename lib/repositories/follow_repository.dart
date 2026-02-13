@@ -95,49 +95,49 @@ class FollowRepository {
 
   /// Get list of followers for a user with follow status
   Future<List<Map<String, dynamic>>> getFollowers(String userId) async {
-    if (_currentUserId == null) {
-      // If not logged in, return without follow status
-      try {
-        final response = await _supabase
-            .from('user_follows')
-            .select('''
-              follower_id,
-              profiles!user_follows_follower_id_fkey(id, username, full_name, avatar_url)
-            ''')
-            .eq('following_id', userId)
-            .order('created_at', ascending: false);
-
-        return (response as List).cast<Map<String, dynamic>>();
-      } catch (e) {
-        print('Error getting followers: $e');
-        return [];
-      }
-    }
-
     try {
-      // Get followers
+      // Fetch follower IDs first (user_follows FKs point to auth.users, not profiles)
       final response = await _supabase
           .from('user_follows')
-          .select('''
-            follower_id,
-            profiles!user_follows_follower_id_fkey(id, username, full_name, avatar_url)
-          ''')
+          .select('follower_id')
           .eq('following_id', userId)
           .order('created_at', ascending: false);
 
-      final followers = (response as List).cast<Map<String, dynamic>>();
-      
-      // Get list of user IDs that current user is following
-      final followingResponse = await _supabase
-          .from('user_follows')
-          .select('following_id')
-          .eq('follower_id', _currentUserId!);
-      
-      final followingIds = (followingResponse as List)
-          .map((item) => item['following_id'] as String)
-          .toSet();
+      final followerIds = (response as List)
+          .map((r) => r['follower_id'] as String)
+          .toList();
 
-      // Add follow status to each follower
+      if (followerIds.isEmpty) return [];
+
+      // Fetch profiles for follower IDs
+      final profilesResponse = await _supabase
+          .from('profiles')
+          .select('id, username, full_name, avatar_url')
+          .inFilter('id', followerIds);
+
+      final profilesMap = <String, Map<String, dynamic>>{};
+      for (final p in profilesResponse as List) {
+        profilesMap[p['id'] as String] = p as Map<String, dynamic>;
+      }
+
+      final followers = followerIds.map((followerId) {
+        return {
+          'follower_id': followerId,
+          'profiles': profilesMap[followerId],
+        };
+      }).toList();
+      // Get list of user IDs that current user is following (for follow status)
+      Set<String> followingIds = {};
+      if (_currentUserId != null) {
+        final followingResponse = await _supabase
+            .from('user_follows')
+            .select('following_id')
+            .eq('follower_id', _currentUserId!);
+        followingIds = (followingResponse as List)
+            .map((item) => item['following_id'] as String)
+            .toSet();
+      }
+
       for (var follower in followers) {
         final followerId = follower['follower_id'] as String;
         follower['is_following'] = followingIds.contains(followerId);
@@ -152,53 +152,52 @@ class FollowRepository {
 
   /// Get list of users that a user is following with follow status
   Future<List<Map<String, dynamic>>> getFollowing(String userId) async {
-    if (_currentUserId == null) {
-      // If not logged in, return without follow status
-      try {
-        final response = await _supabase
-            .from('user_follows')
-            .select('''
-              following_id,
-              profiles!user_follows_following_id_fkey(id, username, full_name, avatar_url)
-            ''')
-            .eq('follower_id', userId)
-            .order('created_at', ascending: false);
-
-        return (response as List).cast<Map<String, dynamic>>();
-      } catch (e) {
-        print('Error getting following: $e');
-        return [];
-      }
-    }
-
     try {
-      // Get following
+      // Fetch following IDs first
       final response = await _supabase
           .from('user_follows')
-          .select('''
-            following_id,
-            profiles!user_follows_following_id_fkey(id, username, full_name, avatar_url)
-          ''')
+          .select('following_id')
           .eq('follower_id', userId)
           .order('created_at', ascending: false);
 
-      final following = (response as List).cast<Map<String, dynamic>>();
-      
-      // Get list of user IDs that current user is following
-      final followingResponse = await _supabase
-          .from('user_follows')
-          .select('following_id')
-          .eq('follower_id', _currentUserId!);
-      
-      final followingIds = (followingResponse as List)
-          .map((item) => item['following_id'] as String)
-          .toSet();
+      final followingIds = (response as List)
+          .map((r) => r['following_id'] as String)
+          .toList();
 
-      // Add follow status to each user (they're already being followed by profile user)
-      // But we need to check if current user follows them
+      if (followingIds.isEmpty) return [];
+
+      // Fetch profiles for following IDs
+      final profilesResponse = await _supabase
+          .from('profiles')
+          .select('id, username, full_name, avatar_url')
+          .inFilter('id', followingIds);
+
+      final profilesMap = <String, Map<String, dynamic>>{};
+      for (final p in profilesResponse as List) {
+        profilesMap[p['id'] as String] = p as Map<String, dynamic>;
+      }
+
+      final following = followingIds.map((followingId) {
+        return {
+          'following_id': followingId,
+          'profiles': profilesMap[followingId],
+        };
+      }).toList();
+      // Add follow status: profile user follows them, check if current user does too
+      Set<String> currentUserFollowingIds = {};
+      if (_currentUserId != null) {
+        final cr = await _supabase
+            .from('user_follows')
+            .select('following_id')
+            .eq('follower_id', _currentUserId!);
+        currentUserFollowingIds = (cr as List)
+            .map((item) => item['following_id'] as String)
+            .toSet();
+      }
+
       for (var user in following) {
         final followingId = user['following_id'] as String;
-        user['is_following'] = followingIds.contains(followingId);
+        user['is_following'] = currentUserFollowingIds.contains(followingId);
       }
 
       return following;

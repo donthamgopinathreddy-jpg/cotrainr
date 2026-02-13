@@ -71,7 +71,7 @@ class LeadsService {
               user_id,
               provider_type,
               verified,
-              rating_avg
+              rating
             )
           ''')
           .or('client_id.eq.$userId,provider_id.eq.$userId')
