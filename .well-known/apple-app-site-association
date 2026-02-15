@@ -1,0 +1,11 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "REPLACE_WITH_TEAM_ID.REPLACE_WITH_BUNDLE_ID",
+        "paths": ["/invite", "/invite/*"]
+      }
+    ]
+  }
+}

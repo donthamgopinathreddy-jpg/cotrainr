@@ -10,8 +10,9 @@ class FollowRepository {
   /// Get current user ID
   String? get _currentUserId => _supabase.auth.currentUser?.id;
 
-  /// Check if current user is following another user
-  Future<bool> isFollowing(String userId) async {
+  /// Check if current user is following another user.
+  /// follower_id = current user, following_id = target user.
+  Future<bool> isFollowing(String targetUserId) async {
     if (_currentUserId == null) return false;
 
     try {
@@ -19,13 +20,33 @@ class FollowRepository {
           .from('user_follows')
           .select('id')
           .eq('follower_id', _currentUserId!)
-          .eq('following_id', userId)
+          .eq('following_id', targetUserId)
           .maybeSingle();
 
       return response != null;
     } catch (e) {
       print('Error checking follow status: $e');
       return false;
+    }
+  }
+
+  /// Batch check: returns Set of target user IDs that current user follows.
+  Future<Set<String>> getFollowingStatusForUsers(List<String> targetUserIds) async {
+    if (_currentUserId == null || targetUserIds.isEmpty) return {};
+
+    try {
+      final response = await _supabase
+          .from('user_follows')
+          .select('following_id')
+          .eq('follower_id', _currentUserId!)
+          .inFilter('following_id', targetUserIds);
+
+      return (response as List)
+          .map((r) => r['following_id'] as String)
+          .toSet();
+    } catch (e) {
+      print('Error batch checking follow status: $e');
+      return {};
     }
   }
 
@@ -109,15 +130,11 @@ class FollowRepository {
 
       if (followerIds.isEmpty) return [];
 
-      // Fetch profiles for follower IDs
-      final profilesResponse = await _supabase
-          .from('profiles')
-          .select('id, username, full_name, avatar_url')
-          .inFilter('id', followerIds);
+      final profilesResponse = await _supabase.rpc('get_public_profiles', params: {'p_user_ids': followerIds});
 
       final profilesMap = <String, Map<String, dynamic>>{};
       for (final p in profilesResponse as List) {
-        profilesMap[p['id'] as String] = p as Map<String, dynamic>;
+        profilesMap[(p as Map<String, dynamic>)['id'] as String] = p;
       }
 
       final followers = followerIds.map((followerId) {
@@ -166,15 +183,11 @@ class FollowRepository {
 
       if (followingIds.isEmpty) return [];
 
-      // Fetch profiles for following IDs
-      final profilesResponse = await _supabase
-          .from('profiles')
-          .select('id, username, full_name, avatar_url')
-          .inFilter('id', followingIds);
+      final profilesResponse = await _supabase.rpc('get_public_profiles', params: {'p_user_ids': followingIds});
 
       final profilesMap = <String, Map<String, dynamic>>{};
       for (final p in profilesResponse as List) {
-        profilesMap[p['id'] as String] = p as Map<String, dynamic>;
+        profilesMap[(p as Map<String, dynamic>)['id'] as String] = p;
       }
 
       final following = followingIds.map((followingId) {

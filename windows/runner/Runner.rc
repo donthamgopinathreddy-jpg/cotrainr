@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "cotrainr_flutter" "\0"
+            VALUE "FileDescription", "Cotrainr" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "cotrainr_flutter" "\0"
+            VALUE "InternalName", "Cotrainr" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.example. All rights reserved." "\0"
-            VALUE "OriginalFilename", "cotrainr_flutter.exe" "\0"
-            VALUE "ProductName", "cotrainr_flutter" "\0"
+            VALUE "OriginalFilename", "Cotrainr.exe" "\0"
+            VALUE "ProductName", "Cotrainr" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

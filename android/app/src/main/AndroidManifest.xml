@@ -24,7 +24,7 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     
     <application
-        android:label="cotrainr_flutter"
+        android:label="Cotrainr"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -48,7 +48,25 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Deep link: cotrainr://invite?code=XXX -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="cotrainr" android:host="invite" android:pathPrefix="/" />
+            </intent-filter>
+            <!-- App link: https://www.cotrainr.com/invite?code=XXX (requires assetlinks.json on domain) -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="www.cotrainr.com" android:pathPrefix="/invite" />
+            </intent-filter>
         </activity>
+        <!-- Default FCM notification channel (Android 8+) -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="cotrainr_notifications" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

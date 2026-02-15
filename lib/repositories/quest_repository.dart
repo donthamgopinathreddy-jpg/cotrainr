@@ -462,14 +462,50 @@ class QuestRepository {
           challenge_members(count),
           challenge_progress(
             user_id,
-            current_progress,
-            profiles:user_id(username, avatar_url)
+            current_progress
           )
         ''')
         .eq('id', challengeId)
         .single();
 
-    return Map<String, dynamic>.from(response);
+    final data = Map<String, dynamic>.from(response);
+
+    // Enrich challenge_progress with profile data via RPC (no direct profiles read)
+    final progressList = data['challenge_progress'] as List<dynamic>?;
+    if (progressList != null && progressList.isNotEmpty) {
+      final userIds = progressList
+          .map((p) => (p as Map<String, dynamic>)['user_id'] as String?)
+          .whereType<String>()
+          .toSet()
+          .toList();
+      if (userIds.isNotEmpty) {
+        try {
+          final profilesResponse = await _supabase.rpc(
+            'get_public_profiles',
+            params: {'p_user_ids': userIds},
+          );
+          final profilesMap = <String, Map<String, dynamic>>{};
+          for (final p in profilesResponse as List) {
+            final m = p as Map<String, dynamic>;
+            profilesMap[m['id'] as String] = m;
+          }
+          final enrichedProgress = <Map<String, dynamic>>[];
+          for (final p in progressList) {
+            final m = Map<String, dynamic>.from(p as Map<String, dynamic>);
+            final uid = m['user_id'] as String?;
+            if (uid != null && profilesMap.containsKey(uid)) {
+              m['profiles'] = profilesMap[uid];
+            }
+            enrichedProgress.add(m);
+          }
+          data['challenge_progress'] = enrichedProgress;
+        } catch (e) {
+          print('QuestRepository: Error fetching challenge progress profiles: $e');
+        }
+      }
+    }
+
+    return data;
   }
 
   /// Create a new challenge

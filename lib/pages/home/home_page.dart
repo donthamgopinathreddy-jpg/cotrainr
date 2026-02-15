@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/design_tokens.dart';
 import '../../repositories/profile_repository.dart';
+import '../../repositories/notifications_repository.dart';
 import '../../repositories/posts_repository.dart';
 import '../../repositories/messages_repository.dart';
 import '../../repositories/metrics_repository.dart';
@@ -233,11 +234,8 @@ class _HomePageState extends State<HomePage> {
       print('HOME: Fetching profile for user ID: $uid');
       
       // Fetch profile EXACTLY like Profile page does - direct query, no repository abstraction
-      final profile = await supabase
-          .from('profiles')
-          .select('id, full_name, username, avatar_url, cover_url, height_cm, weight_kg, role')
-          .eq('id', uid)
-          .maybeSingle();
+      final list = (await supabase.rpc('get_my_profile') as List).cast<Map<String, dynamic>>();
+      final profile = list.isNotEmpty ? list.first : null;
       
       print('HOME profile query result: $profile');
       
@@ -323,27 +321,16 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _loadNotificationsCount() async {
     try {
-      final supabase = Supabase.instance.client;
-      final userId = supabase.auth.currentUser?.id;
-      if (userId == null) {
-        print('HomePage: Cannot load notifications - user not authenticated');
-        return;
-      }
-
-      print('HomePage: Loading notifications for user: $userId');
-      final response = await supabase
-          .from('notifications')
-          .select('id')
-          .eq('user_id', userId)
-          .eq('read', false);
-
-      final count = (response as List).length;
-      print('HomePage: Found $count unread notifications');
-
+      final notificationsRepo = NotificationsRepository();
+      final profileRepo = ProfileRepository();
+      final prefs = await profileRepo.fetchNotificationPreferences();
+      final count = await notificationsRepo.fetchUnreadCount(
+        community: prefs['community'] ?? true,
+        reminders: prefs['reminders'] ?? true,
+        achievements: prefs['achievements'] ?? true,
+      );
       if (mounted) {
-        setState(() {
-          _notificationCount = count;
-        });
+        setState(() => _notificationCount = count);
       }
     } catch (e, stackTrace) {
       print('HomePage: Error loading notifications: $e');

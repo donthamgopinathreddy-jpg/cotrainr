@@ -1,25 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
+import '../../providers/referral_provider.dart';
 
-class ReferFriendPage extends StatefulWidget {
+class ReferFriendPage extends ConsumerStatefulWidget {
   const ReferFriendPage({super.key});
 
   @override
-  State<ReferFriendPage> createState() => _ReferFriendPageState();
+  ConsumerState<ReferFriendPage> createState() => _ReferFriendPageState();
 }
 
-class _ReferFriendPageState extends State<ReferFriendPage> {
-  final String _referralCode = 'COTRAINR2024'; // This would come from user profile
-  final String _referralLink = 'https://cotrainr.app/invite/COTRAINR2024';
-  
-  int _totalReferrals = 0; // This would come from backend
-  int _pendingRewards = 0; // This would come from backend
-
-  void _copyReferralCode() {
-    Clipboard.setData(ClipboardData(text: _referralCode));
+class _ReferFriendPageState extends ConsumerState<ReferFriendPage> {
+  void _copyReferralCode(String code) {
+    Clipboard.setData(ClipboardData(text: code));
     HapticFeedback.lightImpact();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -40,8 +36,8 @@ class _ReferFriendPageState extends State<ReferFriendPage> {
     );
   }
 
-  void _copyReferralLink() {
-    Clipboard.setData(ClipboardData(text: _referralLink));
+  void _copyReferralLink(String link) {
+    Clipboard.setData(ClipboardData(text: link));
     HapticFeedback.lightImpact();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -62,10 +58,10 @@ class _ReferFriendPageState extends State<ReferFriendPage> {
     );
   }
 
-  Future<void> _shareReferral() async {
+  Future<void> _shareReferral(String code, String link) async {
     HapticFeedback.mediumImpact();
     await Share.share(
-      'Join me on Cotrainr! Use my referral code: $_referralCode\n\n$_referralLink',
+      'Join me on Cotrainr! Use my referral code: $code\n\n$link',
       subject: 'Join Cotrainr with me!',
     );
   }
@@ -73,6 +69,15 @@ class _ReferFriendPageState extends State<ReferFriendPage> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final codeAsync = ref.watch(referralCodeProvider);
+    final referralsAsync = ref.watch(referralsCountProvider);
+    final rewardsAsync = ref.watch(referralRewardsXpProvider);
+
+    final code = codeAsync.valueOrNull ?? '';
+    final totalReferrals = referralsAsync.valueOrNull ?? 0;
+    final totalRewardsXp = rewardsAsync.valueOrNull ?? 0;
+    final referralLink = code.isNotEmpty ? 'https://www.cotrainr.com/invite?code=$code' : 'https://www.cotrainr.com/invite';
+    final isLoading = codeAsync.isLoading || referralsAsync.isLoading || rewardsAsync.isLoading;
 
     return Scaffold(
       backgroundColor: colorScheme.background,
@@ -147,7 +152,7 @@ class _ReferFriendPageState extends State<ReferFriendPage> {
                 Expanded(
                   child: _StatCard(
                     title: 'Referrals',
-                    value: '$_totalReferrals',
+                    value: isLoading ? '...' : '$totalReferrals',
                     icon: Icons.people_rounded,
                     gradient: AppColors.stepsGradient,
                   ),
@@ -155,8 +160,8 @@ class _ReferFriendPageState extends State<ReferFriendPage> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: _StatCard(
-                    title: 'Rewards',
-                    value: '$_pendingRewards',
+                    title: 'XP Earned',
+                    value: isLoading ? '...' : '$totalRewardsXp',
                     icon: Icons.stars_rounded,
                     gradient: AppColors.distanceGradient,
                   ),
@@ -227,7 +232,7 @@ class _ReferFriendPageState extends State<ReferFriendPage> {
                     ),
                     child: Center(
                       child: Text(
-                        _referralCode,
+                        isLoading ? '...' : (code.isEmpty ? '—' : code),
                         style: TextStyle(
                           fontSize: 28,
                           fontWeight: FontWeight.w800,
@@ -242,7 +247,7 @@ class _ReferFriendPageState extends State<ReferFriendPage> {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
-                      onPressed: _copyReferralCode,
+                      onPressed: code.isEmpty ? null : () => _copyReferralCode(code),
                       icon: const Icon(Icons.copy_rounded, size: 20),
                       label: const Text(
                         'Copy Code',
@@ -322,7 +327,7 @@ class _ReferFriendPageState extends State<ReferFriendPage> {
                       children: [
                         Expanded(
                           child: Text(
-                            _referralLink,
+                            referralLink,
                             style: TextStyle(
                               fontSize: 13,
                               color: AppColors.textSecondaryOf(context),
@@ -345,7 +350,7 @@ class _ReferFriendPageState extends State<ReferFriendPage> {
                     children: [
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: _copyReferralLink,
+                          onPressed: () => _copyReferralLink(referralLink),
                           icon: const Icon(Icons.copy_rounded, size: 18),
                           label: const Text('Copy'),
                           style: OutlinedButton.styleFrom(
@@ -365,7 +370,7 @@ class _ReferFriendPageState extends State<ReferFriendPage> {
                       Expanded(
                         flex: 2,
                         child: ElevatedButton.icon(
-                          onPressed: _shareReferral,
+                          onPressed: code.isEmpty ? null : () => _shareReferral(code, referralLink),
                           icon: const Icon(Icons.share_rounded, size: 18),
                           label: const Text('Share'),
                           style: ElevatedButton.styleFrom(
@@ -413,7 +418,7 @@ class _ReferFriendPageState extends State<ReferFriendPage> {
             _HowItWorksStep(
               step: 3,
               title: 'Earn Rewards',
-              description: 'You both get rewards when they complete their first workout!',
+              description: 'You both get rewards when they reach 500 XP!',
               icon: Icons.card_giftcard_rounded,
             ),
             const SizedBox(height: 32),

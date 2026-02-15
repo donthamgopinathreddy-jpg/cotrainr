@@ -5,11 +5,13 @@ class NotificationsResult {
   final bool push;
   final bool community;
   final bool reminders;
+  final bool achievements;
 
   const NotificationsResult({
     required this.push,
     required this.community,
     required this.reminders,
+    required this.achievements,
   });
 }
 
@@ -17,12 +19,14 @@ class NotificationsPage extends StatefulWidget {
   final bool pushNotifications;
   final bool communityNotifications;
   final bool reminderNotifications;
+  final bool achievementNotifications;
 
   const NotificationsPage({
     super.key,
     required this.pushNotifications,
     required this.communityNotifications,
     required this.reminderNotifications,
+    this.achievementNotifications = true,
   });
 
   @override
@@ -33,6 +37,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
   late bool _push;
   late bool _community;
   late bool _reminders;
+  late bool _achievements;
 
   @override
   void initState() {
@@ -40,13 +45,19 @@ class _NotificationsPageState extends State<NotificationsPage> {
     _push = widget.pushNotifications;
     _community = widget.communityNotifications;
     _reminders = widget.reminderNotifications;
+    _achievements = widget.achievementNotifications;
   }
 
   void _save() {
     HapticFeedback.lightImpact();
     Navigator.pop(
       context,
-      NotificationsResult(push: _push, community: _community, reminders: _reminders),
+      NotificationsResult(
+        push: _push,
+        community: _community,
+        reminders: _reminders,
+        achievements: _achievements,
+      ),
     );
   }
 
@@ -97,6 +108,14 @@ class _NotificationsPageState extends State<NotificationsPage> {
                   onChanged: _push ? (v) => setState(() => _reminders = v) : null,
                   title: const Text('Reminders'),
                   subtitle: const Text('Habit and meal reminders.'),
+                ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: _achievements,
+                  onChanged: _push ? (v) => setState(() => _achievements = v) : null,
+                  title: const Text('Achievements'),
+                  subtitle: const Text('Quest completions, streaks, goals.'),
                 ),
               ],
             ),

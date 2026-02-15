@@ -3,11 +3,15 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../theme/design_tokens.dart';
+import '../../theme/app_colors.dart';
 import '../../widgets/cocircle/cocircle_feed_card.dart';
 import '../../utils/page_transitions.dart';
 import '../../repositories/posts_repository.dart';
 import '../../repositories/profile_repository.dart';
+import '../../repositories/follow_repository.dart';
+import '../../models/cocircle_feed_post.dart';
 import 'cocircle_create_post_page.dart';
 import 'user_profile_page.dart';
 
@@ -65,6 +69,7 @@ class _CocircleSearchBarState extends State<_CocircleSearchBar> {
                     (u['full_name'] as String?) ??
                     (u['username'] as String? ?? 'User'),
                 'username': u['username'] as String?,
+                'avatarUrl': u['avatar_url'] as String?,
               },
             )
             .toList();
@@ -185,20 +190,26 @@ class _CocircleSearchBarState extends State<_CocircleSearchBar> {
                             ),
                             child: Row(
                               children: [
-                                Container(
-                                  width: 40,
-                                  height: 40,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: colorScheme.surfaceContainerHighest,
-                                  ),
-                                  child: Icon(
-                                    Icons.person,
-                                    color: colorScheme.onSurface.withValues(
-                                      alpha: 0.6,
-                                    ),
-                                    size: 20,
-                                  ),
+                                CircleAvatar(
+                                  radius: 20,
+                                  backgroundColor: AppColors.purple.withValues(alpha: 0.2),
+                                  backgroundImage: (user['avatarUrl'] as String?) != null &&
+                                          (user['avatarUrl'] as String).isNotEmpty
+                                      ? CachedNetworkImageProvider(user['avatarUrl'] as String)
+                                      : null,
+                                  child: (user['avatarUrl'] as String?) == null ||
+                                          (user['avatarUrl'] as String).isEmpty
+                                      ? Text(
+                                          (user['userName']?.toString() ?? 'U')
+                                              .substring(0, 1)
+                                              .toUpperCase(),
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w700,
+                                            color: AppColors.purple,
+                                          ),
+                                        )
+                                      : null,
                                 ),
                                 const SizedBox(width: 12),
                                 Expanded(
@@ -299,10 +310,11 @@ class _CocirclePageState extends State<CocirclePage>
     with SingleTickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
   final List<CocircleFeedPost> _posts = [];
-  final Set<String> _followingUserIds = {}; // Track who we follow
+  final Set<String> _followingUserIds = {};
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
   final PostsRepository _postsRepo = PostsRepository();
+  final FollowRepository _followRepo = FollowRepository();
   bool _isLoading = false;
   String? _currentUserId;
 
@@ -335,52 +347,33 @@ class _CocirclePageState extends State<CocirclePage>
 
     try {
       final posts = await _postsRepo.fetchRecentPosts(limit: 20);
-      print('Loaded ${posts.length} posts from repository');
       if (!mounted) return;
 
+      final authorIds = posts.map((p) => p['author_id'] as String).toSet().toList();
+      final followingIds = _currentUserId != null && authorIds.isNotEmpty
+          ? await _followRepo.getFollowingStatusForUsers(authorIds)
+          : <String>{};
+
       final cocirclePosts = <CocircleFeedPost>[];
-
       for (final post in posts) {
-        // Get post media
-        final media = await _postsRepo.fetchPostMedia(post['id'] as String);
-        final firstMedia = media.isNotEmpty ? media.first : null;
-
-        // Get author info
         final author = post['profiles'] as Map<String, dynamic>?;
         final authorId = post['author_id'] as String;
-        final authorUsername = author?['username'] as String? ?? 'user';
-        final authorFullName =
-            author?['full_name'] as String? ?? authorUsername;
+        final username = author?['username'] as String? ?? 'user';
+        final fullName = author?['full_name'] as String? ?? username;
         final authorAvatar = author?['avatar_url'] as String?;
-        final authorRole = author?['role'] as String? ?? 'client';
-
-        // Get like status (check if current user liked this post)
-        final supabase = Supabase.instance.client;
-        final userId = supabase.auth.currentUser?.id;
-        bool isLiked = false;
-        if (userId != null) {
-          try {
-            final likeResponse = await supabase
-                .from('post_likes')
-                .select('id')
-                .eq('post_id', post['id'])
-                .eq('user_id', userId)
-                .maybeSingle();
-            isLiked = likeResponse != null;
-          } catch (e) {
-            // Ignore errors
-          }
-        }
-
+        final authorRole = (author?['role'] as String? ?? 'client').toUpperCase();
+        final mediaList = (post['media'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+        final firstMedia = mediaList.isNotEmpty ? mediaList.first : null;
         final mediaKind = firstMedia?['media_kind'] as String?;
         final isVideo = mediaKind == 'video';
 
         cocirclePosts.add(
           CocircleFeedPost(
             id: post['id'] as String,
-            userId: authorId,
-            userName: authorFullName,
-            userRole: authorRole.toUpperCase(),
+            authorId: authorId,
+            username: username,
+            fullName: fullName,
+            userRole: authorRole,
             avatarUrl: authorAvatar,
             timestamp: DateTime.parse(post['created_at'] as String),
             mediaUrl: firstMedia?['media_url'] as String?,
@@ -388,8 +381,9 @@ class _CocirclePageState extends State<CocirclePage>
             caption: post['content'] as String? ?? '',
             likeCount: (post['likes_count'] as int?) ?? 0,
             commentCount: (post['comments_count'] as int?) ?? 0,
-            shareCount: 0, // Not tracked in current schema
-            isLiked: isLiked,
+            shareCount: 0,
+            isLiked: (post['is_liked'] as bool?) ?? false,
+            media: mediaList,
           ),
         );
       }
@@ -398,6 +392,8 @@ class _CocirclePageState extends State<CocirclePage>
         setState(() {
           _posts.clear();
           _posts.addAll(cocirclePosts);
+          _followingUserIds.clear();
+          _followingUserIds.addAll(followingIds);
           _isLoading = false;
         });
       }
@@ -506,13 +502,11 @@ class _CocirclePageState extends State<CocirclePage>
                             onComment: () => _openComments(post.id),
                             onShare: () => _sharePost(post.id),
                             onDoubleTap: () => _handleDoubleTap(post.id),
-                            onFollow: () => _toggleFollow(post.userId),
+                            onFollow: () => _toggleFollow(post.authorId),
                             onProfileTap: () =>
-                                _openProfile(post.userId, post.userName),
-                            isFollowing: _followingUserIds.contains(
-                              post.userId,
-                            ),
-                            isOwnPost: post.userId == _currentUserId,
+                                _openProfile(post.authorId, post.userName),
+                            isFollowing: _followingUserIds.contains(post.authorId),
+                            isOwnPost: post.authorId == _currentUserId,
                           ),
                         );
                       }, childCount: _posts.length),
@@ -647,15 +641,49 @@ class _CocirclePageState extends State<CocirclePage>
     // TODO: Show heart burst animation
   }
 
-  void _toggleFollow(String userId) {
+  Future<void> _toggleFollow(String targetUserId) async {
+    if (targetUserId == _currentUserId) return;
+    HapticFeedback.lightImpact();
+
+    final wasFollowing = _followingUserIds.contains(targetUserId);
     setState(() {
-      if (_followingUserIds.contains(userId)) {
-        _followingUserIds.remove(userId);
+      if (wasFollowing) {
+        _followingUserIds.remove(targetUserId);
       } else {
-        _followingUserIds.add(userId);
+        _followingUserIds.add(targetUserId);
       }
     });
-    HapticFeedback.lightImpact();
+
+    try {
+      final success = wasFollowing
+          ? await _followRepo.unfollowUser(targetUserId)
+          : await _followRepo.followUser(targetUserId);
+      if (!success && mounted) {
+        setState(() {
+          if (wasFollowing) {
+            _followingUserIds.add(targetUserId);
+          } else {
+            _followingUserIds.remove(targetUserId);
+          }
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not ${wasFollowing ? 'unfollow' : 'follow'} user')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          if (wasFollowing) {
+            _followingUserIds.add(targetUserId);
+          } else {
+            _followingUserIds.remove(targetUserId);
+          }
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${e.toString()}')),
+        );
+      }
+    }
   }
 
   void _openProfile(String userId, String userName) {
@@ -734,35 +762,3 @@ class _CocircleHeaderRow extends StatelessWidget {
   }
 }
 
-// Model
-class CocircleFeedPost {
-  final String id;
-  final String userId;
-  final String userName;
-  final String userRole;
-  final String? avatarUrl;
-  final DateTime timestamp;
-  final String? mediaUrl;
-  final String mediaType; // 'image' or 'video'
-  final String caption;
-  int likeCount;
-  final int commentCount;
-  final int shareCount;
-  bool isLiked;
-
-  CocircleFeedPost({
-    required this.id,
-    required this.userId,
-    required this.userName,
-    required this.userRole,
-    this.avatarUrl,
-    required this.timestamp,
-    this.mediaUrl,
-    required this.mediaType,
-    required this.caption,
-    required this.likeCount,
-    required this.commentCount,
-    required this.shareCount,
-    this.isLiked = false,
-  });
-}

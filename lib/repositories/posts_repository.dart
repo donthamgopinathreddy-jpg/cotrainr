@@ -7,9 +7,8 @@ class PostsRepository {
   PostsRepository({SupabaseClient? supabase})
     : _supabase = supabase ?? Supabase.instance.client;
 
-  /// Fetch recent posts for Cocircle feed (Instagram-style)
-  /// Returns: own posts + posts from followed users + public posts
-  /// Uses keyset pagination with cursor params: last_created_at, last_id
+  /// Fetch recent posts for Cocircle feed (Instagram-style).
+  /// Uses get_cocircle_feed RPC: single query, no N+1.
   Future<List<Map<String, dynamic>>> fetchRecentPosts({
     int limit = 20,
     String? lastCreatedAt,
@@ -22,104 +21,52 @@ class PostsRepository {
         return [];
       }
 
-      print('Fetching feed posts for user: $userId');
+      final params = <String, dynamic>{
+        'p_limit': limit,
+        'p_before_created_at': lastCreatedAt,
+        'p_before_id': lastId,
+      };
 
-      // Build query WITHOUT join first to test if RLS works
-      // If this returns posts, then the join is the issue
-      // We'll fetch profiles separately if needed
-      dynamic queryBuilder = _supabase.from('posts').select('''
-            id,
-            author_id,
-            content,
-            visibility,
-            likes_count,
-            comments_count,
-            created_at
-          ''');
-
-      // Keyset pagination: order by created_at desc, then id desc for tie-breaking
-      // Apply cursor for pagination if provided
-      if (lastCreatedAt != null) {
-        queryBuilder = queryBuilder
-            .lt('created_at', lastCreatedAt)
-            .order('created_at', ascending: false)
-            .order('id', ascending: false)
-            .limit(limit);
-      } else {
-        queryBuilder = queryBuilder
-            .order('created_at', ascending: false)
-            .order('id', ascending: false)
-            .limit(limit);
-      }
-
-      // Execute query
-      print('Executing feed query for user: $userId');
-      final postsResponse = await queryBuilder;
-      print(
-        'Query executed successfully, response type: ${postsResponse.runtimeType}',
-      );
-
+      final postsResponse = await _supabase.rpc('get_cocircle_feed', params: params);
       final posts = (postsResponse as List).cast<Map<String, dynamic>>();
-      print('Raw posts count: ${posts.length}');
 
-      // Fetch profiles separately for all unique author_ids
-      final authorIds = posts
-          .map((p) => p['author_id'] as String)
-          .toSet()
-          .toList();
+      if (posts.isEmpty) return [];
 
-      final profilesMap = <String, Map<String, dynamic>>{};
-      if (authorIds.isNotEmpty) {
-        try {
-          // Fetch profiles for all authors
-          // Build OR query: id = 'id1' OR id = 'id2' ...
-          var profilesQuery = _supabase
-              .from('profiles')
-              .select('id, username, avatar_url, full_name, role');
+      final postIds = posts.map((p) => p['id'] as String).toList();
 
-          // Use OR filter for multiple IDs
-          if (authorIds.length == 1) {
-            profilesQuery = profilesQuery.eq('id', authorIds[0]);
-          } else {
-            final orConditions = authorIds.map((id) => 'id.eq.$id').join(',');
-            profilesQuery = profilesQuery.or(orConditions);
-          }
-
-          final profilesResponse = await profilesQuery;
-
-          final profiles = (profilesResponse as List)
-              .cast<Map<String, dynamic>>();
-          for (final profile in profiles) {
-            profilesMap[profile['id'] as String] = profile;
-          }
-          print(
-            'Fetched ${profilesMap.length} profiles for ${authorIds.length} authors',
-          );
-        } catch (e) {
-          print('Error fetching profiles: $e');
+      // Single query for liked status (no N+1)
+      final likedIds = <String>{};
+      try {
+        final likedResponse = await _supabase
+            .from('post_likes')
+            .select('post_id')
+            .eq('user_id', userId)
+            .inFilter('post_id', postIds);
+        for (final row in likedResponse as List) {
+          likedIds.add(row['post_id'] as String);
         }
+      } catch (e) {
+        print('Error fetching liked status: $e');
       }
 
-      // Enrich posts with profile data
       final enrichedPosts = <Map<String, dynamic>>[];
       for (final post in posts) {
-        final authorId = post['author_id'] as String;
-        final profileData = profilesMap[authorId];
-
-        enrichedPosts.add({...post, 'profiles': profileData});
+        final postId = post['id'] as String;
+        final mediaList = (post['media'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+        enrichedPosts.add({
+          ...post,
+          'profiles': {
+            'id': post['author_id'],
+            'username': post['author_username'],
+            'full_name': post['author_full_name'],
+            'avatar_url': post['author_avatar_url'],
+            'role': post['author_role'],
+          },
+          'media': mediaList,
+          'is_liked': likedIds.contains(postId),
+        });
       }
 
-      print(
-        'Fetched ${enrichedPosts.length} posts from database (feed: own + followed + public)',
-      );
-      if (enrichedPosts.isEmpty) {
-        print('WARNING: No posts returned. Check:');
-        print('  1. RLS policy "Users can view feed posts" exists');
-        print(
-          '  2. Posts exist in database with visibility="public" or author_id=$userId',
-        );
-        print('  3. User is authenticated: true');
-      }
       return enrichedPosts;
     } catch (e, stackTrace) {
       print('Error fetching posts: $e');
@@ -177,18 +124,11 @@ class PostsRepository {
       final posts = (postsResponse as List).cast<Map<String, dynamic>>();
       print('Raw user posts count: ${posts.length}');
 
-      // Fetch profile for this user
       Map<String, dynamic>? profileData;
       try {
-        final profileResponse = await _supabase
-            .from('profiles')
-            .select('id, username, avatar_url, full_name, role')
-            .eq('id', userId)
-            .maybeSingle();
-
-        if (profileResponse != null) {
-          profileData = profileResponse;
-          print('Fetched profile for user: ${profileData['username']}');
+        final list = (await _supabase.rpc('get_public_profile', params: {'p_user_id': userId}) as List).cast<Map<String, dynamic>>();
+        if (list.isNotEmpty) {
+          profileData = list.first;
         }
       } catch (e) {
         print('Error fetching profile: $e');
@@ -245,8 +185,8 @@ class PostsRepository {
     }
   }
 
-  /// Toggle like on a post (like if not liked, unlike if liked)
-  /// Returns the new like count and whether the post is now liked
+  /// Toggle like on a post (like if not liked, unlike if liked).
+  /// DB triggers update likes_count; we return fresh count from posts.
   Future<Map<String, dynamic>> toggleLike(String postId) async {
     try {
       final userId = _supabase.auth.currentUser?.id;
@@ -254,7 +194,6 @@ class PostsRepository {
         throw Exception('User not authenticated');
       }
 
-      // Check if already liked
       final existingLike = await _supabase
           .from('post_likes')
           .select('id')
@@ -263,53 +202,26 @@ class PostsRepository {
           .maybeSingle();
 
       if (existingLike != null) {
-        // Unlike: delete the like
         await _supabase
             .from('post_likes')
             .delete()
             .eq('post_id', postId)
             .eq('user_id', userId);
-
-        // Decrement like count - get current count first
-        final currentPost = await _supabase
-            .from('posts')
-            .select('likes_count')
-            .eq('id', postId)
-            .single();
-
-        final currentCount = (currentPost['likes_count'] as int?) ?? 0;
-        final newCount = currentCount > 0 ? currentCount - 1 : 0;
-
-        await _supabase
-            .from('posts')
-            .update({'likes_count': newCount})
-            .eq('id', postId);
-
-        return {'isLiked': false, 'likeCount': newCount};
       } else {
-        // Like: insert the like
         await _supabase.from('post_likes').insert({
           'post_id': postId,
           'user_id': userId,
         });
-
-        // Increment like count - get current count first
-        final currentPost = await _supabase
-            .from('posts')
-            .select('likes_count')
-            .eq('id', postId)
-            .single();
-
-        final currentCount = (currentPost['likes_count'] as int?) ?? 0;
-        final newCount = currentCount + 1;
-
-        await _supabase
-            .from('posts')
-            .update({'likes_count': newCount})
-            .eq('id', postId);
-
-        return {'isLiked': true, 'likeCount': newCount};
       }
+
+      final currentPost = await _supabase
+          .from('posts')
+          .select('likes_count')
+          .eq('id', postId)
+          .single();
+
+      final newCount = (currentPost['likes_count'] as int?) ?? 0;
+      return {'isLiked': existingLike == null, 'likeCount': newCount};
     } catch (e) {
       print('Error toggling like: $e');
       rethrow;
@@ -343,22 +255,10 @@ class PostsRepository {
       final profilesMap = <String, Map<String, dynamic>>{};
       if (authorIds.isNotEmpty) {
         try {
-          var profilesQuery = _supabase
-              .from('profiles')
-              .select('id, username, avatar_url, full_name');
-
-          if (authorIds.length == 1) {
-            profilesQuery = profilesQuery.eq('id', authorIds[0]);
-          } else {
-            final orConditions = authorIds.map((id) => 'id.eq.$id').join(',');
-            profilesQuery = profilesQuery.or(orConditions);
-          }
-
-          final profilesResponse = await profilesQuery;
-          final profiles = (profilesResponse as List)
-              .cast<Map<String, dynamic>>();
-          for (final profile in profiles) {
-            profilesMap[profile['id'] as String] = profile;
+          final profilesResponse = await _supabase.rpc('get_public_profiles', params: {'p_user_ids': authorIds});
+          for (final profile in profilesResponse as List) {
+            final p = profile as Map<String, dynamic>;
+            profilesMap[p['id'] as String] = p;
           }
         } catch (e) {
           print('Error fetching comment profiles: $e');
@@ -393,7 +293,7 @@ class PostsRepository {
         throw Exception('User not authenticated');
       }
 
-      // Insert comment
+      // Insert comment (DB trigger updates comments_count)
       final commentResponse = await _supabase
           .from('post_comments')
           .insert({'post_id': postId, 'author_id': userId, 'content': content})
@@ -406,27 +306,8 @@ class PostsRepository {
           ''')
           .single();
 
-      // Increment comment count - get current count first
-      final currentPost = await _supabase
-          .from('posts')
-          .select('comments_count')
-          .eq('id', postId)
-          .single();
-
-      final currentCount = (currentPost['comments_count'] as int?) ?? 0;
-      final newCount = currentCount + 1;
-
-      await _supabase
-          .from('posts')
-          .update({'comments_count': newCount})
-          .eq('id', postId);
-
-      // Fetch profile for the comment author
-      final profileResponse = await _supabase
-          .from('profiles')
-          .select('id, username, avatar_url, full_name')
-          .eq('id', userId)
-          .maybeSingle();
+      final profileList = (await _supabase.rpc('get_public_profile', params: {'p_user_id': userId}) as List).cast<Map<String, dynamic>>();
+      final profileResponse = profileList.isNotEmpty ? profileList.first : null;
 
       return {...commentResponse, 'profiles': profileResponse};
     } catch (e) {

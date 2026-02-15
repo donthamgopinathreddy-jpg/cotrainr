@@ -6,9 +6,13 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/design_tokens.dart';
 import '../../services/user_goals_service.dart';
+import '../../services/pending_referral_service.dart';
+import '../../repositories/referral_repository.dart';
 
 class SignupWizardPage extends StatefulWidget {
-  const SignupWizardPage({super.key});
+  const SignupWizardPage({super.key, this.initialReferralCode});
+
+  final String? initialReferralCode;
 
   @override
   State<SignupWizardPage> createState() => _SignupWizardPageState();
@@ -24,6 +28,7 @@ class _SignupWizardPageState extends State<SignupWizardPage>
   final _email = TextEditingController();
   final _pass = TextEditingController();
   final _confirmPass = TextEditingController();
+  final _referralCode = TextEditingController();
   String? _userIdAvailabilityStatus;
   bool _isCheckingUserId = false;
   String? _emailValidationStatus; // 'valid', 'invalid', 'taken', null
@@ -66,13 +71,15 @@ class _SignupWizardPageState extends State<SignupWizardPage>
   String _role = 'Client';
 
   bool _isSubmitting = false;
-  
+  bool _referralApplied = false; // Guard: prevent double apply_referral_code
+
   late final AnimationController _fadeController;
   late final AnimationController _stepTransitionController;
 
   @override
   void initState() {
     super.initState();
+    _initReferralCode();
     _fadeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
@@ -86,10 +93,20 @@ class _SignupWizardPageState extends State<SignupWizardPage>
     _stepTransitionController.forward();
   }
 
+  Future<void> _initReferralCode() async {
+    final fromRoute = widget.initialReferralCode;
+    final fromDeepLink = await PendingReferralService.getPendingCode();
+    final code = fromRoute ?? fromDeepLink;
+    if (code != null && mounted) {
+      _referralCode.text = code;
+    }
+  }
+
   @override
   void dispose() {
     _page.dispose();
     _userId.dispose();
+    _referralCode.dispose();
     _email.dispose();
     _pass.dispose();
     _confirmPass.dispose();
@@ -314,11 +331,15 @@ class _SignupWizardPageState extends State<SignupWizardPage>
       final heightCm = _heightInCm ? _heightCm : ((_feet * 30.48) + (_inch * 2.54));
       final weightKg = _weightInKg ? _weightKg : (_weightLbs * 0.45359237);
 
+      final username = _userId.text.trim();
+      if (username.isEmpty) {
+        throw Exception('Username is required');
+      }
       final response = await supabase.auth.signUp(
         email: _email.text.trim(),
         password: _pass.text,
         data: {
-          'username': _userId.text.trim(), // REQUIRED: database trigger expects 'username'
+          'username': username,
           'full_name': '${_first.text.trim()} ${_last.text.trim()}'.trim(),
           'first_name': _first.text.trim(),
           'last_name': _last.text.trim(),
@@ -364,10 +385,51 @@ class _SignupWizardPageState extends State<SignupWizardPage>
           // Initialize user goals (calculate water goal from weight)
           final goalsService = UserGoalsService();
           await goalsService.initializeGoals(weightKg: weightKg);
-          
+
+          // Referral: apply code AFTER signup, once only, then generate code for new user
+          final referralRepo = ReferralRepository();
+          try {
+            final codeToApply = _referralCode.text.trim().toUpperCase();
+            if (codeToApply.isNotEmpty && !_referralApplied) {
+              final result = await referralRepo.applyReferralCode(codeToApply);
+              _referralApplied = true;
+              final status = result['status'] as String?;
+              final msg = result['message'] as String? ?? '';
+              if (mounted) {
+                if (status == 'success' || status == 'already_used') {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(msg.isNotEmpty ? msg : 'Referral applied!'),
+                      backgroundColor: DesignTokens.accentGreen,
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
+                      ),
+                    ),
+                  );
+                } else if (status == 'invalid_code' || status == 'self_referral') {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(msg.isNotEmpty ? msg : 'Referral code could not be applied'),
+                      backgroundColor: DesignTokens.accentRed,
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
+                      ),
+                    ),
+                  );
+                }
+              }
+            }
+            await referralRepo.generateReferralCode();
+            await PendingReferralService.clearPendingCode();
+          } catch (_) {
+            // Non-fatal: user is signed up, referral is optional
+          }
+
           final role = _role.toLowerCase();
           if (!mounted) return;
-          
+
           // Redirect to permissions page first
           context.go('/auth/permissions', extra: {'role': role});
         } else {
@@ -554,6 +616,7 @@ class _SignupWizardPageState extends State<SignupWizardPage>
                       email: _email,
                       pass: _pass,
                       confirmPass: _confirmPass,
+                      referralCode: _referralCode,
                       userIdAvailabilityStatus: _userIdAvailabilityStatus,
                       isCheckingUserId: _isCheckingUserId,
                       onUserIdChanged: _checkUserIdAvailability,
@@ -697,6 +760,7 @@ class _Step1Content extends StatefulWidget {
   final TextEditingController email;
   final TextEditingController pass;
   final TextEditingController confirmPass;
+  final TextEditingController referralCode;
   final String? userIdAvailabilityStatus;
   final bool isCheckingUserId;
   final ValueChanged<String> onUserIdChanged;
@@ -709,6 +773,7 @@ class _Step1Content extends StatefulWidget {
     required this.email,
     required this.pass,
     required this.confirmPass,
+    required this.referralCode,
     required this.userIdAvailabilityStatus,
     required this.isCheckingUserId,
     required this.onUserIdChanged,
@@ -920,6 +985,25 @@ class _Step1ContentState extends State<_Step1Content> {
                 ? 'Passwords match'
                 : 'Passwords do not match',
             helperColor: passwordsMatch ? DesignTokens.accentGreen : DesignTokens.accentRed,
+          ),
+
+          const SizedBox(height: 20),
+
+          _TextFieldCard(
+            label: 'Referral Code (optional)',
+            controller: widget.referralCode,
+            hint: 'Enter a friend\'s code',
+            prefixIcon: Icons.card_giftcard_outlined,
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
+              LengthLimitingTextInputFormatter(12),
+              TextInputFormatter.withFunction((oldValue, newValue) {
+                return TextEditingValue(
+                  text: newValue.text.toUpperCase(),
+                  selection: newValue.selection,
+                );
+              }),
+            ],
           ),
         ],
       ),

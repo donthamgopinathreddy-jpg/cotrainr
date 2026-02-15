@@ -38,7 +38,7 @@ final GoRouter appRouter = GoRouter(
     final isLoggedIn = session != null;
 
     // Public routes that don't require auth
-    final publicRoutes = ['/welcome', '/auth/login', '/auth/create-account', '/welcome-animation', '/auth/permissions'];
+    final publicRoutes = ['/welcome', '/auth/login', '/auth/create-account', '/auth/permissions', '/welcome-animation', '/invite'];
     final isPublicRoute = publicRoutes.contains(state.matchedLocation);
 
     // If not logged in and trying to access protected route
@@ -94,10 +94,24 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/auth/create-account',
       name: 'createAccount',
-      pageBuilder: (context, state) => _fadeSlidePage(
-        child: const SignupWizardPage(),
-        state: state,
-      ),
+      pageBuilder: (context, state) {
+        final code = state.uri.queryParameters['code'];
+        return _fadeSlidePage(
+          child: SignupWizardPage(initialReferralCode: code),
+          state: state,
+        );
+      },
+    ),
+    GoRoute(
+      path: '/invite',
+      name: 'invite',
+      redirect: (context, state) {
+        final code = state.uri.queryParameters['code'];
+        if (code != null && code.trim().isNotEmpty) {
+          return '/auth/create-account?code=${Uri.encodeComponent(code.trim())}';
+        }
+        return '/auth/create-account';
+      },
     ),
     GoRoute(
       path: '/auth/permissions',

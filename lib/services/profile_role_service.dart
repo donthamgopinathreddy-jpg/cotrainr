@@ -11,13 +11,8 @@ class ProfileRoleService {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) return null;
 
-      final response = await _supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', userId)
-          .single();
-
-      return response['role'] as String?;
+      final list = (await _supabase.rpc('get_my_profile') as List).cast<Map<String, dynamic>>();
+      return list.isNotEmpty ? list.first['role'] as String? : null;
     } catch (e) {
       return null;
     }
@@ -28,13 +23,8 @@ class ProfileRoleService {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) return null;
 
-      final response = await _supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', userId)
-          .single();
-
-      return response as Map<String, dynamic>?;
+      final list = (await _supabase.rpc('get_my_profile') as List).cast<Map<String, dynamic>>();
+      return list.isNotEmpty ? list.first : null;
     } catch (e) {
       return null;
     }
@@ -48,11 +38,8 @@ class ProfileRoleService {
       final role = user.userMetadata?['role']?.toString().toLowerCase();
       if (role == null) return;
 
-      final existing = await _supabase
-          .from('profiles')
-          .select('id')
-          .eq('id', user.id)
-          .maybeSingle();
+      final list = (await _supabase.rpc('get_my_profile') as List).cast<Map<String, dynamic>>();
+      final existing = list.isNotEmpty ? list.first : null;
 
       if (existing == null) {
         await _supabase.from('profiles').insert({

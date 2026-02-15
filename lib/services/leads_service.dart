@@ -66,7 +66,6 @@ class LeadsService {
           .from('leads')
           .select('''
             *,
-            client:profiles!leads_client_id_fkey(id, full_name, avatar_url),
             provider:providers!leads_provider_id_fkey(
               user_id,
               provider_type,
@@ -77,9 +76,42 @@ class LeadsService {
           .or('client_id.eq.$userId,provider_id.eq.$userId')
           .order('created_at', ascending: false);
 
-      return (response as List)
-          .map((json) => Lead.fromJson(json as Map<String, dynamic>))
+      final leads = (response as List).cast<Map<String, dynamic>>();
+      if (leads.isEmpty) return leads.map((json) => Lead.fromJson(json)).toList();
+
+      final clientIds = leads
+          .map((l) => l['client_id'] as String?)
+          .whereType<String>()
+          .toSet()
           .toList();
+      final profilesMap = <String, Map<String, dynamic>>{};
+      if (clientIds.isNotEmpty) {
+        try {
+          final profilesResponse = await _supabase.rpc(
+            'get_public_profiles',
+            params: {'p_user_ids': clientIds},
+          );
+          for (final p in profilesResponse as List) {
+            final m = p as Map<String, dynamic>;
+            profilesMap[m['id'] as String] = {
+              'id': m['id'],
+              'full_name': m['full_name'],
+              'avatar_url': m['avatar_url'],
+            };
+          }
+        } catch (e) {
+          print('LeadsService: Error fetching client profiles: $e');
+        }
+      }
+
+      return leads.map((json) {
+        final enriched = Map<String, dynamic>.from(json);
+        final cid = json['client_id'] as String?;
+        if (cid != null && profilesMap.containsKey(cid)) {
+          enriched['client'] = profilesMap[cid];
+        }
+        return Lead.fromJson(enriched);
+      }).toList();
     } catch (e) {
       throw Exception('Failed to fetch leads: $e');
     }
@@ -92,17 +124,47 @@ class LeadsService {
 
       final response = await _supabase
           .from('leads')
-          .select('''
-            *,
-            client:profiles!leads_client_id_fkey(id, full_name, avatar_url)
-          ''')
+          .select('*')
           .eq('provider_id', userId)
           .eq('status', 'requested')
           .order('created_at', ascending: false);
 
-      return (response as List)
-          .map((json) => Lead.fromJson(json as Map<String, dynamic>))
+      final leads = (response as List).cast<Map<String, dynamic>>();
+      if (leads.isEmpty) return leads.map((json) => Lead.fromJson(json)).toList();
+
+      final clientIds = leads
+          .map((l) => l['client_id'] as String?)
+          .whereType<String>()
+          .toSet()
           .toList();
+      final profilesMap = <String, Map<String, dynamic>>{};
+      if (clientIds.isNotEmpty) {
+        try {
+          final profilesResponse = await _supabase.rpc(
+            'get_public_profiles',
+            params: {'p_user_ids': clientIds},
+          );
+          for (final p in profilesResponse as List) {
+            final m = p as Map<String, dynamic>;
+            profilesMap[m['id'] as String] = {
+              'id': m['id'],
+              'full_name': m['full_name'],
+              'avatar_url': m['avatar_url'],
+            };
+          }
+        } catch (e) {
+          print('LeadsService: Error fetching client profiles: $e');
+        }
+      }
+
+      return leads.map((json) {
+        final enriched = Map<String, dynamic>.from(json);
+        final cid = json['client_id'] as String?;
+        if (cid != null && profilesMap.containsKey(cid)) {
+          enriched['client'] = profilesMap[cid];
+        }
+        return Lead.fromJson(enriched);
+      }).toList();
     } catch (e) {
       throw Exception('Failed to fetch incoming leads: $e');
     }

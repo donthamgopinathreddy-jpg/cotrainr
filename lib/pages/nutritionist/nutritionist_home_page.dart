@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/design_tokens.dart';
 import '../../providers/profile_images_provider.dart';
+import '../../repositories/profile_repository.dart';
+import '../../repositories/notifications_repository.dart';
 import '../../widgets/home_v3/hero_header_v3.dart';
 import '../../widgets/home_v3/quick_access_v3.dart';
 
@@ -21,7 +23,7 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
 
   // Mock data - in real app, fetch from Supabase
   final String _nutritionistName = 'Nutritionist Name';
-  final int _notificationCount = 3;
+  int _notificationCount = 0;
   final int _streakDays = 0; // Nutritionists don't have streaks
   final int _totalClients = 15;
   final int _activeClients = 10;
@@ -52,6 +54,21 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
       curve: Curves.easeOut,
     );
     _fadeController.forward();
+    _loadNotificationsCount();
+  }
+
+  Future<void> _loadNotificationsCount() async {
+    try {
+      final notificationsRepo = NotificationsRepository();
+      final profileRepo = ProfileRepository();
+      final prefs = await profileRepo.fetchNotificationPreferences();
+      final count = await notificationsRepo.fetchUnreadCount(
+        community: prefs['community'] ?? true,
+        reminders: prefs['reminders'] ?? true,
+        achievements: prefs['achievements'] ?? true,
+      );
+      if (mounted) setState(() => _notificationCount = count);
+    } catch (_) {}
   }
 
   @override
@@ -108,9 +125,10 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
     final textSecondary = DesignTokens.textSecondaryOf(context);
     final surfaceColor = DesignTokens.surfaceOf(context);
     final borderColor = DesignTokens.borderColorOf(context);
+    final isLight = Theme.of(context).brightness == Brightness.light;
 
     return Scaffold(
-      backgroundColor: DesignTokens.backgroundOf(context),
+      backgroundColor: isLight ? Colors.grey.shade200 : DesignTokens.backgroundOf(context),
       body: FadeTransition(
         opacity: _fadeAnimation,
         child: CustomScrollView(
@@ -125,7 +143,10 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
                 coverImageUrl: ref.watch(profileImagesProvider).coverImagePath,
                 avatarUrl: ref.watch(profileImagesProvider).profileImagePath,
                 streakDays: _streakDays,
-                onNotificationTap: () => context.push('/notifications'),
+                onNotificationTap: () async {
+                  await context.push('/notifications');
+                  if (mounted) _loadNotificationsCount();
+                },
               ),
             ),
             

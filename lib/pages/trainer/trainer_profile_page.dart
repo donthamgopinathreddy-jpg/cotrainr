@@ -15,6 +15,7 @@ import '../../pages/trainer/become_trainer_page.dart';
 import '../../pages/trainer/verification_submission_page.dart';
 import '../../pages/refer/refer_friend_page.dart';
 import '../profile/settings_page.dart';
+import '../../widgets/profile/appearance_toggle.dart';
 
 class TrainerProfilePage extends ConsumerStatefulWidget {
   const TrainerProfilePage({super.key});
@@ -79,9 +80,10 @@ class _TrainerProfilePageState extends ConsumerState<TrainerProfilePage>
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isLight = Theme.of(context).brightness == Brightness.light;
 
     return Scaffold(
-      backgroundColor: colorScheme.background,
+      backgroundColor: isLight ? Colors.grey.shade200 : colorScheme.background,
       body: FadeTransition(
         opacity: _fadeAnimation,
         child: CustomScrollView(
@@ -99,7 +101,7 @@ class _TrainerProfilePageState extends ConsumerState<TrainerProfilePage>
                   handle: _handle,
                 ),
                 Transform.translate(
-                  offset: const Offset(0, -20),
+                  offset: const Offset(0, -56),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: _ProfileStatsStrip(
@@ -110,33 +112,43 @@ class _TrainerProfilePageState extends ConsumerState<TrainerProfilePage>
                     ),
                   ),
                 ),
-                const SizedBox(height: 20),
-                // Verification Card for Trainers/Nutritionists
-                if ((_role == 'trainer' || _role == 'nutritionist') && _needsVerification) ...[
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: _VerificationCard(
-                      isPending: _isPending,
-                      role: _role,
-                      onTap: () {
-                        HapticFeedback.lightImpact();
-                        Navigator.push(
-                          context,
-                          PageTransitions.slideRoute(
-                            const VerificationSubmissionPage(),
-                            beginOffset: const Offset(0, 0.05),
+                Transform.translate(
+                  offset: const Offset(0, -44),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 10),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: const AppearanceToggle(),
+                      ),
+                      const SizedBox(height: 10),
+                      // Verification Card for Trainers/Nutritionists
+                      if ((_role == 'trainer' || _role == 'nutritionist') && _needsVerification) ...[
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: _VerificationCard(
+                            isPending: _isPending,
+                            role: _role,
+                            onTap: () {
+                              HapticFeedback.lightImpact();
+                              Navigator.push(
+                                context,
+                                PageTransitions.slideRoute(
+                                  const VerificationSubmissionPage(),
+                                  beginOffset: const Offset(0, 0.05),
+                                ),
+                              );
+                            },
                           ),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: _FullLengthButton(
-                    label: 'Settings',
-                    icon: Icons.settings_rounded,
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                            Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: _FullLengthButton(
+                          label: 'Settings',
+                          icon: Icons.settings_rounded,
                     onTap: () {
                       HapticFeedback.lightImpact();
                       Navigator.push(
@@ -147,14 +159,14 @@ class _TrainerProfilePageState extends ConsumerState<TrainerProfilePage>
                         ),
                       );
                     },
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: _FullLengthButton(
-                    label: 'Refer a Friend',
-                    icon: Icons.person_add_rounded,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: _FullLengthButton(
+                          label: 'Refer a Friend',
+                          icon: Icons.person_add_rounded,
                     iconGradient: const LinearGradient(
                       colors: [AppColors.green, AppColors.cyan],
                       begin: Alignment.topLeft,
@@ -170,16 +182,16 @@ class _TrainerProfilePageState extends ConsumerState<TrainerProfilePage>
                         ),
                       );
                     },
-                  ),
-                ),
-                // Show My Clients button for trainers and nutritionists
-                if (_role == 'trainer' || _role == 'nutritionist') ...[
-                  const SizedBox(height: 12),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: _FullLengthButton(
-                      label: 'My Clients',
-                      icon: Icons.people_rounded,
+                        ),
+                      ),
+                      // Show My Clients button for trainers and nutritionists
+                      if (_role == 'trainer' || _role == 'nutritionist') ...[
+                        const SizedBox(height: 10),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: _FullLengthButton(
+                            label: 'My Clients',
+                            icon: Icons.people_rounded,
                       iconGradient: const LinearGradient(
                         colors: [AppColors.blue, AppColors.cyan],
                         begin: Alignment.topLeft,
@@ -190,28 +202,28 @@ class _TrainerProfilePageState extends ConsumerState<TrainerProfilePage>
                         context.push('/my-clients');
                       },
                     ),
-                  ),
-                ],
-                // Only show subscription button for clients
-                if (_role == 'client') ...[
-                  const SizedBox(height: 12),
-                  Padding(
+                        ),
+                      ],
+                      // Only show subscription button for clients
+                      if (_role == 'client') ...[
+                        const SizedBox(height: 10),
+                        Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: _FullLengthButton(
-                      label: _isSubscribed ? 'My Subscription' : 'Subscription',
-                      icon: Icons.star_rounded,
+                          child: _FullLengthButton(
+                            label: _isSubscribed ? 'My Subscription' : 'Subscription',
+                            icon: Icons.star_rounded,
                       iconGradient: AppColors.stepsGradient,
                       onTap: () => HapticFeedback.lightImpact(),
                     ),
-                  ),
-                ],
-                if (_role == 'client') ...[
-                  const SizedBox(height: 12),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: _FullLengthButton(
-                    label: 'Become a Trainer',
-                    icon: Icons.school_rounded,
+                        ),
+                      ],
+                      if (_role == 'client') ...[
+                        const SizedBox(height: 10),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: _FullLengthButton(
+                            label: 'Become a Trainer',
+                            icon: Icons.school_rounded,
                     iconGradient: AppColors.distanceGradient,
                     onTap: () {
                       HapticFeedback.lightImpact();
@@ -224,8 +236,11 @@ class _TrainerProfilePageState extends ConsumerState<TrainerProfilePage>
                       );
                     },
                   ),
+                        ),
+                      ],
+                    ],
                   ),
-                ],
+                ),
               ],
             ),
           ),
@@ -461,33 +476,17 @@ class _ProfileStatsStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    // Vibrant blue color - no gradient
-    final blueColor = isDark
-        ? AppColors.blue.withOpacity(0.8) // More vibrant blue
-        : AppColors.blue.withOpacity(0.6); // More vibrant blue
+    const profileNavGradient = LinearGradient(
+      colors: [Color(0xFFFF5A5A), Color(0xFFFF8A7A)],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    );
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
       decoration: BoxDecoration(
-        color: blueColor,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: isDark
-                ? Colors.black.withOpacity(0.3)
-                : Colors.black.withOpacity(0.08),
-            blurRadius: isDark ? 16 : 12,
-            offset: const Offset(0, 4),
-          ),
-          if (!isDark)
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-        ],
+        gradient: profileNavGradient,
+        borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -496,7 +495,8 @@ class _ProfileStatsStrip extends StatelessWidget {
             icon: Icons.directions_walk_rounded,
             label: 'Avg Steps',
             value: _formatSteps(avgSteps),
-            iconColor: AppColors.orange,
+            iconColor: Colors.white,
+            textColor: Colors.white,
             onTap: () {
               HapticFeedback.lightImpact();
               // Navigate to steps insights
@@ -514,14 +514,16 @@ class _ProfileStatsStrip extends StatelessWidget {
             icon: Icons.local_fire_department_rounded,
             label: 'Streak',
             value: '$streakDays days',
-            iconColor: AppColors.orange,
+            iconColor: Colors.white,
+            textColor: Colors.white,
             onTap: null, // No action for streak
           ),
           _StatItem(
             icon: Icons.emoji_events_rounded,
             label: 'Level',
             value: level.toString(),
-            iconColor: AppColors.yellow,
+            iconColor: Colors.white,
+            textColor: Colors.white,
             onTap: () {
               HapticFeedback.lightImpact();
               // Navigate to quest page
@@ -532,7 +534,8 @@ class _ProfileStatsStrip extends StatelessWidget {
             icon: Icons.star_rounded,
             label: 'XP',
             value: _formatXP(xp),
-            iconColor: AppColors.yellow,
+            iconColor: Colors.white,
+            textColor: Colors.white,
             onTap: () {
               HapticFeedback.lightImpact();
               // Navigate to quest page
@@ -551,6 +554,7 @@ class _StatItem extends StatelessWidget {
   final String value;
   final Color iconColor;
   final VoidCallback? onTap;
+  final Color? textColor;
 
   const _StatItem({
     required this.icon,
@@ -558,11 +562,16 @@ class _StatItem extends StatelessWidget {
     required this.value,
     required this.iconColor,
     this.onTap,
+    this.textColor,
   });
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final valueColor = textColor ?? colorScheme.onSurface;
+    final labelColor = textColor != null
+        ? textColor!.withOpacity(0.9)
+        : colorScheme.onSurface.withOpacity(0.6);
 
     Widget content = Column(
       mainAxisSize: MainAxisSize.min,
@@ -578,7 +587,7 @@ class _StatItem extends StatelessWidget {
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: colorScheme.onSurface,
+            color: valueColor,
           ),
         ),
         const SizedBox(height: 2),
@@ -587,7 +596,7 @@ class _StatItem extends StatelessWidget {
           style: TextStyle(
             fontSize: 10,
             fontWeight: FontWeight.w500,
-            color: colorScheme.onSurface.withOpacity(0.6),
+            color: labelColor,
           ),
           textAlign: TextAlign.center,
           maxLines: 1,

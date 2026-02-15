@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../models/cocircle_feed_post.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:share_plus/share_plus.dart';
@@ -284,8 +285,9 @@ class _NutritionistCocirclePageState extends State<NutritionistCocirclePage>
     _posts.addAll([
       CocircleFeedPost(
         id: '1',
-        userId: 'fitness_john',
-        userName: 'John Doe',
+        authorId: 'mock-1',
+        username: 'fitness_john',
+        fullName: 'John Doe',
         userRole: 'CLIENT',
         avatarUrl: null,
         timestamp: DateTime.now().subtract(const Duration(minutes: 30)),
@@ -299,8 +301,9 @@ class _NutritionistCocirclePageState extends State<NutritionistCocirclePage>
       ),
       CocircleFeedPost(
         id: '2',
-        userId: 'trainer_sarah',
-        userName: 'Sarah Johnson',
+        authorId: 'mock-2',
+        username: 'trainer_sarah',
+        fullName: 'Sarah Johnson',
         userRole: 'TRAINER',
         avatarUrl: null,
         timestamp: DateTime.now().subtract(const Duration(hours: 2)),
@@ -314,8 +317,9 @@ class _NutritionistCocirclePageState extends State<NutritionistCocirclePage>
       ),
       CocircleFeedPost(
         id: '3',
-        userId: 'nutritionist_mike',
-        userName: 'Dr. Mike Chen',
+        authorId: 'mock-3',
+        username: 'nutritionist_mike',
+        fullName: 'Dr. Mike Chen',
         userRole: 'NUTRITIONIST',
         avatarUrl: null,
         timestamp: DateTime.now().subtract(const Duration(hours: 5)),
@@ -407,10 +411,10 @@ class _NutritionistCocirclePageState extends State<NutritionistCocirclePage>
                       onComment: () => _openComments(post.id),
                       onShare: () => _sharePost(post.id),
                       onDoubleTap: () => _handleDoubleTap(post.id),
-                      onFollow: () => _toggleFollow(post.userId),
-                      onProfileTap: () => _openProfile(post.userId, post.userName),
-                      isFollowing: _followingUserIds.contains(post.userId),
-                      isOwnPost: post.userId == _currentUserId,
+                      onFollow: () => _toggleFollow(post.authorId),
+                      onProfileTap: () => _openProfile(post.authorId, post.userName),
+                      isFollowing: _followingUserIds.contains(post.authorId),
+                      isOwnPost: post.authorId == _currentUserId,
                     );
                   },
                   childCount: _posts.length,
@@ -609,36 +613,4 @@ class _CocircleHeaderRow extends StatelessWidget {
   }
 }
 
-// Model
-class CocircleFeedPost {
-  final String id;
-  final String userId;
-  final String userName;
-  final String userRole;
-  final String? avatarUrl;
-  final DateTime timestamp;
-  final String? mediaUrl;
-  final String mediaType; // 'image' or 'video'
-  final String caption;
-  int likeCount;
-  final int commentCount;
-  final int shareCount;
-  bool isLiked;
-
-  CocircleFeedPost({
-    required this.id,
-    required this.userId,
-    required this.userName,
-    required this.userRole,
-    this.avatarUrl,
-    required this.timestamp,
-    this.mediaUrl,
-    required this.mediaType,
-    required this.caption,
-    required this.likeCount,
-    required this.commentCount,
-    required this.shareCount,
-    this.isLiked = false,
-  });
-}
 

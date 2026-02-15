@@ -19,7 +19,6 @@ void main() async {
   );
 
   // Initialize health tracking service for background step counting
-  // This starts tracking steps in the background even when app is not in foreground
   final healthService = HealthTrackingService();
   healthService.initialize().then((initialized) {
     if (initialized) {
@@ -47,10 +46,8 @@ class MyApp extends ConsumerWidget {
         darkTheme: AppTheme.darkTheme,
         themeMode: themeMode,
         routerConfig: appRouter,
-        // Optimize for smooth animations
         builder: (context, child) {
           return MediaQuery(
-            // Ensure consistent text scaling for smooth animations
             data: MediaQuery.of(context).copyWith(
               textScaler: MediaQuery.of(context).textScaler.clamp(
                 minScaleFactor: 0.8,

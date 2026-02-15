@@ -91,11 +91,8 @@ class MessagesRepository {
         if (otherUserId == null) continue;
         
         // Get other participant's profile
-        final profileResponse = await _supabase
-            .from('profiles')
-            .select('id, username, avatar_url, full_name')
-            .eq('id', otherUserId)
-            .maybeSingle();
+        final profileList = (await _supabase.rpc('get_public_profile', params: {'p_user_id': otherUserId}) as List).cast<Map<String, dynamic>>();
+        final profileResponse = profileList.isNotEmpty ? profileList.first : null;
         
         result.add({
           'id': convId,

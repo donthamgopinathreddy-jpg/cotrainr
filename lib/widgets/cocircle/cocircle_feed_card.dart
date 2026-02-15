@@ -283,7 +283,7 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          widget.post.userName,
+                          _getDisplayName(widget.post),
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w700,
@@ -292,10 +292,9 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
                           overflow: TextOverflow.ellipsis,
                           maxLines: 1,
                         ),
-                        // Only show user ID if NOT own post
                         if (!widget.isOwnPost)
                           Text(
-                            '@${widget.post.userId}',
+                            _getHandle(widget.post),
                             style: TextStyle(
                               fontSize: 11,
                               color: colorScheme.onSurface.withValues(alpha: 0.5),
@@ -804,6 +803,31 @@ class _CocircleFeedCardState extends State<CocircleFeedCard>
         ),
       ),
     );
+  }
+
+  String _getDisplayName(dynamic post) {
+    if (post == null) return 'User';
+    final fullName = post.fullName as String?;
+    if (fullName != null && fullName.isNotEmpty) return fullName;
+    final userName = post.userName;
+    if (userName != null && userName is String) return userName;
+    final username = post.username as String?;
+    return username ?? 'User';
+  }
+
+  /// Handle for display (@username). Never shows UUID.
+  String _getHandle(dynamic post) {
+    if (post == null) return '@user';
+    final username = post.username as String?;
+    if (username != null && username.isNotEmpty) return '@$username';
+    final userId = post.userId;
+    if (userId != null && userId is String && !_isUuid(userId)) return '@$userId';
+    return '@user';
+  }
+
+  bool _isUuid(String s) {
+    final uuidRegex = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', caseSensitive: false);
+    return uuidRegex.hasMatch(s);
   }
 
   String _formatCount(int count) {

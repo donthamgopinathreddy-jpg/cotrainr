@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "684040501799",
+    "project_id": "cotrainr-18f07",
+    "storage_bucket": "cotrainr-18f07.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:684040501799:android:ab6d7bd6eb3e5e1e596c02",
+        "android_client_info": {
+          "package_name": "com.example.cotrainr_flutter"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDSoE0LnkGmvJUXhj7o9JeTIujRCelcjHY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

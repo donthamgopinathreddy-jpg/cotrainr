@@ -101,6 +101,7 @@ class _QuestPageState extends ConsumerState<QuestPage>
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isLight = Theme.of(context).brightness == Brightness.light;
     
     // Watch providers for real data
     final dailyQuestsAsync = ref.watch(dailyQuestsProvider);
@@ -179,7 +180,7 @@ class _QuestPageState extends ConsumerState<QuestPage>
                      leaderboardAsync.isLoading;
 
     return Scaffold(
-      backgroundColor: colorScheme.background,
+      backgroundColor: isLight ? const Color(0xFFFFF5EB) : colorScheme.background,
       body: FadeTransition(
         opacity: _fadeAnimation,
         child: SafeArea(

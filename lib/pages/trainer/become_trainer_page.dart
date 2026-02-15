@@ -155,7 +155,7 @@ class _BecomeTrainerPageState extends State<BecomeTrainerPage> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  gradient: AppColors.stepsGradient,
+                  gradient: AppColors.distanceGradient,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(
@@ -189,7 +189,7 @@ class _BecomeTrainerPageState extends State<BecomeTrainerPage> {
               child: Text(
                 'OK',
                 style: TextStyle(
-                  color: AppColors.orange,
+                  color: AppColors.purple,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -202,10 +202,12 @@ class _BecomeTrainerPageState extends State<BecomeTrainerPage> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final isLight = Theme.of(context).brightness == Brightness.light;
 
     return Scaffold(
-      backgroundColor: colorScheme.background,
+      backgroundColor: isLight
+          ? const Color(0xFFE3F2FD)
+          : const Color(0xFF0D1B2A), // Dark mode: blue-black mix
       appBar: AppBar(
         title: const Text(
           'Become a Trainer',
@@ -369,33 +371,45 @@ class _BecomeTrainerPageState extends State<BecomeTrainerPage> {
               // Submit Button
               SizedBox(
                 width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _isSubmitting ? null : _submitApplication,
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: _isSubmitting ? null : _submitApplication,
+                    borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      decoration: BoxDecoration(
+                        gradient: _isSubmitting
+                            ? null
+                            : AppColors.distanceGradient,
+                        color: _isSubmitting
+                            ? AppColors.purple.withOpacity(0.5)
+                            : null,
+                        borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+                      ),
+                      child: _isSubmitting
+                          ? const Center(
+                              child: SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              ),
+                            )
+                          : const Text(
+                              'Submit Application',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
                     ),
-                    backgroundColor: AppColors.orange,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
                   ),
-                  child: _isSubmitting
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        )
-                      : const Text(
-                          'Submit Application',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
                 ),
               ),
               const SizedBox(height: 32),
@@ -429,7 +443,7 @@ class _BecomeTrainerPageState extends State<BecomeTrainerPage> {
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
-        prefixIcon: Icon(icon, color: AppColors.orange),
+        prefixIcon: Icon(icon, color: AppColors.purple),
         filled: true,
         fillColor: colorScheme.surface,
         border: OutlineInputBorder(
@@ -438,24 +452,15 @@ class _BecomeTrainerPageState extends State<BecomeTrainerPage> {
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-          borderSide: BorderSide(
-            color: DesignTokens.borderColorOf(context),
-            width: 1,
-          ),
+          borderSide: BorderSide.none,
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-          borderSide: const BorderSide(
-            color: AppColors.orange,
-            width: 2,
-          ),
+          borderSide: BorderSide.none,
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-          borderSide: const BorderSide(
-            color: AppColors.red,
-            width: 1,
-          ),
+          borderSide: BorderSide.none,
         ),
         labelStyle: TextStyle(
           color: AppColors.textSecondaryOf(context),
@@ -489,7 +494,7 @@ class _BecomeTrainerPageState extends State<BecomeTrainerPage> {
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
-        prefixIcon: Icon(icon, color: AppColors.orange),
+        prefixIcon: Icon(icon, color: AppColors.purple),
         filled: true,
         fillColor: colorScheme.surface,
         border: OutlineInputBorder(
@@ -498,17 +503,11 @@ class _BecomeTrainerPageState extends State<BecomeTrainerPage> {
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-          borderSide: BorderSide(
-            color: DesignTokens.borderColorOf(context),
-            width: 1,
-          ),
+          borderSide: BorderSide.none,
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-          borderSide: const BorderSide(
-            color: AppColors.orange,
-            width: 2,
-          ),
+          borderSide: BorderSide.none,
         ),
         labelStyle: TextStyle(
           color: AppColors.textSecondaryOf(context),
@@ -522,7 +521,7 @@ class _BecomeTrainerPageState extends State<BecomeTrainerPage> {
         fontSize: 16,
       ),
       dropdownColor: colorScheme.surface,
-      icon: const Icon(Icons.arrow_drop_down, color: AppColors.orange),
+      icon: const Icon(Icons.arrow_drop_down, color: AppColors.purple),
     );
   }
 
@@ -555,10 +554,6 @@ class _BecomeTrainerPageState extends State<BecomeTrainerPage> {
             decoration: BoxDecoration(
               color: colorScheme.surface,
               borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-              border: Border.all(
-                color: DesignTokens.borderColorOf(context),
-                width: 1,
-              ),
             ),
             child: image != null
                 ? Stack(
@@ -597,12 +592,12 @@ class _BecomeTrainerPageState extends State<BecomeTrainerPage> {
                         Container(
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
-                            color: AppColors.orange.withOpacity(0.1),
+                            color: AppColors.purple.withOpacity(0.1),
                             shape: BoxShape.circle,
                           ),
                           child: Icon(
                             icon,
-                            color: AppColors.orange,
+                            color: AppColors.purple,
                             size: 32,
                           ),
                         ),
@@ -641,7 +636,7 @@ class _SectionHeader extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            gradient: AppColors.stepsGradient,
+            gradient: AppColors.distanceGradient,
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(icon, color: Colors.white, size: 20),

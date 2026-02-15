@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../theme/theme_mode_provider.dart';
 import '../../providers/profile_images_provider.dart';
 import '../../repositories/profile_repository.dart';
 import '../../utils/page_transitions.dart';
@@ -31,6 +30,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   bool _pushNotifications = true;
   bool _communityNotifications = true;
   bool _reminderNotifications = true;
+  bool _achievementNotifications = true;
   
   // Profile data
   Map<String, dynamic>? _profile;
@@ -41,6 +41,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   void initState() {
     super.initState();
     _loadProfile();
+    _loadNotificationPreferences();
   }
 
   Future<void> _loadProfile() async {
@@ -54,6 +55,22 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     } catch (e) {
       setState(() => _isLoadingProfile = false);
       print('Error loading profile: $e');
+    }
+  }
+
+  Future<void> _loadNotificationPreferences() async {
+    try {
+      final prefs = await _profileRepo.fetchNotificationPreferences();
+      if (mounted) {
+        setState(() {
+          _pushNotifications = prefs['push'] ?? true;
+          _communityNotifications = prefs['community'] ?? true;
+          _reminderNotifications = prefs['reminders'] ?? true;
+          _achievementNotifications = prefs['achievements'] ?? true;
+        });
+      }
+    } catch (e) {
+      print('Error loading notification preferences: $e');
     }
   }
 
@@ -119,6 +136,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           pushNotifications: _pushNotifications,
           communityNotifications: _communityNotifications,
           reminderNotifications: _reminderNotifications,
+          achievementNotifications: _achievementNotifications,
         ),
         beginOffset: const Offset(0, 0.05),
       ),
@@ -128,7 +146,22 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       _pushNotifications = result.push;
       _communityNotifications = result.community;
       _reminderNotifications = result.reminders;
+      _achievementNotifications = result.achievements;
     });
+    try {
+      await _profileRepo.updateNotificationPreferences(
+        push: result.push,
+        community: result.community,
+        reminders: result.reminders,
+        achievements: result.achievements,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not save: $e')),
+        );
+      }
+    }
   }
 
   void _openInfoPage(BuildContext context, Widget page) {
@@ -165,7 +198,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final themeMode = ref.watch(themeModeProvider);
     final profileImages = ref.watch(profileImagesProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark 
@@ -248,11 +280,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           _SettingsGroup(
             title: 'App',
             children: [
-              _AppearanceRow(
-                themeMode: themeMode,
-                onChanged: (mode) =>
-                    ref.read(themeModeProvider.notifier).state = mode,
-              ),
               _SettingsRow(
                 icon: Icons.notifications_none,
                 title: 'Notifications',
@@ -425,101 +452,6 @@ class _SettingsRow extends StatelessWidget {
 }
 
 // (_ToggleRow removed; notification/privacy toggles are now on dedicated pages.)
-
-// (_SegmentRow removed; Appearance uses icon selector.)
-
-class _AppearanceRow extends StatelessWidget {
-  final ThemeMode themeMode;
-  final ValueChanged<ThemeMode> onChanged;
-
-  const _AppearanceRow({
-    required this.themeMode,
-    required this.onChanged,
-  });
-
-  int _indexFromMode(ThemeMode mode) {
-    switch (mode) {
-      case ThemeMode.system:
-        return 0;
-      case ThemeMode.light:
-        return 1;
-      case ThemeMode.dark:
-        return 2;
-    }
-  }
-
-  ThemeMode _modeFromIndex(int index) {
-    switch (index) {
-      case 1:
-        return ThemeMode.light;
-      case 2:
-        return ThemeMode.dark;
-      case 0:
-      default:
-        return ThemeMode.system;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final selected = _indexFromMode(themeMode);
-    final bg = Colors.grey.withOpacity(0.3); // grey
-
-    Widget seg(int index, IconData icon) {
-      final isSelected = index == selected;
-      return Expanded(
-        child: GestureDetector(
-          onTap: () => onChanged(_modeFromIndex(index)),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            margin: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: isSelected ? cs.primary : Colors.transparent,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Center(
-              child: Icon(
-                icon,
-                size: 18,
-                color: isSelected ? Colors.white : cs.onSurface,
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Appearance',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: cs.onSurface,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Container(
-          height: 44,
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(22),
-          ),
-          child: Row(
-            children: [
-              seg(0, Icons.brightness_auto_rounded),
-              seg(1, Icons.light_mode_rounded),
-              seg(2, Icons.dark_mode_rounded),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
 
 class _ProfileSection extends StatelessWidget {
   final String? profileImagePath;

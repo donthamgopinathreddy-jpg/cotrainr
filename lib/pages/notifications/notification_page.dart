@@ -6,6 +6,7 @@ import '../../theme/app_colors.dart';
 import '../../services/notification_service.dart';
 import '../../services/meeting_storage_service.dart';
 import '../../repositories/notifications_repository.dart';
+import '../../repositories/profile_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 enum NotificationType {
@@ -32,6 +33,7 @@ class NotificationPage extends StatefulWidget {
 class _NotificationPageState extends State<NotificationPage> {
   final NotificationService _notificationService = NotificationService();
   final NotificationsRepository _notificationsRepo = NotificationsRepository();
+  final ProfileRepository _profileRepo = ProfileRepository();
   List<NotificationData> _notifications = [];
   final Map<String, NotificationData> _deletedNotifications = {};
   final Map<String, DateTime> _deletedTimestamps = {};
@@ -40,8 +42,13 @@ class _NotificationPageState extends State<NotificationPage> {
   @override
   void initState() {
     super.initState();
-    _loadRealNotifications();
+    _markAllAsReadAndLoad();
     _notificationService.addListener(_loadNotifications);
+  }
+
+  Future<void> _markAllAsReadAndLoad() async {
+    await _notificationsRepo.markAllAsRead();
+    if (mounted) _loadRealNotifications();
   }
 
   @override
@@ -56,23 +63,44 @@ class _NotificationPageState extends State<NotificationPage> {
 
     try {
       final notificationsData = await _notificationsRepo.fetchNotifications();
+      final prefs = await _profileRepo.fetchNotificationPreferences();
       if (!mounted) return;
 
       final notifications = <NotificationData>[];
-      
+      final communityOn = prefs['community'] ?? true;
+      final remindersOn = prefs['reminders'] ?? true;
+      final achievementsOn = prefs['achievements'] ?? true;
+
       for (final notif in notificationsData) {
         // Map database type to NotificationType enum
         final type = _mapNotificationType(notif['type'] as String);
-        
+
+        // Filter by user preferences
+        if (!_shouldShowNotification(type, notif['type'] as String, communityOn, remindersOn, achievementsOn)) {
+          continue;
+        }
+
         // Parse data JSONB for additional info
         final data = notif['data'] as Map<String, dynamic>?;
         final actorId = data?['actor_id'] as String?;
         final actorProfile = actorId != null ? await _getActorProfile(actorId) : null;
-        
+        final postId = data?['post_id'] as String?;
+
+        // Fetch post preview for like/comment notifications
+        String? postContentPreview;
+        String? postMediaUrl;
+        if (postId != null && (type == NotificationType.postLike || type == NotificationType.comment)) {
+          final preview = await _notificationsRepo.fetchPostPreview(postId);
+          if (preview != null) {
+            postContentPreview = preview['content'] as String?;
+            postMediaUrl = preview['media_url'] as String?;
+          }
+        }
+
         // Format timestamp
         final createdAt = DateTime.parse(notif['created_at'] as String);
         final timeStr = NotificationsRepository.formatRelativeTime(createdAt);
-        
+
         notifications.add(NotificationData(
           id: notif['id'] as String,
           type: type,
@@ -83,6 +111,9 @@ class _NotificationPageState extends State<NotificationPage> {
           hasUnread: !(notif['read'] as bool? ?? false),
           userAvatarUrl: actorProfile?['avatar_url'] as String?,
           meetingId: data?['meeting_id'] as String?,
+          postId: postId,
+          postContentPreview: postContentPreview,
+          postMediaUrl: postMediaUrl,
         ));
       }
 
@@ -100,15 +131,41 @@ class _NotificationPageState extends State<NotificationPage> {
     }
   }
 
+  bool _shouldShowNotification(
+    NotificationType type,
+    String dbType,
+    bool communityOn,
+    bool remindersOn,
+    bool achievementsOn,
+  ) {
+    // Community: likes, follows, comments
+    if (type == NotificationType.postLike ||
+        type == NotificationType.following ||
+        type == NotificationType.followRequest ||
+        type == NotificationType.comment) {
+      return communityOn;
+    }
+    // Reminders: habit/meal reminders (type 'reminder' in DB)
+    if (dbType.toLowerCase() == 'reminder') {
+      return remindersOn;
+    }
+    // Achievements: quest, streak, steps goal, achievement
+    if (type == NotificationType.questCompleted ||
+        type == NotificationType.streakReached ||
+        type == NotificationType.stepsGoalAchieved ||
+        type == NotificationType.goalReached ||
+        type == NotificationType.achievement) {
+      return achievementsOn;
+    }
+    // Meetings, messages: always show (important)
+    return true;
+  }
+
   Future<Map<String, dynamic>?> _getActorProfile(String userId) async {
     try {
       final supabase = Supabase.instance.client;
-      final response = await supabase
-          .from('profiles')
-          .select('id, username, full_name, avatar_url')
-          .eq('id', userId)
-          .maybeSingle();
-      return response;
+      final list = (await supabase.rpc('get_public_profile', params: {'p_user_id': userId}) as List).cast<Map<String, dynamic>>();
+      return list.isNotEmpty ? list.first : null;
     } catch (e) {
       print('Error fetching actor profile: $e');
       return null;
@@ -472,6 +529,9 @@ class NotificationData {
   final bool canFollow;
   final String? meetingId;
   final String? userAvatarUrl;
+  final String? postId;
+  final String? postContentPreview;
+  final String? postMediaUrl;
 
   NotificationData({
     required this.id,
@@ -485,7 +545,69 @@ class NotificationData {
     this.canFollow = false,
     this.meetingId,
     this.userAvatarUrl,
+    this.postId,
+    this.postContentPreview,
+    this.postMediaUrl,
   });
+}
+
+class _PostPreviewThumbnail extends StatelessWidget {
+  final String? mediaUrl;
+  final String? contentPreview;
+
+  const _PostPreviewThumbnail({
+    this.mediaUrl,
+    this.contentPreview,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    const size = 48.0;
+
+    if (mediaUrl != null && mediaUrl!.isNotEmpty) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: CachedNetworkImage(
+            imageUrl: mediaUrl!,
+            fit: BoxFit.cover,
+            placeholder: (_, __) => Container(
+              color: cs.surfaceContainerHighest,
+              child: Icon(Icons.image, color: cs.onSurfaceVariant, size: 20),
+            ),
+            errorWidget: (_, __, ___) => Container(
+              color: cs.surfaceContainerHighest,
+              child: Icon(Icons.image_not_supported, color: cs.onSurfaceVariant, size: 20),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      width: size,
+      height: size,
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        contentPreview ?? '',
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w500,
+          color: cs.onSurfaceVariant,
+          height: 1.2,
+        ),
+        maxLines: 3,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
 }
 
 class _DeletedNotificationCard extends StatelessWidget {
@@ -813,6 +935,18 @@ class _NotificationItemState extends State<_NotificationItem>
                     ],
                   ),
                 ),
+                // Post preview for like/comment
+                if ((widget.notification.type == NotificationType.postLike ||
+                        widget.notification.type == NotificationType.comment) &&
+                    (widget.notification.postMediaUrl != null ||
+                        (widget.notification.postContentPreview != null &&
+                            widget.notification.postContentPreview!.isNotEmpty))) ...[
+                  const SizedBox(width: 12),
+                  _PostPreviewThumbnail(
+                    mediaUrl: widget.notification.postMediaUrl,
+                    contentPreview: widget.notification.postContentPreview,
+                  ),
+                ],
                 // Follow button - smaller and simpler
                 if (showFollowButton) ...[
                   const SizedBox(width: 8),

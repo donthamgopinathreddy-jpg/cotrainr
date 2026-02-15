@@ -19,6 +19,7 @@ import '../insights/insights_detail_page.dart';
 import '../../services/streak_service.dart';
 import '../../services/user_goals_service.dart';
 import '../../repositories/profile_repository.dart';
+import '../../repositories/notifications_repository.dart';
 import '../../services/metrics_sync_service.dart';
 import '../../repositories/metrics_repository.dart';
 import '../../providers/quest_provider.dart';
@@ -107,11 +108,8 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
       print('HOME_V3: Fetching profile for user ID: $uid');
       
       // Fetch profile directly from Supabase
-      final profile = await supabase
-          .from('profiles')
-          .select('id, full_name, username, avatar_url, cover_url, height_cm, weight_kg, role')
-          .eq('id', uid)
-          .maybeSingle();
+      final list = (await supabase.rpc('get_my_profile') as List).cast<Map<String, dynamic>>();
+      final profile = list.isNotEmpty ? list.first : null;
       
       print('HOME_V3 profile query result: $profile');
       
@@ -183,20 +181,16 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
   
   Future<void> _loadNotificationsCount() async {
     try {
-      final supabase = Supabase.instance.client;
-      final userId = supabase.auth.currentUser?.id;
-      if (userId == null) return;
-
-      final response = await supabase
-          .from('notifications')
-          .select('id')
-          .eq('user_id', userId)
-          .eq('read', false);
-
+      final notificationsRepo = NotificationsRepository();
+      final profileRepo = ProfileRepository();
+      final prefs = await profileRepo.fetchNotificationPreferences();
+      final count = await notificationsRepo.fetchUnreadCount(
+        community: prefs['community'] ?? true,
+        reminders: prefs['reminders'] ?? true,
+        achievements: prefs['achievements'] ?? true,
+      );
       if (mounted) {
-        setState(() {
-          _notificationCount = (response as List).length;
-        });
+        setState(() => _notificationCount = count);
       }
     } catch (e) {
       print('HOME_V3: Error loading notifications: $e');
@@ -299,6 +293,7 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isLight = Theme.of(context).brightness == Brightness.light;
     // Watch step count from health tracking provider (updates every 30 seconds)
     final stepsAsync = ref.watch(stepsNotifierProvider);
     final providerSteps = stepsAsync.value ?? 0;
@@ -325,7 +320,7 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
     return FadeTransition(
       opacity: _fadeAnimation,
       child: Scaffold(
-        backgroundColor: cs.background,
+        backgroundColor: isLight ? Colors.grey.shade200 : cs.background,
         body: RefreshIndicator(
           onRefresh: _onRefresh,
           color: AppColors.orange,
@@ -344,7 +339,10 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                 coverImageUrl: _coverImageUrl ?? ref.watch(profileImagesProvider).coverImagePath,
                 avatarUrl: _avatarUrl ?? ref.watch(profileImagesProvider).profileImagePath,
                 streakDays: 0, // Remove streak from header
-                onNotificationTap: () => context.push('/notifications'),
+                onNotificationTap: () async {
+                  await context.push('/notifications');
+                  if (mounted) _loadNotificationsCount();
+                },
               ),
               0,
             ),

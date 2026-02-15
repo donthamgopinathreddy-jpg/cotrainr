@@ -39,6 +39,23 @@ class NotificationsRepository {
     }
   }
 
+  /// Mark all notifications as read
+  Future<void> markAllAsRead() async {
+    if (_currentUserId == null) return;
+    try {
+      await _supabase
+          .from('notifications')
+          .update({
+            'read': true,
+            'read_at': DateTime.now().toIso8601String(),
+          })
+          .eq('user_id', _currentUserId!)
+          .eq('read', false);
+    } catch (e) {
+      print('Error marking all notifications as read: $e');
+    }
+  }
+
   /// Mark notification as read
   Future<void> markAsRead(String notificationId) async {
     if (_currentUserId == null) return;
@@ -69,6 +86,64 @@ class NotificationsRepository {
           .eq('user_id', _currentUserId!);
     } catch (e) {
       print('Error deleting notification: $e');
+    }
+  }
+
+  /// Fetch unread count filtered by notification preferences
+  Future<int> fetchUnreadCount({
+    bool community = true,
+    bool reminders = true,
+    bool achievements = true,
+  }) async {
+    if (_currentUserId == null) return 0;
+    try {
+      final response = await _supabase
+          .from('notifications')
+          .select('id, type')
+          .eq('user_id', _currentUserId!)
+          .eq('read', false);
+      final list = (response as List).cast<Map<String, dynamic>>();
+      return list.where((n) {
+        final type = (n['type'] as String?)?.toLowerCase() ?? '';
+        if (type == 'like' || type == 'following' || type == 'follow' || type == 'comment') {
+          return community;
+        }
+        if (type == 'reminder') return reminders;
+        if (type == 'quest' || type == 'streak' || type == 'goal_reached' || type == 'steps_goal' || type == 'achievement') {
+          return achievements;
+        }
+        return true; // meeting, message, etc.
+      }).length;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  /// Fetch post preview (content + first media URL) for notification display
+  Future<Map<String, dynamic>?> fetchPostPreview(String postId) async {
+    try {
+      final postResponse = await _supabase
+          .from('posts')
+          .select('id, content')
+          .eq('id', postId)
+          .maybeSingle();
+      if (postResponse == null) return null;
+
+      final mediaResponse = await _supabase
+          .from('post_media')
+          .select('media_url')
+          .eq('post_id', postId)
+          .order('order_index')
+          .limit(1);
+      final mediaList = (mediaResponse as List).cast<Map<String, dynamic>>();
+      final firstMediaUrl = mediaList.isNotEmpty ? mediaList[0]['media_url'] as String? : null;
+
+      return {
+        'content': postResponse['content'] as String? ?? '',
+        'media_url': firstMediaUrl,
+      };
+    } catch (e) {
+      return null;
     }
   }
 

@@ -356,11 +356,12 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
         }
       }
     } catch (e) {
+      print('EditProfilePage: Avatar upload error: $e');
       if (mounted && scaffoldMessenger != null) {
         scaffoldMessenger.showSnackBar(
-          SnackBar(
-            content: Text('Error uploading profile picture: $e'),
-            duration: const Duration(seconds: 3),
+          const SnackBar(
+            content: Text('Cannot save profile picture. Please try again.'),
+            duration: Duration(seconds: 3),
           ),
         );
       }
@@ -393,11 +394,12 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
         }
       }
     } catch (e) {
+      print('EditProfilePage: Cover upload error: $e');
       if (mounted && scaffoldMessenger != null) {
         scaffoldMessenger.showSnackBar(
-          SnackBar(
-            content: Text('Error uploading cover picture: $e'),
-            duration: const Duration(seconds: 3),
+          const SnackBar(
+            content: Text('Cannot save cover picture. Please try again.'),
+            duration: Duration(seconds: 3),
           ),
         );
       }
@@ -552,11 +554,13 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final profileImages = ref.watch(profileImagesProvider);
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final bgColor = isLight ? Colors.grey.shade200 : colorScheme.background;
 
     return Scaffold(
-      backgroundColor: colorScheme.background,
+      backgroundColor: bgColor,
       appBar: AppBar(
-        backgroundColor: colorScheme.background,
+        backgroundColor: bgColor,
         elevation: 0,
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: colorScheme.onBackground),
@@ -579,12 +583,17 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : Text(
-                    'Save',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: colorScheme.primary,
+                : ShaderMask(
+                    shaderCallback: (bounds) => const LinearGradient(
+                      colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
+                    ).createShader(bounds),
+                    child: Text(
+                      'Save',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
           ),
@@ -944,15 +953,26 @@ class _CropDialogState extends State<_CropDialog> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: ElevatedButton(
-                      onPressed: () => _cropController.crop(),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
                         ),
+                        borderRadius: BorderRadius.circular(999),
                       ),
-                      child: const Text('Crop'),
+                      child: ElevatedButton(
+                        onPressed: () => _cropController.crop(),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          backgroundColor: Colors.transparent,
+                          foregroundColor: Colors.white,
+                          shadowColor: Colors.transparent,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                        child: const Text('Crop'),
+                      ),
                     ),
                   ),
                 ],
@@ -982,52 +1002,52 @@ class _PhotoSelector extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        height: 120,
-        decoration: BoxDecoration(
-          color: colorScheme.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: colorScheme.outline.withOpacity(0.18)),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 60,
-              height: 60,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                image: imagePath != null && imagePath!.isNotEmpty
-                    ? DecorationImage(
+      borderRadius: BorderRadius.circular(12),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final size = constraints.maxWidth.clamp(0.0, 160.0);
+          return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: size,
+                  height: size,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(11),
+                    child: imagePath != null && imagePath!.isNotEmpty
+                    ? Image(
                         image: imagePath!.startsWith('http')
                             ? NetworkImage(imagePath!)
                             : FileImage(File(imagePath!)) as ImageProvider,
                         fit: BoxFit.cover,
+                        width: double.infinity,
+                        height: double.infinity,
                       )
-                    : null,
-                color: imagePath == null || imagePath!.isEmpty
-                    ? colorScheme.surfaceContainerHighest
-                    : null,
-              ),
-              child: imagePath == null || imagePath!.isEmpty
-                  ? Icon(
-                      Icons.add_photo_alternate,
-                      color: colorScheme.onSurface.withOpacity(0.5),
-                    )
-                  : null,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: colorScheme.onSurface.withOpacity(0.7),
-              ),
-            ),
-          ],
-        ),
+                    : Container(
+                        width: double.infinity,
+                        color: colorScheme.surfaceContainerHighest,
+                        child: Icon(
+                          Icons.add_photo_alternate,
+                          size: 36,
+                          color: colorScheme.onSurface.withOpacity(0.5),
+                        ),
+                      ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: colorScheme.onSurface.withOpacity(0.7),
+                    ),
+                  ),
+                ),
+              ],
+            );
+        },
       ),
     );
   }
@@ -1083,23 +1103,26 @@ class _FormField extends StatelessWidget {
         filled: true,
         fillColor: colorScheme.surface,
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(999),
           borderSide: BorderSide(color: colorScheme.outline.withOpacity(0.18)),
         ),
         disabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(999),
           borderSide: BorderSide(color: colorScheme.outline.withOpacity(0.18)),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: colorScheme.primary, width: 2),
+          borderRadius: BorderRadius.circular(999),
+          borderSide: const BorderSide(
+            color: Color(0xFFFF8A00),
+            width: 2,
+          ),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(999),
           borderSide: BorderSide(color: colorScheme.error),
         ),
         focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(999),
           borderSide: BorderSide(color: colorScheme.error, width: 2),
         ),
       ),
@@ -1150,7 +1173,7 @@ class _GenderSelector extends StatelessWidget {
           height: 56,
           decoration: BoxDecoration(
             color: colorScheme.surface,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(999),
             border: Border.all(color: colorScheme.outline.withOpacity(0.18)),
           ),
           child: Row(
@@ -1159,13 +1182,16 @@ class _GenderSelector extends StatelessWidget {
               return Expanded(
                 child: InkWell(
                   onTap: () => onChanged(gender),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(999),
                   child: Container(
                     decoration: BoxDecoration(
-                      color: isSelected
-                          ? colorScheme.primary
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(16),
+                      gradient: isSelected
+                          ? const LinearGradient(
+                              colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
+                            )
+                          : null,
+                      color: isSelected ? null : Colors.transparent,
+                      borderRadius: BorderRadius.circular(999),
                     ),
                     child: Center(
                       child: Text(
@@ -1244,7 +1270,7 @@ class _HeightWeightField extends StatelessWidget {
               Container(
                 decoration: BoxDecoration(
                   color: colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(999),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -1328,8 +1354,13 @@ class _UnitToggleButton extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? colorScheme.primary : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
+          gradient: isSelected
+              ? const LinearGradient(
+                  colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
+                )
+              : null,
+          color: isSelected ? null : Colors.transparent,
+          borderRadius: BorderRadius.circular(999),
         ),
         child: Text(
           label,

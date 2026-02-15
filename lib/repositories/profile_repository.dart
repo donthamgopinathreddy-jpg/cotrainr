@@ -10,7 +10,7 @@ class ProfileRepository {
   /// Get current user ID
   String? get _currentUserId => _supabase.auth.currentUser?.id;
 
-  /// Fetch current user's profile
+  /// Fetch current user's profile (RPC get_my_profile)
   Future<Map<String, dynamic>?> fetchMyProfile() async {
     if (_currentUserId == null) {
       print('ProfileRepository: User not authenticated');
@@ -18,75 +18,37 @@ class ProfileRepository {
     }
 
     try {
-      print('ProfileRepository: Fetching profile for user: $_currentUserId');
-      // Explicitly select columns to avoid issues with missing columns
-      final response = await _supabase
-          .from('profiles')
-          .select('id, role, email, username, username_lower, full_name, avatar_url, cover_url, bio, phone, date_of_birth, gender, height_cm, weight_kg, created_at, updated_at')
-          .eq('id', _currentUserId!)
-          .maybeSingle();
-
-      if (response == null) {
-        print('ProfileRepository: Profile not found for user: $_currentUserId');
-        print('ProfileRepository: This might mean the profile was not created during signup');
-      } else {
-        print('ProfileRepository: Successfully fetched profile: ${response['username']}');
-        print('ProfileRepository: Profile fields - full_name: ${response['full_name']}, avatar_url: ${response['avatar_url']}, cover_url: ${response['cover_url']}');
-        print('ProfileRepository: Profile fields - height_cm: ${response['height_cm']}, weight_kg: ${response['weight_kg']}');
-        print('ProfileRepository: Profile fields - email: ${response['email']}, phone: ${response['phone']}, gender: ${response['gender']}, dob: ${response['date_of_birth']}');
-        print('ProfileRepository: Full profile data: $response');
-      }
-
-      return response;
+      final response = await _supabase.rpc('get_my_profile');
+      final list = (response as List).cast<Map<String, dynamic>>();
+      return list.isNotEmpty ? list.first : null;
     } catch (e) {
       print('ProfileRepository: Error fetching profile: $e');
-      print('ProfileRepository: Error type: ${e.runtimeType}');
       throw Exception('Failed to fetch profile: $e');
     }
   }
 
-  /// Fetch any user's profile by ID
-  /// Includes followers_count, following_count when migration 20250213_follower_counts_on_profiles has run
+  /// Fetch any user's profile by ID (RPC get_my_profile for self, get_public_profile for others)
   Future<Map<String, dynamic>?> fetchUserProfile(String userId) async {
     try {
-      final response = await _supabase
-          .from('profiles')
-          .select('id, username, full_name, avatar_url, bio, role, created_at, followers_count, following_count')
-          .eq('id', userId)
-          .maybeSingle();
-      return response;
-    } catch (e) {
-      // Fallback if followers_count/following_count columns don't exist (migration not run)
-      final msg = e.toString().toLowerCase();
-      if (msg.contains('followers_count') || msg.contains('following_count') || msg.contains('does not exist')) {
-        try {
-          return await _supabase
-              .from('profiles')
-              .select('id, username, full_name, avatar_url, bio, role, created_at')
-              .eq('id', userId)
-              .maybeSingle();
-        } catch (e2) {
-          print('Error fetching user profile: $e2');
-          return null;
-        }
+      if (userId == _currentUserId) {
+        final list = (await _supabase.rpc('get_my_profile') as List).cast<Map<String, dynamic>>();
+        return list.isNotEmpty ? list.first : null;
       }
+      final list = (await _supabase.rpc('get_public_profile', params: {'p_user_id': userId}) as List).cast<Map<String, dynamic>>();
+      return list.isNotEmpty ? list.first : null;
+    } catch (e) {
       print('Error fetching user profile: $e');
       return null;
     }
   }
 
-  /// Search users by username or full name
+  /// Search users by username or full name (RPC search_public_profiles)
   Future<List<Map<String, dynamic>>> searchUsers(String query, {int limit = 20}) async {
     try {
-      final searchTerm = query.toLowerCase().trim();
+      final searchTerm = query.trim();
       if (searchTerm.isEmpty) return [];
 
-      final response = await _supabase
-          .from('profiles')
-          .select('id, username, full_name, avatar_url, role')
-          .or('username.ilike.%$searchTerm%,full_name.ilike.%$searchTerm%')
-          .limit(limit);
-
+      final response = await _supabase.rpc('search_public_profiles', params: {'p_query': searchTerm, 'p_limit': limit});
       return (response as List).cast<Map<String, dynamic>>();
     } catch (e) {
       print('Error searching users: $e');
@@ -94,7 +56,60 @@ class ProfileRepository {
     }
   }
 
-  /// Update profile fields
+  /// Fetch notification preferences (RPC get_my_profile)
+  Future<Map<String, bool>> fetchNotificationPreferences() async {
+    if (_currentUserId == null) {
+      return {
+        'push': true,
+        'community': true,
+        'reminders': true,
+        'achievements': true,
+      };
+    }
+    try {
+      final list = (await _supabase.rpc('get_my_profile') as List).cast<Map<String, dynamic>>();
+      final response = list.isNotEmpty ? list.first : null;
+      if (response == null) return _defaultNotificationPrefs;
+      return {
+        'push': response['notification_push'] as bool? ?? true,
+        'community': response['notification_community'] as bool? ?? true,
+        'reminders': response['notification_reminders'] as bool? ?? true,
+        'achievements': response['notification_achievements'] as bool? ?? true,
+      };
+    } catch (e) {
+      return _defaultNotificationPrefs;
+    }
+  }
+
+  static const _defaultNotificationPrefs = {
+    'push': true,
+    'community': true,
+    'reminders': true,
+    'achievements': true,
+  };
+
+  /// Update notification preferences
+  Future<void> updateNotificationPreferences({
+    required bool push,
+    required bool community,
+    required bool reminders,
+    required bool achievements,
+  }) async {
+    if (_currentUserId == null) return;
+    try {
+      await _supabase.from('profiles').update({
+        'notification_push': push,
+        'notification_community': community,
+        'notification_reminders': reminders,
+        'notification_achievements': achievements,
+      }).eq('id', _currentUserId!);
+    } catch (e) {
+      print('Error updating notification preferences: $e');
+      rethrow;
+    }
+  }
+
+  /// Update profile fields (uses update_my_profile RPC for robust handling of new users)
   Future<void> updateProfile(Map<String, dynamic> updates) async {
     if (_currentUserId == null) {
       throw Exception('User not authenticated');
@@ -103,12 +118,9 @@ class ProfileRepository {
     try {
       print('ProfileRepository: Updating profile for user: $_currentUserId');
       print('ProfileRepository: Updates: $updates');
-      final response = await _supabase
-          .from('profiles')
-          .update(updates)
-          .eq('id', _currentUserId!)
-          .select()
-          .single();
+      // Use RPC to handle missing profile (new users) and ensure avatar/cover save works
+      await _supabase.rpc('update_my_profile', params: {'p_updates': updates});
+      final response = await fetchMyProfile();
       print('ProfileRepository: Profile updated successfully: $response');
     } catch (e) {
       print('ProfileRepository: Error updating profile: $e');
