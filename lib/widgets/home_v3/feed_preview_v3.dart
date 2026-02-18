@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../theme/app_colors.dart';
@@ -176,16 +177,6 @@ class _FeedPreviewV3State extends State<FeedPreviewV3> {
               ),
             ),
             const SizedBox(width: 8),
-            Text(
-              'COMMUNITY',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w900,
-                color: cs.onSurfaceVariant,
-                letterSpacing: 2.5,
-              ),
-            ),
-            const SizedBox(width: 8),
             Container(
               width: 4,
               height: 18,
@@ -200,10 +191,10 @@ class _FeedPreviewV3State extends State<FeedPreviewV3> {
             ),
             const SizedBox(width: 8),
             Text(
-              'Feed',
-              style: TextStyle(
+              'Community Feed',
+              style: GoogleFonts.montserrat(
                 fontSize: DesignTokens.fontSizeSection,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w500,
                 color: cs.onSurface,
                 letterSpacing: -0.5,
               ),
@@ -226,7 +217,7 @@ class _FeedPreviewV3State extends State<FeedPreviewV3> {
             ),
           ],
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 20),
         SizedBox(
           height: 420,
           child: _isLoading

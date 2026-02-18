@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_colors.dart';
+import '../../repositories/profile_repository.dart';
 import '../../utils/page_transitions.dart';
 import '../../widgets/common/pressable_card.dart';
 import '../../widgets/common/cover_with_blur_bridge.dart';
@@ -26,34 +27,16 @@ class TrainerProfilePage extends ConsumerStatefulWidget {
 
 class _TrainerProfilePageState extends ConsumerState<TrainerProfilePage>
     with SingleTickerProviderStateMixin {
-  final String _username = 'John Doe';
-  final String _handle = '@fitness_john';
+  String _username = 'Trainer';
+  String _handle = '@user';
   final bool _isSubscribed = false;
-  
+  bool? _verified;
+
   String get _role => 'trainer';
 
-  // Check verification status - in real app, fetch from Supabase
-  String? get _verificationStatus {
-    if (_role == 'trainer' || _role == 'nutritionist') {
-      // Mock: check if verified - in real app, check user metadata or database
-      final supabase = Supabase.instance.client;
-      final user = supabase.auth.currentUser;
-      return user?.userMetadata?['verification_status']?.toString().toLowerCase();
-    }
-    return null;
-  }
+  bool get _isPending => _verified == false;
 
-  bool get _isPending {
-    return _verificationStatus == 'pending';
-  }
-
-  bool get _needsVerification {
-    if (_role == 'trainer' || _role == 'nutritionist') {
-      // Show verification card if not verified (status is null, 'pending', or anything other than 'verified')
-      return _verificationStatus != 'verified';
-    }
-    return false;
-  }
+  bool get _needsVerification => _role == 'trainer' && _verified != true;
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
 
@@ -69,6 +52,33 @@ class _TrainerProfilePageState extends ConsumerState<TrainerProfilePage>
       curve: Curves.easeOut,
     );
     _fadeController.forward();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    try {
+      final profileRepo = ProfileRepository();
+      final profile = await profileRepo.fetchMyProfile();
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      bool? verified;
+      if (userId != null) {
+        try {
+          final prov = await Supabase.instance.client
+              .from('providers')
+              .select('verified')
+              .eq('user_id', userId)
+              .maybeSingle();
+          verified = prov?['verified'] as bool?;
+        } catch (_) {}
+      }
+      if (mounted) {
+        setState(() {
+          _username = profile?['full_name'] as String? ?? profile?['username'] as String? ?? 'Trainer';
+          _handle = profile?['username'] != null ? '@${profile!['username']}' : '@user';
+          _verified = verified;
+        });
+      }
+    } catch (_) {}
   }
 
   @override
@@ -224,7 +234,7 @@ class _TrainerProfilePageState extends ConsumerState<TrainerProfilePage>
                           child: _FullLengthButton(
                             label: 'Become a Trainer',
                             icon: Icons.school_rounded,
-                    iconGradient: AppColors.distanceGradient,
+                            iconGradient: AppColors.becomeTrainerGradient,
                     onTap: () {
                       HapticFeedback.lightImpact();
                       Navigator.push(

@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/design_tokens.dart';
+import '../../services/leads_service.dart';
+import '../../services/leads_models.dart' show Lead;
 import 'create_client_page.dart';
 
 class TrainerMyClientsPage extends StatefulWidget {
@@ -19,10 +22,11 @@ class _TrainerMyClientsPageState extends State<TrainerMyClientsPage>
   late Animation<double> _fadeAnimation;
 
   int _selectedTabIndex = 0;
+  bool _loading = true;
 
-  // Mock data - in real app, fetch from Supabase
   final List<ClientItem> _myClients = [];
   final List<ClientItem> _pendingRequests = [];
+  final LeadsService _leadsService = LeadsService();
 
   @override
   void initState() {
@@ -36,7 +40,7 @@ class _TrainerMyClientsPageState extends State<TrainerMyClientsPage>
       curve: Curves.easeOut,
     );
     _fadeController.forward();
-    _loadMockData();
+    _loadLeads();
   }
 
   @override
@@ -46,58 +50,73 @@ class _TrainerMyClientsPageState extends State<TrainerMyClientsPage>
     super.dispose();
   }
 
-  void _loadMockData() {
+  Future<void> _loadLeads() async {
     setState(() {
-      _myClients.addAll([
-        ClientItem(
-          id: '1',
-          name: 'John Doe',
-          email: 'john@example.com',
-          phone: '+1234567890',
-          joinDate: DateTime.now().subtract(const Duration(days: 30)),
-          status: ClientStatus.active,
-          avatar: null,
-          alerts: [ClientAlert.waterLow],
-          adherencePercentage: 85.5,
-          lastCheckIn: DateTime.now().subtract(const Duration(hours: 2)),
-        ),
-        ClientItem(
-          id: '2',
-          name: 'Jane Smith',
-          email: 'jane@example.com',
-          phone: '+1234567891',
-          joinDate: DateTime.now().subtract(const Duration(days: 15)),
-          status: ClientStatus.atRisk,
-          avatar: null,
-          alerts: [ClientAlert.missedCheckin, ClientAlert.proteinLow],
-          adherencePercentage: 62.3,
-          lastCheckIn: DateTime.now().subtract(const Duration(days: 3)),
-        ),
-        ClientItem(
-          id: '4',
-          name: 'Mike Wilson',
-          email: 'mike@example.com',
-          phone: '+1234567893',
-          joinDate: DateTime.now().subtract(const Duration(days: 7)),
-          status: ClientStatus.newClient,
-          avatar: null,
-          alerts: [],
-          adherencePercentage: 95.0,
-          lastCheckIn: DateTime.now().subtract(const Duration(hours: 1)),
-        ),
-      ]);
-      _pendingRequests.addAll([
-        ClientItem(
-          id: '3',
-          name: 'Bob Johnson',
-          email: 'bob@example.com',
-          phone: '+1234567892',
-          joinDate: DateTime.now().subtract(const Duration(days: 2)),
-          status: ClientStatus.pending,
-          avatar: null,
-        ),
-      ]);
+      _myClients.clear();
+      _pendingRequests.clear();
+      _loading = true;
     });
+    try {
+      final leads = await _leadsService.getMyLeads();
+      final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+      if (currentUserId == null) {
+        if (mounted) setState(() => _loading = false);
+        return;
+      }
+      final filtered = leads.where((l) => l.providerId == currentUserId && l.providerType == 'trainer').toList();
+      final accepted = filtered.where((l) => l.status == 'accepted').toList();
+      final pending = filtered.where((l) => l.status == 'requested').toList();
+      if (mounted) {
+        setState(() {
+          _myClients.addAll(accepted.map(_leadToClientItem).toList());
+          _pendingRequests.addAll(pending.map(_leadToClientItem).toList());
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load clients: $e')),
+        );
+      }
+    }
+  }
+
+  ClientItem _leadToClientItem(Lead lead) {
+    final client = lead.client;
+    final name = client?['full_name'] as String? ?? 'Unknown';
+    final username = client?['username'] as String? ?? '';
+    final avatar = client?['avatar_url'] as String?;
+    return ClientItem(
+      id: lead.clientId,
+      name: name.isNotEmpty ? name : (username.isNotEmpty ? username : 'Client'),
+      email: username.isNotEmpty ? '@$username' : '—',
+      phone: '',
+      joinDate: lead.createdAt,
+      status: lead.status == 'accepted' ? ClientStatus.active : ClientStatus.pending,
+      avatar: avatar,
+      alerts: [],
+      leadId: lead.status == 'requested' ? lead.id : null,
+    );
+  }
+
+  Future<void> _acceptLead(String leadId) async {
+    try {
+      await _leadsService.updateLeadStatus(leadId: leadId, status: 'accepted');
+      await _loadLeads();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Client accepted')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to accept: $e')),
+        );
+      }
+    }
   }
 
   @override
@@ -224,9 +243,14 @@ class _TrainerMyClientsPageState extends State<TrainerMyClientsPage>
 
               // Content
               Expanded(
-                child: _selectedTabIndex == 0
-                    ? _buildClientsList(_myClients, textPrimary, textSecondary, surfaceColor, borderColor)
-                    : _buildClientsList(_pendingRequests, textPrimary, textSecondary, surfaceColor, borderColor),
+                child: _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : RefreshIndicator(
+                        onRefresh: _loadLeads,
+                        child: _selectedTabIndex == 0
+                            ? _buildClientsList(_myClients, textPrimary, textSecondary, surfaceColor, borderColor)
+                            : _buildClientsList(_pendingRequests, textPrimary, textSecondary, surfaceColor, borderColor),
+                      ),
               ),
             ],
           ),
@@ -280,34 +304,40 @@ class _TrainerMyClientsPageState extends State<TrainerMyClientsPage>
     Color borderColor,
   ) {
     if (clients.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.people_outline,
-              size: 64,
-              color: textSecondary.withOpacity(0.5),
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+        children: [
+          SizedBox(height: MediaQuery.of(context).size.height * 0.2),
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.people_outline,
+                  size: 64,
+                  color: textSecondary.withOpacity(0.5),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'No clients yet',
+                  style: TextStyle(
+                    color: textSecondary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Add clients to get started',
+                  style: TextStyle(
+                    color: textSecondary.withOpacity(0.7),
+                    fontSize: 14,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            Text(
-              'No clients yet',
-              style: TextStyle(
-                color: textSecondary,
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Add clients to get started',
-              style: TextStyle(
-                color: textSecondary.withOpacity(0.7),
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       );
     }
 
@@ -544,17 +574,10 @@ class _TrainerMyClientsPageState extends State<TrainerMyClientsPage>
                         ),
                       ],
                       // Accept button for pending
-                      if (client.status == ClientStatus.pending) ...[
+                      if (client.status == ClientStatus.pending && client.leadId != null) ...[
                         const SizedBox(height: 8),
                         GestureDetector(
-                          onTap: () {
-                            HapticFeedback.lightImpact();
-                            setState(() {
-                              _pendingRequests.remove(client);
-                              client.status = ClientStatus.active;
-                              _myClients.add(client);
-                            });
-                          },
+                          onTap: () => _acceptLead(client.leadId!),
                           behavior: HitTestBehavior.opaque,
                           child: Container(
                             padding: const EdgeInsets.symmetric(

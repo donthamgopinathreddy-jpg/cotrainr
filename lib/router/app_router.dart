@@ -21,13 +21,16 @@ import '../../pages/trainer/verification_submission_page.dart';
 import '../../pages/nutritionist/nutritionist_dashboard_page.dart';
 import '../../pages/nutritionist/nutritionist_client_detail_page.dart';
 import '../../pages/refer/refer_friend_page.dart';
-import '../../pages/video_sessions/video_sessions_page.dart';
+import '../../pages/video_sessions/video_sessions_page_v2.dart';
 import '../../pages/video_sessions/create_meeting_page.dart';
 import '../../pages/video_sessions/join_meeting_page.dart';
 import '../../pages/video_sessions/meeting_room_page.dart';
-import '../../pages/meal_tracker/meal_tracker_page_v2.dart';
-import '../../pages/quest/quest_page.dart';
+import '../../pages/video_sessions/session_detail_page.dart';
 import '../../models/video_session_models.dart';
+import '../../pages/meal_tracker/meal_tracker_page_v2.dart';
+import '../../pages/coach_notes/coach_notes_page.dart';
+import '../../pages/ai_planner/ai_planner_page.dart';
+import '../../pages/quest/quest_page.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: '/welcome',
@@ -167,6 +170,22 @@ final GoRouter appRouter = GoRouter(
       ),
     ),
     GoRoute(
+      path: '/coach-notes',
+      name: 'coachNotes',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const CoachNotesPage(),
+        state: state,
+      ),
+    ),
+    GoRoute(
+      path: '/ai-planner',
+      name: 'aiPlanner',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const AiPlannerPage(),
+        state: state,
+      ),
+    ),
+    GoRoute(
       path: '/insights/steps',
       name: 'insightsSteps',
       pageBuilder: (context, state) => _fadeSlidePage(
@@ -248,11 +267,20 @@ final GoRouter appRouter = GoRouter(
       path: '/video',
       name: 'videoSessions',
       pageBuilder: (context, state) => _fadeSlidePage(
-        child: VideoSessionsPage(
-          role: Role.client,
-        ),
+        child: const VideoSessionsPageV2(),
         state: state,
       ),
+    ),
+    GoRoute(
+      path: '/video/session/:id',
+      name: 'sessionDetail',
+      pageBuilder: (context, state) {
+        final id = state.pathParameters['id'] ?? '';
+        return _fadeSlidePage(
+          child: SessionDetailPage(sessionId: id),
+          state: state,
+        );
+      },
     ),
     GoRoute(
       path: '/video/create',

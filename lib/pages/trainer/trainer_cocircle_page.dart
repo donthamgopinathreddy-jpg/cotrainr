@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
-import '../../models/cocircle_feed_post.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../models/cocircle_feed_post.dart';
 import '../../theme/design_tokens.dart';
 import '../../widgets/cocircle/cocircle_feed_card.dart';
 import '../../utils/page_transitions.dart';
+import '../../repositories/posts_repository.dart';
+import '../../repositories/follow_repository.dart';
 import '../cocircle/cocircle_create_post_page.dart';
 import '../cocircle/user_profile_page.dart';
 
@@ -271,8 +274,12 @@ class _TrainerCocirclePageState extends State<TrainerCocirclePage>
       curve: Curves.easeOut,
     );
     _fadeController.forward();
-    _loadMockData();
+    _loadPosts();
   }
+
+  final PostsRepository _postsRepo = PostsRepository();
+  final FollowRepository _followRepo = FollowRepository();
+  bool _isLoading = true;
 
   @override
   void dispose() {
@@ -281,62 +288,70 @@ class _TrainerCocirclePageState extends State<TrainerCocirclePage>
     super.dispose();
   }
 
-  void _loadMockData() {
-    _posts.addAll([
-      CocircleFeedPost(
-        id: '1',
-        authorId: 'mock-1',
-        username: 'fitness_john',
-        fullName: 'John Doe',
-        userRole: 'CLIENT',
-        avatarUrl: null,
-        timestamp: DateTime.now().subtract(const Duration(minutes: 30)),
-        mediaUrl: null,
-        mediaType: 'image',
-        caption: 'Just completed my first 10K run! 🏃‍♂️ Feeling amazing!',
-        likeCount: 24,
-        commentCount: 5,
-        shareCount: 2,
-        isLiked: false,
-      ),
-      CocircleFeedPost(
-        id: '2',
-        authorId: 'mock-2',
-        username: 'trainer_sarah',
-        fullName: 'Sarah Johnson',
-        userRole: 'TRAINER',
-        avatarUrl: null,
-        timestamp: DateTime.now().subtract(const Duration(hours: 2)),
-        mediaUrl: null,
-        mediaType: 'image',
-        caption: 'New workout routine for my clients! Try this 20-minute HIIT session 💪',
-        likeCount: 56,
-        commentCount: 12,
-        shareCount: 8,
-        isLiked: true,
-      ),
-      CocircleFeedPost(
-        id: '3',
-        authorId: 'mock-3',
-        username: 'nutritionist_mike',
-        fullName: 'Dr. Mike Chen',
-        userRole: 'NUTRITIONIST',
-        avatarUrl: null,
-        timestamp: DateTime.now().subtract(const Duration(hours: 5)),
-        mediaType: 'image',
-        caption: 'Meal prep Sunday! Healthy and delicious 🥗',
-        likeCount: 89,
-        commentCount: 15,
-        shareCount: 12,
-        isLiked: false,
-      ),
-    ]);
+  Future<void> _loadPosts() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+    try {
+      final posts = await _postsRepo.fetchRecentPosts(limit: 20);
+      if (!mounted) return;
+      final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+      final authorIds = posts.map((p) => p['author_id'] as String).toSet().toList();
+      final followingIds = currentUserId != null && authorIds.isNotEmpty
+          ? await _followRepo.getFollowingStatusForUsers(authorIds)
+          : <String>{};
+
+      final cocirclePosts = <CocircleFeedPost>[];
+      for (final post in posts) {
+        final author = post['profiles'] as Map<String, dynamic>?;
+        final authorId = post['author_id'] as String;
+        final username = author?['username'] as String? ?? 'user';
+        final fullName = author?['full_name'] as String? ?? username;
+        final authorAvatar = author?['avatar_url'] as String?;
+        final authorRole = (author?['role'] as String? ?? 'client').toUpperCase();
+        final mediaList = (post['media'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+        final firstMedia = mediaList.isNotEmpty ? mediaList.first : null;
+        final mediaKind = firstMedia?['media_kind'] as String?;
+        final isVideo = mediaKind == 'video';
+
+        cocirclePosts.add(
+          CocircleFeedPost(
+            id: post['id'] as String,
+            authorId: authorId,
+            username: username,
+            fullName: fullName,
+            userRole: authorRole,
+            avatarUrl: authorAvatar,
+            timestamp: DateTime.parse(post['created_at'] as String),
+            mediaUrl: firstMedia?['media_url'] as String?,
+            mediaType: isVideo ? 'video' : 'image',
+            caption: post['content'] as String? ?? '',
+            likeCount: (post['likes_count'] as int?) ?? 0,
+            commentCount: (post['comments_count'] as int?) ?? 0,
+            shareCount: 0,
+            isLiked: (post['is_liked'] as bool?) ?? false,
+            media: mediaList,
+          ),
+        );
+      }
+
+      if (mounted) {
+        setState(() {
+          _posts.clear();
+          _posts.addAll(cocirclePosts);
+          _followingUserIds.clear();
+          _followingUserIds.addAll(followingIds);
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading Cocircle posts: $e');
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _onRefresh() async {
     HapticFeedback.mediumImpact();
-    // TODO: Refresh feed
-    await Future.delayed(const Duration(seconds: 1));
+    await _loadPosts();
   }
 
   @override
@@ -398,7 +413,12 @@ class _TrainerCocirclePageState extends State<TrainerCocirclePage>
                 ),
               ),
             ),
-            if (_posts.isEmpty)
+            if (_isLoading && _posts.isEmpty)
+              const SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_posts.isEmpty)
               SliverToBoxAdapter(child: _buildEmptyState())
             else
               SliverList(

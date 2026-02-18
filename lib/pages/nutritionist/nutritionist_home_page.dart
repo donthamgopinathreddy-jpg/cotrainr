@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/design_tokens.dart';
+import '../../theme/app_colors.dart';
 import '../../providers/profile_images_provider.dart';
 import '../../repositories/profile_repository.dart';
 import '../../repositories/notifications_repository.dart';
+import '../../services/streak_service.dart';
 import '../../widgets/home_v3/hero_header_v3.dart';
+import '../../widgets/home_v3/streak_pill_v3.dart';
 import '../../widgets/home_v3/quick_access_v3.dart';
 
 class NutritionistHomePage extends ConsumerStatefulWidget {
@@ -24,7 +28,7 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
   // Mock data - in real app, fetch from Supabase
   final String _nutritionistName = 'Nutritionist Name';
   int _notificationCount = 0;
-  final int _streakDays = 0; // Nutritionists don't have streaks
+  int _streakDays = 0;
   final int _totalClients = 15;
   final int _activeClients = 10;
   final int _upcomingConsultations = 4;
@@ -55,6 +59,14 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
     );
     _fadeController.forward();
     _loadNotificationsCount();
+    _loadStreak();
+  }
+
+  Future<void> _loadStreak() async {
+    try {
+      final streak = await StreakService.updateStreakOnLogin();
+      if (mounted) setState(() => _streakDays = streak);
+    } catch (_) {}
   }
 
   Future<void> _loadNotificationsCount() async {
@@ -69,6 +81,14 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
       );
       if (mounted) setState(() => _notificationCount = count);
     } catch (_) {}
+  }
+
+  Future<void> _onRefresh() async {
+    HapticFeedback.mediumImpact();
+    await Future.wait([
+      _loadNotificationsCount(),
+      _loadStreak(),
+    ]);
   }
 
   @override
@@ -125,85 +145,98 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
     final textSecondary = DesignTokens.textSecondaryOf(context);
     final surfaceColor = DesignTokens.surfaceOf(context);
     final borderColor = DesignTokens.borderColorOf(context);
+    final cs = Theme.of(context).colorScheme;
     final isLight = Theme.of(context).brightness == Brightness.light;
 
     return Scaffold(
-      backgroundColor: isLight ? Colors.grey.shade200 : DesignTokens.backgroundOf(context),
+      backgroundColor: isLight ? Colors.white : cs.background,
       body: FadeTransition(
         opacity: _fadeAnimation,
-        child: CustomScrollView(
-          controller: _scrollController,
-          physics: const BouncingScrollPhysics(),
-          slivers: [
-            // Hero Header with Cover Image, Profile Image, and Notification Bell
-            SliverToBoxAdapter(
-              child: HeroHeaderV3(
-                username: _nutritionistName,
-                notificationCount: _notificationCount,
-                coverImageUrl: ref.watch(profileImagesProvider).coverImagePath,
-                avatarUrl: ref.watch(profileImagesProvider).profileImagePath,
-                streakDays: _streakDays,
-                onNotificationTap: () async {
-                  await context.push('/notifications');
-                  if (mounted) _loadNotificationsCount();
-                },
-              ),
+        child: RefreshIndicator(
+          onRefresh: _onRefresh,
+          color: AppColors.orange,
+          child: CustomScrollView(
+            controller: _scrollController,
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
             ),
-            
-            // Spacing for floating avatar
-            const SliverToBoxAdapter(child: SizedBox(height: 44)),
-
-            const SliverToBoxAdapter(child: SizedBox(height: 20)),
-
-            // Quick Access
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: _animated(_safeSection(context, const QuickAccessV3()), 100),
+            slivers: [
+              // Hero Header (matches client)
+              SliverToBoxAdapter(
+                child: _animated(
+                  HeroHeaderV3(
+                    username: _nutritionistName,
+                    notificationCount: _notificationCount,
+                    coverImageUrl: ref.watch(profileImagesProvider).coverImagePath,
+                    avatarUrl: ref.watch(profileImagesProvider).profileImagePath,
+                    streakDays: 0,
+                    onNotificationTap: () async {
+                      await context.push('/notifications');
+                      if (mounted) _loadNotificationsCount();
+                    },
+                  ),
+                  0,
+                ),
               ),
-            ),
-
-            const SliverToBoxAdapter(child: SizedBox(height: 20)),
-
-            // Stats Cards
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: DesignTokens.spacing20),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _buildStatCard(
-                        'Total Clients',
-                        _totalClients.toString(),
-                        Icons.people,
-                        DesignTokens.accentOrange,
-                        surfaceColor,
-                        borderColor,
-                      ),
+              // Streak pill - Transform.translate to overlap header (matches client)
+              SliverToBoxAdapter(
+                child: Transform.translate(
+                  offset: const Offset(0, -32),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: _animated(
+                      _safeSection(context, StreakPillV3(streakDays: _streakDays)),
+                      50,
                     ),
-                    const SizedBox(width: DesignTokens.spacing12),
-                    Expanded(
-                      child: _buildStatCard(
-                        'Active',
-                        _activeClients.toString(),
-                        Icons.check_circle,
-                        DesignTokens.accentGreen,
-                        surfaceColor,
-                        borderColor,
+                  ),
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 8)),
+              // Quick Access
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _animated(_safeSection(context, const QuickAccessV3()), 100),
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 8)),
+              // Stats Cards
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _buildStatCard(
+                          'Total Clients',
+                          _totalClients.toString(),
+                          Icons.people,
+                          DesignTokens.accentOrange,
+                          surfaceColor,
+                          borderColor,
+                        ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: DesignTokens.spacing12),
+                      Expanded(
+                        child: _buildStatCard(
+                          'Active',
+                          _activeClients.toString(),
+                          Icons.check_circle,
+                          DesignTokens.accentGreen,
+                          surfaceColor,
+                          borderColor,
+                        ),
+                      ),
+                    ],
                 ),
               ),
             ),
 
-            SliverToBoxAdapter(
-              child: SizedBox(height: DesignTokens.spacing20),
-            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 8)),
 
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: DesignTokens.spacing20),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Row(
                   children: [
                     Expanded(
@@ -232,14 +265,12 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
               ),
             ),
 
-            SliverToBoxAdapter(
-              child: SizedBox(height: DesignTokens.spacing24),
-            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 8)),
 
             // Upcoming Sessions
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: DesignTokens.spacing20),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -265,26 +296,22 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
               ),
             ),
 
-            SliverToBoxAdapter(
-              child: SizedBox(height: DesignTokens.spacing12),
-            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 8)),
 
             // Upcoming sessions list
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: DesignTokens.spacing20),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: _buildUpcomingSessionsList(textPrimary, textSecondary, surfaceColor, borderColor),
               ),
             ),
 
-            SliverToBoxAdapter(
-              child: SizedBox(height: DesignTokens.spacing24),
-            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 8)),
 
             // Recent Messages
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: DesignTokens.spacing20),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -310,26 +337,22 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
               ),
             ),
 
-            SliverToBoxAdapter(
-              child: SizedBox(height: DesignTokens.spacing12),
-            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 8)),
 
             // Recent messages list
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: DesignTokens.spacing20),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: _buildRecentMessagesList(textPrimary, textSecondary, surfaceColor, borderColor),
               ),
             ),
 
-            SliverToBoxAdapter(
-              child: SizedBox(height: DesignTokens.spacing24),
-            ),
-
+            const SliverToBoxAdapter(child: SizedBox(height: 96)),
           ],
         ),
       ),
-    );
+    ),
+  );
   }
 
   Widget _buildStatCard(

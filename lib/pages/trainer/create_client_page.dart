@@ -578,6 +578,7 @@ class ClientItem {
   final List<ClientAlert> alerts;
   final double? adherencePercentage; // 0-100
   final DateTime? lastCheckIn;
+  final String? leadId; // For pending: needed to accept
 
   ClientItem({
     required this.id,
@@ -590,6 +591,7 @@ class ClientItem {
     this.alerts = const [],
     this.adherencePercentage,
     this.lastCheckIn,
+    this.leadId,
   });
 
   String get statusString {

@@ -3,36 +3,43 @@ import '../../theme/app_colors.dart';
 
 class StreakPillV3 extends StatelessWidget {
   final int streakDays;
+  final bool compact;
 
   const StreakPillV3({
     super.key,
     required this.streakDays,
+    this.compact = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final height = compact ? 40.0 : 56.0;
+    final iconSize = compact ? 18.0 : 24.0;
+    final fontSize = compact ? 16.0 : 20.0;
+    final paddingH = compact ? 12.0 : 16.0;
+
     return SizedBox(
       width: double.infinity,
       child: Container(
-        height: 56,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        height: height,
+        padding: EdgeInsets.symmetric(horizontal: paddingH),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
             colors: [AppColors.red, AppColors.orange],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
-          borderRadius: BorderRadius.circular(28),
+          borderRadius: BorderRadius.circular(height / 2),
           boxShadow: AppColors.cardShadowOf(context),
         ),
         child: Row(
           children: [
-            const Icon(
+            Icon(
               Icons.local_fire_department_rounded,
               color: Colors.white,
-              size: 24,
+              size: iconSize,
             ),
-            const SizedBox(width: 12),
+            SizedBox(width: compact ? 8 : 12),
             Text(
               'STREAK',
               style: TextStyle(
@@ -53,7 +60,7 @@ class StreakPillV3 extends StatelessWidget {
             Text(
               '$streakDays',
               style: TextStyle(
-                fontSize: 20,
+                fontSize: fontSize,
                 fontWeight: FontWeight.w900,
                 color: Colors.white,
                 letterSpacing: 0.5,

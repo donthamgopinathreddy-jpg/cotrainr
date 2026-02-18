@@ -1,11 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/design_tokens.dart';
+import '../../theme/app_colors.dart';
 import '../../providers/profile_images_provider.dart';
 import '../../repositories/profile_repository.dart';
 import '../../repositories/notifications_repository.dart';
+import '../../repositories/metrics_repository.dart';
+import '../../services/leads_service.dart';
+import '../../services/leads_models.dart' show Lead;
+import '../../services/user_goals_service.dart';
+import '../../services/streak_service.dart';
 import '../../widgets/home_v3/hero_header_v3.dart';
+import '../../widgets/home_v3/streak_pill_v3.dart';
 import '../../widgets/home_v3/steps_card_v3.dart';
 import '../../widgets/home_v3/macro_row_v3.dart';
 import '../../widgets/home_v3/bmi_card_v3.dart';
@@ -25,29 +34,29 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
 
-  // Mock data - in real app, fetch from Supabase
-  final String _trainerName = 'Trainer Name';
+  String _trainerName = 'Trainer';
   int _notificationCount = 0;
-  final int _streakDays = 0; // Trainers don't have streaks, but keeping for consistency
-  final int _totalClients = 12;
-  final int _activeClients = 8;
-  final int _upcomingSessions = 5;
-  final int _todaySessions = 2;
-  
-  // Health metrics data
-  final int _currentSteps = 8234;
-  final int _goalSteps = 10000;
-  final int _currentCalories = 1856;
-  final double _currentWater = 1.5;
-  final double _goalWater = 2.5;
-  final double _currentDistance = 4.6;
-  final double _bmi = 22.4;
-  final String _bmiStatus = 'Normal';
+  int _streakDays = 0;
+  int _totalClients = 0;
+  int _activeClients = 0;
+  int _upcomingSessions = 0;
+  int _todaySessions = 0;
 
-  final List<double> _stepsWeeklyData = [6.2, 7.1, 8.3, 7.8, 8.5, 8.2, 8.0];
-  final List<double> _caloriesWeeklyData = [1.8, 2.0, 1.9, 2.1, 1.7, 1.9, 1.8];
-  final List<double> _waterWeeklyData = [1.2, 1.5, 1.8, 1.6, 1.4, 1.7, 1.5];
-  final List<double> _distanceWeeklyData = [3.8, 4.2, 4.0, 4.5, 4.6, 4.1, 4.4];
+  int _currentSteps = 0;
+  int _goalSteps = 10000;
+  int _currentCalories = 0;
+  double _currentWater = 0;
+  double _goalWater = 2.5;
+  double _currentDistance = 0;
+  double _bmi = 0;
+  String _bmiStatus = '—';
+  double? _heightCm;
+  double? _weightKg;
+
+  List<double> _stepsWeeklyData = [0, 0, 0, 0, 0, 0, 0];
+  List<double> _caloriesWeeklyData = [0, 0, 0, 0, 0, 0, 0];
+  List<double> _waterWeeklyData = [0, 0, 0, 0, 0, 0, 0];
+  List<double> _distanceWeeklyData = [0, 0, 0, 0, 0, 0, 0];
 
   @override
   void initState() {
@@ -62,6 +71,72 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
     );
     _fadeController.forward();
     _loadNotificationsCount();
+    _loadData();
+    _loadStreak();
+  }
+
+  Future<void> _loadStreak() async {
+    try {
+      final streak = await StreakService.updateStreakOnLogin();
+      if (mounted) setState(() => _streakDays = streak);
+    } catch (_) {}
+  }
+
+  Future<void> _loadData() async {
+    try {
+      final profileRepo = ProfileRepository();
+      final metricsRepo = MetricsRepository();
+      final leadsService = LeadsService();
+      final goalsService = UserGoalsService();
+
+      final profile = await profileRepo.fetchMyProfile();
+      final todayMetrics = await metricsRepo.getTodayMetrics();
+      final weeklyMetrics = await metricsRepo.getWeeklyMetrics();
+      final leads = await leadsService.getMyLeads();
+      final stepsGoal = await goalsService.getStepsGoal();
+      final waterGoal = await goalsService.getWaterGoal();
+
+      final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+      final myLeads = currentUserId != null
+          ? leads.where((l) => l.providerId == currentUserId && l.providerType == 'trainer').toList()
+          : <Lead>[];
+      final accepted = myLeads.where((l) => l.status == 'accepted').length;
+
+      if (mounted) {
+        setState(() {
+          _trainerName = profile?['full_name'] as String? ?? profile?['username'] as String? ?? 'Trainer';
+          _totalClients = accepted;
+          _activeClients = accepted;
+          _currentSteps = (todayMetrics?['steps'] as num?)?.toInt() ?? 0;
+          _goalSteps = stepsGoal;
+          _currentCalories = ((todayMetrics?['calories_burned'] as num?)?.toDouble() ?? 0.0).round();
+          _currentWater = (todayMetrics?['water_intake_liters'] as num?)?.toDouble() ?? 0;
+          _goalWater = waterGoal;
+          _currentDistance = (todayMetrics?['distance_km'] as num?)?.toDouble() ?? 0;
+          _stepsWeeklyData = weeklyMetrics.map((m) => ((m['steps'] as num?) ?? 0).toDouble()).toList();
+          while (_stepsWeeklyData.length < 7) _stepsWeeklyData.insert(0, 0);
+          _stepsWeeklyData = _stepsWeeklyData.take(7).toList();
+          _caloriesWeeklyData = weeklyMetrics.map((m) => ((m['calories_burned'] as num?) ?? 0).toDouble()).toList();
+          while (_caloriesWeeklyData.length < 7) _caloriesWeeklyData.insert(0, 0);
+          _caloriesWeeklyData = _caloriesWeeklyData.take(7).toList();
+          _waterWeeklyData = weeklyMetrics.map((m) => ((m['water_intake_liters'] as num?) ?? 0).toDouble()).toList();
+          while (_waterWeeklyData.length < 7) _waterWeeklyData.insert(0, 0);
+          _waterWeeklyData = _waterWeeklyData.take(7).toList();
+          _distanceWeeklyData = weeklyMetrics.map((m) => ((m['distance_km'] as num?) ?? 0).toDouble()).toList();
+          while (_distanceWeeklyData.length < 7) _distanceWeeklyData.insert(0, 0);
+          _distanceWeeklyData = _distanceWeeklyData.take(7).toList();
+          final bmiVal = profile?['bmi'] as num?;
+          _bmi = bmiVal?.toDouble() ?? 0;
+          _bmiStatus = _bmi > 0 ? (profile?['bmi_status'] as String? ?? '—') : '—';
+          _heightCm = (profile?['height_cm'] as num?)?.toDouble();
+          _weightKg = (profile?['weight_kg'] as num?)?.toDouble();
+          if (_bmi <= 0 && _heightCm != null && _weightKg != null && _heightCm! > 0 && _weightKg! > 0) {
+            _bmi = ProfileRepository.calculateBMI(_heightCm!, _weightKg!);
+            _bmiStatus = ProfileRepository.getBMIStatus(_bmi);
+          }
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadNotificationsCount() async {
@@ -126,146 +201,180 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
     );
   }
 
+  Future<void> _onRefresh() async {
+    HapticFeedback.mediumImpact();
+    await Future.wait([
+      _loadData(),
+      _loadNotificationsCount(),
+      _loadStreak(),
+    ]);
+  }
+
   @override
   Widget build(BuildContext context) {
     final textPrimary = DesignTokens.textPrimaryOf(context);
     final textSecondary = DesignTokens.textSecondaryOf(context);
     final surfaceColor = DesignTokens.surfaceOf(context);
     final borderColor = DesignTokens.borderColorOf(context);
+    final cs = Theme.of(context).colorScheme;
     final isLight = Theme.of(context).brightness == Brightness.light;
 
     return Scaffold(
-      backgroundColor: isLight ? Colors.grey.shade200 : DesignTokens.backgroundOf(context),
+      backgroundColor: isLight ? Colors.white : cs.background,
       body: FadeTransition(
         opacity: _fadeAnimation,
-        child: CustomScrollView(
-          controller: _scrollController,
-          physics: const BouncingScrollPhysics(),
-          slivers: [
-            // Hero Header with Cover Image, Profile Image, and Notification Bell
-            SliverToBoxAdapter(
-              child: HeroHeaderV3(
-                username: _trainerName,
-                notificationCount: _notificationCount,
-                coverImageUrl: ref.watch(profileImagesProvider).coverImagePath,
-                avatarUrl: ref.watch(profileImagesProvider).profileImagePath,
-                streakDays: _streakDays,
-                onNotificationTap: () async {
-                  await context.push('/notifications');
-                  if (mounted) _loadNotificationsCount();
-                },
-              ),
+        child: RefreshIndicator(
+          onRefresh: _onRefresh,
+          color: AppColors.orange,
+          child: CustomScrollView(
+            controller: _scrollController,
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
             ),
-            
-            // Spacing for floating avatar
-            const SliverToBoxAdapter(child: SizedBox(height: 44)),
-
-            // Steps Card
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+            slivers: [
+              // Hero Header (matches client)
+              SliverToBoxAdapter(
                 child: _animated(
-                  Transform.translate(
-                    offset: const Offset(0, -20),
-                    child: _safeSection(
-                      context,
-                      StepsCardV3(
-                        steps: _currentSteps,
-                        goal: _goalSteps,
-                        sparkline: _stepsWeeklyData,
-                        heroTag: 'tile_steps_trainer',
-                        onTap: () => context.push(
-                          '/insights/steps',
-                          extra: InsightArgs(
-                            MetricType.steps,
-                            _stepsWeeklyData,
-                            goal: _goalSteps.toDouble(),
+                  HeroHeaderV3(
+                    username: _trainerName,
+                    notificationCount: _notificationCount,
+                    coverImageUrl: ref.watch(profileImagesProvider).coverImagePath,
+                    avatarUrl: ref.watch(profileImagesProvider).profileImagePath,
+                    streakDays: 0,
+                    onNotificationTap: () async {
+                      await context.push('/notifications');
+                      if (mounted) _loadNotificationsCount();
+                    },
+                  ),
+                  0,
+                ),
+              ),
+              // Streak pill - Transform.translate to overlap header (matches client)
+              SliverToBoxAdapter(
+                child: Transform.translate(
+                  offset: const Offset(0, -32),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: _animated(
+                      _safeSection(context, StreakPillV3(streakDays: _streakDays)),
+                      50,
+                    ),
+                  ),
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 8)),
+              // Steps Card
+              SliverToBoxAdapter(
+                child: Transform.translate(
+                  offset: const Offset(0, -28),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: _animated(
+                      _safeSection(
+                        context,
+                        StepsCardV3(
+                          steps: _currentSteps,
+                          goal: _goalSteps,
+                          sparkline: _stepsWeeklyData,
+                          heroTag: 'tile_steps_trainer',
+                          onTap: () => context.push(
+                            '/insights/steps',
+                            extra: InsightArgs(
+                              MetricType.steps,
+                              _stepsWeeklyData,
+                              goal: _goalSteps.toDouble(),
+                            ),
                           ),
                         ),
                       ),
+                      100,
                     ),
                   ),
-                  100,
                 ),
               ),
-            ),
-
-            const SliverToBoxAdapter(child: SizedBox(height: 16)),
-
-            // Calories, Water, Distance Row
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: _animated(
-                  _safeSection(
-                    context,
-                    MacroRowV3(
-                      calories: _currentCalories,
-                      water: _currentWater,
-                      waterGoal: _goalWater,
-                      caloriesSpark: _caloriesWeeklyData,
-                      distanceKm: _currentDistance,
-                      caloriesHeroTag: 'tile_calories_trainer',
-                      waterHeroTag: 'tile_water_trainer',
-                      distanceHeroTag: 'tile_distance_trainer',
-                      onCaloriesTap: () => context.push(
-                        '/insights/calories',
-                        extra: InsightArgs(
-                          MetricType.calories,
-                          _caloriesWeeklyData,
+              const SliverToBoxAdapter(child: SizedBox(height: 8)),
+              // Calories, Water, Distance Row
+              SliverToBoxAdapter(
+                child: Transform.translate(
+                  offset: const Offset(0, -28),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: _animated(
+                      _safeSection(
+                        context,
+                        MacroRowV3(
+                          calories: _currentCalories,
+                          water: _currentWater,
+                          waterGoal: _goalWater,
+                          caloriesSpark: _caloriesWeeklyData,
+                          distanceKm: _currentDistance,
+                          caloriesHeroTag: 'tile_calories_trainer',
+                          waterHeroTag: 'tile_water_trainer',
+                          distanceHeroTag: 'tile_distance_trainer',
+                          onCaloriesTap: () => context.push(
+                            '/insights/calories',
+                            extra: InsightArgs(
+                              MetricType.calories,
+                              _caloriesWeeklyData,
+                            ),
+                          ),
+                          onWaterTap: () => context.push(
+                            '/insights/water',
+                            extra: InsightArgs(
+                              MetricType.water,
+                              _waterWeeklyData,
+                              goal: _goalWater,
+                            ),
+                          ),
+                          onDistanceTap: () => context.push(
+                            '/insights/distance',
+                            extra: InsightArgs(
+                              MetricType.distance,
+                              _distanceWeeklyData,
+                            ),
+                          ),
                         ),
                       ),
-                      onWaterTap: () => context.push(
-                        '/insights/water',
-                        extra: InsightArgs(
-                          MetricType.water,
-                          _waterWeeklyData,
-                          goal: _goalWater,
-                        ),
-                      ),
-                      onDistanceTap: () => context.push(
-                        '/insights/distance',
-                        extra: InsightArgs(
-                          MetricType.distance,
-                          _distanceWeeklyData,
-                        ),
-                      ),
+                      140,
                     ),
                   ),
-                  140,
                 ),
               ),
-            ),
-
-            const SliverToBoxAdapter(child: SizedBox(height: 16)),
-
-            // BMI Card
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: _animated(
-                  _safeSection(context, BmiCardV3(bmi: _bmi, status: _bmiStatus)),
-                  180,
+              const SliverToBoxAdapter(child: SizedBox(height: 8)),
+              // BMI Card
+              SliverToBoxAdapter(
+                child: Transform.translate(
+                  offset: const Offset(0, -26),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: _animated(
+                      _safeSection(
+                        context,
+                        BmiCardV3(
+                          bmi: _bmi,
+                          status: _bmiStatus,
+                          heightCm: _heightCm,
+                          weightKg: _weightKg,
+                        ),
+                      ),
+                      180,
+                    ),
+                  ),
                 ),
               ),
-            ),
-
-            const SliverToBoxAdapter(child: SizedBox(height: 20)),
-
-            // Quick Access
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: _animated(_safeSection(context, const QuickAccessV3()), 220),
+              const SliverToBoxAdapter(child: SizedBox(height: 8)),
+              // Quick Access
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _animated(_safeSection(context, const QuickAccessV3()), 220),
+                ),
               ),
-            ),
-
-            const SliverToBoxAdapter(child: SizedBox(height: 20)),
-
-            // Stats Cards
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: DesignTokens.spacing20),
+              const SliverToBoxAdapter(child: SizedBox(height: 8)),
+              // Stats Cards
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Row(
                   children: [
                     Expanded(
@@ -294,13 +403,11 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
               ),
             ),
 
-            SliverToBoxAdapter(
-              child: SizedBox(height: DesignTokens.spacing20),
-            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 8)),
 
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: DesignTokens.spacing20),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Row(
                   children: [
                     Expanded(
@@ -329,14 +436,12 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
               ),
             ),
 
-            SliverToBoxAdapter(
-              child: SizedBox(height: DesignTokens.spacing24),
-            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 8)),
 
             // Recent Activity
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: DesignTokens.spacing20),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Text(
                   'Recent Activity',
                   style: TextStyle(
@@ -348,14 +453,12 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
               ),
             ),
 
-            SliverToBoxAdapter(
-              child: SizedBox(height: DesignTokens.spacing12),
-            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 8)),
 
             // Recent activity list
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: DesignTokens.spacing20),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Container(
                   padding: const EdgeInsets.all(DesignTokens.spacing16),
                   decoration: BoxDecoration(
@@ -394,11 +497,12 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
               ),
             ),
 
-            const SliverToBoxAdapter(child: SizedBox(height: DesignTokens.spacing32)),
+            const SliverToBoxAdapter(child: SizedBox(height: 96)),
           ],
         ),
       ),
-    );
+    ),
+  );
   }
 
   Widget _buildStatCard(

@@ -320,7 +320,7 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
     return FadeTransition(
       opacity: _fadeAnimation,
       child: Scaffold(
-        backgroundColor: isLight ? Colors.grey.shade200 : cs.background,
+        backgroundColor: isLight ? Colors.white : cs.background,
         body: RefreshIndicator(
           onRefresh: _onRefresh,
           color: AppColors.orange,
@@ -362,9 +362,10 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
               ),
             ),
           ),
+          const SliverToBoxAdapter(child: SizedBox(height: 8)),
           SliverToBoxAdapter(
             child: Transform.translate(
-              offset: const Offset(0, -8),
+              offset: const Offset(0, -28),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: _animated(
@@ -387,17 +388,19 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                 ),
                 100,
               ),
-              ),
             ),
+          ),
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 8)),
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _animated(
-                _safeSection(
-                  context,
-                  MacroRowV3(
+            child: Transform.translate(
+              offset: const Offset(0, -28),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _animated(
+                  _safeSection(
+                    context,
+                    MacroRowV3(
                     calories: currentCalories,
                     water: _currentWater,
                     waterGoal: _goalWater,
@@ -463,14 +466,17 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
               ),
             ),
           ),
-          const SliverToBoxAdapter(child: SizedBox(height: 16)),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 8)),
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _animated(
-                _safeSection(
-                  context,
-                  BmiCardV3(
+            child: Transform.translate(
+              offset: const Offset(0, -26),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _animated(
+                  _safeSection(
+                    context,
+                    BmiCardV3(
                     bmi: _bmi,
                     status: _bmiStatus,
                     heightCm: _heightCm,
@@ -481,7 +487,8 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
               ),
             ),
           ),
-          const SliverToBoxAdapter(child: SizedBox(height: 20)),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 8)),
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -489,7 +496,7 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                   _animated(_safeSection(context, const QuickAccessV3()), 220),
             ),
           ),
-          const SliverToBoxAdapter(child: SizedBox(height: 20)),
+          const SliverToBoxAdapter(child: SizedBox(height: 8)),
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -497,7 +504,7 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                   _animated(_safeSection(context, FeedPreviewV3(onViewAllTap: widget.onNavigateToCocircle)), 260),
             ),
           ),
-          const SliverToBoxAdapter(child: SizedBox(height: 20)),
+          const SliverToBoxAdapter(child: SizedBox(height: 16)),
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),

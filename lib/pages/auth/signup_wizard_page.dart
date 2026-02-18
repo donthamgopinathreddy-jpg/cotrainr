@@ -427,6 +427,13 @@ class _SignupWizardPageState extends State<SignupWizardPage>
             // Non-fatal: user is signed up, referral is optional
           }
 
+          // Ensure profile.role matches signup choice (safety net if trigger used old logic)
+          try {
+            await supabase.rpc('sync_profile_role_from_auth');
+          } catch (_) {
+            // Non-fatal: migration/trigger may already have set correct role
+          }
+
           final role = _role.toLowerCase();
           if (!mounted) return;
 

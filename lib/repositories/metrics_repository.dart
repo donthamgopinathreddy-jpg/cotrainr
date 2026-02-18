@@ -178,4 +178,42 @@ class MetricsRepository {
       print('Error incrementing water: $e');
     }
   }
+
+  /// Get metrics for a client (coach only - requires accepted lead, RLS enforces)
+  Future<Map<String, dynamic>?> getClientMetricsForDate(String clientId, DateTime date) async {
+    if (_currentUserId == null) return null;
+    try {
+      final dateStr = DateTime(date.year, date.month, date.day).toIso8601String().split('T')[0];
+      final response = await _supabase
+          .from('metrics_daily')
+          .select()
+          .eq('user_id', clientId)
+          .eq('date', dateStr)
+          .maybeSingle();
+      return response;
+    } catch (e) {
+      print('Error fetching client metrics: $e');
+      return null;
+    }
+  }
+
+  /// Get weekly metrics for a client (coach only)
+  Future<List<Map<String, dynamic>>> getClientWeeklyMetrics(String clientId) async {
+    if (_currentUserId == null) return [];
+    try {
+      final today = DateTime.now();
+      final weekAgo = today.subtract(const Duration(days: 6));
+      final weekAgoStr = '${weekAgo.year}-${weekAgo.month.toString().padLeft(2, '0')}-${weekAgo.day.toString().padLeft(2, '0')}';
+      final response = await _supabase
+          .from('metrics_daily')
+          .select()
+          .eq('user_id', clientId)
+          .gte('date', weekAgoStr)
+          .order('date', ascending: true);
+      return (response as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      print('Error fetching client weekly metrics: $e');
+      return [];
+    }
+  }
 }

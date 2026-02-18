@@ -302,7 +302,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                           child: _FullLengthButton(
                             label: 'Become a Trainer',
                             icon: Icons.school_rounded,
-                            iconGradient: AppColors.distanceGradient,
+                            iconGradient: AppColors.becomeTrainerGradient,
                             onTap: () {
                               HapticFeedback.lightImpact();
                               Navigator.push(

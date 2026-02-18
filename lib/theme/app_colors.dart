@@ -66,6 +66,13 @@ class AppColors {
     end: Alignment.bottomRight,
   );
 
+  /// Become a Trainer tile, page, and profile button (orange → pink)
+  static const LinearGradient becomeTrainerGradient = LinearGradient(
+    colors: [orange, pink],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
   // Video Session Role Gradients
   static const LinearGradient clientVideoGradient = LinearGradient(
     colors: [Color(0xFFFF7A00), Color(0xFFFFC300)],

@@ -29,19 +29,27 @@ class _AppLinkHandlerState extends State<AppLinkHandler> {
     return false;
   }
 
+  bool _isVideoZoomConnectedUri(Uri uri) {
+    return uri.host == 'video' && uri.path.startsWith('/zoom-connected');
+  }
+
   String? _extractCode(Uri uri) {
     final code = uri.queryParameters['code'];
     return (code != null && code.trim().isNotEmpty) ? code.trim() : null;
   }
 
   void _handleUri(Uri? uri) {
-    if (uri == null || !_isInviteUri(uri)) return;
+    if (uri == null) return;
+    if (_isVideoZoomConnectedUri(uri)) {
+      if (!mounted) return;
+      context.go('/video');
+      return;
+    }
+    if (!_isInviteUri(uri)) return;
     final code = _extractCode(uri);
     if (code == null) return;
     if (!mounted) return;
-    // Store for persistence (in case user closes app before signup)
     PendingReferralService.setPendingCode(code);
-    // Only navigate to signup if user not signed in
     final isLoggedIn = Supabase.instance.client.auth.currentSession != null;
     if (!isLoggedIn) {
       context.go('/auth/create-account?code=${Uri.encodeComponent(code)}');

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
@@ -29,7 +30,7 @@ class QuickAccessV3 extends ConsumerWidget {
     
     // For trainers and nutritionists, exclude these tiles
     if (userRole == 'trainer' || userRole == 'nutritionist') {
-      itemsToExclude.addAll(['BECOME A TRAINER', 'SUBSCRIPTION', 'AI PLANNER']);
+      itemsToExclude.addAll(['BECOME A TRAINER', 'SUBSCRIPTION', 'AI PLANNER', 'NOTES']);
     }
     
     final allItems = [
@@ -37,6 +38,9 @@ class QuickAccessV3 extends ConsumerWidget {
           const LinearGradient(colors: [AppColors.green, Color(0xFF65E6B3)])),
       _QuickTileData('MESSAGING', Icons.chat_bubble_outline_rounded,
           const LinearGradient(colors: [AppColors.blue, AppColors.cyan])),
+      if (!itemsToExclude.contains('NOTES'))
+        _QuickTileData('COACH NOTES', Icons.note_rounded,
+            const LinearGradient(colors: [Color(0xFFE53935), Color(0xFFE96A6A)])),
       _QuickTileData('VIDEO SESSIONS', Icons.videocam_rounded,
           const LinearGradient(colors: [AppColors.purple, Color(0xFFB38CFF)])),
       if (!itemsToExclude.contains('AI PLANNER'))
@@ -44,7 +48,7 @@ class QuickAccessV3 extends ConsumerWidget {
             const LinearGradient(colors: [AppColors.orange, AppColors.yellow])),
       if (!itemsToExclude.contains('BECOME A TRAINER'))
         _QuickTileData('BECOME A TRAINER', Icons.school_rounded,
-            const LinearGradient(colors: [AppColors.orange, AppColors.pink])),
+            AppColors.becomeTrainerGradient),
       if (!itemsToExclude.contains('SUBSCRIPTION'))
         _QuickTileData('SUBSCRIPTION', Icons.card_membership_rounded,
             const LinearGradient(colors: [AppColors.purple, AppColors.pink])),
@@ -55,63 +59,97 @@ class QuickAccessV3 extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Quick Actions',
-          style: TextStyle(
-            fontSize: DesignTokens.fontSizeSection,
-            fontWeight: FontWeight.w800,
-            color: cs.onSurface,
-          ),
+        Row(
+          children: [
+            ShaderMask(
+              shaderCallback: (bounds) => const LinearGradient(
+                colors: [AppColors.blue, AppColors.purple],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ).createShader(bounds),
+              child: Icon(
+                Icons.bolt_rounded,
+                size: 22,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              width: 4,
+              height: 18,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppColors.purple, AppColors.blue],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Quick Actions',
+              style: GoogleFonts.montserrat(
+                fontSize: DesignTokens.fontSizeSection,
+                fontWeight: FontWeight.w500,
+                color: cs.onSurface,
+                letterSpacing: -0.5,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 12),
-        SizedBox(
-          height: 110,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: items.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
-            itemBuilder: (context, index) {
-              final item = items[index];
-              VoidCallback? onTap;
-              bool showBadge = false;
-              if (item.title == 'MEAL TRACKER') {
-                onTap = () => context.push('/meal-tracker');
-              } else if (item.title == 'MESSAGING') {
-                onTap = () => context.push('/messaging');
-                // Show badge for unread messages
-                final unreadCountAsync = ref.watch(unreadMessagesCountProvider);
-                unreadCountAsync.whenData((count) {
-                  showBadge = count > 0;
-                });
-              } else if (item.title == 'BECOME A TRAINER') {
-                onTap = () => context.push('/trainer/become');
-              } else if (item.title == 'VIDEO SESSIONS') {
-                // Navigate based on user role
-                if (userRole == 'trainer') {
-                  onTap = () => context.push('/video?role=trainer');
-                } else if (userRole == 'nutritionist') {
-                  onTap = () => context.push('/video?role=nutritionist');
-                } else {
-                  onTap = () => context.push('/video?role=client');
-                }
+        const SizedBox(height: 2),
+        GridView.count(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisCount: 2,
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
+          childAspectRatio: 2.2,
+          children: List.generate(items.length, (index) {
+            final item = items[index];
+            VoidCallback? onTap;
+            bool showBadge = false;
+            int? badgeCount;
+            if (item.title == 'MEAL TRACKER') {
+              onTap = () => context.push('/meal-tracker');
+            } else if (item.title == 'MESSAGING') {
+              onTap = () => context.push('/messaging');
+              final unreadCountAsync = ref.watch(unreadMessagesCountProvider);
+              unreadCountAsync.whenData((count) {
+                showBadge = count > 0;
+                badgeCount = count > 0 ? count : null;
+              });
+            } else if (item.title == 'AI PLANNER') {
+              onTap = () => context.push('/ai-planner');
+            } else if (item.title == 'BECOME A TRAINER') {
+              onTap = () => context.push('/trainer/become');
+            } else if (item.title == 'COACH NOTES') {
+              onTap = () => context.push('/coach-notes');
+            } else if (item.title == 'VIDEO SESSIONS') {
+              if (userRole == 'trainer') {
+                onTap = () => context.push('/video?role=trainer');
+              } else if (userRole == 'nutritionist') {
+                onTap = () => context.push('/video?role=nutritionist');
+              } else {
+                onTap = () => context.push('/video?role=client');
               }
-              // For messaging, watch unread count
-              if (item.title == 'MESSAGING') {
-                final unreadCountAsync = ref.watch(unreadMessagesCountProvider);
-                return unreadCountAsync.when(
-                  data: (count) => _QuickTile(
-                    item: item,
-                    onTap: onTap,
-                    showBadge: count > 0,
-                    badgeCount: count > 0 ? count : null,
-                  ),
-                  loading: () => _QuickTile(item: item, onTap: onTap, showBadge: false),
-                  error: (_, __) => _QuickTile(item: item, onTap: onTap, showBadge: false),
-                );
-              }
-              return _QuickTile(item: item, onTap: onTap, showBadge: showBadge);
-            },
-          ),
+            }
+            if (item.title == 'MESSAGING') {
+              final unreadCountAsync = ref.watch(unreadMessagesCountProvider);
+              return unreadCountAsync.when(
+                data: (count) => _QuickTile(
+                  item: item,
+                  onTap: onTap,
+                  showBadge: count > 0,
+                  badgeCount: count > 0 ? count : null,
+                ),
+                loading: () => _QuickTile(item: item, onTap: onTap, showBadge: false),
+                error: (_, __) => _QuickTile(item: item, onTap: onTap, showBadge: false),
+              );
+            }
+            return _QuickTile(item: item, onTap: onTap, showBadge: showBadge, badgeCount: badgeCount);
+          }),
         ),
       ],
     );
@@ -138,18 +176,17 @@ class _QuickTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return PressableCard(
       onTap: onTap,
-      borderRadius: 28,
+      borderRadius: 999,
       child: Container(
-        width: 150,
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           gradient: item.gradient,
-          borderRadius: BorderRadius.circular(28),
+          borderRadius: BorderRadius.circular(999),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
             Stack(
+              clipBehavior: Clip.none,
               children: [
                 Container(
                   width: 36,
@@ -166,8 +203,8 @@ class _QuickTile extends StatelessWidget {
                 ),
                 if (showBadge)
                   Positioned(
-                    top: 0,
-                    right: 0,
+                    top: -2,
+                    right: -2,
                     child: Container(
                       padding: badgeCount != null && badgeCount! > 9
                           ? const EdgeInsets.symmetric(horizontal: 4, vertical: 2)
@@ -181,9 +218,9 @@ class _QuickTile extends StatelessWidget {
                         shape: BoxShape.circle,
                       ),
                       child: badgeCount != null && badgeCount! > 9
-                          ? Text(
+                          ? const Text(
                               '9+',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 8,
                                 fontWeight: FontWeight.w700,
@@ -205,14 +242,18 @@ class _QuickTile extends StatelessWidget {
                   ),
               ],
             ),
-            const Spacer(),
-            Text(
-              item.title,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
-                letterSpacing: 0.5,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                item.title,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                  letterSpacing: 0.5,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],

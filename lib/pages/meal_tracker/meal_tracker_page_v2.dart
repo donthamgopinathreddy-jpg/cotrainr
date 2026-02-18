@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'weekly_insights_page.dart';
 import '../../theme/meal_tracker_tokens.dart';
+import '../../repositories/meal_repository.dart';
 
 class MealTrackerPageV2 extends StatefulWidget {
   const MealTrackerPageV2({super.key});
@@ -17,6 +18,7 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
     with TickerProviderStateMixin {
   final ImagePicker _imagePicker = ImagePicker();
   final ScrollController _scrollController = ScrollController();
+  final MealRepository _mealRepo = MealRepository();
   late AnimationController _fadeController;
   late AnimationController _ringController;
   late Animation<double> _fadeAnimation;
@@ -52,7 +54,7 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
     'Dinner': [],
     'Snacks': [],
   };
-  late final List<String> _mealOrder = [
+  List<String> _mealOrder = [
     'Breakfast',
     'Lunch',
     'Dinner',
@@ -95,6 +97,58 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
     );
     _fadeController.forward();
     _ringController.forward();
+    _loadGoals();
+    _loadDayData();
+  }
+
+  Future<void> _loadGoals() async {
+    final goals = await _mealRepo.getNutritionGoals();
+    if (mounted) {
+      setState(() {
+        goalCalories = goals.goalCalories;
+        goalProtein = goals.goalProtein;
+        goalCarbs = goals.goalCarbs;
+        goalFats = goals.goalFats;
+        goalFiber = goals.goalFiber;
+      });
+    }
+  }
+
+  Future<void> _loadDayData() async {
+    final data = await _mealRepo.getDayMeals(_selectedDate);
+    if (!mounted) return;
+    setState(() {
+      const defaultOrder = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
+      final customFromData = data.mealsByType.keys
+          .where((k) => !defaultOrder.contains(k))
+          .toList();
+      _mealOrder = [...defaultOrder, ...customFromData];
+      _meals.clear();
+      for (final k in _mealOrder) {
+        _meals[k] = data.mealsByType[k]?.map(_foodItemFromRow).toList() ?? [];
+      }
+      calories = data.totalCalories;
+      protein = data.totalProtein.round();
+      carbs = data.totalCarbs.round();
+      fats = data.totalFats.round();
+      fiber = data.totalFiber.round();
+    });
+    _ringController.reset();
+    _ringController.forward();
+  }
+
+  FoodItem _foodItemFromRow(MealItemRow row) {
+    return FoodItem(
+      id: row.id,
+      name: row.foodName,
+      calories: row.caloriesInt,
+      protein: row.protein,
+      carbs: row.carbs,
+      fats: row.fats,
+      fiber: row.fiber,
+      unit: row.unit,
+      amount: row.quantity,
+    );
   }
 
   void _recomputeTotals() {
@@ -229,16 +283,8 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
     setState(() {
       _selectedDate = _dateOnly(date);
       _weekStart = _startOfWeek(_selectedDate);
-      // Reset totals for selected day (in real app, load from storage)
-      calories = 1260;
-      protein = 92;
-      carbs = 140;
-      fats = 38;
-      fiber = 18;
     });
-    _ringController
-      ..reset()
-      ..forward();
+    _loadDayData();
   }
 
   Future<void> _openCalendar() async {
@@ -338,6 +384,24 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
       return;
     }
 
+    try {
+      await _mealRepo.upsertNutritionGoals(NutritionGoals(
+        goalCalories: nextCalories,
+        goalProtein: nextP,
+        goalCarbs: nextC,
+        goalFats: nextF,
+        goalFiber: nextFi,
+      ));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to save goals: $e')),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
     setState(() {
       goalCalories = nextCalories;
       goalProtein = nextP;
@@ -360,26 +424,57 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
       builder: (context) => _AddFoodSheet(
         mealType: mealType,
         mealOptions: List<String>.from(_mealOrder),
-        onFoodAdded: (food, meal) {
-          setState(() {
-            _meals[meal]!.add(food);
-            _recomputeTotals();
-            if (!_recentFoods.contains(food)) {
-              _recentFoods.insert(0, food);
-              if (_recentFoods.length > 5) _recentFoods.removeLast();
+        onFoodAdded: (food, meal) async {
+          try {
+            await _mealRepo.addFoodItem(
+              date: _selectedDate,
+              mealType: meal,
+              foodName: food.name,
+              quantity: food.amount,
+              unit: food.unit,
+              calories: food.calories,
+              protein: food.protein,
+              carbs: food.carbs,
+              fats: food.fats,
+              fiber: food.fiber,
+            );
+            if (!mounted) return;
+            final data = await _mealRepo.getDayMeals(_selectedDate);
+            if (!mounted) return;
+            setState(() {
+              const defaultOrder = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
+              final customFromData = data.mealsByType.keys
+                  .where((k) => !defaultOrder.contains(k))
+                  .toList();
+              _mealOrder = [...defaultOrder, ...customFromData];
+              _meals.clear();
+              for (final k in _mealOrder) {
+                _meals[k] = data.mealsByType[k]?.map(_foodItemFromRow).toList() ?? [];
+              }
+              _recomputeTotals();
+              if (!_recentFoods.any((f) => f.name == food.name)) {
+                _recentFoods.insert(0, food);
+                if (_recentFoods.length > 5) _recentFoods.removeLast();
+              }
+            });
+            _ringController.reset();
+            _ringController.forward();
+            HapticFeedback.mediumImpact();
+            Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Added to $meal'),
+                duration: const Duration(seconds: 1),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Failed to add: $e')),
+              );
             }
-          });
-          _ringController.reset();
-          _ringController.forward();
-          HapticFeedback.mediumImpact();
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Added to $meal'),
-              duration: const Duration(seconds: 1),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
+          }
         },
         commonFoods: _commonFoods,
         recentFoods: _recentFoods,
@@ -396,24 +491,60 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
       builder: (context) => _MealDetailSheet(
         mealType: mealType,
         foods: _meals[mealType]!,
-        onFoodDeleted: (food) {
-          setState(() {
-            _meals[mealType]!.remove(food);
-            _recomputeTotals();
-          });
+        onFoodDeleted: (food) async {
+          if (food.id == null) {
+            setState(() {
+              _meals[mealType]!.remove(food);
+              _recomputeTotals();
+            });
+          } else {
+            try {
+              await _mealRepo.deleteFoodItem(food.id!);
+              if (!mounted) return;
+              setState(() {
+                _meals[mealType]!.remove(food);
+                _recomputeTotals();
+              });
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Failed to delete: $e')),
+                );
+              }
+              return;
+            }
+          }
           _ringController.reset();
           _ringController.forward();
           HapticFeedback.mediumImpact();
         },
-        onFoodUpdated: (oldFood, updated) {
-          setState(() {
-            final idx = _meals[mealType]!.indexOf(oldFood);
-            if (idx >= 0) _meals[mealType]![idx] = updated;
-            _recomputeTotals();
-          });
-          _ringController
-            ..reset()
-            ..forward();
+        onFoodUpdated: (oldFood, updated) async {
+          if (oldFood.id == null) {
+            setState(() {
+              final idx = _meals[mealType]!.indexOf(oldFood);
+              if (idx >= 0) _meals[mealType]![idx] = updated;
+              _recomputeTotals();
+            });
+          } else {
+            try {
+              await _mealRepo.updateFoodItemAmount(oldFood.id!, updated.amount);
+              if (!mounted) return;
+              setState(() {
+                final idx = _meals[mealType]!.indexOf(oldFood);
+                if (idx >= 0) _meals[mealType]![idx] = updated.copyWith(id: oldFood.id);
+                _recomputeTotals();
+              });
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Failed to update: $e')),
+                );
+              }
+              return;
+            }
+          }
+          _ringController.reset();
+          _ringController.forward();
           HapticFeedback.selectionClick();
         },
         onAddFood: () => _openAddFood(mealType: mealType),
@@ -423,6 +554,7 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
 
   Future<void> _openWeeklyInsights() async {
     HapticFeedback.selectionClick();
+    final weekEnd = _weekStart.add(const Duration(days: 6));
     Navigator.push(
       context,
       PageRouteBuilder(
@@ -434,6 +566,8 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
               goalProtein: goalProtein,
               goalCarbs: goalCarbs,
               goalFats: goalFats,
+              mealRepository: _mealRepo,
+              weekEndDate: weekEnd,
               commonFoods: _commonFoods
                   .map(
                     (f) => WeeklyFood(
@@ -635,6 +769,8 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
 
 // Food Item Model
 class FoodItem {
+  /// DB meal_item id when loaded from Supabase; null for in-memory/common foods.
+  final String? id;
   final String name;
   final int calories;
   final double protein;
@@ -648,6 +784,7 @@ class FoodItem {
   final double amount;
 
   FoodItem({
+    this.id,
     required this.name,
     required this.calories,
     required this.protein,
@@ -663,6 +800,7 @@ class FoodItem {
     return base?.toDouble() ?? 1.0;
   }
 
+  /// Matches "100g", "50 g" etc. Returns base grams or null for serving units ("1 medium", "1x").
   static int? _baseGramsFromUnit(String unit) {
     final m = RegExp(r'(\d+)\s*g', caseSensitive: false).firstMatch(unit);
     if (m == null) return null;
@@ -678,6 +816,7 @@ class FoodItem {
   }
 
   FoodItem copyWith({
+    String? id,
     String? name,
     int? calories,
     double? protein,
@@ -688,6 +827,7 @@ class FoodItem {
     double? amount,
   }) {
     return FoodItem(
+      id: id ?? this.id,
       name: name ?? this.name,
       calories: calories ?? this.calories,
       protein: protein ?? this.protein,

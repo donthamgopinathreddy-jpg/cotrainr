@@ -3,6 +3,10 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter/services.dart';
 import '../../theme/design_tokens.dart';
 import '../../repositories/messages_repository.dart';
+import '../../repositories/coach_notes_repository.dart';
+import '../../repositories/profile_repository.dart';
+import '../../repositories/metrics_repository.dart';
+import '../../repositories/meal_repository.dart' show MealRepository, DayMealsData;
 import 'create_client_page.dart';
 
 class ClientDetailPage extends StatefulWidget {
@@ -27,24 +31,27 @@ class _ClientDetailPageState extends State<ClientDetailPage>
   
   final List<String> _tabs = ['Overview', 'Metrics', 'Workouts', 'Meals', 'Sessions', 'Notes'];
 
-  // Mock client data - in real app, fetch from Supabase using clientId
   late ClientItem _client;
-  
-  // Mock health metrics data
-  final int _currentSteps = 8234;
-  final int _goalSteps = 10000;
-  final int _currentCalories = 1856;
-  final double _currentWater = 1.5;
-  final double _goalWater = 2.5;
-  final double _currentDistance = 4.6;
-  final double _bmi = 22.4;
-  final String _bmiStatus = 'Normal';
+
+  int _currentSteps = 0;
+  int _goalSteps = 10000;
+  int _currentCalories = 0;
+  double _currentWater = 0;
+  double _goalWater = 2.5;
+  double _currentDistance = 0;
+  double _bmi = 0;
+  String _bmiStatus = '—';
+  DayMealsData? _mealsData;
+  final ProfileRepository _profileRepo = ProfileRepository();
+  final MetricsRepository _metricsRepo = MetricsRepository();
+  final MealRepository _mealRepo = MealRepository();
 
   // Notes controller
   final TextEditingController _notesController = TextEditingController();
+  final CoachNotesRepository _notesRepo = CoachNotesRepository();
   
-  // Notes list - in real app, fetch from Supabase
-  final List<Map<String, dynamic>> _notesList = [];
+  // Notes list - from Supabase coach_notes
+  List<CoachNote> _notesList = [];
 
 
   @override
@@ -73,6 +80,54 @@ class _ClientDetailPageState extends State<ClientDetailPage>
     );
     _tabController = TabController(length: _tabs.length, vsync: this);
     _fadeController.forward();
+    _loadNotes();
+    _loadClientData();
+  }
+
+  Future<void> _loadClientData() async {
+    final id = widget.clientId ?? _client.id;
+    if (id.isEmpty) return;
+    try {
+      final profile = await _profileRepo.fetchUserProfile(id);
+      if (profile != null && mounted) {
+        setState(() {
+          _client = ClientItem(
+            id: id,
+            name: profile['full_name'] as String? ?? profile['username'] as String? ?? 'Client',
+            email: profile['username'] != null ? '@${profile['username']}' : '—',
+            phone: profile['phone'] as String? ?? '',
+            joinDate: _client.joinDate,
+            status: _client.status,
+            avatar: profile['avatar_url'] as String?,
+            alerts: _client.alerts,
+            adherencePercentage: _client.adherencePercentage,
+            lastCheckIn: _client.lastCheckIn,
+          );
+          _bmi = (profile['bmi'] as num?)?.toDouble() ?? 0;
+          _bmiStatus = profile['bmi_status'] as String? ?? '—';
+        });
+      }
+      final todayMetrics = await _metricsRepo.getClientMetricsForDate(id, DateTime.now());
+      final meals = await _mealRepo.getClientDayMeals(id, DateTime.now());
+      if (mounted) {
+        setState(() {
+          _currentSteps = (todayMetrics?['steps'] as num?)?.toInt() ?? 0;
+          _currentCalories = ((todayMetrics?['calories_burned'] as num?)?.toDouble() ?? 0.0).round();
+          _currentWater = (todayMetrics?['water_intake_liters'] as num?)?.toDouble() ?? 0;
+          _currentDistance = (todayMetrics?['distance_km'] as num?)?.toDouble() ?? 0;
+          _mealsData = meals;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _loadNotes() async {
+    final id = widget.clientId ?? _client.id;
+    if (id.isEmpty) return;
+    try {
+      final notes = await _notesRepo.getNotesForClient(id);
+      if (mounted) setState(() => _notesList = notes);
+    } catch (_) {}
   }
 
   @override
@@ -550,7 +605,7 @@ class _ClientDetailPageState extends State<ClientDetailPage>
                   padding: const EdgeInsets.all(16),
                   itemCount: _notesList.length,
                   itemBuilder: (context, index) {
-                    final note = _notesList[_notesList.length - 1 - index]; // Show newest first
+                    final note = _notesList[index]; // Newest first (already ordered)
                     return Container(
                       margin: const EdgeInsets.only(bottom: 12),
                       padding: const EdgeInsets.all(16),
@@ -566,7 +621,7 @@ class _ClientDetailPageState extends State<ClientDetailPage>
                             children: [
                               Expanded(
                                 child: Text(
-                                  note['text'] as String,
+                                  note.content,
                                   style: TextStyle(
                                     color: textPrimary,
                                     fontSize: DesignTokens.fontSizeBody,
@@ -577,7 +632,7 @@ class _ClientDetailPageState extends State<ClientDetailPage>
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            _formatNoteDate(note['timestamp'] as DateTime),
+                            _formatNoteDate(note.createdAt),
                             style: TextStyle(
                               color: textSecondary,
                               fontSize: DesignTokens.fontSizeBodySmall,
@@ -670,7 +725,7 @@ class _ClientDetailPageState extends State<ClientDetailPage>
     }
   }
 
-  void _sendNoteToClient(Color textPrimary) {
+  Future<void> _sendNoteToClient(Color textPrimary) async {
     final noteText = _notesController.text.trim();
     if (noteText.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -683,39 +738,33 @@ class _ClientDetailPageState extends State<ClientDetailPage>
       return;
     }
 
-    // TODO: Implement actual notification sending to client
-    // This would typically involve:
-    // 1. Saving the note to Supabase
-    // 2. Sending a push notification to the client
-    // 3. Creating a notification record in the database
+    final clientId = widget.clientId ?? _client.id;
+    if (clientId.isEmpty) return;
 
-    // Add note to list
-    setState(() {
-      _notesList.add({
-        'text': noteText,
-        'timestamp': DateTime.now(),
-      });
-    });
+    final note = await _notesRepo.addNote(clientId, noteText);
+    if (!mounted) return;
 
-    // TODO: Implement actual notification sending to client
-    // This would typically involve:
-    // 1. Saving the note to Supabase
-    // 2. Sending a push notification to the client
-    // 3. Creating a notification record in the database
-
-    // Simulate sending notification
-    HapticFeedback.lightImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Note sent to ${_client.name}'),
-        backgroundColor: DesignTokens.accentGreen,
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
-      ),
-    );
-
-    // Clear the input after sending
-    _notesController.clear();
+    if (note != null) {
+      setState(() => _notesList = [note, ..._notesList]);
+      HapticFeedback.lightImpact();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Note sent to ${_client.name}'),
+          backgroundColor: DesignTokens.accentGreen,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      _notesController.clear();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Could not send note. Make sure you have accepted this client.'),
+          backgroundColor: DesignTokens.accentRed,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   Widget _buildReportsSection(
@@ -1175,7 +1224,7 @@ class _ClientDetailPageState extends State<ClientDetailPage>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'View Meal Tracker',
+                    "Today's Meals",
                     style: TextStyle(
                       color: textPrimary,
                       fontSize: DesignTokens.fontSizeBody,
@@ -1184,7 +1233,9 @@ class _ClientDetailPageState extends State<ClientDetailPage>
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'See ${_client.name}\'s daily meals and nutrition',
+                    _mealsData != null && _mealsData!.totalCalories > 0
+                        ? '${_mealsData!.totalCalories} cal • P: ${_mealsData!.totalProtein.toStringAsFixed(0)}g'
+                        : 'No meals logged today',
                     style: TextStyle(
                       color: textSecondary,
                       fontSize: DesignTokens.fontSizeBodySmall,

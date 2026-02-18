@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_colors.dart';
@@ -158,31 +159,36 @@ class _NearbyPreviewV3State extends State<NearbyPreviewV3> {
       children: [
         Row(
           children: [
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: AppColors.orange.withOpacity(0.2),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
+            ShaderMask(
+              shaderCallback: (bounds) => AppColors.stepsGradient.createShader(bounds),
+              child: Icon(
                 Icons.location_on_rounded,
-                color: AppColors.orange,
-                size: 18,
+                size: 22,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              width: 4,
+              height: 18,
+              decoration: BoxDecoration(
+                gradient: AppColors.stepsGradient,
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
             const SizedBox(width: 8),
             Text(
               'Nearby Places',
-              style: TextStyle(
+              style: GoogleFonts.montserrat(
                 fontSize: DesignTokens.fontSizeSection,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w500,
                 color: cs.onSurface,
+                letterSpacing: -0.5,
               ),
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
         SizedBox(
           height: 40,
           child: ListView.separated(

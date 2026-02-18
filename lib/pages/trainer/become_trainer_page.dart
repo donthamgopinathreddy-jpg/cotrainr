@@ -155,7 +155,7 @@ class _BecomeTrainerPageState extends State<BecomeTrainerPage> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  gradient: AppColors.distanceGradient,
+                  gradient: AppColors.becomeTrainerGradient,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(
@@ -189,7 +189,7 @@ class _BecomeTrainerPageState extends State<BecomeTrainerPage> {
               child: Text(
                 'OK',
                 style: TextStyle(
-                  color: AppColors.purple,
+                  color: AppColors.orange,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -206,8 +206,8 @@ class _BecomeTrainerPageState extends State<BecomeTrainerPage> {
 
     return Scaffold(
       backgroundColor: isLight
-          ? const Color(0xFFE3F2FD)
-          : const Color(0xFF0D1B2A), // Dark mode: blue-black mix
+          ? const Color(0xFFFCE8E8) // Light red
+          : const Color(0xFF1A0D0D), // Dark mode: red and black mix
       appBar: AppBar(
         title: const Text(
           'Become a Trainer',
@@ -382,9 +382,9 @@ class _BecomeTrainerPageState extends State<BecomeTrainerPage> {
                       decoration: BoxDecoration(
                         gradient: _isSubmitting
                             ? null
-                            : AppColors.distanceGradient,
+                            : AppColors.becomeTrainerGradient,
                         color: _isSubmitting
-                            ? AppColors.purple.withOpacity(0.5)
+                            ? AppColors.orange.withOpacity(0.5)
                             : null,
                         borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
                       ),
@@ -443,7 +443,7 @@ class _BecomeTrainerPageState extends State<BecomeTrainerPage> {
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
-        prefixIcon: Icon(icon, color: AppColors.purple),
+        prefixIcon: Icon(icon, color: AppColors.orange),
         filled: true,
         fillColor: colorScheme.surface,
         border: OutlineInputBorder(
@@ -494,7 +494,7 @@ class _BecomeTrainerPageState extends State<BecomeTrainerPage> {
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
-        prefixIcon: Icon(icon, color: AppColors.purple),
+        prefixIcon: Icon(icon, color: AppColors.orange),
         filled: true,
         fillColor: colorScheme.surface,
         border: OutlineInputBorder(
@@ -521,7 +521,7 @@ class _BecomeTrainerPageState extends State<BecomeTrainerPage> {
         fontSize: 16,
       ),
       dropdownColor: colorScheme.surface,
-      icon: const Icon(Icons.arrow_drop_down, color: AppColors.purple),
+      icon: const Icon(Icons.arrow_drop_down, color: AppColors.orange),
     );
   }
 
@@ -591,13 +591,13 @@ class _BecomeTrainerPageState extends State<BecomeTrainerPage> {
                       children: [
                         Container(
                           padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: AppColors.purple.withOpacity(0.1),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            icon,
-                            color: AppColors.purple,
+          decoration: BoxDecoration(
+            color: AppColors.orange.withOpacity(0.1),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            icon,
+            color: AppColors.orange,
                             size: 32,
                           ),
                         ),
@@ -636,7 +636,7 @@ class _SectionHeader extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            gradient: AppColors.distanceGradient,
+            gradient: AppColors.becomeTrainerGradient,
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(icon, color: Colors.white, size: 20),

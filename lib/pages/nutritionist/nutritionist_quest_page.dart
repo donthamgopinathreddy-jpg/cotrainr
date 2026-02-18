@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
 import '../../utils/page_transitions.dart';
+import '../../widgets/quest/shared_levels.dart';
 
 class NutritionistQuestPage extends StatefulWidget {
   const NutritionistQuestPage({super.key});
@@ -25,7 +26,7 @@ class _NutritionistQuestPageState extends State<NutritionistQuestPage>
   final int _level = 4;
   final String _levelTitle = 'Foundation';
 
-  late final List<_LevelInfo> _levels;
+  late final List<LevelInfo> _levels;
   late final List<_QuestItem> _daily;
   late final List<_QuestItem> _weekly;
   late final List<_LeaderboardItem> _leaderboard;
@@ -50,7 +51,7 @@ class _NutritionistQuestPageState extends State<NutritionistQuestPage>
     );
     _fadeController.forward();
     _tabController = PageController(viewportFraction: 1.0);
-    _levels = _buildLevels();
+    _levels = buildQuestLevels();
     _daily = [
       _QuestItem(
         title: 'Steps Sprint',
@@ -287,8 +288,8 @@ class _XpHero extends StatelessWidget {
   final int currentXP;
   final int level;
   final String title;
-  final _LevelInfo currentLevelInfo;
-  final _LevelInfo nextLevelInfo;
+  final LevelInfo currentLevelInfo;
+  final LevelInfo nextLevelInfo;
   final VoidCallback onTapRing;
 
   const _XpHero({
@@ -305,7 +306,7 @@ class _XpHero extends StatelessWidget {
     final nextXP = nextLevelInfo.xpRequired;
     final progress = currentXP / nextXP;
     final needed = (nextXP - currentXP).clamp(0, nextXP);
-    final gradient = _tierGradient(currentLevelInfo.tierColor);
+    final gradient = tierGradient(currentLevelInfo.tierColor);
     return Container(
       height: 140,
       padding: const EdgeInsets.all(16),
@@ -644,7 +645,7 @@ class _LeaderboardPodiumItem extends StatelessWidget {
                 child: _MedalBadge(
                   level: entry!.level,
                   color: tierColor,
-                  symbol: _SymbolType.star,
+                  symbol: SymbolType.star,
                   size: size,
                 ),
               ),
@@ -715,222 +716,6 @@ class _AchievementsSection extends StatelessWidget {
     );
   }
 }
-
-class LevelsPage extends StatelessWidget {
-  final int currentXP;
-  final List<_LevelInfo> levels;
-
-  const LevelsPage({
-    super.key,
-    required this.currentXP,
-    required this.levels,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final currentIndex = _currentLevelIndex(levels, currentXP);
-    final currentLevel = levels[currentIndex];
-    final nextLevel =
-        currentIndex + 1 < levels.length ? levels[currentIndex + 1] : null;
-    final levelTiles = <Widget>[];
-    for (var i = 0; i < levels.length; i++) {
-      levelTiles.add(_LevelRowLarge(
-        level: levels[i],
-        currentXP: currentXP,
-      ));
-      if (i != levels.length - 1) {
-        levelTiles.add(const SizedBox(height: 12));
-      }
-    }
-    return Scaffold(
-      backgroundColor: colorScheme.background,
-      appBar: AppBar(
-        backgroundColor: colorScheme.background,
-        elevation: 0,
-        title: Text(
-          'Levels',
-          style: TextStyle(
-            color: colorScheme.onBackground,
-          ),
-        ),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-        children: [
-          _LevelHeader(
-            currentLevel: currentLevel,
-            nextLevel: nextLevel,
-            currentXP: currentXP,
-          ),
-          const SizedBox(height: 18),
-          ...levelTiles,
-        ],
-      ),
-    );
-  }
-}
-
-class _LevelHeader extends StatelessWidget {
-  final _LevelInfo currentLevel;
-  final _LevelInfo? nextLevel;
-  final int currentXP;
-
-  const _LevelHeader({
-    required this.currentLevel,
-    required this.nextLevel,
-    required this.currentXP,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final nextXP = nextLevel?.xpRequired ?? currentLevel.xpRequired;
-    final progress =
-        nextXP == 0 ? 1.0 : (currentXP / nextXP).clamp(0.0, 1.0);
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: _tierGradient(currentLevel.tierColor),
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: AppColors.cardShadow,
-      ),
-      child: Row(
-        children: [
-          _MedalBadge(
-            level: currentLevel.level,
-            color: currentLevel.tierColor,
-            symbol: currentLevel.symbol,
-            size: 88,
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Level ${currentLevel.level} · ${currentLevel.name}',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  currentLevel.tierName,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white.withOpacity(0.8),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(999),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 8,
-                    color: Colors.white,
-                    backgroundColor: Colors.white.withOpacity(0.2),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  nextLevel == null
-                      ? 'Max level reached'
-                      : '${currentXP} / ${nextXP} XP to ${nextLevel!.name}',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white.withOpacity(0.8),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _LevelRowLarge extends StatelessWidget {
-  final _LevelInfo level;
-  final int currentXP;
-
-  const _LevelRowLarge({
-    required this.level,
-    required this.currentXP,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final unlocked = currentXP >= level.xpRequired;
-    final needed = (level.xpRequired - currentXP).clamp(0, level.xpRequired);
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: level.tierColor.withOpacity(0.16),
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: AppColors.cardShadow,
-      ),
-      child: Row(
-        children: [
-          _MedalBadge(
-            level: level.level,
-            color: level.tierColor,
-            symbol: level.symbol,
-            size: 64,
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Level ${level.level} · ${level.name}',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: colorScheme.onSurface,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  level.tierName,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: colorScheme.onSurface.withOpacity(0.7),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  unlocked ? 'Unlocked' : 'Need $needed XP to unlock',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: colorScheme.onSurface.withOpacity(0.65),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Text(
-            '${level.xpRequired} XP',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: colorScheme.onSurface.withOpacity(0.8),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 
 class _QuestCard extends StatelessWidget {
   final _QuestItem quest;
@@ -1149,7 +934,7 @@ class _LevelBadge extends StatelessWidget {
   final int level;
   final String title;
   final Color color;
-  final _SymbolType symbol;
+  final SymbolType symbol;
 
   const _LevelBadge({
     required this.level,
@@ -1165,7 +950,7 @@ class _LevelBadge extends StatelessWidget {
       height: 110,
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        gradient: _tierGradient(color),
+        gradient: tierGradient(color),
         borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
@@ -1403,200 +1188,10 @@ class _AchievementItem {
   _AchievementItem(this.title, this.icon, this.progress, this.unlocked);
 }
 
-class _LevelInfo {
-  final int level;
-  final String name;
-  final int xpRequired;
-  final String tierName;
-  final Color tierColor;
-  final _SymbolType symbol;
-
-  const _LevelInfo(
-    this.level,
-    this.name,
-    this.xpRequired,
-    this.tierName,
-    this.tierColor,
-    this.symbol,
-  );
-}
-
-List<_LevelInfo> _buildLevels() {
-  const tier1 = Color(0xFFCD7F32); // Bronze
-  const tier2 = Color(0xFFC0C0C0); // Silver
-  const tier3 = Color(0xFFFFD700); // Gold
-  const tier4 = Color(0xFF4FC3F7); // Diamond
-  const tier5 = Color(0xFFE5E4E2); // Platinum
-
-  final names = [
-    'Rookie',
-    'Starter',
-    'Mover',
-    'Walker',
-    'Tracker',
-    'Habit Builder',
-    'Consistent',
-    'Focused',
-    'Committed',
-    'Foundation Complete',
-    'Strider',
-    'Energized',
-    'Stepper',
-    'Balancer',
-    'Performer',
-    'Driven',
-    'Builder',
-    'Progressor',
-    'Momentum',
-    'Momentum Master',
-    'Athlete',
-    'Fuelled',
-    'Conditioned',
-    'Resilient',
-    'Stronger',
-    'Grinder',
-    'Endurance',
-    'Peak Ready',
-    'Relentless',
-    'Performance Elite',
-    'Veteran',
-    'Pro',
-    'Expert',
-    'Champion',
-    'Dominator',
-    'Prime',
-    'Unstoppable',
-    'Elite Force',
-    'Supreme',
-    'Elite Legend',
-    'Mythic',
-    'Overdrive',
-    'Ascended',
-    'Immortal',
-    'Titan',
-    'Godmode',
-    'Apex',
-    'Infinity',
-    'Icon',
-    'Cotrainr Elite',
-  ];
-
-  final tierSymbols = [
-    [
-      _SymbolType.flame,
-      _SymbolType.footstep,
-      _SymbolType.arrow,
-      _SymbolType.footprints,
-      _SymbolType.check,
-      _SymbolType.calendar,
-      _SymbolType.bars,
-      _SymbolType.target,
-      _SymbolType.chain,
-      _SymbolType.star,
-    ],
-    [
-      _SymbolType.runner,
-      _SymbolType.lightning,
-      _SymbolType.stairs,
-      _SymbolType.balance,
-      _SymbolType.star,
-      _SymbolType.arrowUp,
-      _SymbolType.blocks,
-      _SymbolType.graph,
-      _SymbolType.spin,
-      _SymbolType.doubleStar,
-    ],
-    [
-      _SymbolType.runner,
-      _SymbolType.flame,
-      _SymbolType.heartbeat,
-      _SymbolType.shield,
-      _SymbolType.muscle,
-      _SymbolType.gear,
-      _SymbolType.infinity,
-      _SymbolType.mountain,
-      _SymbolType.hammer,
-      _SymbolType.crown,
-    ],
-    [
-      _SymbolType.medalStar,
-      _SymbolType.checkSeal,
-      _SymbolType.brain,
-      _SymbolType.laurel,
-      _SymbolType.claw,
-      _SymbolType.diamond,
-      _SymbolType.breakline,
-      _SymbolType.energy,
-      _SymbolType.sunburst,
-      _SymbolType.crown,
-    ],
-    [
-      _SymbolType.rune,
-      _SymbolType.motion,
-      _SymbolType.wings,
-      _SymbolType.infinity,
-      _SymbolType.helmet,
-      _SymbolType.eye,
-      _SymbolType.triplePeak,
-      _SymbolType.mobius,
-      _SymbolType.radiantStar,
-      _SymbolType.mythicCrest,
-    ],
-  ];
-
-  final levels = <_LevelInfo>[];
-  var xp = 0.0;
-  var step = 100.0;
-  for (var i = 0; i < 50; i++) {
-    if (i > 0) {
-      xp += step;
-      step = (step * 1.12).clamp(100, 1200);
-    }
-    final level = i + 1;
-    final tierIndex = (i / 10).floor();
-    final tierName = [
-      'Rookie',
-      'Challenger',
-      'Pro',
-      'Legendary',
-      'Elite',
-    ][tierIndex];
-    final tierColor = [
-      tier1,
-      tier2,
-      tier3,
-      tier4,
-      tier5,
-    ][tierIndex];
-    levels.add(
-      _LevelInfo(
-        level,
-        names[i],
-        xp.round(),
-        tierName,
-        tierColor,
-        tierSymbols[tierIndex][i % 10],
-      ),
-    );
-  }
-  return levels;
-}
-
-LinearGradient _tierGradient(Color base) {
-  return LinearGradient(
-    colors: [
-      base.withOpacity(0.95),
-      Color.lerp(base, Colors.black, 0.25) ?? base,
-    ],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-  );
-}
-
 class _MedalBadge extends StatelessWidget {
   final int level;
   final Color color;
-  final _SymbolType symbol;
+  final SymbolType symbol;
   final double size;
 
   const _MedalBadge({
@@ -1626,7 +1221,7 @@ class _MedalBadge extends StatelessWidget {
 class _MedalBadgePainter extends CustomPainter {
   final int level;
   final Color color;
-  final _SymbolType symbol;
+  final SymbolType symbol;
 
   _MedalBadgePainter({
     required this.level,
@@ -2041,66 +1636,6 @@ class _MedalBadgePainter extends CustomPainter {
     return path;
   }
 
-}
-
-enum _SymbolType {
-  flame,
-  footstep,
-  arrow,
-  footprints,
-  check,
-  calendar,
-  bars,
-  target,
-  chain,
-  star,
-  runner,
-  lightning,
-  stairs,
-  balance,
-  arrowUp,
-  blocks,
-  graph,
-  spin,
-  doubleStar,
-  heartbeat,
-  shield,
-  muscle,
-  gear,
-  infinity,
-  mountain,
-  hammer,
-  crown,
-  medalStar,
-  checkSeal,
-  brain,
-  laurel,
-  claw,
-  diamond,
-  breakline,
-  energy,
-  sunburst,
-  rune,
-  motion,
-  wings,
-  helmet,
-  eye,
-  triplePeak,
-  mobius,
-  radiantStar,
-  mythicCrest,
-}
-
-int _currentLevelIndex(List<_LevelInfo> levels, int xp) {
-  var index = 0;
-  for (var i = 0; i < levels.length; i++) {
-    if (xp >= levels[i].xpRequired) {
-      index = i;
-    } else {
-      break;
-    }
-  }
-  return index;
 }
 
 _LeaderboardItem? _findRank(List<_LeaderboardItem> entries, int rank) {

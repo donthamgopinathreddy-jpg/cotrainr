@@ -55,6 +55,13 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="cotrainr" android:host="invite" android:pathPrefix="/" />
             </intent-filter>
+            <!-- Deep link: cotrainr://video/zoom-connected (Zoom OAuth callback) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="cotrainr" android:host="video" android:pathPrefix="/zoom-connected" />
+            </intent-filter>
             <!-- App link: https://www.cotrainr.com/invite?code=XXX (requires assetlinks.json on domain) -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />

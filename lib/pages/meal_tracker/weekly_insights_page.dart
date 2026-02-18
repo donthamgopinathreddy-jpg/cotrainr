@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../theme/meal_tracker_tokens.dart';
+import '../../repositories/meal_repository.dart';
 import 'dart:math' as math;
 
 class WeeklyFood {
@@ -29,6 +30,8 @@ class WeeklyInsightsPage extends StatefulWidget {
   final int goalProtein;
   final int goalCarbs;
   final int goalFats;
+  final MealRepository? mealRepository;
+  final DateTime? weekEndDate;
   final List<WeeklyFood> commonFoods;
   final List<WeeklyFood> recentFoods;
 
@@ -40,6 +43,8 @@ class WeeklyInsightsPage extends StatefulWidget {
     this.goalProtein = 150,
     this.goalCarbs = 200,
     this.goalFats = 65,
+    this.mealRepository,
+    this.weekEndDate,
     this.commonFoods = const [],
     this.recentFoods = const [],
   });
@@ -55,15 +60,35 @@ class _WeeklyInsightsPageState extends State<WeeklyInsightsPage>
   late DateTime _weekStart; // Monday
   _Metric _metric = _Metric.calories;
 
-  // Mock data for 7 days
-  final List<int> _caloriesData = [1800, 2100, 1950, 2200, 1900, 2050, 2000];
-  final List<double> _proteinData = [120, 140, 130, 150, 125, 135, 140];
-  final List<double> _carbsData = [180, 200, 190, 220, 185, 195, 200];
-  final List<double> _fatsData = [55, 65, 60, 70, 58, 62, 65];
+  // Data for 7 days (mock when no repository; real when mealRepository provided)
+  List<int> _caloriesData = [1800, 2100, 1950, 2200, 1900, 2050, 2000];
+  List<double> _proteinData = [120, 140, 130, 150, 125, 135, 140];
+  List<double> _carbsData = [180, 200, 190, 220, 185, 195, 200];
+  List<double> _fatsData = [55, 65, 60, 70, 58, 62, 65];
+  bool _loading = false;
 
   @override
   void initState() {
     super.initState();
+    if (widget.mealRepository != null && widget.weekEndDate != null) {
+      _loading = true;
+      widget.mealRepository!
+          .getWeeklyAggregates(widget.weekEndDate!)
+          .then((data) {
+        if (mounted && data.length == 7) {
+          setState(() {
+            _caloriesData = data.map((d) => d.calories).toList();
+            _proteinData = data.map((d) => d.protein).toList();
+            _carbsData = data.map((d) => d.carbs).toList();
+            _fatsData = data.map((d) => d.fats).toList();
+            _loading = false;
+          });
+          _controller.forward();
+        }
+      });
+    } else {
+      _loading = false;
+    }
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 650),
@@ -118,10 +143,31 @@ class _WeeklyInsightsPageState extends State<WeeklyInsightsPage>
 
   void _setWeekStart(DateTime weekStart) {
     HapticFeedback.selectionClick();
-    setState(() => _weekStart = weekStart);
-    _controller
-      ..reset()
-      ..forward();
+    setState(() {
+      _weekStart = weekStart;
+      if (widget.mealRepository != null) {
+        _loading = true;
+      }
+    });
+    if (widget.mealRepository != null) {
+      final weekEnd = weekStart.add(const Duration(days: 6));
+      widget.mealRepository!.getWeeklyAggregates(weekEnd).then((data) {
+        if (mounted && data.length == 7) {
+          setState(() {
+            _caloriesData = data.map((d) => d.calories).toList();
+            _proteinData = data.map((d) => d.protein).toList();
+            _carbsData = data.map((d) => d.carbs).toList();
+            _fatsData = data.map((d) => d.fats).toList();
+            _loading = false;
+          });
+          _controller.reset();
+          _controller.forward();
+        }
+      });
+    } else {
+      _controller.reset();
+      _controller.forward();
+    }
   }
 
   void _setMetric(_Metric m) {
@@ -231,7 +277,11 @@ class _WeeklyInsightsPageState extends State<WeeklyInsightsPage>
 
     return Scaffold(
       backgroundColor: pageBg,
-      body: SafeArea(
+      body: _loading
+          ? Center(
+              child: CircularProgressIndicator(color: textPrimary),
+            )
+          : SafeArea(
         child: CustomScrollView(
           physics: const BouncingScrollPhysics(),
           slivers: [

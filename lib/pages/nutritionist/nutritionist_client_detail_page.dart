@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter/services.dart';
 import '../../theme/design_tokens.dart';
 import '../../repositories/messages_repository.dart';
+import '../../repositories/coach_notes_repository.dart';
 import '../trainer/create_client_page.dart';
 
 class NutritionistClientDetailPage extends StatefulWidget {
@@ -52,9 +53,10 @@ class _NutritionistClientDetailPageState extends State<NutritionistClientDetailP
 
   // Notes controller
   final TextEditingController _notesController = TextEditingController();
+  final CoachNotesRepository _notesRepo = CoachNotesRepository();
   
-  // Notes list - in real app, fetch from Supabase
-  final List<Map<String, dynamic>> _notesList = [];
+  // Notes list - from Supabase coach_notes
+  List<CoachNote> _notesList = [];
 
   @override
   void initState() {
@@ -79,6 +81,16 @@ class _NutritionistClientDetailPageState extends State<NutritionistClientDetailP
     );
     _tabController = TabController(length: _tabs.length, vsync: this);
     _fadeController.forward();
+    _loadNotes();
+  }
+
+  Future<void> _loadNotes() async {
+    final id = widget.clientId ?? _client.id;
+    if (id.isEmpty) return;
+    try {
+      final notes = await _notesRepo.getNotesForClient(id);
+      if (mounted) setState(() => _notesList = notes);
+    } catch (_) {}
   }
 
   @override
@@ -702,7 +714,7 @@ class _NutritionistClientDetailPageState extends State<NutritionistClientDetailP
                   padding: const EdgeInsets.all(16),
                   itemCount: _notesList.length,
                   itemBuilder: (context, index) {
-                    final note = _notesList[_notesList.length - 1 - index]; // Show newest first
+                    final note = _notesList[index]; // Newest first (already ordered)
                     return Container(
                       margin: const EdgeInsets.only(bottom: 12),
                       padding: const EdgeInsets.all(16),
@@ -718,7 +730,7 @@ class _NutritionistClientDetailPageState extends State<NutritionistClientDetailP
                             children: [
                               Expanded(
                                 child: Text(
-                                  note['text'] as String,
+                                  note.content,
                                   style: TextStyle(
                                     color: textPrimary,
                                     fontSize: DesignTokens.fontSizeBody,
@@ -729,7 +741,7 @@ class _NutritionistClientDetailPageState extends State<NutritionistClientDetailP
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            _formatNoteDate(note['timestamp'] as DateTime),
+                            _formatNoteDate(note.createdAt),
                             style: TextStyle(
                               color: textSecondary,
                               fontSize: DesignTokens.fontSizeBodySmall,
@@ -822,7 +834,7 @@ class _NutritionistClientDetailPageState extends State<NutritionistClientDetailP
     }
   }
 
-  void _sendNoteToClient(Color textPrimary) {
+  Future<void> _sendNoteToClient(Color textPrimary) async {
     final noteText = _notesController.text.trim();
     if (noteText.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -835,33 +847,33 @@ class _NutritionistClientDetailPageState extends State<NutritionistClientDetailP
       return;
     }
 
-    // Add note to list
-    setState(() {
-      _notesList.add({
-        'text': noteText,
-        'timestamp': DateTime.now(),
-      });
-    });
+    final clientId = widget.clientId ?? _client.id;
+    if (clientId.isEmpty) return;
 
-    // TODO: Implement actual notification sending to client
-    // This would typically involve:
-    // 1. Saving the note to Supabase
-    // 2. Sending a push notification to the client
-    // 3. Creating a notification record in the database
+    final note = await _notesRepo.addNote(clientId, noteText);
+    if (!mounted) return;
 
-    // Simulate sending notification
-    HapticFeedback.lightImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Note sent to ${_client.name}'),
-        backgroundColor: DesignTokens.accentGreen,
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
-      ),
-    );
-
-    // Clear the input after sending
-    _notesController.clear();
+    if (note != null) {
+      setState(() => _notesList = [note, ..._notesList]);
+      HapticFeedback.lightImpact();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Note sent to ${_client.name}'),
+          backgroundColor: DesignTokens.accentGreen,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      _notesController.clear();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Could not send note. Make sure you have accepted this client.'),
+          backgroundColor: DesignTokens.accentRed,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   Widget _buildAvatarPlaceholder() {

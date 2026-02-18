@@ -419,7 +419,7 @@ class _MiniBars extends StatelessWidget {
       );
     }
     
-    final maxVal = data.reduce((a, b) => a > b ? a : b);
+    final maxVal = data.isEmpty ? 1.0 : data.reduce((a, b) => a > b ? a : b);
     final count = data.length < labels.length ? data.length : labels.length;
 
     return TweenAnimationBuilder<double>(
@@ -434,7 +434,7 @@ class _MiniBars extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: List.generate(count, (index) {
-                  final barHeight = 22 * (data[index] / maxVal) * value;
+                  final barHeight = maxVal > 0 ? 22 * (data[index] / maxVal) * value : 0.0;
                   return Expanded(
                     child: Align(
                       alignment: Alignment.bottomCenter,
