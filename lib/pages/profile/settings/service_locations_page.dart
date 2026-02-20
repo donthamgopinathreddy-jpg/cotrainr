@@ -11,8 +11,7 @@ import '../../../providers/provider_locations_provider.dart';
 import '../../../theme/app_colors.dart';
 import '../../../theme/design_tokens.dart';
 
-/// Single-page Service Locations: list on top, add/edit form inline below.
-/// No separate screens for add/edit or map picker.
+/// Service Locations: single-page design with hero, list, and inline add/edit form.
 class ServiceLocationsPage extends ConsumerStatefulWidget {
   const ServiceLocationsPage({super.key});
 
@@ -223,106 +222,51 @@ class _ServiceLocationsPageState extends ConsumerState<ServiceLocationsPage> {
       backgroundColor: isDark ? DesignTokens.darkBackground : DesignTokens.lightBackground,
       body: locationsAsync.when(
         data: (locations) => CustomScrollView(
+          physics: const BouncingScrollPhysics(),
           slivers: [
-            SliverAppBar(
-              expandedHeight: 100,
-              pinned: true,
-              backgroundColor: Colors.transparent,
-              leading: IconButton(
-                icon: Icon(Icons.arrow_back_rounded, color: colorScheme.onSurface),
-                onPressed: () => Navigator.pop(context),
-              ),
-              flexibleSpace: FlexibleSpaceBar(
-                titlePadding: const EdgeInsets.only(left: 56, bottom: 14),
-                title: Text(
-                  'Service Locations',
-                  style: GoogleFonts.poppins(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: colorScheme.onSurface,
-                  ),
-                ),
-                background: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: isDark
-                          ? [
-                              AppColors.purple.withValues(alpha: 0.15),
-                              AppColors.blue.withValues(alpha: 0.08),
-                            ]
-                          : [
-                              AppColors.purple.withValues(alpha: 0.08),
-                              AppColors.blue.withValues(alpha: 0.04),
-                            ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
+            _buildHeroAppBar(context, colorScheme, isDark),
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                child: Text(
-                  'Your Locations',
-                  style: GoogleFonts.poppins(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: DesignTokens.textSecondaryOf(context),
-                  ),
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
+                child: _SectionHeader(
+                  title: 'Your Locations',
+                  count: locations.length,
+                  icon: Icons.location_on_rounded,
                 ),
               ),
             ),
             if (locations.isEmpty)
               SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: isDark ? DesignTokens.darkSurface : Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.06),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.location_off_rounded, size: 40, color: AppColors.purple.withValues(alpha: 0.6)),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Text(
-                            'No locations yet. Add one below.',
-                            style: GoogleFonts.poppins(
-                              fontSize: 14,
-                              color: DesignTokens.textSecondaryOf(context),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+                child: _buildEmptyState(context, isDark),
               )
             else
               SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                padding: const EdgeInsets.symmetric(horizontal: 20),
                 sliver: SliverList(
                   delegate: SliverChildBuilderDelegate(
-                    (context, index) => Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: _LocationCard(
-                        location: locations[index],
-                        onEdit: () => _startEdit(locations[index]),
-                        onDelete: () => _deleteLocation(context, ref, locations[index].id),
-                        onToggleActive: (isActive) =>
-                            _toggleActive(context, ref, locations[index].id, isActive),
-                        onSetPrimary: () => _setPrimary(context, ref, locations[index].id),
+                    (context, index) => TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0, end: 1),
+                      duration: Duration(milliseconds: 350 + (index * 50)),
+                      curve: Curves.easeOutCubic,
+                      builder: (context, value, child) {
+                        return Opacity(
+                          opacity: value,
+                          child: Transform.translate(
+                            offset: Offset(0, 16 * (1 - value)),
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 14),
+                        child: _LocationCard(
+                          location: locations[index],
+                          onEdit: () => _startEdit(locations[index]),
+                          onDelete: () => _deleteLocation(context, ref, locations[index].id),
+                          onToggleActive: (isActive) =>
+                              _toggleActive(context, ref, locations[index].id, isActive),
+                          onSetPrimary: () => _setPrimary(context, ref, locations[index].id),
+                        ),
                       ),
                     ),
                     childCount: locations.length,
@@ -330,8 +274,18 @@ class _ServiceLocationsPageState extends ConsumerState<ServiceLocationsPage> {
                 ),
               ),
             SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 28, 24, 12),
+                child: _SectionHeader(
+                  title: _editingLocation == null ? 'Add New Location' : 'Edit Location',
+                  icon: Icons.add_road_rounded,
+                ),
+              ),
+            ),
+            SliverToBoxAdapter(
               child: _buildAddForm(context, colorScheme, isDark),
             ),
+            const SliverToBoxAdapter(child: SizedBox(height: 40)),
           ],
         ),
         loading: () => Column(
@@ -354,6 +308,155 @@ class _ServiceLocationsPageState extends ConsumerState<ServiceLocationsPage> {
     );
   }
 
+  Widget _buildHeroAppBar(
+    BuildContext context,
+    ColorScheme colorScheme,
+    bool isDark,
+  ) {
+    return SliverAppBar(
+      expandedHeight: 160,
+      pinned: true,
+      stretch: true,
+      backgroundColor: Colors.transparent,
+      leading: IconButton(
+        icon: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(Icons.arrow_back_rounded, color: colorScheme.onSurface, size: 22),
+        ),
+        onPressed: () => Navigator.pop(context),
+      ),
+      flexibleSpace: FlexibleSpaceBar(
+        titlePadding: const EdgeInsets.only(left: 56, bottom: 20),
+        title: Text(
+          'Service Locations',
+          style: GoogleFonts.poppins(
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            color: colorScheme.onSurface,
+          ),
+        ),
+        background: Stack(
+          fit: StackFit.expand,
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: isDark
+                      ? [
+                          AppColors.purple.withValues(alpha: 0.2),
+                          AppColors.blue.withValues(alpha: 0.1),
+                          AppColors.purple.withValues(alpha: 0.05),
+                        ]
+                      : [
+                          AppColors.purple.withValues(alpha: 0.12),
+                          AppColors.blue.withValues(alpha: 0.06),
+                          Colors.white.withValues(alpha: 0.5),
+                        ],
+                ),
+              ),
+            ),
+            Positioned(
+              right: -20,
+              top: -20,
+              child: Opacity(
+                opacity: isDark ? 0.15 : 0.2,
+                child: Icon(
+                  Icons.map_rounded,
+                  size: 140,
+                  color: AppColors.purple,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(BuildContext context, bool isDark) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Opacity(
+          opacity: value,
+          child: Transform.scale(
+            scale: value,
+            child: child,
+          ),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 20),
+        padding: const EdgeInsets.all(32),
+        decoration: BoxDecoration(
+          color: isDark ? DesignTokens.darkSurface : Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.06),
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.06),
+              blurRadius: 24,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    AppColors.purple.withValues(alpha: 0.15),
+                    AppColors.blue.withValues(alpha: 0.08),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.add_location_alt_rounded,
+                size: 48,
+                color: AppColors.purple,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'No locations yet',
+              style: GoogleFonts.poppins(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: DesignTokens.textPrimaryOf(context),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Add gyms, studios, or home locations\nwhere you provide services',
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                height: 1.5,
+                color: DesignTokens.textSecondaryOf(context),
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildAddForm(
     BuildContext context,
     ColorScheme colorScheme,
@@ -362,305 +465,303 @@ class _ServiceLocationsPageState extends ConsumerState<ServiceLocationsPage> {
     return Form(
       key: _formKey,
       child: Container(
-        margin: const EdgeInsets.fromLTRB(16, 0, 16, 32),
-        padding: const EdgeInsets.all(20),
+        margin: const EdgeInsets.symmetric(horizontal: 20),
+        padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
           color: isDark ? DesignTokens.darkSurface : Colors.white,
           borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.06),
+            width: 1,
+          ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.08),
-              blurRadius: 20,
-              offset: const Offset(0, 6),
+              blurRadius: 24,
+              offset: const Offset(0, 8),
             ),
           ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Icon(Icons.add_location_alt_rounded, color: AppColors.purple, size: 24),
-                const SizedBox(width: 10),
-                Text(
-                  _editingLocation == null ? 'Add Location' : 'Edit Location',
-                  style: GoogleFonts.poppins(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: colorScheme.onSurface,
-                  ),
-                ),
-                if (_editingLocation != null) ...[
-                  const Spacer(),
-                  TextButton(
-                    onPressed: _clearForm,
-                    child: Text('Cancel', style: TextStyle(color: AppColors.purple)),
-                  ),
-                ],
-              ],
-            ),
-            const SizedBox(height: 20),
-            TextFormField(
-              controller: _displayNameController,
-              decoration: InputDecoration(
-                labelText: 'Display name',
-                hintText: 'e.g., Gachibowli Gym',
-                filled: true,
-                fillColor: colorScheme.surface,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-              validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Location type',
-              style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: colorScheme.onSurface),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: LocationType.values.map((type) {
-                final sel = _selectedType == type;
-                return GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _selectedType = type;
-                      if (type == LocationType.home) _isPublicExact = false;
-                    });
-                    HapticFeedback.selectionClick();
-                  },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    decoration: BoxDecoration(
-                      gradient: sel ? AppColors.distanceGradient : null,
-                      color: sel ? null : colorScheme.surface,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: sel ? Colors.transparent : colorScheme.outline.withValues(alpha: 0.3),
-                        width: sel ? 0 : 1,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(type.icon, size: 16, color: sel ? Colors.white : colorScheme.onSurface),
-                        const SizedBox(width: 6),
-                        Text(
-                          type.displayName,
-                          style: GoogleFonts.poppins(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: sel ? Colors.white : colorScheme.onSurface,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Service radius',
-              style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: colorScheme.onSurface),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [2.0, 5.0, 10.0, 15.0, 20.0].map((r) {
-                final sel = _radiusKm == r;
-                return GestureDetector(
-                  onTap: () {
-                    setState(() => _radiusKm = r);
-                    HapticFeedback.selectionClick();
-                  },
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    decoration: BoxDecoration(
-                      gradient: sel ? AppColors.distanceGradient : null,
-                      color: sel ? null : colorScheme.surface,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: sel ? Colors.transparent : colorScheme.outline.withValues(alpha: 0.3),
-                        width: sel ? 0 : 1,
-                      ),
-                    ),
-                    child: Text(
-                      '${r.toStringAsFixed(0)} km',
-                      style: GoogleFonts.poppins(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: sel ? Colors.white : colorScheme.onSurface,
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Pick on map',
-              style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.w600, color: colorScheme.onSurface),
-            ),
-            const SizedBox(height: 8),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: SizedBox(
-                height: 200,
-                child: FlutterMap(
-                  mapController: _mapController,
-                  options: MapOptions(
-                    initialCenter: _mapCenter,
-                    initialZoom: 14,
-                    onTap: _onMapTap,
-                    interactionOptions: const InteractionOptions(flags: InteractiveFlag.all),
-                  ),
+            if (_editingLocation != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 20),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    TileLayer(
-                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                      userAgentPackageName: 'com.cotrainr.app',
-                    ),
-                    MarkerLayer(
-                      markers: [
-                        Marker(
-                          point: _mapCenter,
-                          width: 40,
-                          height: 40,
-                          child: Icon(Icons.location_on_rounded, size: 40, color: AppColors.purple),
-                        ),
-                      ],
+                    TextButton.icon(
+                      onPressed: _clearForm,
+                      icon: const Icon(Icons.close_rounded, size: 18),
+                      label: const Text('Cancel'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.purple,
+                      ),
                     ),
                   ],
                 ),
               ),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _isLoadingLocation ? null : _useCurrentLocation,
-                    icon: _isLoadingLocation
-                        ? SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.purple),
-                          )
-                        : const Icon(Icons.my_location_rounded, size: 20),
-                    label: Text(_isLoadingLocation ? '...' : 'Use my location'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      side: BorderSide(color: AppColors.purple.withValues(alpha: 0.6)),
-                      foregroundColor: AppColors.purple,
-                    ),
-                  ),
+            _FormSection(
+              label: 'Display name',
+              icon: Icons.badge_outlined,
+              child: TextFormField(
+                controller: _displayNameController,
+                decoration: _inputDecoration(
+                  context,
+                  'e.g., Gachibowli Gym, Downtown Studio',
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    _latitudeController.text.isEmpty
-                        ? 'Tap map or use location'
-                        : '${_latitudeController.text}, ${_longitudeController.text}',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontFamily: 'monospace',
-                      color: DesignTokens.textSecondaryOf(context),
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
+                validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+              ),
             ),
-            if (_selectedType != LocationType.home) ...[
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Show exact location',
-                          style: GoogleFonts.poppins(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: colorScheme.onSurface,
-                          ),
-                        ),
-                        Text(
-                          'Allow others to see coordinates',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: colorScheme.onSurface.withValues(alpha: 0.7),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Switch(
-                    value: _isPublicExact,
-                    onChanged: (v) {
-                      setState(() => _isPublicExact = v);
+            const SizedBox(height: 24),
+            _FormSection(
+              label: 'Location type',
+              icon: Icons.category_outlined,
+              child: Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: LocationType.values.map((type) {
+                  final sel = _selectedType == type;
+                  return _SelectChip(
+                    label: type.displayName,
+                    icon: type.icon,
+                    selected: sel,
+                    onTap: () {
+                      setState(() {
+                        _selectedType = type;
+                        if (type == LocationType.home) _isPublicExact = false;
+                      });
                       HapticFeedback.selectionClick();
                     },
-                    activeTrackColor: AppColors.purple.withValues(alpha: 0.5),
-                    thumbColor: WidgetStateProperty.resolveWith((s) =>
-                        s.contains(WidgetState.selected) ? AppColors.purple : null),
+                  );
+                }).toList(),
+              ),
+            ),
+            const SizedBox(height: 24),
+            _FormSection(
+              label: 'Service radius',
+              icon: Icons.radar_outlined,
+              child: Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [2.0, 5.0, 10.0, 15.0, 20.0].map((r) {
+                  final sel = _radiusKm == r;
+                  return _SelectChip(
+                    label: '${r.toStringAsFixed(0)} km',
+                    selected: sel,
+                    onTap: () {
+                      setState(() => _radiusKm = r);
+                      HapticFeedback.selectionClick();
+                    },
+                  );
+                }).toList(),
+              ),
+            ),
+            const SizedBox(height: 24),
+            _FormSection(
+              label: 'Pick on map',
+              subtitle: 'Tap the map or use your current location',
+              icon: Icons.map_outlined,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.purple.withValues(alpha: 0.1),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: SizedBox(
+                        height: 220,
+                        child: FlutterMap(
+                          mapController: _mapController,
+                          options: MapOptions(
+                            initialCenter: _mapCenter,
+                            initialZoom: 14,
+                            onTap: _onMapTap,
+                            interactionOptions: const InteractionOptions(flags: InteractiveFlag.all),
+                          ),
+                          children: [
+                            TileLayer(
+                              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                              userAgentPackageName: 'com.cotrainr.app',
+                            ),
+                            MarkerLayer(
+                              markers: [
+                                Marker(
+                                  point: _mapCenter,
+                                  width: 48,
+                                  height: 48,
+                                  child: Icon(
+                                    Icons.location_on_rounded,
+                                    size: 48,
+                                    color: AppColors.purple,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _isLoadingLocation ? null : _useCurrentLocation,
+                          icon: _isLoadingLocation
+                              ? SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: AppColors.purple,
+                                  ),
+                                )
+                              : const Icon(Icons.my_location_rounded, size: 20),
+                          label: Text(_isLoadingLocation ? 'Getting...' : 'Use my location'),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            side: BorderSide(color: AppColors.purple.withValues(alpha: 0.6)),
+                            foregroundColor: AppColors.purple,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        flex: 2,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: colorScheme.surface,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            _latitudeController.text.isEmpty
+                                ? 'Tap map or use location'
+                                : '${_latitudeController.text}, ${_longitudeController.text}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontFamily: 'monospace',
+                              color: DesignTokens.textSecondaryOf(context),
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
+            ),
+            if (_selectedType != LocationType.home) ...[
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Show exact location',
+                            style: GoogleFonts.poppins(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: colorScheme.onSurface,
+                            ),
+                          ),
+                          Text(
+                            'Allow others to see coordinates',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: colorScheme.onSurface.withValues(alpha: 0.7),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Switch(
+                      value: _isPublicExact,
+                      onChanged: (v) {
+                        setState(() => _isPublicExact = v);
+                        HapticFeedback.selectionClick();
+                      },
+                      activeTrackColor: AppColors.purple.withValues(alpha: 0.5),
+                      thumbColor: WidgetStateProperty.resolveWith((s) =>
+                          s.contains(WidgetState.selected) ? AppColors.purple : null),
+                    ),
+                  ],
+                ),
+              ),
             ] else
               Padding(
-                padding: const EdgeInsets.only(top: 12),
+                padding: const EdgeInsets.only(top: 16),
                 child: Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: Colors.orange.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: Colors.orange.withValues(alpha: 0.3),
+                      width: 1,
+                    ),
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.lock_rounded, size: 18, color: Colors.orange),
-                      const SizedBox(width: 10),
+                      Icon(Icons.lock_rounded, size: 22, color: Colors.orange.shade700),
+                      const SizedBox(width: 14),
                       Expanded(
                         child: Text(
                           'Home locations hide exact coordinates for privacy',
-                          style: TextStyle(fontSize: 12, color: Colors.orange.shade700),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.orange.shade800,
+                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
               ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 28),
             Material(
               color: Colors.transparent,
               child: InkWell(
                 onTap: (_isSaving || !_isFormValid) ? null : _saveLocation,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(20),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  padding: const EdgeInsets.symmetric(vertical: 18),
                   decoration: BoxDecoration(
                     gradient: (_isSaving || !_isFormValid) ? null : AppColors.distanceGradient,
                     color: (_isSaving || !_isFormValid)
                         ? DesignTokens.textTertiaryOf(context)
                         : null,
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(20),
                     boxShadow: _isFormValid && !_isSaving
                         ? [
                             BoxShadow(
-                              color: AppColors.purple.withValues(alpha: 0.35),
-                              blurRadius: 12,
-                              offset: const Offset(0, 4),
+                              color: AppColors.purple.withValues(alpha: 0.4),
+                              blurRadius: 16,
+                              offset: const Offset(0, 6),
                             ),
                           ]
                         : null,
@@ -668,8 +769,8 @@ class _ServiceLocationsPageState extends ConsumerState<ServiceLocationsPage> {
                   child: Center(
                     child: _isSaving
                         ? const SizedBox(
-                            height: 22,
-                            width: 22,
+                            height: 24,
+                            width: 24,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
                               valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
@@ -678,7 +779,7 @@ class _ServiceLocationsPageState extends ConsumerState<ServiceLocationsPage> {
                         : Text(
                             _editingLocation == null ? 'Add Location' : 'Save Changes',
                             style: GoogleFonts.poppins(
-                              fontSize: 16,
+                              fontSize: 17,
                               fontWeight: FontWeight.w600,
                               color: Colors.white,
                             ),
@@ -690,6 +791,20 @@ class _ServiceLocationsPageState extends ConsumerState<ServiceLocationsPage> {
           ],
         ),
       ),
+    );
+  }
+
+  InputDecoration _inputDecoration(BuildContext context, String hint) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return InputDecoration(
+      hintText: hint,
+      filled: true,
+      fillColor: colorScheme.surface,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide.none,
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
     );
   }
 
@@ -780,7 +895,7 @@ class _ServiceLocationsPageState extends ConsumerState<ServiceLocationsPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         title: const Text('Delete Location'),
         content: const Text('Are you sure you want to delete this location?'),
         actions: [
@@ -854,13 +969,13 @@ class _ServiceLocationsPageState extends ConsumerState<ServiceLocationsPage> {
     try {
       await ref.read(providerLocationsProvider.notifier).setPrimary(locationId);
       if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('Primary location updated'),
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-          );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Primary location updated'),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
       }
     } catch (e) {
       if (context.mounted) {
@@ -873,6 +988,187 @@ class _ServiceLocationsPageState extends ConsumerState<ServiceLocationsPage> {
         );
       }
     }
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  final int? count;
+  final IconData icon;
+
+  const _SectionHeader({
+    required this.title,
+    this.count,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                AppColors.purple.withValues(alpha: 0.2),
+                AppColors.blue.withValues(alpha: 0.1),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Icon(icon, color: AppColors.purple, size: 22),
+        ),
+        const SizedBox(width: 14),
+        Text(
+          title,
+          style: GoogleFonts.poppins(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: DesignTokens.textPrimaryOf(context),
+          ),
+        ),
+        if (count != null) ...[
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.purple.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              '$count',
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.purple,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _FormSection extends StatelessWidget {
+  final String label;
+  final String? subtitle;
+  final IconData icon;
+  final Widget child;
+
+  const _FormSection({
+    required this.label,
+    this.subtitle,
+    required this.icon,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 18, color: AppColors.purple.withValues(alpha: 0.8)),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: DesignTokens.textPrimaryOf(context),
+              ),
+            ),
+          ],
+        ),
+        if (subtitle != null) ...[
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.only(left: 26),
+            child: Text(
+              subtitle!,
+              style: TextStyle(
+                fontSize: 12,
+                color: DesignTokens.textSecondaryOf(context),
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 12),
+        child,
+      ],
+    );
+  }
+}
+
+class _SelectChip extends StatelessWidget {
+  final String label;
+  final IconData? icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _SelectChip({
+    required this.label,
+    this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          gradient: selected ? AppColors.distanceGradient : null,
+          color: selected ? null : colorScheme.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: selected
+                ? Colors.transparent
+                : colorScheme.outline.withValues(alpha: 0.3),
+            width: selected ? 0 : 1,
+          ),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: AppColors.purple.withValues(alpha: 0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(
+                icon,
+                size: 18,
+                color: selected ? Colors.white : colorScheme.onSurface,
+              ),
+              const SizedBox(width: 8),
+            ],
+            Text(
+              label,
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: selected ? Colors.white : colorScheme.onSurface,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -912,12 +1208,12 @@ class _LocationCardState extends State<_LocationCard> {
         child: InkWell(
           onTap: widget.onEdit,
           onHighlightChanged: (v) => setState(() => _pressed = v),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(24),
           child: Container(
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               color: isDark ? DesignTokens.darkSurface : Colors.white,
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(24),
               border: Border.all(
                 color: widget.location.isPrimary
                     ? AppColors.purple
@@ -928,9 +1224,9 @@ class _LocationCardState extends State<_LocationCard> {
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.06),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
+                  color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.05),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
                 ),
               ],
             ),
@@ -940,7 +1236,7 @@ class _LocationCardState extends State<_LocationCard> {
                 Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(10),
+                      padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           colors: [
@@ -950,15 +1246,15 @@ class _LocationCardState extends State<_LocationCard> {
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(16),
                       ),
                       child: Icon(
                         widget.location.locationType.icon,
                         color: AppColors.purple,
-                        size: 22,
+                        size: 24,
                       ),
                     ),
-                    const SizedBox(width: 14),
+                    const SizedBox(width: 16),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -969,7 +1265,7 @@ class _LocationCardState extends State<_LocationCard> {
                                 child: Text(
                                   widget.location.displayName,
                                   style: GoogleFonts.poppins(
-                                    fontSize: 16,
+                                    fontSize: 17,
                                     fontWeight: FontWeight.w700,
                                     color: colorScheme.onSurface,
                                   ),
@@ -977,15 +1273,15 @@ class _LocationCardState extends State<_LocationCard> {
                               ),
                               if (widget.location.isPrimary)
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                                   decoration: BoxDecoration(
                                     gradient: AppColors.distanceGradient,
-                                    borderRadius: BorderRadius.circular(10),
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
                                   child: Text(
                                     'PRIMARY',
                                     style: GoogleFonts.poppins(
-                                      fontSize: 9,
+                                      fontSize: 10,
                                       fontWeight: FontWeight.w700,
                                       color: Colors.white,
                                     ),
@@ -993,11 +1289,11 @@ class _LocationCardState extends State<_LocationCard> {
                                 ),
                             ],
                           ),
-                          const SizedBox(height: 2),
+                          const SizedBox(height: 4),
                           Text(
-                            '${widget.location.locationType.displayName} • ${widget.location.radiusKm.toStringAsFixed(0)} km',
+                            '${widget.location.locationType.displayName} • ${widget.location.radiusKm.toStringAsFixed(0)} km radius',
                             style: GoogleFonts.poppins(
-                              fontSize: 12,
+                              fontSize: 13,
                               color: DesignTokens.textSecondaryOf(context),
                             ),
                           ),
@@ -1011,7 +1307,7 @@ class _LocationCardState extends State<_LocationCard> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 18),
                 Row(
                   children: [
                     Expanded(
@@ -1022,16 +1318,16 @@ class _LocationCardState extends State<_LocationCard> {
                       ),
                     ),
                     if (!widget.location.isPrimary) ...[
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 10),
                       Expanded(
                         child: _ActionButton(
                           icon: Icons.star_outline_rounded,
-                          label: 'Primary',
+                          label: 'Set Primary',
                           onTap: widget.onSetPrimary,
                         ),
                       ),
                     ],
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 10),
                     _ActionButton(
                       icon: Icons.delete_outline_rounded,
                       label: 'Delete',
@@ -1069,18 +1365,18 @@ class _ActionButton extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
+          padding: const EdgeInsets.symmetric(vertical: 12),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 16, color: color),
-              const SizedBox(width: 4),
+              Icon(icon, size: 18, color: color),
+              const SizedBox(width: 6),
               Text(
                 label,
                 style: GoogleFonts.poppins(
-                  fontSize: 12,
+                  fontSize: 13,
                   fontWeight: FontWeight.w600,
                   color: color,
                 ),
