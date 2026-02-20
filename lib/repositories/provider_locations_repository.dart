@@ -12,6 +12,10 @@ class ProviderLocationsRepository {
   /// Get current user ID
   String? get _currentUserId => _supabase.auth.currentUser?.id;
 
+  /// Build WKT for PostGIS geography (SRID 4326 = WGS84)
+  static String _toPointWkt(double lat, double lng) =>
+      'SRID=4326;POINT($lng $lat)';
+
   /// Fetch all locations for the current provider
   Future<List<ProviderLocation>> fetchMyLocations() async {
     if (_currentUserId == null) {
@@ -46,7 +50,10 @@ class ProviderLocationsRepository {
 
     try {
       final json = locationWithProvider.toJson();
-      
+
+      // Override geo with explicit SRID=4326 WKT for reliable PostGIS storage
+      json['geo'] = _toPointWkt(location.latitude, location.longitude);
+
       // Remove id for insert, keep for update
       if (location.id.isEmpty) {
         json.remove('id');

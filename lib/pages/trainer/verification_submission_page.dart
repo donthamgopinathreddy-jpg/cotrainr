@@ -2,9 +2,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
+import '../../repositories/verification_repository.dart';
 
 class VerificationSubmissionPage extends StatefulWidget {
   const VerificationSubmissionPage({super.key});
@@ -14,29 +14,12 @@ class VerificationSubmissionPage extends StatefulWidget {
 }
 
 class _VerificationSubmissionPageState extends State<VerificationSubmissionPage> {
-  final _formKey = GlobalKey<FormState>();
-  final _firstNameController = TextEditingController();
-  final _lastNameController = TextEditingController();
-  final _yearsExperienceController = TextEditingController();
-  final _certificateNameController = TextEditingController();
-  
-  String? _selectedCategory;
+  final _verificationRepo = VerificationRepository();
+
   String? _selectedGovIdType;
   File? _certificateImage;
   File? _govIdImage;
-  
-  final List<String> _categories = [
-    'GYM',
-    'Boxing',
-    'Yoga',
-    'Pilates',
-    'Zumba',
-    'Calisthenics',
-    'Nutrition',
-    'Dietetics',
-    'Wellness Coaching',
-  ];
-  
+
   final List<String> _govIdTypes = [
     'Aadhar Card',
     'Driving License',
@@ -45,437 +28,316 @@ class _VerificationSubmissionPageState extends State<VerificationSubmissionPage>
     'Voter ID',
     'Other',
   ];
-  
+
   bool _isSubmitting = false;
-  String? _userRole;
+  bool _isLoading = true;
+  String _providerRole = 'trainer';
+  String? _submissionStatus;
+  String? _rejectionNotes;
+
+  bool get _isNutritionist => _providerRole == 'nutritionist';
+  String get _pageTitle => _isNutritionist ? 'Nutritionist Verification' : 'Trainer Verification';
+  String get _credentialLabel => _isNutritionist ? 'Upload License/Degree' : 'Upload Training Certificate';
 
   @override
   void initState() {
     super.initState();
-    final supabase = Supabase.instance.client;
-    final user = supabase.auth.currentUser;
-    _userRole = user?.userMetadata?['role']?.toString().toLowerCase() ?? 'trainer';
+    _loadRoleAndSubmission();
   }
 
-  @override
-  void dispose() {
-    _firstNameController.dispose();
-    _lastNameController.dispose();
-    _yearsExperienceController.dispose();
-    _certificateNameController.dispose();
-    super.dispose();
+  Future<void> _loadRoleAndSubmission() async {
+    try {
+      final role = await _verificationRepo.getProviderRole();
+      final sub = await _verificationRepo.getMyLatestSubmission();
+      if (mounted) {
+        setState(() {
+          _providerRole = role;
+          _submissionStatus = sub?['status'] as String?;
+          _rejectionNotes = sub?['rejection_notes'] as String?;
+          _isLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _providerRole = 'trainer';
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   Future<void> _pickCertificateImage() async {
     HapticFeedback.lightImpact();
-    final ImagePicker picker = ImagePicker();
-    final XFile? image = await picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 90,
-    );
-    
-    if (image != null && mounted) {
-      setState(() {
-        _certificateImage = File(image.path);
-      });
-    }
+    final image = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 90);
+    if (image != null && mounted) setState(() => _certificateImage = File(image.path));
   }
 
   Future<void> _pickGovIdImage() async {
     HapticFeedback.lightImpact();
-    final ImagePicker picker = ImagePicker();
-    final XFile? image = await picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 90,
-    );
-    
-    if (image != null && mounted) {
-      setState(() {
-        _govIdImage = File(image.path);
-      });
-    }
+    final image = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 90);
+    if (image != null && mounted) setState(() => _govIdImage = File(image.path));
   }
 
   Future<void> _submitVerification() async {
-    if (!_formKey.currentState!.validate()) {
-      return;
-    }
-
-    if (_selectedCategory == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select a category'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
-
     if (_certificateImage == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please upload certificate image'),
-          duration: Duration(seconds: 2),
-        ),
-      );
+      _showSnack('Please upload $_credentialLabel');
       return;
     }
-
     if (_selectedGovIdType == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select government ID type'),
-          duration: Duration(seconds: 2),
-        ),
-      );
+      _showSnack('Please select government ID type');
       return;
     }
-
     if (_govIdImage == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please upload government ID image'),
-          duration: Duration(seconds: 2),
-        ),
-      );
+      _showSnack('Please upload government ID image');
       return;
     }
 
-    setState(() {
-      _isSubmitting = true;
-    });
-
+    setState(() => _isSubmitting = true);
     HapticFeedback.mediumImpact();
 
-    // Simulate API call - in real app, upload to Supabase
-    await Future.delayed(const Duration(seconds: 1));
+    try {
+      await _verificationRepo.submitVerification(
+        providerType: _providerRole,
+        govIdType: _selectedGovIdType!,
+        certificateFile: _certificateImage!,
+        govIdFile: _govIdImage!,
+      );
 
-    if (mounted) {
-      setState(() {
-        _isSubmitting = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+          _submissionStatus = 'pending';
+          _rejectionNotes = null;
+        });
+        _showSuccessDialog();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+        _showSnack(e.toString().replaceFirst('Exception: ', ''));
+      }
+    }
+  }
 
-      // Show success dialog
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-          ),
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  gradient: AppColors.stepsGradient,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.check_circle,
-                  color: Colors.white,
-                  size: 24,
-                ),
+  void _showSnack(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), duration: const Duration(seconds: 3)),
+    );
+  }
+
+  void _showSuccessDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                gradient: AppColors.stepsGradient,
+                borderRadius: BorderRadius.circular(12),
               ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Text(
-                  'Documents Submitted',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          content: const Text(
-            'Your verification documents have been submitted successfully. Please wait up to 24 hours for verification. You will be notified once your account is verified.',
-            style: TextStyle(fontSize: 14),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context); // Close dialog
-                Navigator.pop(context); // Go back
-              },
+              child: const Icon(Icons.check_circle, color: Colors.white, size: 24),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
               child: Text(
-                'OK',
-                style: TextStyle(
-                  color: AppColors.orange,
-                  fontWeight: FontWeight.w600,
-                ),
+                'Documents Submitted',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
               ),
             ),
           ],
         ),
-      );
-    }
+        content: const Text(
+          'Your verification documents have been submitted successfully. Please wait up to 24 hours for verification. You will be notified once your account is verified.',
+          style: TextStyle(fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.pop(context);
+            },
+            child: Text(
+              'OK',
+              style: TextStyle(color: AppColors.orange, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final roleLabel = _userRole == 'nutritionist' ? 'Nutritionist' : 'Trainer';
+
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: colorScheme.background,
+        appBar: AppBar(
+          title: Text(_pageTitle, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+          elevation: 0,
+          backgroundColor: Colors.transparent,
+        ),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_submissionStatus == 'approved') {
+      return _buildStatusScreen(
+        icon: Icons.verified,
+        iconColor: DesignTokens.accentGreen,
+        title: 'You\'re Verified!',
+        message: 'Your ${_isNutritionist ? 'Nutritionist' : 'Trainer'} account has been verified. You can now accept clients and access all features.',
+      );
+    }
+
+    if (_submissionStatus == 'rejected') {
+      return _buildStatusScreen(
+        icon: Icons.cancel,
+        iconColor: DesignTokens.accentRed,
+        title: 'Verification Rejected',
+        message: (_rejectionNotes != null && _rejectionNotes!.isNotEmpty) ? _rejectionNotes! : 'You can submit new documents below.',
+        secondaryMessage: (_rejectionNotes != null && _rejectionNotes!.isNotEmpty) ? 'You can submit new documents below.' : null,
+        action: ElevatedButton(
+          onPressed: () => setState(() => _submissionStatus = null),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.orange,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          ),
+          child: const Text('Submit New Documents'),
+        ),
+      );
+    }
+
+    if (_submissionStatus == 'pending') {
+      return _buildStatusScreen(
+        icon: Icons.hourglass_empty,
+        iconColor: AppColors.orange,
+        title: 'Pending Review',
+        message: 'Your documents have been submitted. Please wait up to 24 hours for verification. You will be notified once your account is verified.',
+      );
+    }
 
     return Scaffold(
       backgroundColor: colorScheme.background,
       appBar: AppBar(
-        title: Text(
-          'Verification - $roleLabel',
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
+        title: Text(_pageTitle, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
         elevation: 0,
         backgroundColor: Colors.transparent,
       ),
-      body: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Personal Information Section
-              _SectionHeader(
-                title: 'Personal Information',
-                icon: Icons.person_outline,
-              ),
-              const SizedBox(height: 16),
-              
-              // First Name
-              _buildTextField(
-                controller: _firstNameController,
-                label: 'First Name',
-                hint: 'Enter your first name',
-                icon: Icons.person,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter your first name';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              
-              // Last Name
-              _buildTextField(
-                controller: _lastNameController,
-                label: 'Last Name',
-                hint: 'Enter your last name',
-                icon: Icons.person_outline,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter your last name';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 24),
-              
-              // Professional Information Section
-              _SectionHeader(
-                title: 'Professional Information',
-                icon: Icons.work_outline,
-              ),
-              const SizedBox(height: 16),
-              
-              // Years of Experience
-              _buildTextField(
-                controller: _yearsExperienceController,
-                label: 'Years of Experience',
-                hint: 'e.g., 5',
-                icon: Icons.calendar_today,
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter years of experience';
-                  }
-                  final years = int.tryParse(value);
-                  if (years == null || years < 0) {
-                    return 'Please enter a valid number';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              
-              // Category Dropdown
-              _buildDropdown(
-                label: 'Category',
-                value: _selectedCategory,
-                items: _categories,
-                icon: Icons.category,
-                onChanged: (value) {
-                  setState(() {
-                    _selectedCategory = value;
-                  });
-                },
-                hint: 'Select your category',
-              ),
-              const SizedBox(height: 24),
-              
-              // Certificate Section
-              _SectionHeader(
-                title: 'Certificate',
-                icon: Icons.school_outlined,
-              ),
-              const SizedBox(height: 16),
-              
-              // Certificate Name
-              _buildTextField(
-                controller: _certificateNameController,
-                label: 'Certificate Name',
-                hint: 'e.g., Certified Personal Trainer',
-                icon: Icons.badge_outlined,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter certificate name';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              
-              // Certificate Image Upload
-              _buildImageUpload(
-                label: 'Certificate Image',
-                image: _certificateImage,
-                onTap: _pickCertificateImage,
-                icon: Icons.upload_file,
-              ),
-              const SizedBox(height: 24),
-              
-              // Government ID Verification Section
-              _SectionHeader(
-                title: 'Government ID Verification',
-                icon: Icons.verified_user_outlined,
-              ),
-              const SizedBox(height: 16),
-              
-              // Government ID Type
-              _buildDropdown(
-                label: 'ID Type',
-                value: _selectedGovIdType,
-                items: _govIdTypes,
-                icon: Icons.credit_card,
-                onChanged: (value) {
-                  setState(() {
-                    _selectedGovIdType = value;
-                  });
-                },
-                hint: 'Select ID type',
-              ),
-              const SizedBox(height: 16),
-              
-              // Government ID Image Upload
-              _buildImageUpload(
-                label: 'Government ID Image',
-                image: _govIdImage,
-                onTap: _pickGovIdImage,
-                icon: Icons.upload_file,
-              ),
-              const SizedBox(height: 32),
-              
-              // Submit Button
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _isSubmitting ? null : _submitVerification,
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-                    ),
-                    backgroundColor: AppColors.orange,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                  ),
-                  child: _isSubmitting
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                          ),
-                        )
-                      : const Text(
-                          'Submit Documents',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _SectionHeader(title: _credentialLabel, icon: Icons.school_outlined),
+            const SizedBox(height: 16),
+            _buildImageUpload(
+              label: _credentialLabel,
+              image: _certificateImage,
+              onTap: _pickCertificateImage,
+              icon: Icons.upload_file,
+            ),
+            const SizedBox(height: 24),
+            _SectionHeader(title: 'Government ID Verification', icon: Icons.verified_user_outlined),
+            const SizedBox(height: 16),
+            _buildDropdown(
+              label: 'ID Type',
+              value: _selectedGovIdType,
+              items: _govIdTypes,
+              icon: Icons.credit_card,
+              onChanged: (v) => setState(() => _selectedGovIdType = v),
+              hint: 'Select ID type',
+            ),
+            const SizedBox(height: 16),
+            _buildImageUpload(
+              label: 'Government ID Image',
+              image: _govIdImage,
+              onTap: _pickGovIdImage,
+              icon: Icons.upload_file,
+            ),
+            const SizedBox(height: 32),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _isSubmitting ? null : _submitVerification,
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DesignTokens.radiusButton)),
+                  backgroundColor: AppColors.orange,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
                 ),
+                child: _isSubmitting
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2, valueColor: AlwaysStoppedAnimation<Color>(Colors.white)),
+                      )
+                    : const Text('Submit Documents', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
               ),
-              const SizedBox(height: 32),
-            ],
-          ),
+            ),
+            const SizedBox(height: 32),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String label,
-    required String hint,
+  Widget _buildStatusScreen({
     required IconData icon,
-    TextInputType? keyboardType,
-    List<TextInputFormatter>? inputFormatters,
-    String? Function(String?)? validator,
+    required Color iconColor,
+    required String title,
+    required String message,
+    String? secondaryMessage,
+    Widget? action,
   }) {
-    final colorScheme = Theme.of(context).colorScheme;
-    
-    return TextFormField(
-      controller: controller,
-      keyboardType: keyboardType,
-      inputFormatters: inputFormatters,
-      validator: validator,
-      style: TextStyle(
-        color: AppColors.textPrimaryOf(context),
-        fontSize: 16,
+    return Scaffold(
+      backgroundColor: Theme.of(context).colorScheme.background,
+      appBar: AppBar(
+        title: Text(_pageTitle, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+        elevation: 0,
+        backgroundColor: Colors.transparent,
       ),
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        prefixIcon: Icon(icon, color: AppColors.orange),
-        filled: true,
-        fillColor: colorScheme.surface,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-          borderSide: BorderSide(
-            color: DesignTokens.borderColorOf(context),
-            width: 1,
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 80, color: iconColor),
+              const SizedBox(height: 24),
+              Text(
+                title,
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: AppColors.textPrimaryOf(context)),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 16, color: AppColors.textSecondaryOf(context)),
+              ),
+              if (secondaryMessage != null && secondaryMessage.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Text(
+                  secondaryMessage,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 16, color: AppColors.textSecondaryOf(context)),
+                ),
+              ],
+              if (action != null) ...[
+                const SizedBox(height: 32),
+                action,
+              ],
+            ],
           ),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-          borderSide: const BorderSide(
-            color: AppColors.orange,
-            width: 2,
-          ),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-          borderSide: const BorderSide(
-            color: AppColors.red,
-            width: 1,
-          ),
-        ),
-        labelStyle: TextStyle(
-          color: AppColors.textSecondaryOf(context),
-        ),
-        hintStyle: TextStyle(
-          color: AppColors.textSecondaryOf(context),
         ),
       ),
     );
@@ -490,15 +352,9 @@ class _VerificationSubmissionPageState extends State<VerificationSubmissionPage>
     required String hint,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
-    
     return DropdownButtonFormField<String>(
       value: value,
-      items: items.map((item) {
-        return DropdownMenuItem<String>(
-          value: item,
-          child: Text(item),
-        );
-      }).toList(),
+      items: items.map((item) => DropdownMenuItem<String>(value: item, child: Text(item))).toList(),
       onChanged: onChanged,
       decoration: InputDecoration(
         labelText: label,
@@ -506,35 +362,13 @@ class _VerificationSubmissionPageState extends State<VerificationSubmissionPage>
         prefixIcon: Icon(icon, color: AppColors.orange),
         filled: true,
         fillColor: colorScheme.surface,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-          borderSide: BorderSide(
-            color: DesignTokens.borderColorOf(context),
-            width: 1,
-          ),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-          borderSide: const BorderSide(
-            color: AppColors.orange,
-            width: 2,
-          ),
-        ),
-        labelStyle: TextStyle(
-          color: AppColors.textSecondaryOf(context),
-        ),
-        hintStyle: TextStyle(
-          color: AppColors.textSecondaryOf(context),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(DesignTokens.radiusButton), borderSide: BorderSide.none),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(DesignTokens.radiusButton), borderSide: BorderSide(color: DesignTokens.borderColorOf(context), width: 1)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(DesignTokens.radiusButton), borderSide: const BorderSide(color: AppColors.orange, width: 2)),
+        labelStyle: TextStyle(color: AppColors.textSecondaryOf(context)),
+        hintStyle: TextStyle(color: AppColors.textSecondaryOf(context)),
       ),
-      style: TextStyle(
-        color: AppColors.textPrimaryOf(context),
-        fontSize: 16,
-      ),
+      style: TextStyle(color: AppColors.textPrimaryOf(context), fontSize: 16),
       dropdownColor: colorScheme.surface,
       icon: const Icon(Icons.arrow_drop_down, color: AppColors.orange),
     );
@@ -547,18 +381,10 @@ class _VerificationSubmissionPageState extends State<VerificationSubmissionPage>
     required IconData icon,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
-    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textPrimaryOf(context),
-          ),
-        ),
+        Text(label, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimaryOf(context))),
         const SizedBox(height: 8),
         InkWell(
           onTap: onTap,
@@ -569,37 +395,22 @@ class _VerificationSubmissionPageState extends State<VerificationSubmissionPage>
             decoration: BoxDecoration(
               color: colorScheme.surface,
               borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-              border: Border.all(
-                color: DesignTokens.borderColorOf(context),
-                width: 1,
-              ),
+              border: Border.all(color: DesignTokens.borderColorOf(context), width: 1),
             ),
             child: image != null
                 ? Stack(
                     children: [
                       ClipRRect(
                         borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-                        child: Image.file(
-                          image,
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                          height: double.infinity,
-                        ),
+                        child: Image.file(image, fit: BoxFit.cover, width: double.infinity, height: double.infinity),
                       ),
                       Positioned(
                         top: 8,
                         right: 8,
                         child: Container(
                           padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.6),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.edit,
-                            color: Colors.white,
-                            size: 16,
-                          ),
+                          decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), shape: BoxShape.circle),
+                          child: const Icon(Icons.edit, color: Colors.white, size: 16),
                         ),
                       ),
                     ],
@@ -610,25 +421,11 @@ class _VerificationSubmissionPageState extends State<VerificationSubmissionPage>
                       children: [
                         Container(
                           padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: AppColors.orange.withOpacity(0.1),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            icon,
-                            color: AppColors.orange,
-                            size: 32,
-                          ),
+                          decoration: BoxDecoration(color: AppColors.orange.withOpacity(0.1), shape: BoxShape.circle),
+                          child: Icon(icon, color: AppColors.orange, size: 32),
                         ),
                         const SizedBox(height: 12),
-                        Text(
-                          'Upload image',
-                          style: TextStyle(
-                            color: AppColors.textSecondaryOf(context),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
+                        Text('Upload image', style: TextStyle(color: AppColors.textSecondaryOf(context), fontSize: 14, fontWeight: FontWeight.w500)),
                       ],
                     ),
                   ),
@@ -643,10 +440,7 @@ class _SectionHeader extends StatelessWidget {
   final String title;
   final IconData icon;
 
-  const _SectionHeader({
-    required this.title,
-    required this.icon,
-  });
+  const _SectionHeader({required this.title, required this.icon});
 
   @override
   Widget build(BuildContext context) {
@@ -654,21 +448,11 @@ class _SectionHeader extends StatelessWidget {
       children: [
         Container(
           padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            gradient: AppColors.stepsGradient,
-            borderRadius: BorderRadius.circular(8),
-          ),
+          decoration: BoxDecoration(gradient: AppColors.stepsGradient, borderRadius: BorderRadius.circular(8)),
           child: Icon(icon, color: Colors.white, size: 20),
         ),
         const SizedBox(width: 12),
-        Text(
-          title,
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: AppColors.textPrimaryOf(context),
-          ),
-        ),
+        Text(title, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimaryOf(context))),
       ],
     );
   }

@@ -48,6 +48,8 @@ dependencies:
   permission_handler: ^11.1.0
   health: ^13.3.0  # Updated to fix Kotlin compilation errors
   geolocator: ^13.0.1
+  flutter_map: ^6.1.0
+  latlong2: ^0.9.1
   cached_network_image: ^3.3.1
   intl: ^0.19.0
   flutter_svg: ^2.0.9
@@ -59,6 +61,7 @@ dependencies:
   package_info_plus: ^8.0.0
   font_awesome_flutter: ^10.7.0
   shared_preferences: ^2.2.2
+  path: ^1.9.0
 
 dev_dependencies:
   flutter_test:

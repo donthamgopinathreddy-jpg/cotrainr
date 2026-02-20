@@ -1,9 +1,9 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../models/provider_location_model.dart';
+import '../../repositories/provider_locations_repository.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
 
@@ -20,6 +20,7 @@ class _NearbyPreviewV3State extends State<NearbyPreviewV3> {
   bool _isLoading = true;
   String? _errorMessage;
   Position? _userPosition;
+  final ProviderLocationsRepository _repo = ProviderLocationsRepository();
 
   final List<_FilterChip> _allChips = [
     _FilterChip('All', Icons.business, 'All'),
@@ -56,10 +57,10 @@ class _NearbyPreviewV3State extends State<NearbyPreviewV3> {
         permission = await Geolocator.requestPermission();
       }
 
-      if (permission == LocationPermission.deniedForever || 
+      if (permission == LocationPermission.deniedForever ||
           permission == LocationPermission.denied) {
         setState(() {
-          _errorMessage = 'Location permission denied';
+          _errorMessage = 'Enable location to discover nearby providers';
           _isLoading = false;
         });
         return;
@@ -69,34 +70,28 @@ class _NearbyPreviewV3State extends State<NearbyPreviewV3> {
         desiredAccuracy: LocationAccuracy.high,
       );
 
-      // Fetch nearby places using nearby_providers RPC
-      final supabase = Supabase.instance.client;
-      
-      // Map filter to location types
-      List<String>? locationTypes;
+      // Map filter to location types (canonical repo method)
+      List<LocationType>? locationTypes;
       if (_selectedFilter == 'Gyms') {
-        locationTypes = ['gym'];
+        locationTypes = [LocationType.gym];
       } else if (_selectedFilter == 'Yoga') {
-        locationTypes = ['studio'];
+        locationTypes = [LocationType.studio];
       } else if (_selectedFilter == 'Parks') {
-        locationTypes = ['park'];
+        locationTypes = [LocationType.park];
       }
       // 'All' means null (no filter)
 
-      final results = await supabase.rpc(
-        'nearby_providers',
-        params: {
-          'user_lat': _userPosition!.latitude,
-          'user_lng': _userPosition!.longitude,
-          'max_distance_km': 10.0, // 10km radius
-          'provider_types': null, // All provider types
-          'location_types': locationTypes,
-        },
+      final results = await _repo.fetchNearbyProviders(
+        userLat: _userPosition!.latitude,
+        userLng: _userPosition!.longitude,
+        maxDistanceKm: 10.0,
+        providerTypes: null,
+        locationTypes: locationTypes,
       );
 
       final places = <_NearbyPlace>[];
       
-      for (final result in results as List) {
+      for (final result in results) {
         final displayName = result['display_name'] as String? ?? 'Unknown';
         final distanceKm = (result['distance_km'] as num?)?.toDouble() ?? 0.0;
         final locationType = result['location_type'] as String? ?? 'other';
@@ -131,7 +126,7 @@ class _NearbyPreviewV3State extends State<NearbyPreviewV3> {
         });
       }
     } catch (e) {
-      print('Error loading nearby places: $e');
+      debugPrint('Error loading nearby places: $e');
       if (mounted) {
         setState(() {
           _errorMessage = 'Failed to load nearby places';
@@ -257,25 +252,49 @@ class _NearbyPreviewV3State extends State<NearbyPreviewV3> {
                     child: Padding(
                       padding: const EdgeInsets.all(20.0),
                       child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(
-                            Icons.location_off,
+                            Icons.location_off_rounded,
                             color: cs.onSurfaceVariant,
-                            size: 32,
+                            size: 40,
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 12),
                           Text(
                             _errorMessage!,
                             style: TextStyle(
                               color: cs.onSurfaceVariant,
                               fontSize: 14,
+                              fontWeight: FontWeight.w500,
                             ),
                             textAlign: TextAlign.center,
                           ),
                           const SizedBox(height: 8),
-                          TextButton(
-                            onPressed: _loadNearbyPlaces,
-                            child: const Text('Retry'),
+                          Text(
+                            'Enable location in settings to discover nearby trainers and nutritionists',
+                            style: TextStyle(
+                              color: cs.onSurfaceVariant.withOpacity(0.8),
+                              fontSize: 12,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              TextButton.icon(
+                                onPressed: _loadNearbyPlaces,
+                                icon: const Icon(Icons.refresh_rounded, size: 18),
+                                label: const Text('Retry'),
+                              ),
+                              TextButton.icon(
+                                onPressed: () async {
+                                  await Geolocator.openAppSettings();
+                                },
+                                icon: const Icon(Icons.settings_rounded, size: 18),
+                                label: const Text('Settings'),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -285,12 +304,33 @@ class _NearbyPreviewV3State extends State<NearbyPreviewV3> {
                     ? Center(
                         child: Padding(
                           padding: const EdgeInsets.all(20.0),
-                          child: Text(
-                            'No nearby places found',
-                            style: TextStyle(
-                              color: cs.onSurfaceVariant,
-                              fontSize: 14,
-                            ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.location_searching_rounded,
+                                size: 40,
+                                color: cs.onSurfaceVariant.withOpacity(0.6),
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                'No providers near you',
+                                style: TextStyle(
+                                  color: cs.onSurfaceVariant,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Try expanding the search radius or check back later',
+                                style: TextStyle(
+                                  color: cs.onSurfaceVariant.withOpacity(0.8),
+                                  fontSize: 12,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
                           ),
                         ),
                       )

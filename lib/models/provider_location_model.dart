@@ -45,8 +45,8 @@ class ProviderLocation {
         lng = (coords[0] as num).toDouble();
         lat = (coords[1] as num).toDouble();
       } else if (geo is String) {
-        // Parse "POINT(lng lat)" format
-        final match = RegExp(r'POINT\(([\d.]+)\s+([\d.]+)\)').firstMatch(geo);
+        // Parse "POINT(lng lat)" or "SRID=4326;POINT(lng lat)" format
+        final match = RegExp(r'POINT\(([\d.-]+)\s+([\d.-]+)\)').firstMatch(geo);
         if (match != null) {
           lng = double.parse(match.group(1)!);
           lat = double.parse(match.group(2)!);

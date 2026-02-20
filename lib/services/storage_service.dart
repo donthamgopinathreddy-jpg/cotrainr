@@ -162,6 +162,58 @@ class StorageService {
     }
   }
 
+  /// Remove existing verification doc variants to avoid orphans when extension changes
+  Future<void> _removeVerificationDocVariants(String baseName) async {
+    if (_currentUserId == null) return;
+    const exts = ['jpg', 'jpeg', 'png', 'webp'];
+    final paths = exts.map((e) => '$_currentUserId/$baseName.$e').toList();
+    try {
+      await _supabase.storage.from('verification-docs').remove(paths);
+    } catch (_) {}
+  }
+
+  /// Upload credential (certificate/license) to verification-docs
+  /// Uses fixed path {userId}/credential.jpg to avoid extension-change orphans
+  Future<String> uploadVerificationCredential(File imageFile) async {
+    if (_currentUserId == null) throw Exception('User not authenticated');
+    await _removeVerificationDocVariants('credential');
+    final bytes = await imageFile.readAsBytes();
+    final ext = path.extension(imageFile.path).toLowerCase();
+    final contentType = ext == '.png'
+        ? 'image/png'
+        : ext == '.webp'
+            ? 'image/webp'
+            : 'image/jpeg';
+    final pathStr = '$_currentUserId/credential.jpg';
+    await _supabase.storage.from('verification-docs').uploadBinary(
+      pathStr,
+      bytes,
+      fileOptions: FileOptions(upsert: true, contentType: contentType),
+    );
+    return pathStr;
+  }
+
+  /// Upload gov ID to verification-docs
+  /// Uses fixed path {userId}/gov_id.jpg to avoid extension-change orphans
+  Future<String> uploadVerificationGovId(File imageFile) async {
+    if (_currentUserId == null) throw Exception('User not authenticated');
+    await _removeVerificationDocVariants('gov_id');
+    final bytes = await imageFile.readAsBytes();
+    final ext = path.extension(imageFile.path).toLowerCase();
+    final contentType = ext == '.png'
+        ? 'image/png'
+        : ext == '.webp'
+            ? 'image/webp'
+            : 'image/jpeg';
+    final pathStr = '$_currentUserId/gov_id.jpg';
+    await _supabase.storage.from('verification-docs').uploadBinary(
+      pathStr,
+      bytes,
+      fileOptions: FileOptions(upsert: true, contentType: contentType),
+    );
+    return pathStr;
+  }
+
   /// Upload post media (image or video) to Supabase Storage
   /// Returns the public URL of the uploaded media
   Future<String?> uploadPostMedia(File mediaFile, {required bool isVideo}) async {

@@ -99,7 +99,8 @@ class _DiscoverPageState extends State<DiscoverPage>
 
       if (permission == LocationPermission.deniedForever) {
         setState(() {
-          _errorMessage = 'Location permissions are permanently denied. Please enable them in app settings.';
+          _errorMessage =
+              'Location access is required to discover nearby providers. Enable it in app settings.';
           _isLoading = false;
         });
         return;
@@ -491,15 +492,16 @@ class _DiscoverPageState extends State<DiscoverPage>
       child: Padding(
         padding: const EdgeInsets.all(DesignTokens.spacing24),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              Icons.search_off_rounded,
+              Icons.location_searching_rounded,
               size: 48,
               color: DesignTokens.textSecondaryOf(context),
             ),
             const SizedBox(height: DesignTokens.spacing16),
             Text(
-              'No results',
+              'No providers nearby',
               style: TextStyle(
                 fontSize: DesignTokens.fontSizeH3,
                 fontWeight: FontWeight.w700,
@@ -508,7 +510,7 @@ class _DiscoverPageState extends State<DiscoverPage>
             ),
             const SizedBox(height: DesignTokens.spacing8),
             Text(
-              'Try changing filters or expanding your search radius',
+              'Try expanding your search radius or check back later. Providers need to set their service locations to appear here.',
               style: TextStyle(
                 fontSize: DesignTokens.fontSizeBodySmall,
                 color: DesignTokens.textSecondaryOf(context),
