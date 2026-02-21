@@ -1,6 +1,257 @@
+# Video Sessions Edge Functions – Manual Setup
+
+Create these 4 functions in Supabase Dashboard → Edge Functions.  
+For each function, use the code below as the `index.ts` content.
+
+**Required secrets** (Project Settings → Edge Functions → Secrets):
+- `ZOOM_CLIENT_ID`
+- `ZOOM_CLIENT_SECRET`
+- `ZOOM_REDIRECT_URI` (e.g. `https://YOUR_PROJECT.supabase.co/functions/v1/zoom-oauth-callback`)
+- `APP_REDIRECT_URI` (optional, defaults to `cotrainr://video/zoom-connected`)
+
+---
+
+## 1. zoom-oauth-start
+
+**Path:** `zoom-oauth-start/index.ts`
+
+```typescript
+// Returns Zoom OAuth authorization URL for the host to connect their account.
+// Client calls this, then opens the URL in browser. Zoom redirects to zoom-oauth-callback.
+
+import { createClient } from "jsr:@supabase/supabase-js@2"
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders })
+  }
+
+  try {
+    const authHeader = req.headers.get("Authorization")
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Missing Authorization header" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      )
+    }
+
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } }
+    )
+
+    const { data: { user }, error } = await supabase.auth.getUser()
+    if (error || !user) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      )
+    }
+
+    const clientId = Deno.env.get("ZOOM_CLIENT_ID")
+    const redirectUri = Deno.env.get("ZOOM_REDIRECT_URI") ?? `${Deno.env.get("SUPABASE_URL")!.replace(".supabase.co", "")}/functions/v1/zoom-oauth-callback`
+    const state = user.id
+
+    if (!clientId) {
+      return new Response(
+        JSON.stringify({ error: "Zoom OAuth not configured. Set ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET, ZOOM_REDIRECT_URI." }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      )
+    }
+
+    const authUrl = `https://zoom.us/oauth/authorize?response_type=code&client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(state)}`
+
+    return new Response(
+      JSON.stringify({ auth_url: authUrl }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    )
+  } catch (err) {
+    console.error("zoom-oauth-start error:", err)
+    return new Response(
+      JSON.stringify({ error: String(err) }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    )
+  }
+})
+```
+
+---
+
+## 2. zoom-oauth-callback
+
+**Path:** `zoom-oauth-callback/index.ts`
+
+```typescript
+// Zoom OAuth callback. Exchanges code for tokens and stores in user_integrations_zoom.
+// Redirects to app deep link: cotrainr://video/zoom-connected
+
+import { createClient } from "jsr:@supabase/supabase-js@2"
+
+Deno.serve(async (req) => {
+  const url = new URL(req.url)
+  const code = url.searchParams.get("code")
+  const state = url.searchParams.get("state")
+  const error = url.searchParams.get("error")
+
+  const appRedirect = Deno.env.get("APP_REDIRECT_URI") ?? "cotrainr://video/zoom-connected"
+
+  if (error) {
+    return Response.redirect(appRedirect + "?error=" + encodeURIComponent(error), 302)
+  }
+
+  if (!code || !state) {
+    return Response.redirect(appRedirect + "?error=missing_code_or_state", 302)
+  }
+
+  try {
+    const clientId = Deno.env.get("ZOOM_CLIENT_ID")
+    const clientSecret = Deno.env.get("ZOOM_CLIENT_SECRET")
+    const baseUrl = url.origin + url.pathname.replace(/\/$/, "")
+    const redirectUri = Deno.env.get("ZOOM_REDIRECT_URI") ?? baseUrl
+
+    if (!clientId || !clientSecret) {
+      return Response.redirect(appRedirect + "?error=zoom_not_configured", 302)
+    }
+
+    const tokenRes = await fetch("https://zoom.us/oauth/token", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Authorization: "Basic " + btoa(clientId + ":" + clientSecret),
+      },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        code,
+        redirect_uri: redirectUri,
+      }),
+    })
+
+    if (!tokenRes.ok) {
+      const errText = await tokenRes.text()
+      console.error("Zoom token exchange failed:", errText)
+      return Response.redirect(appRedirect + "?error=token_exchange_failed", 302)
+    }
+
+    const tokenData = await tokenRes.json()
+    const accessToken = tokenData.access_token
+    const refreshToken = tokenData.refresh_token
+    const expiresIn = tokenData.expires_in ?? 3600
+    const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString()
+
+    let zoomAccountEmail = null
+    const userRes = await fetch("https://api.zoom.us/v2/users/me", {
+      headers: { Authorization: "Bearer " + accessToken },
+    })
+    if (userRes.ok) {
+      const userData = await userRes.json()
+      zoomAccountEmail = userData.email ?? null
+    }
+
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    )
+
+    await supabase.from("user_integrations_zoom").upsert(
+      {
+        user_id: state,
+        zoom_account_email: zoomAccountEmail,
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        expires_at: expiresAt,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id" }
+    )
+
+    return Response.redirect(appRedirect + "?success=1", 302)
+  } catch (err) {
+    console.error("zoom-oauth-callback error:", err)
+    return Response.redirect(appRedirect + "?error=" + encodeURIComponent(String(err)), 302)
+  }
+})
+```
+
+---
+
+## 3. zoom-disconnect
+
+**Path:** `zoom-disconnect/index.ts`
+
+```typescript
+// Disconnects Zoom integration for the current user (deletes tokens).
+
+import { createClient } from "jsr:@supabase/supabase-js@2"
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders })
+  }
+
+  try {
+    const authHeader = req.headers.get("Authorization")
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Missing Authorization header" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      )
+    }
+
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } }
+    )
+
+    const { data: { user }, error } = await supabase.auth.getUser()
+    if (error || !user) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      )
+    }
+
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    )
+
+    await supabaseAdmin.from("user_integrations_zoom").delete().eq("user_id", user.id)
+
+    return new Response(
+      JSON.stringify({ success: true }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    )
+  } catch (err) {
+    console.error("zoom-disconnect error:", err)
+    return new Response(
+      JSON.stringify({ error: String(err) }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    )
+  }
+})
+```
+
+---
+
+## 4. create-video-session
+
+**Path:** `create-video-session/index.ts`
+
+```typescript
 // Creates a Zoom meeting OR stores external link. Stores session in Supabase.
 // Trainer and nutritionist can create. Participants added to video_session_participants.
-// @ts-nocheck - Deno/Supabase Edge Function (IDE uses Node TS config)
 
 import { createClient } from "jsr:@supabase/supabase-js@2"
 
@@ -272,3 +523,15 @@ Deno.serve(async (req) => {
     )
   }
 })
+```
+
+---
+
+## Function names (exact)
+
+| Function name           | Purpose                                      |
+|------------------------|----------------------------------------------|
+| `zoom-oauth-start`     | Returns Zoom OAuth URL for Connect Zoom      |
+| `zoom-oauth-callback`  | Handles Zoom redirect, stores tokens         |
+| `zoom-disconnect`      | Removes Zoom integration for user            |
+| `create-video-session` | Creates Zoom meeting or external-link session|

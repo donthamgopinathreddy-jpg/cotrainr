@@ -284,7 +284,7 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
                     ),
                     TextButton(
                       onPressed: () {
-                        context.push('/video?role=nutritionist');
+                        context.push('/video');
                       },
                       child: Text(
                         'View All',

@@ -127,13 +127,7 @@ class QuickAccessV3 extends ConsumerWidget {
             } else if (item.title == 'COACH NOTES') {
               onTap = () => context.push('/coach-notes');
             } else if (item.title == 'VIDEO SESSIONS') {
-              if (userRole == 'trainer') {
-                onTap = () => context.push('/video?role=trainer');
-              } else if (userRole == 'nutritionist') {
-                onTap = () => context.push('/video?role=nutritionist');
-              } else {
-                onTap = () => context.push('/video?role=client');
-              }
+              onTap = () => context.push('/video');
             }
             if (item.title == 'MESSAGING') {
               final unreadCountAsync = ref.watch(unreadMessagesCountProvider);

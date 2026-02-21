@@ -137,22 +137,34 @@ class VideoSessionsRepository {
   }
 
   /// Create a video session (calls Edge function).
+  /// [participantIds] client UUIDs to invite (from accepted leads).
+  /// [provider] 'zoom' or 'external'. If external, [joinUrl] must be provided.
   Future<VideoSession> createSession({
     required String title,
     required DateTime scheduledStart,
     int durationMinutes = 30,
     int maxParticipants = 5,
     String? description,
+    List<String> participantIds = const [],
+    String provider = 'zoom',
+    String? joinUrl,
   }) async {
+    final body = <String, dynamic>{
+      'title': title,
+      'scheduled_start': scheduledStart.toUtc().toIso8601String(),
+      'duration_minutes': durationMinutes,
+      'max_participants': maxParticipants,
+      'participant_ids': participantIds,
+      'provider': provider,
+      if (description != null && description.isNotEmpty) 'description': description,
+    };
+    if (provider == 'external' && joinUrl != null && joinUrl.trim().isNotEmpty) {
+      body['join_url'] = joinUrl.trim();
+    }
+
     final res = await _supabase.functions.invoke(
       'create-video-session',
-      body: {
-        'title': title,
-        'scheduled_start': scheduledStart.toUtc().toIso8601String(),
-        'duration_minutes': durationMinutes,
-        'max_participants': maxParticipants,
-        if (description != null && description.isNotEmpty) 'description': description,
-      },
+      body: body,
     );
 
     if (res.status != 200) {
@@ -163,14 +175,16 @@ class VideoSessionsRepository {
     return VideoSession(
       id: data!['id'] as String,
       hostId: _supabase.auth.currentUser!.id,
-      provider: 'zoom',
+      provider: provider,
       title: data['title'] as String? ?? title,
       scheduledStart: DateTime.parse(data['scheduled_start'] as String),
       durationMinutes: durationMinutes,
       maxParticipants: maxParticipants,
       status: 'scheduled',
       joinUrl: data['join_url'] as String,
-      createdAt: DateTime.now(),
+      createdAt: data['created_at'] != null
+          ? DateTime.parse(data['created_at'] as String)
+          : DateTime.now(),
     );
   }
 

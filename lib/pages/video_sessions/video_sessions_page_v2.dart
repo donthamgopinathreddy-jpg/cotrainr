@@ -11,10 +11,12 @@ import '../../services/profile_role_service.dart';
 import 'create_session_sheet.dart';
 
 /// Video Sessions page with Zoom OAuth connection states.
-/// - Trainer/Nutritionist: Connection card, Create Session (disabled if not connected)
-/// - Client: Session list, Join
+/// - Trainer/Nutritionist: Connection card, Create Session (Zoom or paste link)
+/// - Client: Session list (only sessions where user is participant)
 class VideoSessionsPageV2 extends ConsumerStatefulWidget {
-  const VideoSessionsPageV2({super.key});
+  final Uri? uri;
+
+  const VideoSessionsPageV2({super.key, this.uri});
 
   @override
   ConsumerState<VideoSessionsPageV2> createState() => _VideoSessionsPageV2State();
@@ -28,14 +30,64 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
   List<VideoSession> _sessions = [];
   bool _loading = true;
   bool _zoomLoading = false;
+  bool _connectZoomCardDismissed = false;
 
   bool get _isHost => _userRole == 'trainer' || _userRole == 'nutritionist';
-  bool get _canCreateSession => _userRole == 'trainer' && _zoomStatus?.status == ZoomConnectionStatus.connected;
+  bool get _canCreateSession =>
+      _userRole == 'trainer' || _userRole == 'nutritionist';
+  bool get _zoomConnected =>
+      _zoomStatus?.status == ZoomConnectionStatus.connected;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _load().then((_) {
+      if (mounted) _handleQueryParams();
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final uri = widget.uri;
+    if (uri != null && uri.queryParameters['zoom-connected'] == '1') {
+      _refreshZoomStatus();
+    }
+  }
+
+  void _handleQueryParams() {
+    final uri = widget.uri;
+    if (uri == null) return;
+    final openCreate = uri.queryParameters['openCreate'] == '1';
+    final openJoin = uri.queryParameters['openJoin'] == '1';
+    final clientId = uri.queryParameters['clientId'];
+    final zoomError = uri.queryParameters['zoom_error'];
+    if (uri.queryParameters['zoom-connected'] == '1') {
+      _refreshZoomStatus();
+      if (zoomError != null && zoomError.isNotEmpty && mounted) {
+        final decoded = Uri.decodeComponent(zoomError);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Zoom: $decoded'),
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    }
+    if (openCreate && _canCreateSession) {
+      _openCreateSession(preselectedClientId: clientId);
+    } else if (openJoin) {
+      _showJoinWithLinkSheet(context);
+    }
+  }
+
+  Future<void> _refreshZoomStatus() async {
+    try {
+      final status = await _repo.getZoomStatus();
+      if (mounted) {
+        setState(() => _zoomStatus = status);
+      }
+    } catch (_) {}
   }
 
   Future<void> _load() async {
@@ -43,7 +95,16 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
     try {
       final role = await _roleService.getCurrentUserRole();
       final zoomStatus = await _repo.getZoomStatus();
-      final sessions = await _repo.listSessions();
+      List<VideoSession> sessions = [];
+      try {
+        sessions = await _repo.listSessions();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to load sessions: $e')),
+          );
+        }
+      }
       if (mounted) {
         setState(() {
           _userRole = role?.toLowerCase() ?? 'client';
@@ -67,7 +128,8 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
     try {
       final url = await _repo.getZoomOAuthUrl();
       final uri = Uri.parse(url);
-      if (await canLaunchUrl(uri)) {
+      final canOpen = await canLaunchUrl(uri);
+      if (canOpen) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -75,16 +137,30 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
           );
         }
       } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not open browser')),
-          );
+        // Try anyway - canLaunchUrl can be overly conservative on some devices
+        try {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Complete sign-in in the browser, then return here')),
+            );
+          }
+        } catch (_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Could not open browser. Try again or use an external link.')),
+            );
+          }
         }
       }
     } catch (e) {
       if (mounted) {
+        final msg = e.toString().replaceFirst('Exception: ', '');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed: $e')),
+          SnackBar(
+            content: Text('Zoom: $msg'),
+            duration: const Duration(seconds: 5),
+          ),
         );
       }
     } finally {
@@ -113,7 +189,7 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
     }
   }
 
-  void _openCreateSession() {
+  void _openCreateSession({String? preselectedClientId}) {
     if (!_canCreateSession) return;
     HapticFeedback.mediumImpact();
     showModalBottomSheet(
@@ -131,6 +207,10 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
             context.push('/video/session/${session.id}');
           }
         },
+        preselectedClientId: preselectedClientId,
+        zoomConnected: _zoomConnected,
+        onConnectZoom: _connectZoom,
+        zoomConnecting: _zoomLoading,
       ),
     );
   }
@@ -142,9 +222,13 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF1A0F2E) : const Color(0xFFF0EBFF),
       appBar: AppBar(
-        title: const Text(
-          'Video Sessions',
-          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+        title: Text(
+          _userRole == 'trainer'
+              ? 'Trainer Sessions'
+              : _userRole == 'nutritionist'
+                  ? 'Nutritionist Sessions'
+                  : 'My Sessions',
+          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
         ),
         elevation: 0,
         backgroundColor: Colors.transparent,
@@ -154,26 +238,40 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
         ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.purple))
+          ? _isHost
+              ? _buildHostLoadingSkeleton()
+              : const Center(child: CircularProgressIndicator(color: AppColors.purple))
           : RefreshIndicator(
               onRefresh: _load,
               color: AppColors.orange,
               child: CustomScrollView(
                 physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
                 slivers: [
-                  if (_userRole == 'trainer' && _zoomStatus != null) ...[
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                        child: _ConnectionCard(
-                          status: _zoomStatus!,
-                          loading: _zoomLoading,
-                          onConnect: _connectZoom,
-                          onReconnect: _connectZoom,
-                          onDisconnect: _disconnectZoom,
+                  if (_isHost && _zoomStatus != null) ...[
+                    if (!_zoomConnected && !_connectZoomCardDismissed)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                          child: _ConnectZoomGateCard(
+                            loading: _zoomLoading,
+                            onConnect: _connectZoom,
+                            onDismiss: () => setState(() => _connectZoomCardDismissed = true),
+                          ),
+                        ),
+                      )
+                    else if (_zoomConnected || _zoomStatus!.status == ZoomConnectionStatus.expired)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                          child: _ConnectionCard(
+                            status: _zoomStatus!,
+                            loading: _zoomLoading,
+                            onConnect: _connectZoom,
+                            onReconnect: _connectZoom,
+                            onDisconnect: _disconnectZoom,
+                          ),
                         ),
                       ),
-                    ),
                   ],
                   SliverToBoxAdapter(
                     child: Padding(
@@ -192,10 +290,10 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
                     SliverFillRemaining(
                       hasScrollBody: false,
                       child: _EmptyState(
-                        isHost: _userRole == 'trainer',
+                        isHost: _isHost,
                         canCreate: _canCreateSession,
-                        onCreate: _openCreateSession,
-                        onJoin: () => context.push('/video/join'),
+                        onCreate: () => _openCreateSession(),
+                        onJoin: () => _showJoinWithLinkSheet(context),
                       ),
                     )
                   else
@@ -222,14 +320,114 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
                 ],
               ),
             ),
-      floatingActionButton: _userRole == 'trainer'
+      floatingActionButton: _isHost
           ? FloatingActionButton.extended(
-              onPressed: _canCreateSession ? _openCreateSession : null,
+              onPressed: _canCreateSession ? () => _openCreateSession() : null,
               backgroundColor: _canCreateSession ? AppColors.purple : Colors.grey,
               icon: const Icon(Icons.add_rounded, color: Colors.white),
               label: const Text('Create Session', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
             )
           : null,
+    );
+  }
+
+  Widget _buildHostLoadingSkeleton() {
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            child: Container(
+              height: 120,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: DesignTokens.cardShadowOf(context),
+              ),
+              child: const Center(
+                child: CircularProgressIndicator(color: AppColors.purple),
+              ),
+            ),
+          ),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 96)),
+      ],
+    );
+  }
+}
+
+class _ConnectZoomGateCard extends StatelessWidget {
+  final bool loading;
+  final VoidCallback onConnect;
+  final VoidCallback onDismiss;
+
+  const _ConnectZoomGateCard({
+    required this.loading,
+    required this.onConnect,
+    required this.onDismiss,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: DesignTokens.cardShadowOf(context),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Connect Zoom to create meetings',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimaryOf(context),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Connect once to schedule sessions. You can still paste an external link without Zoom.',
+            style: TextStyle(
+              fontSize: 14,
+              color: AppColors.textSecondaryOf(context),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: loading ? null : onConnect,
+                  icon: loading
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.link_rounded, size: 18),
+                  label: Text(loading ? 'Connecting...' : 'Connect Zoom'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.purple,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              TextButton(
+                onPressed: loading ? null : onDismiss,
+                child: const Text('Not now'),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
@@ -575,9 +773,9 @@ class _EmptyState extends StatelessWidget {
             Text(
               isHost
                   ? (canCreate
-                      ? 'Create a session to get started'
-                      : 'Connect Zoom to create sessions')
-                  : 'Your trainer or nutritionist will share session links',
+                      ? 'No sessions scheduled. Create one.'
+                      : 'Connect Zoom or paste a link to create sessions')
+                  : 'No upcoming sessions. Your trainer/nutritionist will schedule one.',
               style: TextStyle(
                 fontSize: 14,
                 color: AppColors.textSecondaryOf(context),

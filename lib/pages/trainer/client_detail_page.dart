@@ -398,7 +398,7 @@ class _ClientDetailPageState extends State<ClientDetailPage>
             label: 'Book Session',
             onTap: () {
               HapticFeedback.lightImpact();
-              context.push('/video/create?role=trainer');
+              context.push('/video?openCreate=1&clientId=${_client.id}');
             },
             textPrimary: textPrimary,
             surfaceColor: surfaceColor,
@@ -1261,7 +1261,7 @@ class _ClientDetailPageState extends State<ClientDetailPage>
     return GestureDetector(
       onTap: () {
         HapticFeedback.lightImpact();
-        context.push('/video?role=client');
+        context.push('/video?openCreate=1&clientId=${_client.id}');
       },
       child: Container(
         padding: const EdgeInsets.all(20),
@@ -1286,7 +1286,7 @@ class _ClientDetailPageState extends State<ClientDetailPage>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'View Video Sessions',
+                    'Video Sessions',
                     style: TextStyle(
                       color: textPrimary,
                       fontSize: DesignTokens.fontSizeBody,
@@ -1295,7 +1295,7 @@ class _ClientDetailPageState extends State<ClientDetailPage>
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'See ${_client.name}\'s scheduled and past sessions',
+                    'Book or view sessions with ${_client.name}',
                     style: TextStyle(
                       color: textSecondary,
                       fontSize: DesignTokens.fontSizeBodySmall,

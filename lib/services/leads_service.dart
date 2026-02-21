@@ -117,6 +117,60 @@ class LeadsService {
     }
   }
 
+  /// Accepted leads where current user is provider (for inviting to video sessions).
+  Future<List<Lead>> getAcceptedLeadsAsProvider() async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) throw Exception('Not authenticated');
+
+      final response = await _supabase
+          .from('leads')
+          .select('*')
+          .eq('provider_id', userId)
+          .eq('status', 'accepted')
+          .order('created_at', ascending: false);
+
+      final leads = (response as List).cast<Map<String, dynamic>>();
+      if (leads.isEmpty) return leads.map((json) => Lead.fromJson(json)).toList();
+
+      final clientIds = leads
+          .map((l) => l['client_id'] as String?)
+          .whereType<String>()
+          .toSet()
+          .toList();
+      final profilesMap = <String, Map<String, dynamic>>{};
+      if (clientIds.isNotEmpty) {
+        try {
+          final profilesResponse = await _supabase.rpc(
+            'get_public_profiles',
+            params: {'p_user_ids': clientIds},
+          );
+          for (final p in profilesResponse as List) {
+            final m = p as Map<String, dynamic>;
+            profilesMap[m['id'] as String] = {
+              'id': m['id'],
+              'full_name': m['full_name'],
+              'avatar_url': m['avatar_url'],
+            };
+          }
+        } catch (e) {
+          print('LeadsService: Error fetching client profiles: $e');
+        }
+      }
+
+      return leads.map((json) {
+        final enriched = Map<String, dynamic>.from(json);
+        final cid = json['client_id'] as String?;
+        if (cid != null && profilesMap.containsKey(cid)) {
+          enriched['client'] = profilesMap[cid];
+        }
+        return Lead.fromJson(enriched);
+      }).toList();
+    } catch (e) {
+      throw Exception('Failed to fetch accepted leads: $e');
+    }
+  }
+
   Future<List<Lead>> getIncomingLeads() async {
     try {
       final userId = _supabase.auth.currentUser?.id;

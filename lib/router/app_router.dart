@@ -22,11 +22,7 @@ import '../../pages/nutritionist/nutritionist_dashboard_page.dart';
 import '../../pages/nutritionist/nutritionist_client_detail_page.dart';
 import '../../pages/refer/refer_friend_page.dart';
 import '../../pages/video_sessions/video_sessions_page_v2.dart';
-import '../../pages/video_sessions/create_meeting_page.dart';
-import '../../pages/video_sessions/join_meeting_page.dart';
-import '../../pages/video_sessions/meeting_room_page.dart';
 import '../../pages/video_sessions/session_detail_page.dart';
-import '../../models/video_session_models.dart';
 import '../../pages/meal_tracker/meal_tracker_page_v2.dart';
 import '../../pages/coach_notes/coach_notes_page.dart';
 import '../../pages/ai_planner/ai_planner_page.dart';
@@ -73,6 +69,19 @@ final GoRouter appRouter = GoRouter(
     if (state.matchedLocation.startsWith('/video') && state.uri.queryParameters.containsKey('role')) {
       final cleanUri = state.uri.replace(queryParameters: {});
       return cleanUri.toString();
+    }
+
+    // Redirect legacy video routes to V2
+    final path = state.uri.path;
+    if (path == '/video/create') {
+      final clientId = state.uri.queryParameters['clientId'];
+      return clientId != null ? '/video?openCreate=1&clientId=$clientId' : '/video?openCreate=1';
+    }
+    if (path == '/video/join') {
+      return '/video?openJoin=1';
+    }
+    if (path.startsWith('/video/room/')) {
+      return '/video';
     }
 
     return null; // No redirect needed - pages will enforce role checks
@@ -267,7 +276,7 @@ final GoRouter appRouter = GoRouter(
       path: '/video',
       name: 'videoSessions',
       pageBuilder: (context, state) => _fadeSlidePage(
-        child: const VideoSessionsPageV2(),
+        child: VideoSessionsPageV2(uri: state.uri),
         state: state,
       ),
     ),
@@ -282,35 +291,7 @@ final GoRouter appRouter = GoRouter(
         );
       },
     ),
-    GoRoute(
-      path: '/video/create',
-      name: 'createMeeting',
-      pageBuilder: (context, state) => _fadeSlidePage(
-        child: CreateMeetingPage(
-          userRole: Role.client,
-        ),
-        state: state,
-      ),
-    ),
-    GoRoute(
-      path: '/video/join',
-      name: 'joinMeeting',
-      pageBuilder: (context, state) => _fadeSlidePage(
-        child: const JoinMeetingPage(),
-        state: state,
-      ),
-    ),
-    GoRoute(
-      path: '/video/room/:meetingId',
-      name: 'meetingRoom',
-      pageBuilder: (context, state) {
-        final meetingId = state.pathParameters['meetingId'] ?? '';
-        return _fadeSlidePage(
-          child: MeetingRoomPage(meetingId: meetingId),
-          state: state,
-        );
-      },
-    ),
+    // Legacy /video/create, /video/join, /video/room/* redirect in redirect callback above
     GoRoute(
       path: '/quest',
       name: 'quest',

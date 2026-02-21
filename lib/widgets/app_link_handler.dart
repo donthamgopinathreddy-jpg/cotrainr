@@ -42,7 +42,11 @@ class _AppLinkHandlerState extends State<AppLinkHandler> {
     if (uri == null) return;
     if (_isVideoZoomConnectedUri(uri)) {
       if (!mounted) return;
-      context.go('/video');
+      final error = uri.queryParameters['error'];
+      final target = error != null && error.isNotEmpty
+          ? '/video?zoom-connected=1&zoom_error=${Uri.encodeComponent(error)}'
+          : '/video?zoom-connected=1';
+      context.go(target);
       return;
     }
     if (!_isInviteUri(uri)) return;

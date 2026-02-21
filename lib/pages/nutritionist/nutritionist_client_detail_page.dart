@@ -45,11 +45,8 @@ class _NutritionistClientDetailPageState extends State<NutritionistClientDetailP
     {'title': 'Meal Plan - January', 'date': '2024-01-10', 'type': 'Image'},
   ];
   
-  // Mock sessions
-  final List<Map<String, dynamic>> _sessions = [
-    {'date': '2024-01-20', 'time': '2:00 PM', 'duration': '45 min', 'type': 'Video Consultation'},
-    {'date': '2024-01-15', 'time': '10:00 AM', 'duration': '30 min', 'type': 'Video Consultation'},
-  ];
+  // Sessions loaded from VideoSessionsRepository (or empty)
+  List<Map<String, dynamic>> _sessions = [];
 
   // Notes controller
   final TextEditingController _notesController = TextEditingController();
@@ -268,7 +265,7 @@ class _NutritionistClientDetailPageState extends State<NutritionistClientDetailP
                       label: 'Book Session',
                       onTap: () {
                         HapticFeedback.lightImpact();
-                        context.push('/video/create?role=nutritionist');
+                        context.push('/video?openCreate=1&clientId=${_client.id}');
                       },
                       textPrimary: textPrimary,
                       surfaceColor: surfaceColor,
@@ -600,82 +597,56 @@ class _NutritionistClientDetailPageState extends State<NutritionistClientDetailP
   ) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          if (_sessions.isEmpty)
-            Container(
-              padding: const EdgeInsets.all(40),
-              decoration: BoxDecoration(
-                color: surfaceColor,
-                borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
-                border: Border.all(color: borderColor),
+      child: GestureDetector(
+        onTap: () {
+          HapticFeedback.lightImpact();
+          context.push('/video?openCreate=1&clientId=${_client.id}');
+        },
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: surfaceColor,
+            borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
+            border: Border.all(color: borderColor),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  gradient: DesignTokens.primaryGradient,
+                  borderRadius: BorderRadius.circular(DesignTokens.radiusSmall),
+                ),
+                child: const Icon(Icons.videocam_rounded, color: Colors.white, size: 24),
               ),
-              child: Column(
-                children: [
-                  Icon(Icons.video_library_outlined, size: 48, color: textSecondary.withOpacity(0.5)),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No sessions yet',
-                    style: TextStyle(
-                      color: textSecondary,
-                      fontSize: 16,
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Video Sessions',
+                      style: TextStyle(
+                        color: textPrimary,
+                        fontSize: DesignTokens.fontSizeBody,
+                        fontWeight: DesignTokens.fontWeightSemiBold,
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 4),
+                    Text(
+                      'Book or view sessions with ${_client.name}',
+                      style: TextStyle(
+                        color: textSecondary,
+                        fontSize: DesignTokens.fontSizeBodySmall,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            )
-          else
-            ..._sessions.map((session) => Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: surfaceColor,
-                borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
-                border: Border.all(color: borderColor),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      gradient: DesignTokens.primaryGradient,
-                      borderRadius: BorderRadius.circular(DesignTokens.radiusSmall),
-                    ),
-                    child: const Icon(
-                      Icons.video_call,
-                      color: Colors.white,
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          session['type'] as String,
-                          style: TextStyle(
-                            color: textPrimary,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${session['date']} • ${session['time']} • ${session['duration']}',
-                          style: TextStyle(
-                            color: textSecondary,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(Icons.chevron_right, color: textSecondary, size: 20),
-                ],
-              ),
-            )),
-        ],
+              Icon(Icons.chevron_right, color: textSecondary, size: 24),
+            ],
+          ),
+        ),
       ),
     );
   }
