@@ -1,0 +1,180 @@
+food_name,label,grams,is_default
+Rice white cooked,1 cup cooked,195,true
+Rice white cooked,1 katori,100,false
+Rice basmati cooked,1 cup cooked,195,true
+Rice brown cooked,1 cup cooked,195,true
+Wheat flour atta,1 cup,120,true
+Wheat flour atta,1 tbsp,8,false
+Semolina suji,1 cup,167,true
+Poha flattened rice,1 cup dry,80,true
+Poha cooked,1 cup cooked,150,true
+Quinoa cooked,1 cup cooked,185,true
+Oats rolled raw,1 cup dry,80,true
+Oats cooked,1 cup cooked,234,true
+Toor dal cooked,1 katori,100,true
+Moong dal cooked,1 katori,100,true
+Chana dal cooked,1 katori,100,true
+Masoor dal cooked,1 katori,100,true
+Rajma cooked,1 katori,100,true
+Chickpeas cooked,1 katori,100,true
+Potato raw,1 medium,170,true
+Potato boiled,1 medium boiled,170,true
+Onion raw,1 medium,110,true
+Tomato raw,1 medium,123,true
+Spinach palak,1 cup raw,30,true
+Carrot,1 medium,61,true
+Cucumber,1 medium,200,true
+Banana raw,1 medium,118,true
+Banana raw,1 small,90,false
+Mango ripe,1 medium,336,true
+Apple,1 medium,182,true
+Orange,1 medium,131,true
+Grapes,1 cup,92,true
+Strawberry,1 cup halves,152,true
+Papaya,1 cup cubed,140,true
+Watermelon,1 cup diced,152,true
+Coconut water,1 cup,240,true
+Milk whole,1 cup,244,true
+Milk toned,1 cup,244,true
+Curd dahi,1 katori,100,true
+Curd dahi,1 cup,245,false
+Paneer,1 cube 1 inch,20,true
+Paneer,100g,100,false
+Ghee,1 tbsp,14,true
+Ghee,1 tsp,5,false
+Butter,1 tbsp,14,true
+Mustard oil,1 tbsp,14,true
+Olive oil,1 tbsp,14,true
+Chicken breast raw,100g,100,true
+Chicken breast cooked,1 medium piece,150,true
+Chicken breast cooked,100g,100,false
+Chicken thigh cooked,1 piece,100,true
+Mutton cooked,1 piece,100,true
+Fish rohu cooked,1 piece,100,true
+Salmon cooked,100g,100,true
+Prawns cooked,5-6 pieces,85,true
+Egg whole raw,1 egg,50,true
+Egg whole boiled,1 egg,50,true
+Almonds,1 oz 23 almonds,28,true
+Almonds,1 tbsp,9,false
+Cashews,1 oz 18 nuts,28,true
+Peanuts,1 oz,28,true
+Walnuts,1 oz 14 halves,28,true
+Roti whole wheat,1 roti,30,true
+Roti whole wheat,1 chapati,30,false
+Paratha plain,1 paratha,80,true
+Naan,1 naan,90,true
+Dal tadka,1 katori,100,true
+Sambar,1 katori,100,true
+Rasam,1 katori,100,true
+Rajma masala,1 katori,100,true
+Chole masala,1 katori,100,true
+Palak paneer,1 katori,100,true
+Paneer butter masala,1 katori,100,true
+Chicken curry,1 katori,100,true
+Biryani vegetable,1 katori,150,true
+Biryani chicken,1 katori,150,true
+Pulao vegetable,1 katori,150,true
+Khichdi,1 katori,150,true
+Upma,1 katori,150,true
+Idli,1 idli,39,true
+Idli,2 idlis,78,false
+Dosa,1 dosa,68,true
+Vada,1 vada,50,true
+Pav bhaji,1 plate,350,true
+Aloo paratha,1 paratha,120,true
+Gulab jamun,1 piece,25,true
+Jalebi,2 pieces,50,true
+Kheer,1 katori,100,true
+Bread white,1 slice,28,true
+Bread whole wheat,1 slice,28,true
+Pasta cooked,1 cup cooked,140,true
+Noodles cooked,1 cup cooked,176,true
+Corn boiled,1 ear,77,true
+Milk skimmed,1 cup,244,true
+Cheese cheddar,1 oz,28,true
+Yogurt greek,1 cup,245,true
+Bread white,1 cup pieces,45,false
+Rice white raw,1 cup uncooked,185,true
+Oats rolled raw,1/2 cup,40,false
+Broccoli,1 cup chopped,91,true
+Lettuce,1 cup shredded,47,true
+Sweet potato,1 medium,130,true
+Avocado,1/2 fruit,68,true
+Blueberries,1 cup,148,true
+Raspberries,1 cup,123,true
+Pineapple,1 cup chunks,165,true
+Dates,5 pieces,42,true
+Raisins,1 tbsp,10,true
+Honey,1 tbsp,21,true
+Sugar,1 tbsp,12,true
+Jaggery,1 tbsp,15,true
+Peas green,1 cup,145,true
+Okra bhindi,1 cup sliced,100,true
+Cauliflower,1 cup chopped,100,true
+Capsicum bell pepper,1 medium,119,true
+Mushroom,1 cup sliced,70,true
+Tofu firm,1/2 block,124,true
+Hummus,2 tbsp,30,true
+Coffee,1 cup,240,true
+Chai,1 cup,240,true
+Lassi sweet,1 glass,200,true
+Lassi plain,1 glass,200,true
+Samosa,1 samosa,50,true
+Pakora,3 pieces,75,true
+Poha chivda,1 cup,30,true
+Rice white cooked,1 tbsp,15,false
+Rice white cooked,100g,100,false
+Dal tadka,1 cup,200,false
+Curd dahi,1 tbsp,15,false
+Paneer,1 cup cubed,226,false
+Egg whole raw,2 eggs,100,false
+Banana raw,1 large,136,false
+Apple,1 large,223,false
+Orange,1 large,184,false
+Chicken breast cooked,1 cup diced,140,false
+Beef raw,100g,100,true
+Pork raw,100g,100,true
+Tuna cooked,100g,100,true
+Lentils red cooked,1 cup,198,true
+Black beans cooked,1 cup,172,true
+Soybeans raw,1 cup,172,true
+Coconut fresh,1 cup shredded,80,true
+Almond butter,1 tbsp,16,true
+Peanut butter,1 tbsp,16,true
+Besan gram flour,1 cup,92,true
+Rice white raw,1 tbsp,12,false
+Potato raw,1 cup diced,150,false
+Onion raw,1 cup chopped,160,false
+Tomato raw,1 cup chopped,149,false
+Spinach palak,1 cup cooked,180,false
+Carrot,1 cup chopped,128,false
+Cucumber,1 cup sliced,52,false
+Mango ripe,1 cup pieces,165,false
+Guava,1 medium,55,true
+Pomegranate,1/2 fruit,87,true
+Coconut water,1 glass,200,false
+Fruit juice orange,1 cup,248,true
+Fruit juice apple,1 cup,248,true
+Green tea,1 cup,240,true
+Lemonade,1 glass,240,true
+Dark chocolate,1 square 10g,10,true
+Milk chocolate,1 square 10g,10,true
+Granola,1/2 cup,56,true
+Corn flakes,1 cup,28,true
+Popcorn plain,1 cup popped,8,true
+Rice white cooked,1 small katori,80,false
+Roti whole wheat,2 rotis,60,false
+Idli,3 idlis,117,false
+Dosa,2 dosas,136,false
+Dal tadka,1 small katori,80,false
+Sambar,1 small katori,80,false
+Khichdi,1 small katori,120,false
+Upma,1 small katori,120,false
+Pulao vegetable,1 small katori,120,false
+Biryani chicken,1 small katori,120,false
+Chole masala,1 small katori,80,false
+Palak paneer,1 small katori,80,false
+Chicken curry,1 small katori,80,false
+Paneer butter masala,1 small katori,80,false
+Rajma masala,1 small katori,80,false

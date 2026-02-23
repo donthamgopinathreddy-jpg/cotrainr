@@ -1,11 +1,13 @@
 import 'dart:math';
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'weekly_insights_page.dart';
 import '../../theme/meal_tracker_tokens.dart';
 import '../../repositories/meal_repository.dart';
+import '../../repositories/food_catalog_repository.dart';
 
 class MealTrackerPageV2 extends StatefulWidget {
   const MealTrackerPageV2({super.key});
@@ -19,6 +21,7 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
   final ImagePicker _imagePicker = ImagePicker();
   final ScrollController _scrollController = ScrollController();
   final MealRepository _mealRepo = MealRepository();
+  final FoodCatalogRepository _foodCatalogRepo = FoodCatalogRepository();
   late AnimationController _fadeController;
   late AnimationController _ringController;
   late Animation<double> _fadeAnimation;
@@ -61,18 +64,10 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
     'Snacks',
   ];
 
-  // Recent foods for quick add
+  // Recent foods for quick add (from catalog or manual)
   final List<FoodItem> _recentFoods = [];
-  final List<FoodItem> _commonFoods = [
-    FoodItem(name: 'Chicken Breast', calories: 165, protein: 31, carbs: 0, fats: 3.6, fiber: 0, unit: '100g'),
-    FoodItem(name: 'Brown Rice', calories: 111, protein: 2.6, carbs: 23, fats: 0.9, fiber: 1.8, unit: '100g'),
-    FoodItem(name: 'Salmon', calories: 208, protein: 20, carbs: 0, fats: 13, fiber: 0, unit: '100g'),
-    FoodItem(name: 'Eggs', calories: 155, protein: 13, carbs: 1.1, fats: 11, fiber: 0, unit: '100g'),
-    FoodItem(name: 'Banana', calories: 89, protein: 1.1, carbs: 23, fats: 0.3, fiber: 2.6, unit: '1 medium'),
-    FoodItem(name: 'Greek Yogurt', calories: 100, protein: 10, carbs: 3.6, fats: 5, fiber: 0, unit: '100g'),
-    FoodItem(name: 'Oatmeal', calories: 68, protein: 2.4, carbs: 12, fats: 1.4, fiber: 1.7, unit: '100g'),
-    FoodItem(name: 'Almonds', calories: 579, protein: 21, carbs: 22, fats: 50, fiber: 12.5, unit: '100g'),
-  ];
+  // Common foods: empty; catalog search replaces hardcoded list
+  final List<FoodItem> _commonFoods = [];
 
   @override
   void initState() {
@@ -424,7 +419,8 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
       builder: (context) => _AddFoodSheet(
         mealType: mealType,
         mealOptions: List<String>.from(_mealOrder),
-        onFoodAdded: (food, meal) async {
+        foodCatalogRepo: _foodCatalogRepo,
+        onFoodAdded: (food, meal, {String? catalogFoodId}) async {
           try {
             await _mealRepo.addFoodItem(
               date: _selectedDate,
@@ -437,6 +433,7 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
               carbs: food.carbs,
               fats: food.fats,
               fiber: food.fiber,
+              foodId: catalogFoodId,
             );
             if (!mounted) return;
             final data = await _mealRepo.getDayMeals(_selectedDate);
@@ -476,7 +473,6 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
             }
           }
         },
-        commonFoods: _commonFoods,
         recentFoods: _recentFoods,
       ),
     );
@@ -677,6 +673,7 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
                       ringAnimation: _ringAnimation,
                       onInsightsTap: _openWeeklyInsights,
                       onEditGoals: _openEditGoals,
+                      selectedDate: _selectedDate,
                     ),
                   ),
                 ),
@@ -1125,6 +1122,7 @@ class _DailySummaryCard extends StatelessWidget {
   final Animation<double> ringAnimation;
   final VoidCallback onInsightsTap;
   final VoidCallback onEditGoals;
+  final DateTime selectedDate;
 
   const _DailySummaryCard({
     required this.calories,
@@ -1144,13 +1142,15 @@ class _DailySummaryCard extends StatelessWidget {
     required this.ringAnimation,
     required this.onInsightsTap,
     required this.onEditGoals,
+    required this.selectedDate,
   });
 
   @override
   Widget build(BuildContext context) {
-    final pProgress = (protein / goalProtein).clamp(0.0, 1.0);
-    final cProgress = (carbs / goalCarbs).clamp(0.0, 1.0);
-    final fProgress = (fats / goalFats).clamp(0.0, 1.0);
+    final intakeLabel = _isToday(selectedDate) ? 'Today\'s Intake' : 'Intake';
+    final pProgress = goalProtein > 0 ? (protein / goalProtein).clamp(0.0, 1.0) : 0.0;
+    final cProgress = goalCarbs > 0 ? (carbs / goalCarbs).clamp(0.0, 1.0) : 0.0;
+    final fProgress = goalFats > 0 ? (fats / goalFats).clamp(0.0, 1.0) : 0.0;
 
     return GestureDetector(
       onTap: onInsightsTap,
@@ -1177,7 +1177,7 @@ class _DailySummaryCard extends StatelessWidget {
                             children: [
                               Expanded(
                                 child: Text(
-                                  'Today’s Intake',
+                                  intakeLabel,
                                   style: TextStyle(
                                     fontSize: 12,
                                     fontWeight: FontWeight.w700,
@@ -1337,6 +1337,11 @@ class _DailySummaryCard extends StatelessWidget {
       ),
     );
   }
+}
+
+bool _isToday(DateTime d) {
+  final n = DateTime.now();
+  return d.year == n.year && d.month == n.month && d.day == n.day;
 }
 
 class _TripleRingProgress extends StatelessWidget {
@@ -2257,19 +2262,19 @@ class _PressScaleState extends State<_PressScale> {
 
 // (Quick Add FAB removed)
 
-// Add Food Sheet (redesigned)
+// Add Food Sheet (catalog-backed)
 class _AddFoodSheet extends StatefulWidget {
   final String? mealType;
   final List<String> mealOptions;
-  final Function(FoodItem, String) onFoodAdded;
-  final List<FoodItem> commonFoods;
+  final Future<void> Function(FoodItem food, String meal, {String? catalogFoodId}) onFoodAdded;
+  final FoodCatalogRepository foodCatalogRepo;
   final List<FoodItem> recentFoods;
 
   const _AddFoodSheet({
     this.mealType,
     required this.mealOptions,
     required this.onFoodAdded,
-    required this.commonFoods,
+    required this.foodCatalogRepo,
     required this.recentFoods,
   });
 
@@ -2278,50 +2283,93 @@ class _AddFoodSheet extends StatefulWidget {
 }
 
 class _AddFoodSheetState extends State<_AddFoodSheet> {
-  int _step = 0; // 0 = list, 1 = details
-  FoodItem? _selectedFood;
-  double _amount = 0; // grams (if gram-based) or multiplier (otherwise)
+  int _step = 0; // 0 = search, 1 = details (grams + portions + macro preview)
+  CatalogFood? _selectedCatalogFood;
+  double _grams = 100;
   String _selectedMeal = 'Breakfast';
   final TextEditingController _searchController = TextEditingController();
-  final TextEditingController _amountController = TextEditingController();
+  final TextEditingController _gramsController = TextEditingController(text: '100');
+  List<CatalogFood> _searchResults = [];
+  List<FoodPortion> _portions = [];
+  bool _searching = false;
+  bool _saving = false;
+  Timer? _searchDebounce;
 
   @override
   void initState() {
     super.initState();
     _selectedMeal = widget.mealType ?? (widget.mealOptions.isNotEmpty ? widget.mealOptions.first : 'Breakfast');
-    _searchController.addListener(() => setState(() {}));
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  void _onSearchChanged() {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () async {
+      final q = _searchController.text.trim();
+      if (!mounted) return;
+      setState(() => _searching = true);
+      final results = await widget.foodCatalogRepo.searchFoods(q);
+      if (!mounted) return;
+      setState(() {
+        _searchResults = results;
+        _searching = false;
+      });
+    });
   }
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchController.dispose();
-    _amountController.dispose();
+    _gramsController.dispose();
     super.dispose();
   }
 
-  List<FoodItem> _filteredFoods() {
-    final q = _searchController.text.trim().toLowerCase();
-    final all = <FoodItem>[...widget.recentFoods, ...widget.commonFoods];
-    if (q.isEmpty) return all;
-    return all.where((f) => f.name.toLowerCase().contains(q)).toList();
-  }
-
-  void _selectFood(FoodItem food) {
+  void _selectFood(CatalogFood food) async {
     HapticFeedback.selectionClick();
-    final base = food.baseGrams;
     setState(() {
-      _selectedFood = food;
-      _amount = base != null ? food.amount : food.amount;
-      _amountController.text = base != null ? _amount.round().toString() : _amount.toStringAsFixed(1);
+      _selectedCatalogFood = food;
+      _grams = 100;
+      _gramsController.text = '100';
       _step = 1;
+      _portions = [];
+    });
+    final portions = await widget.foodCatalogRepo.getFoodPortions(food.id);
+    if (!mounted) return;
+    setState(() {
+      _portions = portions;
+      final defaultPortion = portions.where((p) => p.isDefault).firstOrNull;
+      if (defaultPortion != null) {
+        _grams = defaultPortion.grams;
+        _gramsController.text = _grams == _grams.roundToDouble()
+            ? _grams.round().toString()
+            : _grams.toStringAsFixed(1);
+      }
     });
   }
 
-  void _addFood() {
-    final food = _selectedFood;
-    if (food == null) return;
+  Future<void> _addFood() async {
+    final food = _selectedCatalogFood;
+    if (food == null || _saving) return;
+    if (_grams <= 0) return;
     HapticFeedback.mediumImpact();
-    widget.onFoodAdded(food.copyWith(amount: _amount), _selectedMeal);
+    setState(() => _saving = true);
+    final foodItem = FoodItem(
+      id: null,
+      name: food.name,
+      calories: food.kcal100g.round(),
+      protein: food.protein100g,
+      carbs: food.carbs100g,
+      fats: food.fat100g,
+      fiber: food.fiber100g,
+      unit: '100g',
+      amount: _grams,
+    );
+    try {
+      await widget.onFoodAdded(foodItem, _selectedMeal, catalogFoodId: food.id);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
@@ -2386,7 +2434,7 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
                             )
                           : _AddFoodHeader(
                               key: const ValueKey('details'),
-                              title: _selectedFood?.name ?? 'Food Details',
+                              title: _selectedCatalogFood?.name ?? 'Food Details',
                               onClose: () => setState(() => _step = 0),
                               textPrimary: textPrimary,
                               leadingIcon: Icons.arrow_back_rounded,
@@ -2395,29 +2443,37 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
                     const SizedBox(height: 12),
                     Expanded(
                       child: _step == 0
-                          ? _FoodPickerStep(
+                          ? _CatalogSearchStep(
                               controller: scrollController,
                               searchController: _searchController,
-                              foods: _filteredFoods(),
+                              searchResults: _searchResults,
+                              searching: _searching,
                               recentFoods: widget.recentFoods,
-                              onSelect: _selectFood,
+                              onSelectCatalog: _selectFood,
                               textPrimary: textPrimary,
                               textSecondary: textSecondary,
                               surface: surface,
                             )
-                          : _FoodDetailsStep(
+                          : _CatalogDetailsStep(
                               controller: scrollController,
-                              food: _selectedFood!,
-                                amount: _amount,
-                                amountController: _amountController,
-                                onAmountChanged: (v) => setState(() => _amount = v),
-                                mealOptions: widget.mealOptions,
+                              food: _selectedCatalogFood!,
+                              grams: _grams,
+                              gramsController: _gramsController,
+                              portions: _portions,
+                              onGramsChanged: (v) {
+                                setState(() => _grams = v);
+                                _gramsController.text = v == v.roundToDouble()
+                                    ? v.round().toString()
+                                    : v.toStringAsFixed(1);
+                              },
+                              mealOptions: widget.mealOptions,
                               selectedMeal: _selectedMeal,
                               onMealChanged: (m) {
                                 HapticFeedback.selectionClick();
                                 setState(() => _selectedMeal = m);
                               },
                               onAdd: _addFood,
+                              saving: _saving,
                               textPrimary: textPrimary,
                               textSecondary: textSecondary,
                               surface: surface,
@@ -2477,22 +2533,24 @@ class _AddFoodHeader extends StatelessWidget {
   }
 }
 
-class _FoodPickerStep extends StatelessWidget {
+class _CatalogSearchStep extends StatelessWidget {
   final ScrollController controller;
   final TextEditingController searchController;
-  final List<FoodItem> foods;
+  final List<CatalogFood> searchResults;
+  final bool searching;
   final List<FoodItem> recentFoods;
-  final ValueChanged<FoodItem> onSelect;
+  final ValueChanged<CatalogFood> onSelectCatalog;
   final Color textPrimary;
   final Color textSecondary;
   final Color surface;
 
-  const _FoodPickerStep({
+  const _CatalogSearchStep({
     required this.controller,
     required this.searchController,
-    required this.foods,
+    required this.searchResults,
+    required this.searching,
     required this.recentFoods,
-    required this.onSelect,
+    required this.onSelectCatalog,
     required this.textPrimary,
     required this.textSecondary,
     required this.surface,
@@ -2538,14 +2596,16 @@ class _FoodPickerStep extends StatelessWidget {
               itemBuilder: (context, i) {
                 final food = recentFoods[i];
                 return _PressScale(
-                  onTap: () => onSelect(food),
+                  onTap: () {
+                    searchController.text = food.name;
+                  },
                   child: Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
-                        color: surface,
+                      color: surface,
                       borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: textPrimary.withOpacity(0.08)),
+                      border: Border.all(color: textPrimary.withValues(alpha: 0.08)),
                     ),
                     child: Text(
                       food.name,
@@ -2563,7 +2623,7 @@ class _FoodPickerStep extends StatelessWidget {
           const SizedBox(height: 16),
         ],
         Text(
-          'Foods',
+          'Results',
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w800,
@@ -2571,12 +2631,19 @@ class _FoodPickerStep extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 10),
-        if (foods.isEmpty)
+        if (searching)
+          const Padding(
+            padding: EdgeInsets.only(top: 28),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else if (searchResults.isEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 28),
             child: Center(
               child: Text(
-                'No results',
+                searchController.text.trim().isEmpty
+                    ? 'Search to find foods'
+                    : 'No results',
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
                   color: textSecondary,
@@ -2585,12 +2652,12 @@ class _FoodPickerStep extends StatelessWidget {
             ),
           )
         else
-          ...foods.map((food) {
+          ...searchResults.map((food) {
             return Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: _PressScale(
-                onTap: () => onSelect(food),
-                child: _FoodCard(
+                onTap: () => onSelectCatalog(food),
+                child: _CatalogFoodCard(
                   food: food,
                   surface: surface,
                   textPrimary: textPrimary,
@@ -2604,13 +2671,13 @@ class _FoodPickerStep extends StatelessWidget {
   }
 }
 
-class _FoodCard extends StatelessWidget {
-  final FoodItem food;
+class _CatalogFoodCard extends StatelessWidget {
+  final CatalogFood food;
   final Color surface;
   final Color textPrimary;
   final Color textSecondary;
 
-  const _FoodCard({
+  const _CatalogFoodCard({
     required this.food,
     required this.surface,
     required this.textPrimary,
@@ -2624,7 +2691,7 @@ class _FoodCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: textPrimary.withOpacity(0.08)),
+        border: Border.all(color: textPrimary.withValues(alpha: 0.08)),
       ),
       child: Row(
         children: [
@@ -2665,39 +2732,28 @@ class _FoodCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: MealTrackerTokens.accent.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.verified_rounded,
-                            size: 14,
+                    if (food.verified)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: MealTrackerTokens.accent.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          'Verified',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
                             color: MealTrackerTokens.accent.withValues(alpha: 0.9),
                           ),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Verified',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              color:
-                                  MealTrackerTokens.accent.withValues(alpha: 0.9),
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
                   ],
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${food.calories} kcal • ${food.unit}',
+                  '${food.kcal100g.round()} kcal / 100g',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
@@ -2713,30 +2769,34 @@ class _FoodCard extends StatelessWidget {
   }
 }
 
-class _FoodDetailsStep extends StatelessWidget {
+class _CatalogDetailsStep extends StatelessWidget {
   final ScrollController controller;
-  final FoodItem food;
-  final double amount;
-  final TextEditingController amountController;
-  final ValueChanged<double> onAmountChanged;
+  final CatalogFood food;
+  final double grams;
+  final TextEditingController gramsController;
+  final List<FoodPortion> portions;
+  final ValueChanged<double> onGramsChanged;
   final List<String> mealOptions;
   final String selectedMeal;
   final ValueChanged<String> onMealChanged;
   final VoidCallback onAdd;
+  final bool saving;
   final Color textPrimary;
   final Color textSecondary;
   final Color surface;
 
-  const _FoodDetailsStep({
+  const _CatalogDetailsStep({
     required this.controller,
     required this.food,
-    required this.amount,
-    required this.amountController,
-    required this.onAmountChanged,
+    required this.grams,
+    required this.gramsController,
+    required this.portions,
+    required this.onGramsChanged,
     required this.mealOptions,
     required this.selectedMeal,
     required this.onMealChanged,
     required this.onAdd,
+    required this.saving,
     required this.textPrimary,
     required this.textSecondary,
     required this.surface,
@@ -2744,18 +2804,14 @@ class _FoodDetailsStep extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final base = food.baseGrams;
-    final isGramBased = base != null;
-    final effectiveFood = food.copyWith(amount: amount);
-    final displayAmount = isGramBased ? '${amount.round()} g' : '${amount.toStringAsFixed(2)}×';
-    final calories = effectiveFood.totalCalories;
+    final m = food.macrosForGrams(grams);
 
     return ListView(
       controller: controller,
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
       children: [
         Text(
-          'Amount',
+          'Amount (grams)',
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w900,
@@ -2768,7 +2824,7 @@ class _FoodDetailsStep extends StatelessWidget {
           decoration: BoxDecoration(
             color: surface,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: textPrimary.withOpacity(0.08)),
+            border: Border.all(color: textPrimary.withValues(alpha: 0.08)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2776,7 +2832,7 @@ class _FoodDetailsStep extends StatelessWidget {
               Row(
                 children: [
                   Text(
-                    isGramBased ? 'Amount (grams)' : 'Amount',
+                    'Grams',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w800,
@@ -2785,7 +2841,7 @@ class _FoodDetailsStep extends StatelessWidget {
                   ),
                   const Spacer(),
                   Text(
-                    displayAmount,
+                    '${grams.round()} g',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w900,
@@ -2798,12 +2854,7 @@ class _FoodDetailsStep extends StatelessWidget {
               Row(
                 children: [
                   _PressScale(
-                    onTap: () {
-                      final next = isGramBased
-                          ? (amount - 5).clamp(0, 2000)
-                          : (amount - 0.25).clamp(0, 100);
-                      onAmountChanged(next.toDouble());
-                    },
+                    onTap: () => onGramsChanged((grams - 5).clamp(5.0, 2000.0)),
                     child: _CircleIcon(
                       icon: Icons.remove_rounded,
                       surface: surface,
@@ -2813,35 +2864,29 @@ class _FoodDetailsStep extends StatelessWidget {
                   const SizedBox(width: 12),
                   Expanded(
                     child: TextField(
-                      controller: amountController,
+                      controller: gramsController,
                       keyboardType:
                           const TextInputType.numberWithOptions(decimal: true),
                       textInputAction: TextInputAction.done,
                       decoration: InputDecoration(
-                        hintText: isGramBased ? 'e.g. 175' : 'e.g. 1.5',
+                        hintText: 'e.g. 175',
                         filled: true,
                         fillColor: surface,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(16),
                           borderSide: BorderSide.none,
                         ),
-                        suffixText: isGramBased ? 'g' : '×',
+                        suffixText: 'g',
                       ),
                       onChanged: (v) {
                         final parsed = double.tryParse(v.replaceAll(',', '.'));
-                        if (parsed == null) return;
-                        onAmountChanged(parsed);
+                        if (parsed != null && parsed > 0) onGramsChanged(parsed);
                       },
                     ),
                   ),
                   const SizedBox(width: 12),
                   _PressScale(
-                    onTap: () {
-                      final next = isGramBased
-                          ? (amount + 5).clamp(0, 2000)
-                          : (amount + 0.25).clamp(0, 100);
-                      onAmountChanged(next.toDouble());
-                    },
+                    onTap: () => onGramsChanged((grams + 5).clamp(5.0, 2000.0)),
                     child: _CircleIcon(
                       icon: Icons.add_rounded,
                       surface: surface,
@@ -2850,72 +2895,49 @@ class _FoodDetailsStep extends StatelessWidget {
                   ),
                 ],
               ),
-              if (isGramBased) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  _QuickServingChip(
+                    label: '50g',
+                    onTap: () => onGramsChanged(50),
+                    surface: surface,
+                    textPrimary: textPrimary,
+                  ),
+                  const SizedBox(width: 8),
+                  _QuickServingChip(
+                    label: '100g',
+                    onTap: () => onGramsChanged(100),
+                    surface: surface,
+                    textPrimary: textPrimary,
+                  ),
+                  const SizedBox(width: 8),
+                  _QuickServingChip(
+                    label: '150g',
+                    onTap: () => onGramsChanged(150),
+                    surface: surface,
+                    textPrimary: textPrimary,
+                  ),
+                  const SizedBox(width: 8),
+                  _QuickServingChip(
+                    label: '200g',
+                    onTap: () => onGramsChanged(200),
+                    surface: surface,
+                    textPrimary: textPrimary,
+                  ),
+                ],
+              ),
+              if (portions.isNotEmpty) ...[
                 const SizedBox(height: 12),
-                Row(
-                  children: [
-                    _QuickServingChip(
-                      label: '50g',
-                      onTap: () => onAmountChanged(50),
-                      surface: surface,
-                      textPrimary: textPrimary,
-                    ),
-                    const SizedBox(width: 8),
-                    _QuickServingChip(
-                      label: '100g',
-                      onTap: () => onAmountChanged(100),
-                      surface: surface,
-                      textPrimary: textPrimary,
-                    ),
-                    const SizedBox(width: 8),
-                    _QuickServingChip(
-                      label: '150g',
-                      onTap: () => onAmountChanged(150),
-                      surface: surface,
-                      textPrimary: textPrimary,
-                    ),
-                    const SizedBox(width: 8),
-                    _QuickServingChip(
-                      label: '200g',
-                      onTap: () => onAmountChanged(200),
-                      surface: surface,
-                      textPrimary: textPrimary,
-                    ),
-                  ],
-                ),
-              ],
-              if (!isGramBased) ...[
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    _QuickServingChip(
-                      label: '0.5×',
-                      onTap: () => onAmountChanged(0.5),
-                      surface: surface,
-                      textPrimary: textPrimary,
-                    ),
-                    const SizedBox(width: 8),
-                    _QuickServingChip(
-                      label: '1×',
-                      onTap: () => onAmountChanged(1.0),
-                      surface: surface,
-                      textPrimary: textPrimary,
-                    ),
-                    const SizedBox(width: 8),
-                    _QuickServingChip(
-                      label: '1.5×',
-                      onTap: () => onAmountChanged(1.5),
-                      surface: surface,
-                      textPrimary: textPrimary,
-                    ),
-                    const SizedBox(width: 8),
-                    _QuickServingChip(
-                      label: '2×',
-                      onTap: () => onAmountChanged(2.0),
-                      surface: surface,
-                      textPrimary: textPrimary,
-                    ),
-                  ],
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: portions.map((p) => _QuickServingChip(
+                    label: p.label,
+                    onTap: () => onGramsChanged(p.grams),
+                    surface: surface,
+                    textPrimary: textPrimary,
+                  )).toList(),
                 ),
               ],
             ],
@@ -2923,7 +2945,7 @@ class _FoodDetailsStep extends StatelessWidget {
         ),
         const SizedBox(height: 14),
         Text(
-          'Macros',
+          'Macros (preview)',
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w900,
@@ -2936,30 +2958,30 @@ class _FoodDetailsStep extends StatelessWidget {
           decoration: BoxDecoration(
             color: surface,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: textPrimary.withOpacity(0.08)),
+            border: Border.all(color: textPrimary.withValues(alpha: 0.08)),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _MacroStat(label: 'Calories', value: '$calories', color: textPrimary),
+              _MacroStat(label: 'Calories', value: '${m.calories}', color: textPrimary),
               _MacroStat(
                 label: 'P',
-                value: '${effectiveFood.totalProtein.toStringAsFixed(1)}g',
+                value: '${m.protein.toStringAsFixed(1)}g',
                 color: MealTrackerTokens.macroProtein,
               ),
               _MacroStat(
                 label: 'C',
-                value: '${effectiveFood.totalCarbs.toStringAsFixed(1)}g',
+                value: '${m.carbs.toStringAsFixed(1)}g',
                 color: MealTrackerTokens.macroCarbs,
               ),
               _MacroStat(
                 label: 'F',
-                value: '${effectiveFood.totalFats.toStringAsFixed(1)}g',
+                value: '${m.fats.toStringAsFixed(1)}g',
                 color: MealTrackerTokens.macroFats,
               ),
               _MacroStat(
                 label: 'Fi',
-                value: '${effectiveFood.totalFiber.toStringAsFixed(1)}g',
+                value: '${m.fiber.toStringAsFixed(1)}g',
                 color: MealTrackerTokens.accent2,
               ),
             ],
@@ -3004,29 +3026,46 @@ class _FoodDetailsStep extends StatelessWidget {
           }).toList(),
         ),
         const SizedBox(height: 16),
-        _PressScale(
-          onTap: onAdd,
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            decoration: BoxDecoration(
-              gradient: MealTrackerTokens.primaryGradient,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: MealTrackerTokens.accent.withValues(alpha: 0.30),
-                  blurRadius: 22,
-                  offset: const Offset(0, 12),
-                ),
-              ],
-            ),
-            child: Text(
-              'Add to $selectedMeal',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w900,
-                color: Colors.white,
+        IgnorePointer(
+          ignoring: saving,
+          child: _PressScale(
+            onTap: onAdd,
+            child: Opacity(
+              opacity: saving ? 0.6 : 1,
+              child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              decoration: BoxDecoration(
+                gradient: MealTrackerTokens.primaryGradient,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: MealTrackerTokens.accent.withValues(alpha: 0.30),
+                    blurRadius: 22,
+                    offset: const Offset(0, 12),
+                  ),
+                ],
+              ),
+              child: saving
+                  ? const Center(
+                      child: SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      ),
+                    )
+                  : Text(
+                      'Add to $selectedMeal',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                      ),
+                    ),
               ),
             ),
           ),
@@ -3430,7 +3469,7 @@ class _FoodListItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Dismissible(
-      key: Key(food.name),
+      key: Key(food.id ?? '${food.name}_${food.amount}_${food.totalCalories}'),
       direction: DismissDirection.endToStart,
       background: Container(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),

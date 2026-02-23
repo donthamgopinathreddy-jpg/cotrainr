@@ -91,6 +91,12 @@ class HealthTrackingService {
   /// Request all required permissions: health, location, notification, camera, microphone
   Future<bool> _requestAllPermissions() async {
     try {
+      // Request activity recognition (required for steps on Health Connect / physical activity)
+      final activityStatus = await Permission.activityRecognition.request();
+      if (activityStatus.isDenied) {
+        print('Activity recognition permission denied - steps may not work');
+      }
+
       // Request location permission (required for distance calculation)
       bool locationServiceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!locationServiceEnabled) {

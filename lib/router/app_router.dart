@@ -27,6 +27,7 @@ import '../../pages/meal_tracker/meal_tracker_page_v2.dart';
 import '../../pages/coach_notes/coach_notes_page.dart';
 import '../../pages/ai_planner/ai_planner_page.dart';
 import '../../pages/quest/quest_page.dart';
+import '../../pages/bmi/bmi_details_screen.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: '/welcome',
@@ -292,6 +293,19 @@ final GoRouter appRouter = GoRouter(
       },
     ),
     // Legacy /video/create, /video/join, /video/room/* redirect in redirect callback above
+    GoRoute(
+      path: '/bmi',
+      name: 'bmi',
+      pageBuilder: (context, state) {
+        final args = state.extra as BmiDetailsArgs?;
+        return _fadeSlidePage(
+          child: BmiDetailsScreen(
+            args: args ?? const BmiDetailsArgs(bmi: 0, bmiStatus: ''),
+          ),
+          state: state,
+        );
+      },
+    ),
     GoRoute(
       path: '/quest',
       name: 'quest',

@@ -392,7 +392,8 @@ class MealRepository {
 
   /// Add food item. Ensures meal exists, inserts meal_item with fiber.
   /// [calories, protein, carbs, fats, fiber] are per-unit values.
-  /// Normalizes unit/quantity before insert (e.g. "0.5x" → "1x", quantity 0.5) to avoid double-multiply.
+  /// For catalog foods: pass unit='100g', quantity=grams, values=per-100g from catalog.
+  /// [foodId] optional; when from catalog, links meal_item to foods table.
   Future<String> addFoodItem({
     required DateTime date,
     required String mealType,
@@ -404,11 +405,12 @@ class MealRepository {
     required double carbs,
     required double fats,
     double fiber = 0,
+    String? foodId,
   }) async {
     final mealId = await _ensureMeal(date, mealType);
     final normalized = normalizeUnitForStorage(unit, quantity);
 
-    final insert = await _supabase.from('meal_items').insert({
+    final payload = <String, dynamic>{
       'meal_id': mealId,
       'food_name': foodName,
       'quantity': normalized.quantity,
@@ -418,7 +420,10 @@ class MealRepository {
       'carbs': carbs,
       'fat': fats,
       'fiber': fiber,
-    }).select('id').single();
+    };
+    if (foodId != null) payload['food_id'] = foodId;
+
+    final insert = await _supabase.from('meal_items').insert(payload).select('id').single();
 
     return insert['id'] as String;
   }

@@ -1,0 +1,251 @@
+name,aliases_pipe,cuisine,category,is_prepared,source,source_ref,kcal_100g,protein_100g,carbs_100g,fat_100g,fiber_100g,micros_json,verified
+Rice white raw,rice|chawal|chaval,indian,grains,false,manual_seed,cotrainr_v1,365,7.1,80,0.7,0.3,{},true
+Rice white cooked,rice cooked|chawal cooked|steamed rice,indian,grains,true,manual_seed,cotrainr_v1,130,2.7,28,0.3,0.1,{},true
+Rice basmati raw,basmati|basmati rice|chawal,indian,grains,false,manual_seed,cotrainr_v1,350,7.5,78,0.5,0.6,{},true
+Rice basmati cooked,basmati cooked|basmati rice cooked,indian,grains,true,manual_seed,cotrainr_v1,130,2.7,28,0.3,0.1,{},true
+Rice brown raw,brown rice|chawal brown,indian,grains,false,manual_seed,cotrainr_v1,370,7.9,78,2.9,3.5,{},true
+Rice brown cooked,brown rice cooked,indian,grains,true,manual_seed,cotrainr_v1,112,2.6,23,0.9,1.8,{},true
+Wheat flour atta,atta|whole wheat flour|gehun ka atta,indian,grains,false,manual_seed,cotrainr_v1,341,13.2,72,2.5,11.3,{},true
+Wheat flour maida,maida|refined flour|all purpose flour,indian,grains,false,manual_seed,cotrainr_v1,364,10.3,76,1,2.7,{},true
+Semolina suji,suji|rava|sooji|semolina,indian,grains,false,manual_seed,cotrainr_v1,360,12.7,73,1.1,3.6,{},true
+Poha flattened rice,poha|aval|avalakki|chira,indian,grains,false,manual_seed,cotrainr_v1,350,7.5,77,0.5,0.6,{},true
+Poha cooked,poha cooked|avalakki upma,indian,grains,true,manual_seed,cotrainr_v1,130,2.5,28,2,0.5,{},true
+Quinoa raw,quinoa,international,grains,false,manual_seed,cotrainr_v1,368,14.1,64,6.1,7,{},true
+Quinoa cooked,quinoa cooked,international,grains,true,manual_seed,cotrainr_v1,120,4.4,21,1.9,2.8,{},true
+Oats rolled raw,oats|oatmeal|jai,international,grains,false,manual_seed,cotrainr_v1,389,16.9,66,6.9,10.6,{},true
+Oats cooked,oatmeal cooked|oats cooked,international,grains,true,manual_seed,cotrainr_v1,68,2.4,12,1.4,1.7,{},true
+Toor dal,toor|arhar|tuvar|pigeon pea,indian,legumes,false,manual_seed,cotrainr_v1,343,22,63,1.5,15,{},true
+Toor dal cooked,toor dal cooked|arhar dal,indian,legumes,true,manual_seed,cotrainr_v1,120,7.8,22,0.4,5,{},true
+Moong dal,moong|mung|green gram dal,indian,legumes,false,manual_seed,cotrainr_v1,347,24,63,1.2,16.3,{},true
+Moong dal cooked,moong dal cooked|mung dal,indian,legumes,true,manual_seed,cotrainr_v1,105,7.1,19,0.4,7.6,{},true
+Chana dal,chana dal|bengal gram|split chickpea,indian,legumes,false,manual_seed,cotrainr_v1,378,20.8,63,5.5,12.2,{},true
+Chana dal cooked,chana dal cooked|bengal gram cooked,indian,legumes,true,manual_seed,cotrainr_v1,164,8.9,27,2.6,7.6,{},true
+Urad dal,urad|black gram|ma ki dal,indian,legumes,false,manual_seed,cotrainr_v1,347,24,59,1.4,18.3,{},true
+Urad dal cooked,urad dal cooked|black gram cooked,indian,legumes,true,manual_seed,cotrainr_v1,105,7.1,19,0.4,7.6,{},true
+Masoor dal,masoor|red lentil|red dal,indian,legumes,false,manual_seed,cotrainr_v1,352,24.6,63,1.1,10.7,{},true
+Masoor dal cooked,masoor dal cooked|red lentil cooked,indian,legumes,true,manual_seed,cotrainr_v1,116,9,20,0.4,7.9,{},true
+Rajma,kidney beans|red beans|rajma,indian,legumes,false,manual_seed,cotrainr_v1,333,23.6,60,0.8,24.9,{},true
+Rajma cooked,rajma cooked|kidney beans cooked,indian,legumes,true,manual_seed,cotrainr_v1,127,8.7,23,0.5,6.4,{},true
+Chickpeas kabuli,chickpeas|chole|garbanzo|kabuli chana,indian,legumes,false,manual_seed,cotrainr_v1,378,20.5,63,6,12.2,{},true
+Chickpeas cooked,chickpeas cooked|chole cooked|garbanzo cooked,indian,legumes,true,manual_seed,cotrainr_v1,164,8.9,27,2.6,7.6,{},true
+Black lentils whole,urad whole|sabut urad|black gram whole,indian,legumes,false,manual_seed,cotrainr_v1,343,25,59,1.4,18.3,{},true
+Green gram whole,moong whole|sabut moong|green gram,indian,legumes,false,manual_seed,cotrainr_v1,347,24,63,1.2,16.3,{},true
+Potato raw,potato|aloo|batata,indian,vegetables,false,manual_seed,cotrainr_v1,77,2,17,0.1,2.2,{},true
+Potato boiled,potato boiled|aloo boiled|boiled potato,indian,vegetables,true,manual_seed,cotrainr_v1,87,1.9,20,0.1,1.8,{},true
+Onion raw,onion|pyaz|kanda,indian,vegetables,false,manual_seed,cotrainr_v1,40,1.1,9,0.1,1.7,{},true
+Tomato raw,tomato|tamatar,indian,vegetables,false,manual_seed,cotrainr_v1,18,0.9,3.9,0.2,1.2,{},true
+Spinach palak,palak|spinach|palak saag,indian,vegetables,false,manual_seed,cotrainr_v1,23,2.9,3.6,0.4,2.2,{},true
+Spinach cooked,palak cooked|spinach cooked,indian,vegetables,true,manual_seed,cotrainr_v1,23,2.9,3.6,0.3,2.2,{},true
+Brinjal,brinjal|baingan|eggplant|aubergine,indian,vegetables,false,manual_seed,cotrainr_v1,25,1,6,0.2,3,{},true
+Okra bhindi,bhindi|okra|ladyfinger,indian,vegetables,false,manual_seed,cotrainr_v1,33,1.9,7.5,0.2,3.2,{},true
+Cauliflower,gobi|cauliflower|phool gobi,indian,vegetables,false,manual_seed,cotrainr_v1,25,1.9,5,0.3,2,{},true
+Cabbage,patta gobi|cabbage|band gobi,indian,vegetables,false,manual_seed,cotrainr_v1,25,1.3,5.5,0.1,2.5,{},true
+Carrot,gajar|carrot,indian,vegetables,false,manual_seed,cotrainr_v1,41,0.9,10,0.2,2.8,{},true
+Cabbage cooked,band gobi cooked|cabbage cooked,indian,vegetables,true,manual_seed,cotrainr_v1,23,1.3,5.5,0.1,2.2,{},true
+Bottle gourd,lauki|doodhi|calabash,indian,vegetables,false,manual_seed,cotrainr_v1,15,0.6,3.4,0.1,0.5,{},true
+Ridge gourd,tori|turai|ridged gourd,indian,vegetables,false,manual_seed,cotrainr_v1,17,0.1,4.4,0.2,0.5,{},true
+Pumpkin,kaddu|pumpkin|sitaphal,indian,vegetables,false,manual_seed,cotrainr_v1,26,1,6.5,0.1,0.5,{},true
+Cucumber,kheera|cucumber|kakdi,indian,vegetables,false,manual_seed,cotrainr_v1,15,0.7,3.6,0.1,0.5,{},true
+Green beans,beans|french beans|sem beans,indian,vegetables,false,manual_seed,cotrainr_v1,31,1.8,7,0.1,2.7,{},true
+Peas green,matar|green peas|hara matar,indian,vegetables,false,manual_seed,cotrainr_v1,81,5.4,14,0.4,5.1,{},true
+Capsicum bell pepper,shimla mirch|capsicum|bell pepper,indian,vegetables,false,manual_seed,cotrainr_v1,31,1,6,0.3,2.1,{},true
+Fenugreek leaves methi,methi|fenugreek leaves|kasuri methi,indian,vegetables,false,manual_seed,cotrainr_v1,49,4.4,6,0.9,1.1,{},true
+Mustard greens,sarson|mustard greens|sarson ka saag,indian,vegetables,false,manual_seed,cotrainr_v1,27,2.9,4.7,0.4,3.2,{},true
+Broccoli,broccoli|hari gobi,international,vegetables,false,manual_seed,cotrainr_v1,34,2.8,7,0.4,2.6,{},true
+Lettuce,lettuce|salad leaves,international,vegetables,false,manual_seed,cotrainr_v1,15,1.4,2.9,0.2,1.3,{},true
+Zucchini,zucchini|courgette,international,vegetables,false,manual_seed,cotrainr_v1,17,1.2,3.1,0.3,1,{},true
+Sweet potato,shakarkand|sweet potato|ratalu,indian,vegetables,false,manual_seed,cotrainr_v1,86,1.6,20,0.1,3,{},true
+Mango raw,mango|aam|kairi,indian,fruits,false,manual_seed,cotrainr_v1,60,0.8,15,0.4,1.6,{},true
+Mango ripe,mango ripe|aam ripe|ripe mango,indian,fruits,false,manual_seed,cotrainr_v1,60,0.8,15,0.4,1.6,{},true
+Banana raw,banana|kela|kadali,indian,fruits,false,manual_seed,cotrainr_v1,89,1.1,23,0.3,2.6,{},true
+Papaya,papaya|papita,indian,fruits,false,manual_seed,cotrainr_v1,43,0.5,11,0.3,1.7,{},true
+Pomegranate,anar|pomegranate|darim,indian,fruits,false,manual_seed,cotrainr_v1,83,1.7,19,1.2,4,{},true
+Guava,guava|amrood|peru,indian,fruits,false,manual_seed,cotrainr_v1,68,2.6,14,1,5.4,{},true
+Chikoo sapota,chikoo|sapota|sapodilla,indian,fruits,false,manual_seed,cotrainr_v1,83,0.4,20,1.1,5.3,{},true
+Watermelon,tarbuz|watermelon|kalingad,indian,fruits,false,manual_seed,cotrainr_v1,30,0.6,7.6,0.2,0.4,{},true
+Muskmelon,cantaloupe|kharbuja|muskmelon,indian,fruits,false,manual_seed,cotrainr_v1,34,0.8,8.2,0.2,0.9,{},true
+Apple,apple|seb|seb,international,fruits,false,manual_seed,cotrainr_v1,52,0.3,14,0.2,2.4,{},true
+Orange,orange|santara|santra,international,fruits,false,manual_seed,cotrainr_v1,47,0.9,12,0.1,2.4,{},true
+Grapes,grape|angoor|draksha,international,fruits,false,manual_seed,cotrainr_v1,69,0.7,18,0.2,0.9,{},true
+Strawberry,strawberry|strawberries,international,fruits,false,manual_seed,cotrainr_v1,32,0.7,7.7,0.3,2,{},true
+Coconut fresh,nariyal|coconut|fresh coconut,indian,fruits,false,manual_seed,cotrainr_v1,354,3.3,15,33,9,{},true
+Coconut water,nariyal pani|coconut water,indian,beverages,false,manual_seed,cotrainr_v1,19,0.7,3.7,0.2,1.1,{},true
+Milk whole,doodh|milk|full cream milk,indian,dairy,false,manual_seed,cotrainr_v1,61,3.2,4.8,3.3,0,{},true
+Milk toned,toned milk|low fat milk,indian,dairy,false,manual_seed,cotrainr_v1,47,3.2,4.8,2,0,{},true
+Curd dahi,dahi|curd|yogurt|yoghurt,indian,dairy,false,manual_seed,cotrainr_v1,59,3.5,3.5,3.3,0,{},true
+Paneer,paneer|cottage cheese|indian cheese,indian,dairy,false,manual_seed,cotrainr_v1,265,18.3,3.4,20.8,0,{},true
+Ghee,ghee|clarified butter|desi ghee,indian,oils_fats,false,manual_seed,cotrainr_v1,900,0,0,100,0,{},true
+Butter,makhan|butter,indian,oils_fats,false,manual_seed,cotrainr_v1,717,0.9,0.1,81,0,{},true
+Mustard oil,sarson ka tel|mustard oil,indian,oils_fats,false,manual_seed,cotrainr_v1,884,0,0,100,0,{},true
+Groundnut oil,peanut oil|moongphali tel|groundnut oil,indian,oils_fats,false,manual_seed,cotrainr_v1,884,0,0,100,0,{},true
+Olive oil,olive oil|jaitun ka tel,international,oils_fats,false,manual_seed,cotrainr_v1,884,0,0,100,0,{},true
+Chicken breast raw,chicken breast|chicken|murgh,indian,meat,false,manual_seed,cotrainr_v1,120,22.5,0,2.6,0,{},true
+Chicken breast cooked,chicken breast cooked|chicken cooked|murgh cooked,indian,meat,true,manual_seed,cotrainr_v1,165,31,0,3.6,0,{},true
+Chicken thigh raw,chicken thigh|chicken leg,indian,meat,false,manual_seed,cotrainr_v1,209,18.3,0,14.8,0,{},true
+Chicken thigh cooked,chicken thigh cooked|chicken leg cooked,indian,meat,true,manual_seed,cotrainr_v1,209,26,0,10.9,0,{},true
+Mutton raw,mutton|goat meat|bakra,indian,meat,false,manual_seed,cotrainr_v1,234,18.8,0,17.8,0,{},true
+Mutton cooked,mutton cooked|goat meat cooked,indian,meat,true,manual_seed,cotrainr_v1,294,26,0,21,0,{},true
+Fish rohu,rohu|fish|rui,indian,meat,false,manual_seed,cotrainr_v1,97,16.8,0,2.6,0,{},true
+Fish rohu cooked,rohu cooked|fish cooked,indian,meat,true,manual_seed,cotrainr_v1,140,24,0,4.5,0,{},true
+Salmon raw,salmon|rawas,international,meat,false,manual_seed,cotrainr_v1,208,20,0,13,0,{},true
+Salmon cooked,salmon cooked|rawas cooked,international,meat,true,manual_seed,cotrainr_v1,208,20,0,13,0,{},true
+Prawns raw,jhinga|prawns|shrimp,indian,meat,false,manual_seed,cotrainr_v1,85,18.2,0.5,0.6,0,{},true
+Prawns cooked,jhinga cooked|prawns cooked,indian,meat,true,manual_seed,cotrainr_v1,99,24,0.2,0.3,0,{},true
+Egg whole raw,egg|anda,indian,eggs,false,manual_seed,cotrainr_v1,155,13,1.1,11,0,{},true
+Egg whole boiled,egg boiled|anda boiled|boiled egg,indian,eggs,true,manual_seed,cotrainr_v1,155,13,1.1,11,0,{},true
+Egg white raw,egg white|anda ka safed hissa,indian,eggs,false,manual_seed,cotrainr_v1,52,10.9,0.7,0.2,0,{},true
+Almonds,badam|almonds,indian,nuts_seeds,false,manual_seed,cotrainr_v1,579,21,22,50,12.5,{},true
+Cashews,kaju|cashew nuts|cashews,indian,nuts_seeds,false,manual_seed,cotrainr_v1,553,18.2,30,44,3.3,{},true
+Peanuts,mungphali|peanuts|groundnuts,indian,nuts_seeds,false,manual_seed,cotrainr_v1,567,26,16,49,8.5,{},true
+Walnuts,akhrot|walnuts,indian,nuts_seeds,false,manual_seed,cotrainr_v1,654,15.2,14,65,6.7,{},true
+Pistachios,pista|pistachios,indian,nuts_seeds,false,manual_seed,cotrainr_v1,560,20.2,28,45,10.6,{},true
+Sesame seeds til,til|sesame seeds|sesame,indian,nuts_seeds,false,manual_seed,cotrainr_v1,573,18,22,50,12,{},true
+Flax seeds,alsi|flax seeds|linseed,indian,nuts_seeds,false,manual_seed,cotrainr_v1,534,18.3,29,42,27.3,{},true
+Chia seeds,chia seeds|chia,international,nuts_seeds,false,manual_seed,cotrainr_v1,486,16.5,42,31,34.4,{},true
+Roti whole wheat,roti|chapati|phulka|whole wheat roti,indian,dishes,true,manual_seed,cotrainr_v1,297,11.3,46,7.5,5.4,{},true
+Paratha plain,paratha|parantha|stuffed paratha,indian,dishes,true,manual_seed,cotrainr_v1,326,6.4,46,12.5,2.4,{},true
+Naan,naan|tandoori naan,indian,dishes,true,manual_seed,cotrainr_v1,262,9.2,46,5.7,2.2,{},true
+Dal tadka,dal tadka|dal fry|tadka dal,indian,dishes,true,manual_seed,cotrainr_v1,105,7.1,19,2.5,5,{},true
+Sambar,sambar|sambhar,indian,dishes,true,manual_seed,cotrainr_v1,75,4.2,12,1.8,2.5,{},true
+Rasam,rasam|south indian rasam,indian,dishes,true,manual_seed,cotrainr_v1,35,1.8,6,0.5,1.2,{},true
+Rajma masala,rajma masala|kidney bean curry,indian,dishes,true,manual_seed,cotrainr_v1,130,8.5,18,3.5,5.5,{},true
+Chole masala,chole|chana masala|chickpea curry,indian,dishes,true,manual_seed,cotrainr_v1,164,8.9,27,2.6,7.6,{},true
+Kadhi,kadhi|yogurt curry|pakora kadhi,indian,dishes,true,manual_seed,cotrainr_v1,75,4.5,8,2.5,0.8,{},true
+Palak paneer,palak paneer|spinach paneer|saag paneer,indian,dishes,true,manual_seed,cotrainr_v1,140,8.5,6,10,1.5,{},true
+Paneer butter masala,paneer butter masala|paneer makhani,indian,dishes,true,manual_seed,cotrainr_v1,220,10,8,18,1,{},true
+Chicken curry,chicken curry|murgh curry|indian chicken curry,indian,dishes,true,manual_seed,cotrainr_v1,180,18,5,10,0.5,{},true
+Biryani vegetable,biryani veg|vegetable biryani|veg biryani,indian,dishes,true,manual_seed,cotrainr_v1,140,4.5,22,4,1.2,{},true
+Biryani chicken,chicken biryani|murgh biryani,indian,dishes,true,manual_seed,cotrainr_v1,180,12,22,6,1.2,{},true
+Pulao vegetable,pulao|veg pulao|pulav,indian,dishes,true,manual_seed,cotrainr_v1,130,3.5,22,3,0.8,{},true
+Khichdi,khichdi|khichri|dal khichdi,indian,dishes,true,manual_seed,cotrainr_v1,105,5.5,18,2,2,{},true
+Upma,upma|uppittu|suji upma,indian,dishes,true,manual_seed,cotrainr_v1,130,3.5,22,3,1,{},true
+Idli,idli|idly,indian,dishes,true,manual_seed,cotrainr_v1,39,1.5,8,0.1,0.2,{},true
+Dosa,dosa|dosai,indian,dishes,true,manual_seed,cotrainr_v1,168,3.5,27,5.5,1.2,{},true
+Vada,vada|medu vada|urad vada,indian,dishes,true,manual_seed,cotrainr_v1,270,8.5,27,15,2.5,{},true
+Pav bhaji,pav bhaji|pav bhaji,indian,dishes,true,manual_seed,cotrainr_v1,150,5,22,4,1.5,{},true
+Aloo paratha,aloo paratha|potato paratha|alu paratha,indian,dishes,true,manual_seed,cotrainr_v1,220,6.5,32,8,2,{},true
+Gulab jamun,gulab jamun|gulab jamun,indian,sweets,true,manual_seed,cotrainr_v1,200,5,35,5,0.5,{},true
+Jalebi,jalebi|jalebi,indian,sweets,true,manual_seed,cotrainr_v1,265,4,60,5,0.3,{},true
+Kheer,kheer|chawal ki kheer|rice kheer,indian,sweets,true,manual_seed,cotrainr_v1,130,3.5,22,3,0.2,{},true
+Gajar halwa,gajar halwa|carrot halwa|gajrela,indian,sweets,true,manual_seed,cotrainr_v1,185,3.5,28,7,1.5,{},true
+Ladoo besan,besan ladoo|besan laddu|gram flour ladoo,indian,sweets,true,manual_seed,cotrainr_v1,380,5,55,15,2.5,{},true
+Poha chivda,poha chivda|chivda|mixture,indian,snacks,true,manual_seed,cotrainr_v1,450,8,55,22,5,{},true
+Murukku,murukku|chakli,indian,snacks,true,manual_seed,cotrainr_v1,450,7,55,22,5,{},true
+Samosa,samosa|samosas,indian,snacks,true,manual_seed,cotrainr_v1,260,5,32,12,2,{},true
+Pakora,pakora|pakoda|bhajiya,indian,snacks,true,manual_seed,cotrainr_v1,250,6,25,14,2,{},true
+Chai,chai|tea|doodh chai|masala chai,indian,beverages,true,manual_seed,cotrainr_v1,30,1.5,4,1,0,{},true
+Coffee,coffee|kaapi|filter coffee,indian,beverages,true,manual_seed,cotrainr_v1,2,0.1,0,0,0,{},true
+Lassi sweet,lassi|sweet lassi|sweetened lassi,indian,beverages,true,manual_seed,cotrainr_v1,90,3,14,2,0,{},true
+Lassi plain,lassi plain|plain lassi|unsweetened lassi,indian,beverages,true,manual_seed,cotrainr_v1,60,3.5,5,3,0,{},true
+Mango lassi,mango lassi|aam lassi,indian,beverages,true,manual_seed,cotrainr_v1,90,3,15,2,0.5,{},true
+Beef raw,beef|beef steak,international,meat,false,manual_seed,cotrainr_v1,250,26,0,10,0,{},true
+Pork raw,pork|pork chop,international,meat,false,manual_seed,cotrainr_v1,242,27,0,14,0,{},true
+Tuna raw,tuna|tuna fish,international,meat,false,manual_seed,cotrainr_v1,132,28,0,1,0,{},true
+Tuna cooked,tuna cooked|tuna canned,international,meat,true,manual_seed,cotrainr_v1,132,28,0,1,0,{},true
+Bread white,white bread|double roti|pao,international,grains,true,manual_seed,cotrainr_v1,265,9,49,3.2,2.7,{},true
+Bread whole wheat,brown bread|whole wheat bread|brown bread,international,grains,true,manual_seed,cotrainr_v1,247,13.4,41,3.4,6.8,{},true
+Pasta cooked,pasta|pasta cooked|spaghetti,international,grains,true,manual_seed,cotrainr_v1,131,5,25,1.1,1.8,{},true
+Noodles cooked,noodles|chow mein|chinese noodles,international,grains,true,manual_seed,cotrainr_v1,138,4.5,25,2.1,1.2,{},true
+Corn raw,makka|corn|maize|corn on cob,indian,grains,false,manual_seed,cotrainr_v1,86,3.3,19,1.2,2.7,{},true
+Corn boiled,corn boiled|boiled corn|bhutta,indian,grains,true,manual_seed,cotrainr_v1,96,3.4,21,1.5,2.4,{},true
+Barley raw,jau|barley,indian,grains,false,manual_seed,cotrainr_v1,354,12.5,73,2.3,17.3,{},true
+Ragi finger millet,nachni|ragi|finger millet,indian,grains,false,manual_seed,cotrainr_v1,336,7.3,72,1.9,3.6,{},true
+Jowar sorghum,jowar|sorghum,indian,grains,false,manual_seed,cotrainr_v1,339,11.3,74,3.3,6.3,{},true
+Bajra pearl millet,bajra|pearl millet|bajra,indian,grains,false,manual_seed,cotrainr_v1,378,11.6,73,4.2,8.5,{},true
+Lentils red,red lentils|masoor dal whole,international,legumes,false,manual_seed,cotrainr_v1,352,24.6,63,1.1,10.7,{},true
+Lentils red cooked,red lentils cooked|lentils cooked,international,legumes,true,manual_seed,cotrainr_v1,116,9,20,0.4,7.9,{},true
+Black beans cooked,black beans cooked|black beans|kala chana cooked,international,legumes,true,manual_seed,cotrainr_v1,132,8.9,24,0.5,8.7,{},true
+Soybeans raw,soybeans|soya beans|edamame,international,legumes,false,manual_seed,cotrainr_v1,446,36.5,30,20,9,{},true
+Tofu firm,tofu|soya paneer|tofu firm,international,legumes,false,manual_seed,cotrainr_v1,76,8.1,1.9,4.8,0.3,{},true
+Avocado,avocado|avocado|avocado,international,fruits,false,manual_seed,cotrainr_v1,160,2,9,15,7,{},true
+Blueberries,blueberries|blueberry,international,fruits,false,manual_seed,cotrainr_v1,57,0.7,14,0.3,2.4,{},true
+Raspberries,raspberries|raspberry,international,fruits,false,manual_seed,cotrainr_v1,52,1.2,12,0.7,7,{},true
+Pineapple,ananas|pineapple,international,fruits,false,manual_seed,cotrainr_v1,50,0.5,13,0.1,1.4,{},true
+Dates,dates|khajur|khajoor,indian,fruits,false,manual_seed,cotrainr_v1,282,2.5,75,0.4,8,{},true
+Raisins,kishmish|raisins|dried grapes,indian,fruits,false,manual_seed,cotrainr_v1,299,3.1,79,0.5,3.7,{},true
+Figs dried,anjeer|dried figs|dried anjeer,indian,fruits,false,manual_seed,cotrainr_v1,249,3.3,64,0.9,9.8,{},true
+Prunes,prunes|dried plums,international,fruits,false,manual_seed,cotrainr_v1,240,2.2,64,0.4,7.1,{},true
+Honey,shahad|honey|madhu,indian,sweets,false,manual_seed,cotrainr_v1,304,0,82,0,0,{},true
+Jaggery,gur|jaggery|gud,indian,sweets,false,manual_seed,cotrainr_v1,383,0.4,98,0.1,0,{},true
+Sugar,sugar|chini|chini,indian,sweets,false,manual_seed,cotrainr_v1,387,0,100,0,0,{},true
+Tamarind,imli|tamarind|tamarind pulp,indian,sweets,false,manual_seed,cotrainr_v1,239,2.8,63,0.6,5.1,{},true
+Capsicum green,hari mirch|green chilli|green chili,indian,vegetables,false,manual_seed,cotrainr_v1,40,2,9,0.2,1.5,{},true
+Ginger,adrak|ginger|ginger root,indian,vegetables,false,manual_seed,cotrainr_v1,80,1.8,18,0.8,2,{},true
+Garlic,garlic|lahsun|lehsun,indian,vegetables,false,manual_seed,cotrainr_v1,149,6.3,33,0.5,2.1,{},true
+Coriander leaves,dhania|cilantro|coriander|hara dhania,indian,vegetables,false,manual_seed,cotrainr_v1,23,2.1,3.7,0.5,2.8,{},true
+Mint leaves,pudina|mint|mint leaves,indian,vegetables,false,manual_seed,cotrainr_v1,44,3.3,8.4,0.7,6.8,{},true
+Lemon,nimbu|lemon|lemon juice,indian,fruits,false,manual_seed,cotrainr_v1,29,1.1,9,0.3,2.8,{},true
+Cabbage purple,purple cabbage|red cabbage|band gobi,indian,vegetables,false,manual_seed,cotrainr_v1,31,1.4,7.4,0.2,2.1,{},true
+Beetroot,beetroot|beet|chukandar,indian,vegetables,false,manual_seed,cotrainr_v1,43,1.6,10,0.2,2.8,{},true
+Bitter gourd,karela|bitter gourd|bitter melon,indian,vegetables,false,manual_seed,cotrainr_v1,17,1,3.7,0.2,2.8,{},true
+Taro root,arbi|taro|colocasia|arvi,indian,vegetables,false,manual_seed,cotrainr_v1,112,1.5,27,0.1,4.1,{},true
+Amaranth leaves,chaulai|amaranth|chawli leaves,indian,vegetables,false,manual_seed,cotrainr_v1,23,2.5,4,0.3,2.6,{},true
+Lettuce iceberg,iceberg lettuce|lettuce|salad,international,vegetables,false,manual_seed,cotrainr_v1,14,0.9,3,0.1,1.2,{},true
+Mushroom,mushroom|khumb|button mushroom,international,vegetables,false,manual_seed,cotrainr_v1,22,3.1,3.3,0.3,1,{},true
+Corn flour,makka atta|corn flour|corn starch,indian,grains,false,manual_seed,cotrainr_v1,381,6.9,87,1.4,1.7,{},true
+Besan gram flour,besan|gram flour|chickpea flour,indian,grains,false,manual_seed,cotrainr_v1,387,22.4,58,6.7,10.8,{},true
+Sago sabudana,sabudana|sago|tapioca pearls,indian,grains,false,manual_seed,cotrainr_v1,358,0.2,88,0,0.9,{},true
+Vermicelli seviyan,seviyan|vermicelli|semiya,indian,grains,false,manual_seed,cotrainr_v1,365,7.5,78,0.5,2.1,{},true
+Puffed rice,murmura|puffed rice|muri|kurmura,indian,grains,false,manual_seed,cotrainr_v1,402,6.3,89,0.5,0.6,{},true
+Pasta dry,pasta dry|spaghetti dry|macaroni dry,international,grains,false,manual_seed,cotrainr_v1,371,13,75,1.5,3.2,{},true
+Milk skimmed,skim milk|skimmed milk|fat free milk,indian,dairy,false,manual_seed,cotrainr_v1,34,3.4,5,0.1,0,{},true
+Cheese cheddar,cheddar|cheese|cheddar cheese,international,dairy,false,manual_seed,cotrainr_v1,403,25,1.3,33,0,{},true
+Yogurt greek,yogurt greek|greek yogurt|thick yogurt,international,dairy,false,manual_seed,cotrainr_v1,59,10,3.6,0.4,0,{},true
+Buttermilk,chaas|buttermilk|lassi unsweetened,indian,dairy,false,manual_seed,cotrainr_v1,40,3.3,4.8,1,0,{},true
+Sunflower oil,sunflower oil|surya mukhi tel,international,oils_fats,false,manual_seed,cotrainr_v1,884,0,0,100,0,{},true
+Coconut oil,coconut oil|nariyal tel,indian,oils_fats,false,manual_seed,cotrainr_v1,884,0,0,100,0,{},true
+Sesame oil,til ka tel|sesame oil|gingelly oil,indian,oils_fats,false,manual_seed,cotrainr_v1,884,0,0,100,0,{},true
+Vegetable oil,vegetable oil|refined oil|cooking oil,indian,oils_fats,false,manual_seed,cotrainr_v1,884,0,0,100,0,{},true
+Peanut butter,peanut butter|mungphali butter,international,nuts_seeds,false,manual_seed,cotrainr_v1,588,25,20,50,6,{},true
+Almond butter,almond butter|badam butter,international,nuts_seeds,false,manual_seed,cotrainr_v1,614,21,19,56,10.3,{},true
+Tahini,tahini|sesame paste|til paste,international,nuts_seeds,false,manual_seed,cotrainr_v1,595,17,21,54,9.3,{},true
+Hummus,hummus|hummus|chickpea dip,international,dishes,true,manual_seed,cotrainr_v1,166,7.9,14,9.6,6,{},true
+Guacamole,guacamole|avocado dip,international,dishes,true,manual_seed,cotrainr_v1,157,1.8,8.6,14,6.7,{},true
+Pizza slice,margherita pizza|pizza slice|pizza,international,dishes,true,manual_seed,cotrainr_v1,266,11,33,10,2.2,{},true
+Burger veg,veg burger|vegetable burger|burger,international,dishes,true,manual_seed,cotrainr_v1,250,9,28,11,2,{},true
+Sandwich veg,veg sandwich|vegetable sandwich|sandwich,international,dishes,true,manual_seed,cotrainr_v1,220,8,28,8,1.5,{},true
+French fries,french fries|fries|chips,international,dishes,true,manual_seed,cotrainr_v1,312,3.4,41,15,3.8,{},true
+Masala chips,masala chips|spiced chips|indian chips,indian,snacks,true,manual_seed,cotrainr_v1,536,7,50,34,4.5,{},true
+Bhel puri,bhel puri|bhel|bhel,indian,snacks,true,manual_seed,cotrainr_v1,140,4,22,4,2,{},true
+Pani puri,pani puri|gol gappa|puchka,indian,snacks,true,manual_seed,cotrainr_v1,100,2,18,2,1,{},true
+Sev,sev|sev,indian,snacks,true,manual_seed,cotrainr_v1,450,8,55,22,5,{},true
+Papad,papad|papadum|papad,indian,snacks,true,manual_seed,cotrainr_v1,371,25,60,3,18.3,{},true
+Fruit juice orange,orange juice|fruit juice|santre ka juice,international,beverages,false,manual_seed,cotrainr_v1,45,0.7,10,0.2,0.2,{},true
+Fruit juice apple,apple juice|seb ka juice,international,beverages,false,manual_seed,cotrainr_v1,46,0.1,11,0.1,0.1,{},true
+Smoothie banana,banana smoothie|smoothie,international,beverages,true,manual_seed,cotrainr_v1,75,2,15,0.5,1.5,{},true
+Green tea,green tea|hari chai|green tea,international,beverages,true,manual_seed,cotrainr_v1,1,0,0,0,0,{},true
+Lemonade,nimbu pani|lemonade|shikanji,indian,beverages,true,manual_seed,cotrainr_v1,40,0,10,0,0,{},true
+Soy milk,soy milk|soya milk,international,beverages,false,manual_seed,cotrainr_v1,54,3.3,6.3,1.8,0.6,{},true
+Almond milk,almond milk|badam milk,international,beverages,false,manual_seed,cotrainr_v1,17,0.6,1.5,1.2,0.6,{},true
+Protein powder,protein powder|whey protein,international,beverages,false,manual_seed,cotrainr_v1,400,80,10,5,0,{},true
+Malt beverage,malt drink|malt beverage|malted milk,indian,beverages,false,manual_seed,cotrainr_v1,380,12,75,4,2,{},true
+Cocoa powder,cocoa|cocoa powder|baking cocoa,international,beverages,false,manual_seed,cotrainr_v1,228,19.6,58,13.7,33,{},true
+Turmeric,haldi|turmeric|turmeric powder,indian,vegetables,false,manual_seed,cotrainr_v1,312,9.7,67,3.3,22.7,{},true
+Cumin seeds,jeera|cumin|cumin seeds,indian,nuts_seeds,false,manual_seed,cotrainr_v1,375,17.8,44,22.3,10.5,{},true
+Fennel seeds,saunf|fennel|fennel seeds,indian,nuts_seeds,false,manual_seed,cotrainr_v1,345,15.8,52,14.9,39.8,{},true
+Mustard seeds,rai|mustard seeds|sarson,indian,nuts_seeds,false,manual_seed,cotrainr_v1,508,26.1,28,36.2,12.2,{},true
+Cardamom,elaichi|cardamom|green cardamom,indian,nuts_seeds,false,manual_seed,cotrainr_v1,311,10.8,68,6.7,28,{},true
+Cinnamon,dalchini|cinnamon|cinnamon stick,indian,nuts_seeds,false,manual_seed,cotrainr_v1,247,4,81,1.2,53.1,{},true
+Black pepper,kali mirch|black pepper|pepper,indian,nuts_seeds,false,manual_seed,cotrainr_v1,251,10.4,64,3.3,25.3,{},true
+Red chilli powder,lal mirch|red chilli|chilli powder,indian,nuts_seeds,false,manual_seed,cotrainr_v1,282,11.5,50,14.5,34.8,{},true
+Garam masala,garam masala|garam masala,indian,nuts_seeds,false,manual_seed,cotrainr_v1,255,10,56,6,24.5,{},true
+Pumpkin seeds,kaddu ke beej|pumpkin seeds|pepitas,indian,nuts_seeds,false,manual_seed,cotrainr_v1,559,30.2,11,49,6,{},true
+Vada pav,vada pav|wada pav,indian,dishes,true,manual_seed,cotrainr_v1,280,8,35,11,2,{},true
+Dhokla,dhokla|khaman|steamed dhokla,indian,dishes,true,manual_seed,cotrainr_v1,160,8,25,4,2,{},true
+Thepla,thepla|methi thepla|gujarati thepla,indian,dishes,true,manual_seed,cotrainr_v1,280,9,42,8,3,{},true
+Pongal,ven pongal|pongal|khara pongal,indian,dishes,true,manual_seed,cotrainr_v1,140,4.5,22,4,1.5,{},true
+Paniyaram,paniyaram|appam,indian,dishes,true,manual_seed,cotrainr_v1,180,6,28,5,2,{},true
+Puttu,puttu|puttu,indian,dishes,true,manual_seed,cotrainr_v1,130,4,22,1.5,1.5,{},true
+Medu vada,medu vada|urad vada|vada,indian,dishes,true,manual_seed,cotrainr_v1,270,8.5,27,15,2.5,{},true
+Granola,granola|muesli,international,snacks,true,manual_seed,cotrainr_v1,471,10,66,20,9,{},true
+Corn flakes,corn flakes|breakfast cereal,international,snacks,true,manual_seed,cotrainr_v1,357,7.4,84,0.7,3.2,{},true
+Popcorn plain,popcorn|popcorn plain|bhel,international,snacks,true,manual_seed,cotrainr_v1,375,11,74,4.5,15,{},true
+Dark chocolate,dark chocolate|dark chocolate 70%,international,sweets,false,manual_seed,cotrainr_v1,546,4.9,61,31,10.9,{},true
+Milk chocolate,milk chocolate|chocolate,international,sweets,false,manual_seed,cotrainr_v1,535,8,59,30,3.4,{},true
+Rasmalai,rasmalai|ras malai|rasmalai,indian,sweets,true,manual_seed,cotrainr_v1,210,6,32,6,0.5,{},true
+Rasgulla,rasgulla|rasgulla|rasgulla,indian,sweets,true,manual_seed,cotrainr_v1,186,4,41,1,0,{},true
+Kulfi,kulfi|kulfi|indian ice cream,indian,sweets,true,manual_seed,cotrainr_v1,200,4,28,8,0,{},true
+Ghee roast,benne dosa|ghee roast|ghee roast dosa,indian,dishes,true,manual_seed,cotrainr_v1,220,4.5,28,10,1.5,{},true
+Masala dosa,masala dosa|masala dosai,indian,dishes,true,manual_seed,cotrainr_v1,150,4,22,4,1.5,{},true
+Uttapam,uttapam|uthappam,indian,dishes,true,manual_seed,cotrainr_v1,140,8,22,3,2,{},true
+Aloo tikki,aloo tikki|potato tikki,indian,snacks,true,manual_seed,cotrainr_v1,200,3.5,28,8,2,{},true

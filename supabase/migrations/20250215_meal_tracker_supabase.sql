@@ -87,18 +87,17 @@ BEGIN
 END $$;
 
 -- =============================================================================
--- 5. Add unique index (user_id, consumed_date, meal_type)
--- Partial: only for rows with consumed_date (app-created). Legacy NULL rows unconstrained.
--- Schema-qualified drops; IF NOT EXISTS for create.
+-- 5. Add unique constraint (user_id, consumed_date, meal_type)
+-- Required for ON CONFLICT inference; partial indexes cannot be used.
+-- Legacy NULL consumed_date rows: unique allows multiple NULLs (each distinct).
 -- =============================================================================
 ALTER TABLE public.meals
   DROP CONSTRAINT IF EXISTS uq_meals_user_date_meal_type;
 
 DROP INDEX IF EXISTS public.uq_meals_user_date_meal_type;
 
-CREATE UNIQUE INDEX IF NOT EXISTS uq_meals_user_date_meal_type
-  ON public.meals (user_id, consumed_date, meal_type)
-  WHERE consumed_date IS NOT NULL;
+ALTER TABLE public.meals
+  ADD CONSTRAINT uq_meals_user_date_meal_type UNIQUE (user_id, consumed_date, meal_type);
 
 -- =============================================================================
 -- 6. Indexes for fetch performance

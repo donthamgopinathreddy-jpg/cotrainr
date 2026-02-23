@@ -12,6 +12,7 @@ import '../../widgets/home_v3/streak_pill_v3.dart';
 import '../../widgets/home_v3/steps_card_v3.dart';
 import '../../widgets/home_v3/macro_row_v3.dart';
 import '../../widgets/home_v3/bmi_card_v3.dart';
+import '../bmi/bmi_details_screen.dart';
 import '../../widgets/home_v3/quick_access_v3.dart';
 import '../../widgets/home_v3/feed_preview_v3.dart';
 import '../../widgets/home_v3/nearby_preview_v3.dart';
@@ -55,6 +56,8 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
   String _bmiStatus = '';
   double? _heightCm;
   double? _weightKg;
+  String? _gender;
+  int? _age;
 
   final List<double> _stepsWeeklyData = [];
   final List<double> _caloriesWeeklyData = [];
@@ -122,6 +125,19 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
         final coverUrl = profile['cover_url'] as String?;
         final heightCm = (profile['height_cm'] as num?)?.toDouble();
         final weightKg = (profile['weight_kg'] as num?)?.toDouble();
+        final gender = profile['gender'] as String?;
+        final dobStr = profile['date_of_birth'] as String?;
+        int? age;
+        if (dobStr != null && dobStr.isNotEmpty) {
+          try {
+            final dob = DateTime.parse(dobStr);
+            final now = DateTime.now();
+            age = now.year - dob.year;
+            if (now.month < dob.month || (now.month == dob.month && now.day < dob.day)) {
+              age = age! - 1;
+            }
+          } catch (_) {}
+        }
         
         // Use same logic as Profile page
         final newUsername = fullName != null && fullName.trim().isNotEmpty
@@ -151,6 +167,8 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
           _bmiStatus = newBmiStatus;
           _heightCm = heightCm;
           _weightKg = weightKg;
+          _gender = gender;
+          _age = age;
         });
         
         // Update profile images provider if URLs exist
@@ -476,15 +494,26 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                 child: _animated(
                   _safeSection(
                     context,
-                    BmiCardV3(
-                    bmi: _bmi,
-                    status: _bmiStatus,
-                    heightCm: _heightCm,
-                    weightKg: _weightKg,
+                    InkWell(
+                      onTap: () => context.push('/bmi', extra: BmiDetailsArgs(
+                        bmi: _bmi,
+                        bmiStatus: _bmiStatus,
+                        heightCm: _heightCm,
+                        weightKg: _weightKg,
+                        gender: _gender,
+                        age: _age,
+                      )),
+                      borderRadius: BorderRadius.circular(24),
+                      child: BmiCardV3(
+                        bmi: _bmi,
+                        status: _bmiStatus,
+                        heightCm: _heightCm,
+                        weightKg: _weightKg,
+                      ),
+                    ),
                   ),
+                  180,
                 ),
-                180,
-              ),
             ),
           ),
           ),

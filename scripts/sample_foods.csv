@@ -1,0 +1,9 @@
+name,aliases,cuisine,category,is_prepared,source,source_ref,kcal_100g,protein_100g,carbs_100g,fat_100g,fiber_100g,verified
+Chicken breast raw,chicken;poultry,american,poultry,false,USDA_FDC,,165,31,0,3.6,0,true
+Brown rice cooked,rice;grains,,grains,false,USDA_FDC,,111,2.6,23,0.9,1.8,true
+Salmon raw,salmon;fish,,seafood,false,USDA_FDC,,208,20,0,13,0,true
+Eggs whole raw,eggs,,protein,false,USDA_FDC,,155,13,1.1,11,0,true
+Banana raw,banana;fruit,,fruit,false,USDA_FDC,,89,1.1,23,0.3,2.6,true
+Greek yogurt plain,yogurt,,dairy,false,USDA_FDC,,100,10,3.6,5,0,true
+Oatmeal cooked,oatmeal;oats,,grains,false,USDA_FDC,,68,2.4,12,1.4,1.7,true
+Almonds,almonds;nuts,,nuts,false,USDA_FDC,,579,21,22,50,12.5,true
