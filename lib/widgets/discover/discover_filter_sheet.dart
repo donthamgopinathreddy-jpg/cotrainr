@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../models/discover_filters.dart';
 
 enum FilterType { trainers, nutritionists, centers }
 
@@ -7,10 +8,8 @@ class DiscoverFilterSheet extends StatefulWidget {
   final FilterType filterType;
   final Color accentColor;
   final LinearGradient gradient;
-  final RangeValues initialDistance;
-  final String? initialMinRating;
-  final Set<String> initialSelectedCategories;
-  final Function(RangeValues, String?, Set<String>) onApply;
+  final DiscoverFilters initialFilters;
+  final void Function(DiscoverFilters) onApply;
   final VoidCallback onReset;
 
   const DiscoverFilterSheet({
@@ -18,9 +17,7 @@ class DiscoverFilterSheet extends StatefulWidget {
     required this.filterType,
     required this.accentColor,
     required this.gradient,
-    this.initialDistance = const RangeValues(0, 50),
-    this.initialMinRating,
-    this.initialSelectedCategories = const {},
+    this.initialFilters = const DiscoverFilters(),
     required this.onApply,
     required this.onReset,
   });
@@ -61,9 +58,10 @@ class _DiscoverFilterSheetState extends State<DiscoverFilterSheet> {
   @override
   void initState() {
     super.initState();
-    _distance = widget.initialDistance;
-    _minRating = widget.initialMinRating ?? 'Any';
-    _selectedCategories = Set.from(widget.initialSelectedCategories);
+    final f = widget.initialFilters;
+    _distance = RangeValues(0, f.maxDistanceKm.clamp(1.0, 50.0));
+    _minRating = f.minRating != null ? '${f.minRating!.toStringAsFixed(1)}+' : 'Any';
+    _selectedCategories = Set.from(f.categories);
   }
 
   String _getDistanceText() {
@@ -363,7 +361,14 @@ class _DiscoverFilterSheetState extends State<DiscoverFilterSheet> {
           child: InkWell(
             onTap: () {
               HapticFeedback.mediumImpact();
-              widget.onApply(_distance, _minRating, _selectedCategories);
+              final minRatingVal = _minRating == 'Any' || _minRating == null
+                  ? null
+                  : double.tryParse(_minRating!.replaceAll('+', ''));
+              widget.onApply(DiscoverFilters(
+                maxDistanceKm: _distance.end,
+                minRating: minRatingVal,
+                categories: _selectedCategories,
+              ));
               Navigator.pop(context);
             },
             borderRadius: BorderRadius.circular(16),

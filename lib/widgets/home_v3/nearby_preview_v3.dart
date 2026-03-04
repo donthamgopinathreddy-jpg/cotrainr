@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../models/provider_location_model.dart';
+import '../../models/discover_filters.dart';
 import '../../repositories/provider_locations_repository.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
@@ -84,9 +85,10 @@ class _NearbyPreviewV3State extends State<NearbyPreviewV3> {
       final results = await _repo.fetchNearbyProviders(
         userLat: _userPosition!.latitude,
         userLng: _userPosition!.longitude,
-        maxDistanceKm: 10.0,
-        providerTypes: null,
-        locationTypes: locationTypes,
+        filters: DiscoverFilters(
+          maxDistanceKm: 10.0,
+          locationTypes: locationTypes?.map((e) => e.value).toList(),
+        ),
       );
 
       final places = <_NearbyPlace>[];

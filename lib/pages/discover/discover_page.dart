@@ -5,10 +5,20 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../theme/design_tokens.dart';
+import '../../models/discover_filters.dart';
 import '../../widgets/discover/discover_filter_sheet.dart';
 import '../../repositories/provider_locations_repository.dart';
 import 'center_detail_page.dart';
 import '../cocircle/user_profile_page.dart';
+import '../profile/map_location_picker_page.dart';
+
+/// Location state for discover page
+enum DiscoverLocationState {
+  granted,
+  denied,
+  manual,
+  browse,
+}
 
 class DiscoverPage extends StatefulWidget {
   const DiscoverPage({super.key});
@@ -29,6 +39,10 @@ class _DiscoverPageState extends State<DiscoverPage>
   bool _isLoading = false;
   String? _errorMessage;
   Position? _userPosition;
+  DiscoverLocationState _locationState = DiscoverLocationState.granted;
+  double? _manualLat;
+  double? _manualLng;
+  DiscoverFilters _filters = const DiscoverFilters();
 
   // Track request status: 'none', 'pending', 'accepted'
   final Map<String, String> _requestStatus = {};
@@ -39,6 +53,9 @@ class _DiscoverPageState extends State<DiscoverPage>
   final List<DiscoverItem> _centers = [];
 
   final ProviderLocationsRepository _repo = ProviderLocationsRepository();
+
+  static const _defaultLat = 17.3850;
+  static const _defaultLng = 78.4867;
 
   @override
   void initState() {
@@ -114,18 +131,14 @@ class _DiscoverPageState extends State<DiscoverPage>
       final trainerResults = await _repo.fetchNearbyProviders(
         userLat: _userPosition!.latitude,
         userLng: _userPosition!.longitude,
-        maxDistanceKm: 50.0,
-        providerTypes: ['trainer'],
-        locationTypes: null,
+        filters: _filters.copyWith(providerTypes: ['trainer']),
       );
 
       // Fetch nearby nutritionists
       final nutritionistResults = await _repo.fetchNearbyProviders(
         userLat: _userPosition!.latitude,
         userLng: _userPosition!.longitude,
-        maxDistanceKm: 50.0,
-        providerTypes: ['nutritionist'],
-        locationTypes: null,
+        filters: _filters.copyWith(providerTypes: ['nutritionist']),
       );
 
       // Map trainer results to DiscoverItem
@@ -253,16 +266,22 @@ class _DiscoverPageState extends State<DiscoverPage>
         filterType: filterType,
         accentColor: accentColor,
         gradient: gradient,
-        onApply: (distance, minRating, categories) {
-          // TODO: Apply filters to the list
+        initialFilters: _filters,
+        onApply: (filters) {
           setState(() {
-            // Filter logic here
+            _filters = filters.copyWith(
+              providerTypes: filterType == FilterType.trainers
+                  ? ['trainer']
+                  : filterType == FilterType.nutritionists
+                      ? ['nutritionist']
+                      : null,
+            );
           });
+          _loadRealData();
         },
         onReset: () {
-          setState(() {
-            // Reset filter logic here
-          });
+          setState(() => _filters = const DiscoverFilters());
+          _loadRealData();
         },
       ),
     );

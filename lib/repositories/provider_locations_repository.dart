@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/provider_location_model.dart';
+import '../models/discover_filters.dart';
 
 /// Repository for managing provider locations
 /// Handles all Supabase queries for provider_locations table
@@ -137,30 +138,28 @@ class ProviderLocationsRepository {
 
   /// Fetch nearby providers for discovery (public API)
   /// Uses the nearby_providers RPC function for efficient spatial queries
-  /// 
-  /// [providerTypes] - Filter by provider type: 'trainer' or 'nutritionist'. If null, returns all.
-  /// [locationTypes] - Filter by location type. If null, returns all.
+  /// Enforces both user max_distance AND provider radius_km (coverage).
   Future<List<Map<String, dynamic>>> fetchNearbyProviders({
     required double userLat,
     required double userLng,
-    double maxDistanceKm = 50.0,
-    List<String>? providerTypes, // ['trainer'] or ['nutritionist'] or null for all
-    List<LocationType>? locationTypes,
+    DiscoverFilters? filters,
   }) async {
     try {
-      final locationTypeStrings = locationTypes?.map((e) => e.value).toList();
-      
-      final response = await _supabase.rpc(
-        'nearby_providers',
-        params: {
-          'user_lat': userLat,
-          'user_lng': userLng,
-          'max_distance_km': maxDistanceKm,
-          'provider_types': providerTypes,
-          'location_types': locationTypeStrings,
-        },
-      );
+      final f = filters ?? const DiscoverFilters();
+      final locationTypeStrings = f.locationTypes;
+      final specializations = f.categories.isEmpty ? null : f.categories.toList();
 
+      final params = <String, dynamic>{
+        'user_lat': userLat,
+        'user_lng': userLng,
+        'max_distance_km': f.maxDistanceKm,
+        'provider_types': f.providerTypes,
+        'location_types': locationTypeStrings,
+        'min_rating': f.minRating,
+        'specializations': specializations,
+      };
+
+      final response = await _supabase.rpc('nearby_providers', params: params);
       return (response as List).cast<Map<String, dynamic>>();
     } catch (e) {
       throw Exception('Failed to fetch nearby providers: $e');
