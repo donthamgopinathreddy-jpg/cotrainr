@@ -15,15 +15,36 @@ class QuestSyncInitializer extends ConsumerStatefulWidget {
   ConsumerState<QuestSyncInitializer> createState() => _QuestSyncInitializerState();
 }
 
-class _QuestSyncInitializerState extends ConsumerState<QuestSyncInitializer> {
+class _QuestSyncInitializerState extends ConsumerState<QuestSyncInitializer>
+    with WidgetsBindingObserver {
   bool _isInitialized = false;
   StreamSubscription<AuthState>? _authSubscription;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _checkAndInitialize();
     _setupAuthListener();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // Sync metrics when app resumes from background (sensors may have new data)
+    if (state == AppLifecycleState.resumed && _isInitialized) {
+      _syncOnResume();
+    }
+  }
+
+  Future<void> _syncOnResume() async {
+    try {
+      final backgroundTracker = ref.read(backgroundHealthTrackerProvider);
+      await backgroundTracker.trackNow();
+      print('QuestSyncInitializer: Synced metrics on app resume');
+    } catch (e) {
+      print('QuestSyncInitializer: Error syncing on resume: $e');
+    }
   }
 
   void _checkAndInitialize() {
@@ -74,6 +95,7 @@ class _QuestSyncInitializerState extends ConsumerState<QuestSyncInitializer> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _authSubscription?.cancel();
     if (_isInitialized) {
       _stopSync();

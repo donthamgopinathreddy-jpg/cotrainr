@@ -386,16 +386,14 @@ class QuestService {
     
     if (req.containsKey('water')) {
       final target = req['water'] as double;
-      // TODO: Get current water intake from health tracking service
-      // For now, return 0 as placeholder
-      final current = 0.0; // await _healthService.getTodayWater();
+      // Prefer health data; fallback to 0 (metrics sync merges health + manual into Supabase)
+      final current = await _healthService.getTodayWater();
       return current.clamp(0.0, target);
     }
     
     if (req.containsKey('water_goal')) {
       final goal = await _goalsService.getWaterGoal();
-      // TODO: Get current water intake from health tracking service
-      final current = 0.0; // await _healthService.getTodayWater();
+      final current = await _healthService.getTodayWater();
       return current >= goal ? 1.0 : 0.0;
     }
     

@@ -97,13 +97,30 @@ class MetricsSyncService {
       print('MetricsSyncService: Fetching distance from sensor...');
       final distance = await healthService.getTodayDistance();
 
-      print('MetricsSyncService: Sensor data - Steps: $steps, Calories: $calories, Distance: $distance km');
+      print('MetricsSyncService: Fetching water from sensor...');
+      final waterFromHealth = await healthService.getTodayWater();
+
+      print('MetricsSyncService: Sensor data - Steps: $steps, Calories: $calories, Distance: $distance km, Water: $waterFromHealth L');
+
+      // Warn if all sensors return 0 (possible permission or Health Connect issue)
+      if (steps == 0 && calories == 0 && distance == 0 && waterFromHealth == 0) {
+        print('MetricsSyncService: WARNING - All sensors returned 0. Check: '
+            '1) Health Connect installed (Android 14+) or Google Fit; '
+            '2) App permissions granted in Settings; '
+            '3) Device has step counter / health data');
+      }
+
+      // Merge water: use max(health, manual) to avoid overwriting manual logs with 0 from health
+      final existing = await metricsRepo.getTodayMetrics();
+      final manualWater = (existing?['water_intake_liters'] as num?)?.toDouble() ?? 0.0;
+      final waterToSave = waterFromHealth > manualWater ? waterFromHealth : manualWater;
 
       // Update Supabase metrics_daily table
       await metricsRepo.updateTodayMetrics(
         steps: steps,
         caloriesBurned: calories,
         distanceKm: distance,
+        waterIntakeLiters: waterToSave,
       );
 
       print('MetricsSyncService: Metrics synced successfully to Supabase');

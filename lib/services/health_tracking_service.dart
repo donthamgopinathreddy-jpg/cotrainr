@@ -21,6 +21,7 @@ class HealthTrackingService {
     HealthDataType.STEPS, // Uses device step counter sensor
     HealthDataType.ACTIVE_ENERGY_BURNED,
     HealthDataType.DISTANCE_WALKING_RUNNING,
+    HealthDataType.WATER, // Hydration (liters)
   ];
 
   bool _isInitialized = false;
@@ -30,14 +31,12 @@ class HealthTrackingService {
     if (_isInitialized) return true;
 
     try {
-      // Request all required permissions
-      final permissionsGranted = await _requestAllPermissions();
-      if (!permissionsGranted) {
-        print('Not all required permissions granted');
-        return false;
-      }
+      // Request permissions (location optional - only needed for GPS distance)
+      await _requestAllPermissions();
 
       _health = Health();
+      // Required: configure health plugin before use (health package v10+)
+      await _health!.configure();
 
       // Request health data permissions (uses mobile sensors)
       bool? hasPermissions;
@@ -89,55 +88,48 @@ class HealthTrackingService {
   }
 
   /// Request all required permissions: health, location, notification, camera, microphone
-  Future<bool> _requestAllPermissions() async {
+  /// Location is optional - steps/calories work without it; only GPS distance needs location
+  Future<void> _requestAllPermissions() async {
     try {
       // Request activity recognition (required for steps on Health Connect / physical activity)
       final activityStatus = await Permission.activityRecognition.request();
       if (activityStatus.isDenied) {
-        print('Activity recognition permission denied - steps may not work');
+        print('HealthTrackingService: Activity recognition denied - steps may not work');
       }
 
-      // Request location permission (required for distance calculation)
+      // Request location permission (optional - only needed for GPS-based distance)
       bool locationServiceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!locationServiceEnabled) {
-        print('Location services are disabled');
-        return false;
-      }
-
-      LocationPermission locationPermission =
-          await Geolocator.checkPermission();
-      if (locationPermission == LocationPermission.denied) {
-        locationPermission = await Geolocator.requestPermission();
-      }
-      if (locationPermission == LocationPermission.deniedForever) {
-        print('Location permission permanently denied');
-        return false;
+        print('HealthTrackingService: Location services disabled - GPS distance will be 0');
+      } else {
+        LocationPermission locationPermission = await Geolocator.checkPermission();
+        if (locationPermission == LocationPermission.denied) {
+          locationPermission = await Geolocator.requestPermission();
+        }
+        if (locationPermission == LocationPermission.deniedForever) {
+          print('HealthTrackingService: Location permanently denied - GPS distance will be 0');
+        }
       }
 
       // Request notification permission
       final notificationStatus = await Permission.notification.request();
       if (notificationStatus.isDenied) {
-        print('Notification permission denied');
+        print('HealthTrackingService: Notification permission denied');
       }
 
-      // Request camera permission (optional but requested)
+      // Request camera permission (optional)
       final cameraStatus = await Permission.camera.request();
       if (cameraStatus.isDenied) {
-        print('Camera permission denied');
+        print('HealthTrackingService: Camera permission denied');
       }
 
-      // Request microphone permission (optional but requested)
+      // Request microphone permission (optional)
       final microphoneStatus = await Permission.microphone.request();
       if (microphoneStatus.isDenied) {
-        print('Microphone permission denied');
+        print('HealthTrackingService: Microphone permission denied');
       }
-
-      // Location permission is required, others are optional
-      return locationPermission == LocationPermission.whileInUse ||
-          locationPermission == LocationPermission.always;
     } catch (e) {
-      print('Error requesting permissions: $e');
-      return false;
+      print('HealthTrackingService: Error requesting permissions: $e');
     }
   }
 
@@ -448,6 +440,55 @@ class HealthTrackingService {
     }
   }
 
+  /// Get today's water intake in liters (from Health Connect / Apple Health)
+  Future<double> getTodayWater() async {
+    if (!_isInitialized || _health == null) {
+      await initialize();
+      if (!_isInitialized || _health == null) {
+        print('HealthTrackingService: Not initialized for water, returning 0');
+        return 0.0;
+      }
+    }
+
+    try {
+      final now = DateTime.now();
+      final startOfDay = DateTime(now.year, now.month, now.day);
+
+      bool? hasPermissions;
+      try {
+        hasPermissions = await _health!.hasPermissions([HealthDataType.WATER]);
+      } catch (e) {
+        print('HealthTrackingService: Error checking water permission: $e');
+        hasPermissions = null;
+      }
+
+      if (hasPermissions == false) return 0.0;
+
+      try {
+        final waterData = await _health!.getHealthDataFromTypes(
+          types: [HealthDataType.WATER],
+          startTime: startOfDay,
+          endTime: now,
+        );
+
+        double totalLiters = 0.0;
+        for (var data in waterData) {
+          if (data.value is NumericHealthValue) {
+            totalLiters += (data.value as NumericHealthValue).numericValue;
+          }
+        }
+        return totalLiters;
+      } catch (e) {
+        print('HealthTrackingService: Error reading water data: $e');
+        return 0.0;
+      }
+    } catch (e, stackTrace) {
+      print('HealthTrackingService: Error getting water: $e');
+      print('HealthTrackingService: Stack trace: $stackTrace');
+      return 0.0;
+    }
+  }
+
   /// Reset daily distance tracking (call at start of new day)
   void resetDailyDistance() {
     _totalDistance = 0.0;
@@ -544,10 +585,17 @@ class HealthTrackingService {
       results['sensor_data']['distance'] = distance;
       results['sensor_data']['distance_working'] = distance >= 0;
 
+      // Test water
+      print('HealthTrackingService: Testing water sensor...');
+      final water = await getTodayWater();
+      results['sensor_data']['water'] = water;
+      results['sensor_data']['water_working'] = water >= 0;
+
       results['all_sensors_working'] = 
           (results['sensor_data']['steps_working'] as bool) &&
           (results['sensor_data']['calories_working'] as bool) &&
-          (results['sensor_data']['distance_working'] as bool);
+          (results['sensor_data']['distance_working'] as bool) &&
+          (results['sensor_data']['water_working'] as bool);
 
       print('HealthTrackingService: Sensor test complete - all working: ${results['all_sensors_working']}');
     } catch (e, stackTrace) {

@@ -2,15 +2,13 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/health_tracking_service.dart';
 
-/// Provider for health tracking service
+/// Provider for health tracking service (singleton - do not dispose, used by background tracker)
 final healthTrackingServiceProvider = Provider<HealthTrackingService>((ref) {
   final service = HealthTrackingService();
   // Initialize service when provider is first accessed
   service.initialize();
-  // Dispose service when provider is disposed
-  ref.onDispose(() {
-    service.dispose();
-  });
+  // Do NOT dispose - HealthTrackingService is a singleton used by BackgroundHealthTracker
+  // and other services. Disposing would break background metrics sync.
   return service;
 });
 

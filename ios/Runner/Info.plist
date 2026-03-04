@@ -51,6 +51,10 @@
 	<string>We need access to your photo library to select images for your posts.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>We need access to save photos to your library.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>We sync your steps, calories, distance, and water with Apple Health to give you better insights.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>We sync your fitness data with Apple Health to give you better insights.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
