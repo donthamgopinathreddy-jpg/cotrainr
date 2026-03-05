@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -24,6 +25,8 @@ class _QuestPageState extends ConsumerState<QuestPage>
   late final PageController _tabController;
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
+  Timer? _syncTimer;
+  String? _claimingQuestId;
 
   late final List<LevelInfo> _levels;
 
@@ -51,6 +54,10 @@ class _QuestPageState extends ConsumerState<QuestPage>
     // Trigger initial sync when page loads
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _syncQuestProgress();
+      _syncTimer?.cancel();
+      _syncTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+        if (mounted) _syncQuestProgress();
+      });
     });
   }
   
@@ -74,17 +81,47 @@ class _QuestPageState extends ConsumerState<QuestPage>
 
   @override
   void dispose() {
+    _syncTimer?.cancel();
     _tabController.dispose();
     super.dispose();
   }
 
+  Future<void> _claimQuest(String questId) async {
+    if (_claimingQuestId != null) return;
+    setState(() => _claimingQuestId = questId);
+    try {
+      await ref.read(questRepositoryProvider).claimQuestRewards(questId);
+      if (!mounted) return;
+      ref.invalidate(dailyQuestsProvider);
+      ref.invalidate(weeklyQuestsProvider);
+      ref.invalidate(userXPProvider);
+      ref.invalidate(userLevelProvider);
+      ref.invalidate(xpForNextLevelProvider);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Rewards claimed'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to claim'),
+            backgroundColor: AppColors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _claimingQuestId = null);
+    }
+  }
+
 
   String _getLevelTitle(int level) {
-    if (level < 5) return 'Foundation';
-    if (level < 10) return 'Rising';
-    if (level < 15) return 'Advanced';
-    if (level < 20) return 'Elite';
-    return 'Master';
+    final idx = (level.clamp(1, 50) - 1).clamp(0, _levels.length - 1);
+    return _levels[idx].tierName; // 1-10 Rookie, 11-20 Challenger, 21-30 Pro, 31-40 Elite, 41-50 Legendary
   }
 
   void _openLevelsPage(int currentXP) {
@@ -112,15 +149,6 @@ class _QuestPageState extends ConsumerState<QuestPage>
     final leaderboardAsync = ref.watch(dailyLeaderboardProvider);
     final xpAsync = ref.watch(userXPProvider);
     final levelAsync = ref.watch(userLevelProvider);
-    
-    // Trigger sync periodically when data is loaded (XP updates when quests complete)
-    if (dailyQuestsAsync.hasValue && mounted) {
-      Future.delayed(const Duration(seconds: 15), () {
-        if (mounted) {
-          _syncQuestProgress();
-        }
-      });
-    }
     
     final currentXP = xpAsync.value ?? 0;
     final level = levelAsync.value ?? 1;
@@ -174,11 +202,12 @@ class _QuestPageState extends ConsumerState<QuestPage>
       avatarUrl: entry.avatarUrl,
     )).toList() ?? [];
     
-    final isLoading = dailyQuestsAsync.isLoading || 
-                     weeklyQuestsAsync.isLoading || 
+    final isLoading = dailyQuestsAsync.isLoading ||
+                     weeklyQuestsAsync.isLoading ||
                      challengesAsync.isLoading ||
                      achievementsAsync.isLoading ||
                      leaderboardAsync.isLoading;
+    final hasError = dailyQuestsAsync.hasError;
 
     return Scaffold(
       backgroundColor: isLight ? const Color(0xFFFFF5EB) : colorScheme.background,
@@ -223,35 +252,48 @@ class _QuestPageState extends ConsumerState<QuestPage>
               ),
             ),
             Expanded(
-              child: PageView(
-                controller: _tabController,
-                pageSnapping: true,
-                onPageChanged: (index) {
-                  setState(() => _tabIndex = index);
-                },
-                children: [
-                  isLoading
-                      ? const Center(child: CircularProgressIndicator())
-                      : _DailySection(
-                          quests: dailyItems,
-                          gradient: _primaryGradient,
-                        ),
-                  isLoading
-                      ? const Center(child: CircularProgressIndicator())
-                      : _WeeklySection(
-                          quests: weeklyItems,
-                        ),
-                  isLoading
-                      ? const Center(child: CircularProgressIndicator())
-                      : _ChallengesSection(challenges: challengeItems),
-                  isLoading
-                      ? const Center(child: CircularProgressIndicator())
-                      : _AchievementsSection(items: achievementItems),
-                  isLoading
-                      ? const Center(child: CircularProgressIndicator())
-                      : _LeaderboardSection(entries: leaderboardItems),
-                ],
-              ),
+              child: hasError
+                  ? _QuestErrorWidget(
+                      onRetry: () {
+                        ref.invalidate(dailyQuestsProvider);
+                        ref.invalidate(weeklyQuestsProvider);
+                        ref.invalidate(activeChallengesProvider);
+                        ref.invalidate(achievementsProvider);
+                        ref.invalidate(dailyLeaderboardProvider);
+                        ref.invalidate(userXPProvider);
+                        ref.invalidate(userLevelProvider);
+                        ref.invalidate(xpForNextLevelProvider);
+                      },
+                    )
+                  : PageView(
+                      controller: _tabController,
+                      pageSnapping: true,
+                      onPageChanged: (index) {
+                        setState(() => _tabIndex = index);
+                      },
+                      children: [
+                        isLoading
+                            ? const Center(child: CircularProgressIndicator())
+                            : _DailySection(
+                                quests: dailyItems,
+                                gradient: _primaryGradient,
+                                onClaim: _claimQuest,
+                                claimingQuestId: _claimingQuestId,
+                              ),
+                        isLoading
+                            ? const Center(child: CircularProgressIndicator())
+                            : _WeeklySection(quests: weeklyItems),
+                        isLoading
+                            ? const Center(child: CircularProgressIndicator())
+                            : _ChallengesSection(challenges: challengeItems),
+                        isLoading
+                            ? const Center(child: CircularProgressIndicator())
+                            : _AchievementsSection(items: achievementItems),
+                        isLoading
+                            ? const Center(child: CircularProgressIndicator())
+                            : _LeaderboardSection(entries: leaderboardItems),
+                      ],
+                    ),
             ),
           ],
         ),
@@ -260,6 +302,45 @@ class _QuestPageState extends ConsumerState<QuestPage>
     );
   }
 
+}
+
+class _QuestErrorWidget extends StatelessWidget {
+  final VoidCallback onRetry;
+
+  const _QuestErrorWidget({required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline_rounded, size: 48, color: colorScheme.error),
+            const SizedBox(height: 16),
+            Text(
+              'Failed to load quests',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: colorScheme.onSurface,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            TextButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Retry'),
+              style: TextButton.styleFrom(foregroundColor: AppColors.orange),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _HeaderRow extends StatelessWidget {
@@ -559,10 +640,14 @@ class _TabData {
 class _DailySection extends StatelessWidget {
   final List<_QuestItem> quests;
   final LinearGradient gradient;
+  final Future<void> Function(String questId) onClaim;
+  final String? claimingQuestId;
 
   const _DailySection({
     required this.quests,
     required this.gradient,
+    required this.onClaim,
+    this.claimingQuestId,
   });
 
   @override
@@ -578,6 +663,8 @@ class _DailySection extends StatelessWidget {
                   child: _QuestCard(
                     quest: quest,
                     gradient: gradient,
+                    onClaim: onClaim,
+                    isClaiming: claimingQuestId == quest.questId,
                   ),
                 ),
               )
@@ -1229,10 +1316,14 @@ class _ContinuousLevelBarState extends State<_ContinuousLevelBar>
 class _QuestCard extends StatelessWidget {
   final _QuestItem quest;
   final LinearGradient gradient;
+  final Future<void> Function(String questId) onClaim;
+  final bool isClaiming;
 
   const _QuestCard({
     required this.quest,
     required this.gradient,
+    required this.onClaim,
+    this.isClaiming = false,
   });
 
   @override
@@ -1285,11 +1376,17 @@ class _QuestCard extends StatelessWidget {
             children: [
               if (quest.timeLeft != null) _Chip(text: quest.timeLeft!),
               const Spacer(),
-              if (isCompleted)
+              if (quest.canClaim)
+                _PrimaryButton(
+                  label: isClaiming ? 'Claiming...' : 'Claim',
+                  gradient: gradient,
+                  enabled: !isClaiming,
+                  isLoading: isClaiming,
+                  onTap: isClaiming ? null : () => onClaim(quest.questId),
+                )
+              else if (isCompleted) ...[
                 Icon(Icons.check_circle_rounded, color: AppColors.green, size: 20),
-              if (isCompleted)
                 const SizedBox(width: 4),
-              if (isCompleted)
                 Text(
                   'Completed',
                   style: TextStyle(
@@ -1298,6 +1395,7 @@ class _QuestCard extends StatelessWidget {
                     color: AppColors.green,
                   ),
                 ),
+              ],
             ],
           ),
         ],
@@ -1525,7 +1623,7 @@ class _LevelBadge extends StatelessWidget {
         child: SizedBox(
           width: 42,
           height: 42,
-            child: SvgPicture.asset(
+          child: SvgPicture.asset(
             getBadgePathFromLevel(level),
             width: 42,
             height: 42,
@@ -1679,38 +1777,49 @@ class _PrimaryButton extends StatelessWidget {
   final String label;
   final LinearGradient gradient;
   final bool enabled;
+  final bool isLoading;
   final VoidCallback? onTap;
 
   const _PrimaryButton({
     required this.label,
     required this.gradient,
     this.enabled = true,
+    this.isLoading = false,
     this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     return GestureDetector(
-      onTap: enabled && onTap != null ? onTap : null,
+      onTap: enabled && !isLoading && onTap != null ? onTap : null,
       child: Container(
         height: 36,
         padding: const EdgeInsets.symmetric(horizontal: 16),
         decoration: BoxDecoration(
-          gradient: enabled ? gradient : null,
-          color: enabled ? null : colorScheme.surfaceContainerHighest,
+          gradient: enabled && !isLoading ? gradient : null,
+          color: enabled && !isLoading ? null : colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(22),
         ),
         child: Center(
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: enabled ? Colors.white : colorScheme.onSurface.withOpacity(0.5),
-            ),
-          ),
+          child: isLoading
+              ? SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(AppColors.orange),
+                  ),
+                )
+              : Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: enabled ? Colors.white : colorScheme.onSurface.withOpacity(0.5),
+                  ),
+                ),
         ),
       ),
     );

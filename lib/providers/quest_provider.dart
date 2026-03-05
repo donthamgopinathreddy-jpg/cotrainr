@@ -17,66 +17,36 @@ final currentUserIdProvider = Provider<String?>((ref) {
 /// Provider for daily quests
 final dailyQuestsProvider = FutureProvider<List<ActiveQuest>>((ref) async {
   final repo = ref.watch(questRepositoryProvider);
-  
-  try {
-    return await repo.getDailyQuests();
-  } catch (e) {
-    print('Error loading daily quests: $e');
-    return [];
-  }
+  return await repo.getDailyQuests();
 });
 
 /// Provider for weekly quests
 final weeklyQuestsProvider = FutureProvider<List<ActiveQuest>>((ref) async {
   final repo = ref.watch(questRepositoryProvider);
-  
-  try {
-    return await repo.getWeeklyQuests();
-  } catch (e) {
-    print('Error loading weekly quests: $e');
-    return [];
-  }
+  return await repo.getWeeklyQuests();
 });
 
 /// Provider for active challenges
 final activeChallengesProvider = FutureProvider<List<ChallengeQuest>>((ref) async {
   final repo = ref.watch(questRepositoryProvider);
-  
-  try {
-    return await repo.getActiveChallenges();
-  } catch (e) {
-    print('Error loading challenges: $e');
-    return [];
-  }
+  return await repo.getActiveChallenges();
 });
 
 /// Provider for achievements
 final achievementsProvider = FutureProvider<List<Achievement>>((ref) async {
   final repo = ref.watch(questRepositoryProvider);
-  
-  try {
-    return await repo.getAchievements();
-  } catch (e) {
-    print('Error loading achievements: $e');
-    return [];
-  }
+  return await repo.getAchievements();
 });
 
 /// Provider for leaderboard (daily)
 final dailyLeaderboardProvider = FutureProvider<List<LeaderboardEntry>>((ref) async {
   final repo = ref.watch(questRepositoryProvider);
   final now = DateTime.now();
-  
-  try {
-    return await repo.getLeaderboard(
-      periodType: 'daily',
-      periodStart: now,
-      limit: 50,
-    );
-  } catch (e) {
-    print('Error loading leaderboard: $e');
-    return [];
-  }
+  return await repo.getLeaderboard(
+    periodType: 'daily',
+    periodStart: now,
+    limit: 50,
+  );
 });
 
 /// Provider for user XP
