@@ -3,10 +3,7 @@ import 'package:flutter/services.dart';
 import '../../theme/design_tokens.dart';
 import 'nutritionist_home_page.dart';
 import 'nutritionist_my_clients_page.dart';
-import 'nutritionist_quest_page.dart';
-import 'nutritionist_cocircle_page.dart';
 import 'nutritionist_profile_page.dart';
-
 class NutritionistDashboardPage extends StatefulWidget {
   const NutritionistDashboardPage({super.key});
 
@@ -37,28 +34,6 @@ class _NutritionistDashboardPageState extends State<NutritionistDashboardPage> {
       route: '/nutritionist/clients',
       gradient: const LinearGradient(
         colors: [Color(0xFF3ED598), Color(0xFF4DA3FF)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ),
-    ),
-    NavigationItem(
-      icon: Icons.emoji_events_outlined,
-      activeIcon: Icons.emoji_events,
-      label: 'Quest',
-      route: '/nutritionist/quest',
-      gradient: const LinearGradient(
-        colors: [Color(0xFFFFD93D), Color(0xFFFF5A5A)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ),
-    ),
-    NavigationItem(
-      icon: Icons.people_outline,
-      activeIcon: Icons.people,
-      label: 'Cocircle',
-      route: '/nutritionist/cocircle',
-      gradient: const LinearGradient(
-        colors: [Color(0xFF4DA3FF), Color(0xFF8B5CF6)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
@@ -102,8 +77,6 @@ class _NutritionistDashboardPageState extends State<NutritionistDashboardPage> {
           final pages = [
             const NutritionistHomePage(),
             const NutritionistMyClientsPage(),
-            const NutritionistQuestPage(),
-            NutritionistCocirclePage(),
             const NutritionistProfilePage(),
           ];
           return AnimatedSwitcher(

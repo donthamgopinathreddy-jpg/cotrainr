@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../services/messaging_policy_service.dart';
 
 /// Repository for managing messages and conversations
 class MessagesRepository {
@@ -10,26 +11,44 @@ class MessagesRepository {
   /// Get current user ID
   String? get _currentUserId => _supabase.auth.currentUser?.id;
 
+  /// MVP: list/query only provider–client threads (excludes CoCircle `other_user_id` rows).
+  static bool passesMvpConversationFilter(Map<String, dynamic> conv) {
+    return MessagingPolicyService.isProviderClientConversation(conv);
+  }
+
+  Future<Map<String, dynamic>?> fetchConversationById(String conversationId) async {
+    if (_currentUserId == null) return null;
+    try {
+      final row = await _supabase.from('conversations').select('*').eq('id', conversationId).maybeSingle();
+      if (row == null) return null;
+      if (!passesMvpConversationFilter(row)) return null;
+      return Map<String, dynamic>.from(row);
+    } catch (e) {
+      print('Error fetchConversationById: $e');
+      return null;
+    }
+  }
+
   /// Get unread messages count for current user
   Future<int> getUnreadMessagesCount() async {
     if (_currentUserId == null) return 0;
 
     try {
-      // Get all conversations where user is a participant
       final conversationsResponse = await _supabase
           .from('conversations')
-          .select('id')
+          .select('*')
           .or('client_id.eq.$_currentUserId,provider_id.eq.$_currentUserId,other_user_id.eq.$_currentUserId');
 
       if (conversationsResponse.isEmpty) return 0;
 
-      final conversationIds = (conversationsResponse as List)
+      final filteredIds = (conversationsResponse as List)
+          .map((c) => Map<String, dynamic>.from(c as Map))
+          .where(passesMvpConversationFilter)
           .map((c) => c['id'] as String)
           .toList();
 
-      // Count unread messages (where read_at is null and sender is not current user)
       int totalUnread = 0;
-      for (final convId in conversationIds) {
+      for (final convId in filteredIds) {
         final messagesResponse = await _supabase
             .from('messages')
             .select('id')
@@ -59,10 +78,13 @@ class MessagesRepository {
           .order('updated_at', ascending: false);
 
       final List<Map<String, dynamic>> result = [];
-      
+
       for (final conv in conversations) {
+        if (!passesMvpConversationFilter(Map<String, dynamic>.from(conv))) {
+          continue;
+        }
         final convId = conv['id'] as String;
-        
+
         // Get last message
         final lastMessageResponse = await _supabase
             .from('messages')
@@ -71,7 +93,7 @@ class MessagesRepository {
             .order('created_at', ascending: false)
             .limit(1)
             .maybeSingle();
-        
+
         // Get unread count
         final unreadResponse = await _supabase
             .from('messages')
@@ -79,21 +101,22 @@ class MessagesRepository {
             .eq('conversation_id', convId)
             .isFilter('read_at', null)
             .neq('sender_id', _currentUserId!);
-        
+
         final unreadCount = (unreadResponse as List).length;
-        
-        // Determine the other participant (cocircle uses other_user_id, client-provider uses provider_id)
+
         final clientId = conv['client_id'] as String;
         final providerId = conv['provider_id'] as String?;
         final otherUserIdCol = conv['other_user_id'] as String?;
         final isClient = clientId == _currentUserId;
         final otherUserId = otherUserIdCol ?? (isClient ? providerId : clientId);
         if (otherUserId == null) continue;
-        
+
         // Get other participant's profile
-        final profileList = (await _supabase.rpc('get_public_profile', params: {'p_user_id': otherUserId}) as List).cast<Map<String, dynamic>>();
+        final profileList =
+            (await _supabase.rpc('get_public_profile', params: {'p_user_id': otherUserId}) as List)
+                .cast<Map<String, dynamic>>();
         final profileResponse = profileList.isNotEmpty ? profileList.first : null;
-        
+
         result.add({
           'id': convId,
           'conversation': conv,
@@ -103,7 +126,7 @@ class MessagesRepository {
           'updatedAt': conv['updated_at'],
         });
       }
-      
+
       return result;
     } catch (e) {
       print('Error fetching conversations: $e');
@@ -116,6 +139,9 @@ class MessagesRepository {
     if (_currentUserId == null) return [];
 
     try {
+      final conv = await fetchConversationById(conversationId);
+      if (conv == null) return [];
+
       final response = await _supabase
           .from('messages')
           .select('*')
@@ -139,6 +165,17 @@ class MessagesRepository {
     if (_currentUserId == null) return null;
 
     try {
+      final conv = await fetchConversationById(conversationId);
+      if (conv == null) return null;
+      final allowed = await MessagingPolicyService.canCurrentUserSendMessage(
+        supabase: _supabase,
+        conversation: conv,
+      );
+      if (!allowed) {
+        print('sendMessage blocked by MessagingPolicyService');
+        return null;
+      }
+
       final Map<String, dynamic> insertData = {
         'conversation_id': conversationId,
         'sender_id': _currentUserId!,
@@ -148,11 +185,7 @@ class MessagesRepository {
         insertData['media_url'] = mediaUrl;
         if (mediaKind != null) insertData['media_kind'] = mediaKind;
       }
-      final response = await _supabase
-          .from('messages')
-          .insert(insertData)
-          .select()
-          .single();
+      final response = await _supabase.from('messages').insert(insertData).select().single();
 
       // Update conversation updated_at
       await _supabase
@@ -172,6 +205,9 @@ class MessagesRepository {
     if (_currentUserId == null) return;
 
     try {
+      final conv = await fetchConversationById(conversationId);
+      if (conv == null) return;
+
       await _supabase
           .from('messages')
           .update({'read_at': DateTime.now().toIso8601String()})
@@ -222,73 +258,69 @@ class MessagesRepository {
     return channel;
   }
 
-  /// Create or find a conversation between two users (for cocircle messaging)
-  /// Returns the conversation ID
-  /// Supports both: client-provider (trainer/nutritionist) and cocircle user-to-user
+  /// Create or find a **provider–client** conversation only (MVP).
+  /// RLS: only the **client** can INSERT a new row (`auth.uid() = client_id`).
+  /// Providers must use an existing row (e.g. created when a lead is accepted via `update_lead_status_tx`).
   Future<String?> createOrFindConversation(String otherUserId) async {
     if (_currentUserId == null) return null;
     if (_currentUserId == otherUserId) return null;
 
     try {
-      // 1. Find existing cocircle conversation (client_id + other_user_id)
+      // Find existing client–provider (both orientations)
       var existingConv = await _supabase
           .from('conversations')
-          .select('id')
-          .eq('client_id', _currentUserId!)
-          .eq('other_user_id', otherUserId)
-          .maybeSingle();
-
-      if (existingConv != null) {
-        return existingConv['id'] as String;
-      }
-
-      // 2. Find existing cocircle conversation (other way around)
-      existingConv = await _supabase
-          .from('conversations')
-          .select('id')
-          .eq('client_id', otherUserId)
-          .eq('other_user_id', _currentUserId!)
-          .maybeSingle();
-
-      if (existingConv != null) {
-        return existingConv['id'] as String;
-      }
-
-      // 3. Find existing client-provider conversation
-      existingConv = await _supabase
-          .from('conversations')
-          .select('id')
+          .select('id, provider_id, client_id, other_user_id')
           .eq('client_id', _currentUserId!)
           .eq('provider_id', otherUserId)
           .maybeSingle();
 
-      if (existingConv != null) {
+      if (existingConv != null && passesMvpConversationFilter(Map<String, dynamic>.from(existingConv))) {
         return existingConv['id'] as String;
       }
 
       existingConv = await _supabase
           .from('conversations')
-          .select('id')
+          .select('id, provider_id, client_id, other_user_id')
           .eq('client_id', otherUserId)
           .eq('provider_id', _currentUserId!)
           .maybeSingle();
 
-      if (existingConv != null) {
+      if (existingConv != null && passesMvpConversationFilter(Map<String, dynamic>.from(existingConv))) {
         return existingConv['id'] as String;
       }
 
-      // 4. Create new cocircle conversation (user-to-user, no provider)
-      final newConv = await _supabase
-          .from('conversations')
-          .insert({
-            'client_id': _currentUserId!,
-            'other_user_id': otherUserId,
-            // lead_id and provider_id are null for cocircle DMs
-          })
-          .select('id')
-          .single();
+      final myRole = await MessagingPolicyService.fetchUserRole(_supabase, _currentUserId!);
+      final otherRole = await MessagingPolicyService.fetchUserRole(_supabase, otherUserId);
 
-      return newConv['id'] as String;
+      final iAmProvider = myRole == 'trainer' || myRole == 'nutritionist';
+      final otherIsProvider = otherRole == 'trainer' || otherRole == 'nutritionist';
+
+      // Provider cannot INSERT under current RLS — conversation should exist from lead acceptance.
+      if (iAmProvider && !otherIsProvider) {
+        print('createOrFindConversation: provider cannot create thread; expected existing lead conversation');
+        return null;
+      }
+
+      // Client messaging a provider: INSERT allowed if RLS passes.
+      if (!iAmProvider && otherIsProvider) {
+        final ok = await MessagingPolicyService.clientMayUseMessagingWithProvider(
+          supabase: _supabase,
+          clientId: _currentUserId!,
+          providerId: otherUserId,
+        );
+        if (!ok) {
+          print('createOrFindConversation: client lacks accepted lead or active subscription');
+          return null;
+        }
+        final newConv = await _supabase.from('conversations').insert({
+          'client_id': _currentUserId!,
+          'provider_id': otherUserId,
+        }).select('id').single();
+        return newConv['id'] as String;
+      }
+
+      print('createOrFindConversation: unsupported participant pairing');
+      return null;
     } catch (e, stack) {
       print('Error creating or finding conversation: $e');
       print('Stack trace: $stack');

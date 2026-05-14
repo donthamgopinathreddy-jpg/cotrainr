@@ -9,8 +9,9 @@ import 'dart:io';
 import '../../theme/app_colors.dart';
 import '../../repositories/messages_repository.dart';
 import '../../services/storage_service.dart';
+import '../../services/messaging_policy_service.dart';
 import '../../widgets/home_v3/quick_access_v3.dart';
-import '../cocircle/user_profile_page.dart';
+import '../profile/public_profile_readonly_page.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String conversationId;
@@ -44,6 +45,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _isEmojiPickerOpen = false;
   bool _isLoading = true;
   RealtimeChannel? _messagesChannel;
+  String? _otherUserId;
+  bool _canSend = true;
+  Map<String, dynamic>? _conversationRow;
 
   static const List<String> _commonEmojis = [
     // Smileys & People
@@ -106,9 +110,41 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    _loadMessages();
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    await _loadConversationAccess();
+    if (!mounted) return;
+    await _loadMessages();
     _setupRealtimeSubscription();
     _markMessagesAsRead();
+  }
+
+  Future<void> _loadConversationAccess() async {
+    final row = await _messagesRepo.fetchConversationById(widget.conversationId);
+    if (!mounted) return;
+    if (row == null) {
+      setState(() {
+        _conversationRow = null;
+        _otherUserId = null;
+        _canSend = false;
+      });
+      return;
+    }
+    final me = _supabase.auth.currentUser?.id;
+    final other = me != null ? MessagingPolicyService.otherParticipantUserId(row, me) : null;
+    final canSend = me != null
+        ? await MessagingPolicyService.canCurrentUserSendMessage(
+            supabase: _supabase,
+            conversation: row,
+          )
+        : false;
+    setState(() {
+      _conversationRow = row;
+      _otherUserId = other;
+      _canSend = canSend;
+    });
   }
 
   Future<void> _loadMessages() async {
@@ -236,6 +272,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _sendMessage() async {
+    if (!_canSend) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Sending is disabled. Renew your subscription to message your coach.'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+      return;
+    }
+
     final text = _messageController.text.trim();
     if (text.isEmpty && _previewImagePath == null && _previewVideoPath == null) return;
 
@@ -274,12 +322,24 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         mediaUrl = await _storageService.uploadChatMedia(file, isVideo: true);
       }
 
-      await _messagesRepo.sendMessage(
+      final sent = await _messagesRepo.sendMessage(
         conversationId: widget.conversationId,
         content: text,
         mediaUrl: mediaUrl,
         mediaKind: imagePath != null ? 'image' : (videoPath != null ? 'video' : null),
       );
+      if (sent == null && mounted) {
+        setState(() {
+          if (_messages.isNotEmpty) _messages.removeLast();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not send message. Check your subscription or try again.'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+        return;
+      }
     } catch (e) {
       print('Error sending message: $e');
       // Remove optimistic message on error
@@ -582,14 +642,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           children: [
             GestureDetector(
               onTap: () {
+                if (_otherUserId == null) return;
                 HapticFeedback.lightImpact();
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => UserProfilePage(
-                      isOwnProfile: false,
-                      userId: widget.conversationId,
-                      userName: widget.userName,
+                    builder: (context) => PublicProfileReadonlyPage(
+                      userId: _otherUserId!,
+                      titleFallback: widget.userName,
                     ),
                   ),
                 );
@@ -825,6 +885,32 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ],
               ),
             ),
+          if (_conversationRow != null && !_canSend)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.lock_outline, color: cs.onSurfaceVariant, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Viewing only: renew your subscription to send new messages.',
+                          style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant, height: 1.35),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           // Message input
           AnimatedSize(
             duration: const Duration(milliseconds: 300),
@@ -840,6 +926,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             constraints: const BoxConstraints(maxHeight: 100),
                             child: TextField(
                               controller: _messageController,
+                              readOnly: !_canSend,
                               maxLines: null,
                               textInputAction: TextInputAction.send,
                               onSubmitted: (_) => _sendMessage(),
@@ -850,7 +937,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               ),
                               decoration: InputDecoration(
                                 filled: false,
-                                hintText: 'Type a message...',
+                                hintText: _canSend ? 'Type a message...' : 'Sending is disabled',
                                 hintStyle: TextStyle(
                                   fontSize: 14,
                                   color: cs.onSurfaceVariant,
@@ -863,6 +950,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                       color: _isEmojiPickerOpen ? AppColors.blue : cs.onSurfaceVariant,
                                       size: 20,
                                       onPressed: () {
+                                        if (!_canSend) return;
                                         HapticFeedback.lightImpact();
                                         FocusScope.of(context).unfocus();
                                         _toggleEmojiPicker();
@@ -875,6 +963,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                         color: cs.onSurfaceVariant,
                                         size: 20,
                                         onPressed: () {
+                                          if (!_canSend) return;
                                           HapticFeedback.lightImpact();
                                           FocusScope.of(context).unfocus();
                                           _showAttachmentMenu();
@@ -910,10 +999,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           ),
                           child: IconButton(
                             icon: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
-                            onPressed: () {
-                              HapticFeedback.mediumImpact();
-                              _sendMessage();
-                            },
+                            onPressed: !_canSend
+                                ? null
+                                : () {
+                                    HapticFeedback.mediumImpact();
+                                    _sendMessage();
+                                  },
                           ),
                         ),
                       ],

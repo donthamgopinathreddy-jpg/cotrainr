@@ -3,10 +3,7 @@ import 'package:flutter/services.dart';
 import '../../theme/design_tokens.dart';
 import 'trainer_home_page.dart';
 import 'trainer_my_clients_page.dart';
-import 'trainer_quest_page.dart';
-import 'trainer_cocircle_page.dart';
 import 'trainer_profile_page.dart';
-
 class TrainerDashboardPage extends StatefulWidget {
   const TrainerDashboardPage({super.key});
 
@@ -37,28 +34,6 @@ class _TrainerDashboardPageState extends State<TrainerDashboardPage> {
       route: '/trainer/clients',
       gradient: const LinearGradient(
         colors: [Color(0xFF3ED598), Color(0xFF4DA3FF)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ),
-    ),
-    NavigationItem(
-      icon: Icons.emoji_events_outlined,
-      activeIcon: Icons.emoji_events,
-      label: 'Quest',
-      route: '/trainer/quest',
-      gradient: const LinearGradient(
-        colors: [Color(0xFFFFD93D), Color(0xFFFF5A5A)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ),
-    ),
-    NavigationItem(
-      icon: Icons.people_outline,
-      activeIcon: Icons.people,
-      label: 'Cocircle',
-      route: '/trainer/cocircle',
-      gradient: const LinearGradient(
-        colors: [Color(0xFF4DA3FF), Color(0xFF8B5CF6)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
@@ -102,8 +77,6 @@ class _TrainerDashboardPageState extends State<TrainerDashboardPage> {
           final pages = [
             const TrainerHomePage(),
             const TrainerMyClientsPage(),
-            const TrainerQuestPage(),
-            TrainerCocirclePage(),
             const TrainerProfilePage(),
           ];
           return AnimatedSwitcher(

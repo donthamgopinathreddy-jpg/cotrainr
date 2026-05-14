@@ -48,7 +48,7 @@ class CocirclePreviewV2 extends StatelessWidget {
                 ),
               ),
               TextButton(
-                onPressed: () => context.push('/home/cocircle'),
+                onPressed: () => context.go('/home'),
                 child: Text(
                   'See All',
                   style: TextStyle(
@@ -81,7 +81,7 @@ class CocirclePreviewV2 extends StatelessWidget {
                   );
                 },
                 child: GestureDetector(
-                  onTap: () => context.push('/home/cocircle'),
+                  onTap: () => context.go('/home'),
                   child: Container(
                     width: 140,
                     margin: EdgeInsets.only(right: DesignTokens.spacing12),

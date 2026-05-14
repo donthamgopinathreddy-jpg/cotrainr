@@ -9,8 +9,7 @@ import '../../models/discover_filters.dart';
 import '../../widgets/discover/discover_filter_sheet.dart';
 import '../../repositories/provider_locations_repository.dart';
 import 'center_detail_page.dart';
-import '../cocircle/user_profile_page.dart';
-import '../profile/map_location_picker_page.dart';
+import '../profile/public_profile_readonly_page.dart';
 
 /// Location state for discover page
 enum DiscoverLocationState {
@@ -447,10 +446,9 @@ class _DiscoverPageState extends State<DiscoverPage>
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (context) => UserProfilePage(
-                                      isOwnProfile: false,
+                                    builder: (context) => PublicProfileReadonlyPage(
                                       userId: item.id,
-                                      userName: item.name,
+                                      titleFallback: item.name,
                                     ),
                                   ),
                                 );

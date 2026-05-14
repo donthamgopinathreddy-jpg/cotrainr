@@ -14,12 +14,15 @@ class UserProfilePage extends StatefulWidget {
   final bool isOwnProfile;
   final String? userId;
   final String? userName;
-  
+  /// When false (MVP default), hides Follow + Message (CoCircle / social entry points).
+  final bool allowMessagingAndFollow;
+
   const UserProfilePage({
     super.key,
     this.isOwnProfile = true,
     this.userId,
     this.userName,
+    this.allowMessagingAndFollow = false,
   });
 
   @override
@@ -232,6 +235,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
   }
 
   Future<void> _handleMessage() async {
+    if (!widget.allowMessagingAndFollow) return;
     if (_profileUserId == null || _currentUserId == null) return;
     if (_profileUserId == _currentUserId) return;
 
@@ -525,7 +529,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
               ),
             ),
             // Follow and Message buttons for other users
-            if (!widget.isOwnProfile && _profileUserId != null) ...[
+            if (widget.allowMessagingAndFollow && !widget.isOwnProfile && _profileUserId != null) ...[
               const SizedBox(height: 24),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -1031,6 +1035,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
               gradient: _getGradientForName(name),
               isFollowing: isFollowing,
               avatarUrl: avatarUrl,
+              allowMessagingAndFollow: widget.allowMessagingAndFollow,
             );
           },
         );
@@ -1129,6 +1134,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
               gradient: _getGradientForName(name),
               isFollowing: isFollowing,
               avatarUrl: avatarUrl,
+              allowMessagingAndFollow: widget.allowMessagingAndFollow,
             );
           },
         );
@@ -1223,6 +1229,7 @@ class _FollowerItem extends StatefulWidget {
   final LinearGradient gradient;
   final bool isFollowing;
   final String? avatarUrl;
+  final bool allowMessagingAndFollow;
 
   const _FollowerItem({
     required this.name,
@@ -1231,6 +1238,7 @@ class _FollowerItem extends StatefulWidget {
     required this.gradient,
     this.isFollowing = false,
     this.avatarUrl,
+    this.allowMessagingAndFollow = false,
   });
 
   @override
@@ -1294,6 +1302,7 @@ class _FollowerItemState extends State<_FollowerItem> {
               isOwnProfile: false,
               userId: widget.userId,
               userName: widget.name,
+              allowMessagingAndFollow: widget.allowMessagingAndFollow,
             ),
           ),
         );
@@ -1383,6 +1392,7 @@ class _FollowingItem extends StatefulWidget {
   final LinearGradient gradient;
   final bool isFollowing;
   final String? avatarUrl;
+  final bool allowMessagingAndFollow;
 
   const _FollowingItem({
     required this.name,
@@ -1391,6 +1401,7 @@ class _FollowingItem extends StatefulWidget {
     required this.gradient,
     this.isFollowing = true,
     this.avatarUrl,
+    this.allowMessagingAndFollow = false,
   });
 
   @override
@@ -1454,6 +1465,7 @@ class _FollowingItemState extends State<_FollowingItem> {
               isOwnProfile: false,
               userId: widget.userId,
               userName: widget.name,
+              allowMessagingAndFollow: widget.allowMessagingAndFollow,
             ),
           ),
         );

@@ -4,15 +4,16 @@ import '../../theme/design_tokens.dart';
 import '../../providers/profile_role_provider.dart';
 import 'home_page_v3.dart';
 import '../discover/discover_page.dart';
-import '../quest/quest_page.dart';
-import '../cocircle/cocircle_page.dart';
+import '../messaging/messaging_page.dart';
+import '../meal_tracker/meal_tracker_page_v2.dart';
 import '../profile/profile_page.dart';
 import '../trainer/trainer_my_clients_page.dart';
 import '../nutritionist/nutritionist_my_clients_page.dart';
+import '../../widgets/home_v3/quick_access_v3.dart';
 
 class HomeShellPage extends ConsumerStatefulWidget {
   final bool showWelcome;
-  
+
   const HomeShellPage({
     super.key,
     this.showWelcome = false,
@@ -31,10 +32,11 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
   late final Animation<Offset> _welcomeSlide;
   bool _showWelcomeBubble = false;
 
+  /// 0 Home, 1 Discover/My Clients, 2 Messages, 3 Meals, 4 Profile
   List<NavigationItem> get _navigationItems {
     final user = ref.watch(currentUserProvider).value;
     final isProvider = user?.isProvider ?? false;
-    
+
     return [
       NavigationItem(
         icon: Icons.home_outlined,
@@ -59,23 +61,23 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
         ),
       ),
       NavigationItem(
-        icon: Icons.emoji_events_outlined,
-        activeIcon: Icons.emoji_events,
-        label: 'Quest',
-        route: '/home/quest',
+        icon: Icons.chat_bubble_outline_rounded,
+        activeIcon: Icons.chat_rounded,
+        label: 'Messages',
+        route: '/home/messages',
         gradient: const LinearGradient(
-          colors: [Color(0xFFFFD93D), Color(0xFFFF5A5A)],
+          colors: [Color(0xFF4DA3FF), Color(0xFF00C9C8)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
       ),
       NavigationItem(
-        icon: Icons.people_outline,
-        activeIcon: Icons.people,
-        label: 'Cocircle',
-        route: '/home/cocircle',
+        icon: Icons.restaurant_outlined,
+        activeIcon: Icons.restaurant_rounded,
+        label: 'Meals',
+        route: '/home/meals',
         gradient: const LinearGradient(
-          colors: [Color(0xFF4DA3FF), Color(0xFF8B5CF6)],
+          colors: [Color(0xFF3ED598), Color(0xFF65E6B3)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -98,19 +100,19 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
   void initState() {
     super.initState();
     _pageController = PageController(initialPage: _currentIndex);
-    
+
     _welcomeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
     );
-    
+
     _welcomeFade = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _welcomeController,
         curve: const Interval(0.0, 0.6, curve: Curves.easeOut),
       ),
     );
-    
+
     _welcomeSlide = Tween<Offset>(
       begin: const Offset(0, -0.3),
       end: Offset.zero,
@@ -120,16 +122,14 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
         curve: const Interval(0.0, 0.6, curve: Curves.easeOutCubic),
       ),
     );
-    
+
     if (widget.showWelcome) {
       _showWelcomeBubble = true;
-      // Start animation after a short delay
       Future.delayed(const Duration(milliseconds: 300), () {
         if (mounted) {
           _welcomeController.forward();
         }
       });
-      // Auto-hide after 3 seconds
       Future.delayed(const Duration(milliseconds: 3300), () {
         if (mounted && _showWelcomeBubble) {
           _welcomeController.reverse().then((_) {
@@ -149,6 +149,16 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
     super.dispose();
   }
 
+  void _goToTab(int index) {
+    if (!mounted) return;
+    setState(() => _currentIndex = index);
+    _pageController.animateToPage(
+      index,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -157,62 +167,53 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
       body: Stack(
         children: [
           PageView.builder(
-        controller: _pageController,
-        physics: const NeverScrollableScrollPhysics(), // Disable swipe, only allow programmatic navigation
-        onPageChanged: (index) => setState(() => _currentIndex = index),
-        itemCount: _navigationItems.length,
-        itemBuilder: (context, index) {
-          final user = ref.watch(currentUserProvider).value;
-          final isTrainer = user?.isTrainer ?? false;
-          final isNutritionist = user?.isNutritionist ?? false;
-          
-          final pages = [
-            HomePageV3(
-              onNavigateToCocircle: () {
-                _pageController.animateToPage(
-                  3, // Cocircle feed is at index 3
-                  duration: const Duration(milliseconds: 300),
-                  curve: Curves.easeOutCubic,
-                );
-                setState(() => _currentIndex = 3);
-              },
-            ),
-            // Show "My Clients" for trainers/nutritionists, "Discover" for clients
-            isTrainer
-                ? const TrainerMyClientsPage()
-                : isNutritionist
-                    ? const NutritionistMyClientsPage()
-                    : const DiscoverPage(),
-            const QuestPage(),
-            const CocirclePage(),
-            const ProfilePage(),
-          ];
-          return AnimatedSwitcher(
-            duration: const Duration(milliseconds: 300),
-            transitionBuilder: (child, animation) {
-              // Sliding transition
-              return SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0.1, 0),
-                  end: Offset.zero,
-                ).animate(CurvedAnimation(
-                  parent: animation,
-                  curve: Curves.easeOutCubic,
-                )),
-                child: FadeTransition(
-                  opacity: animation,
-                  child: child,
+            controller: _pageController,
+            physics: const NeverScrollableScrollPhysics(),
+            onPageChanged: (index) => setState(() => _currentIndex = index),
+            itemCount: _navigationItems.length,
+            itemBuilder: (context, index) {
+              final user = ref.watch(currentUserProvider).value;
+              final isTrainer = user?.isTrainer ?? false;
+              final isNutritionist = user?.isNutritionist ?? false;
+
+              final pages = [
+                HomePageV3(
+                  onNavigateToMessagesTab: () => _goToTab(2),
+                  onNavigateToMealsTab: () => _goToTab(3),
+                ),
+                isTrainer
+                    ? const TrainerMyClientsPage()
+                    : isNutritionist
+                        ? const NutritionistMyClientsPage()
+                        : const DiscoverPage(),
+                const MessagingPage(),
+                const MealTrackerPageV2(),
+                const ProfilePage(),
+              ];
+              return AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                transitionBuilder: (child, animation) {
+                  return SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0.1, 0),
+                      end: Offset.zero,
+                    ).animate(CurvedAnimation(
+                      parent: animation,
+                      curve: Curves.easeOutCubic,
+                    )),
+                    child: FadeTransition(
+                      opacity: animation,
+                      child: child,
+                    ),
+                  );
+                },
+                child: Container(
+                  key: ValueKey(index),
+                  child: pages[index],
                 ),
               );
             },
-            child: Container(
-              key: ValueKey(index),
-              child: pages[index],
-            ),
-          );
-        },
-      ),
-          // Floating welcome bubble
+          ),
           if (_showWelcomeBubble)
             Positioned(
               top: MediaQuery.of(context).padding.top + 16,
@@ -309,6 +310,9 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
     final item = _navigationItems[index];
     final isActive = _currentIndex == index;
 
+    final badge = index == 2 ? ref.watch(unreadMessagesCountProvider) : null;
+    final showUnreadDot = badge != null && badge.maybeWhen(data: (c) => c > 0, orElse: () => false);
+
     return GestureDetector(
       onTap: () {
         if (_currentIndex != index) {
@@ -346,13 +350,30 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
               ),
             );
           },
-          child: Icon(
-            isActive ? item.activeIcon : item.icon,
-            key: ValueKey('${item.label}_$isActive'),
-            color: isActive
-                ? Colors.white
-                : colorScheme.onSurface.withValues(alpha: 0.6),
-            size: 26,
+          child: Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.center,
+            children: [
+              Icon(
+                isActive ? item.activeIcon : item.icon,
+                key: ValueKey('${item.label}_$isActive'),
+                color: isActive ? Colors.white : colorScheme.onSurface.withValues(alpha: 0.6),
+                size: 26,
+              ),
+              if (showUnreadDot)
+                Positioned(
+                  top: -2,
+                  right: 4,
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: Colors.redAccent,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
       ),

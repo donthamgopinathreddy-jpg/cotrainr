@@ -1,4 +1,4 @@
-package com.example.cotrainr_flutter
+package com.example.cotrainr
 
 import io.flutter.embedding.android.FlutterFragmentActivity
 

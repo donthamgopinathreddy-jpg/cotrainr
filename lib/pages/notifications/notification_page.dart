@@ -253,41 +253,6 @@ class _NotificationPageState extends State<NotificationPage> {
     }
   }
 
-  void _handleFollowAction(BuildContext context, NotificationData notification) {
-    HapticFeedback.mediumImpact();
-    final cs = Theme.of(context).colorScheme;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('You followed ${notification.userName ?? 'user'}'),
-        duration: const Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: cs.surfaceContainerHighest,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
-    
-    if (mounted) {
-      setState(() {
-        final updatedNotification = NotificationData(
-          id: notification.id,
-          type: notification.type,
-          userName: notification.userName,
-          title: notification.title,
-          message: notification.message,
-          time: notification.time,
-          hasUnread: notification.hasUnread,
-          hasImage: notification.hasImage,
-          canFollow: false,
-          meetingId: notification.meetingId,
-          userAvatarUrl: notification.userAvatarUrl,
-        );
-        _notificationService.removeNotification(notification.id);
-        _notificationService.addNotification(updatedNotification);
-        _loadNotifications();
-      });
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -455,9 +420,7 @@ class _NotificationPageState extends State<NotificationPage> {
                                   }
                                 }
                               },
-                              onFollow: notification.type == NotificationType.following && notification.canFollow
-                                  ? () => _handleFollowAction(context, notification)
-                                  : null,
+                              onFollow: null,
                             ),
                           ),
                         );

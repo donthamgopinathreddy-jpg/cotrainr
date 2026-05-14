@@ -34,10 +34,6 @@ class QuickAccessV3 extends ConsumerWidget {
     }
     
     final allItems = [
-      _QuickTileData('MEAL TRACKER', Icons.restaurant_rounded,
-          const LinearGradient(colors: [AppColors.green, Color(0xFF65E6B3)])),
-      _QuickTileData('MESSAGING', Icons.chat_bubble_outline_rounded,
-          const LinearGradient(colors: [AppColors.blue, AppColors.cyan])),
       if (!itemsToExclude.contains('NOTES'))
         _QuickTileData('COACH NOTES', Icons.note_rounded,
             const LinearGradient(colors: [Color(0xFFE53935), Color(0xFFE96A6A)])),
@@ -111,16 +107,7 @@ class QuickAccessV3 extends ConsumerWidget {
             VoidCallback? onTap;
             bool showBadge = false;
             int? badgeCount;
-            if (item.title == 'MEAL TRACKER') {
-              onTap = () => context.push('/meal-tracker');
-            } else if (item.title == 'MESSAGING') {
-              onTap = () => context.push('/messaging');
-              final unreadCountAsync = ref.watch(unreadMessagesCountProvider);
-              unreadCountAsync.whenData((count) {
-                showBadge = count > 0;
-                badgeCount = count > 0 ? count : null;
-              });
-            } else if (item.title == 'AI PLANNER') {
+            if (item.title == 'AI PLANNER') {
               onTap = () => context.push('/ai-planner');
             } else if (item.title == 'BECOME A TRAINER') {
               onTap = () => context.push('/trainer/become');
@@ -128,19 +115,6 @@ class QuickAccessV3 extends ConsumerWidget {
               onTap = () => context.push('/coach-notes');
             } else if (item.title == 'VIDEO SESSIONS') {
               onTap = () => context.push('/video');
-            }
-            if (item.title == 'MESSAGING') {
-              final unreadCountAsync = ref.watch(unreadMessagesCountProvider);
-              return unreadCountAsync.when(
-                data: (count) => _QuickTile(
-                  item: item,
-                  onTap: onTap,
-                  showBadge: count > 0,
-                  badgeCount: count > 0 ? count : null,
-                ),
-                loading: () => _QuickTile(item: item, onTap: onTap, showBadge: false),
-                error: (_, __) => _QuickTile(item: item, onTap: onTap, showBadge: false),
-              );
             }
             return _QuickTile(item: item, onTap: onTap, showBadge: showBadge, badgeCount: badgeCount);
           }),

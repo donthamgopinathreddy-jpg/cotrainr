@@ -41,7 +41,7 @@ class _StreakCardV2State extends State<StreakCardV2>
     return GestureDetector(
       onTap: () {
         HapticFeedback.lightImpact();
-        context.push('/home/quest');
+        context.push('/quest');
       },
       onLongPress: () {
         HapticFeedback.mediumImpact();

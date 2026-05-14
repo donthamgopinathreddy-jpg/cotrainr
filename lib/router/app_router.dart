@@ -352,11 +352,10 @@ final GoRouter appRouter = GoRouter(
       },
     ),
     GoRoute(
-      path: '/messaging/chat/:userId',
+      path: '/messaging/chat/:conversationId',
       name: 'chatScreen',
       pageBuilder: (context, state) {
-        // userId path param can be conversationId (from cocircle) or userId (from trainer/nutritionist)
-        final id = state.pathParameters['userId'] ?? '';
+        final id = state.pathParameters['conversationId'] ?? '';
         final extra = state.extra as Map<String, dynamic>?;
         return _fadeSlidePage(
           child: ChatScreen(

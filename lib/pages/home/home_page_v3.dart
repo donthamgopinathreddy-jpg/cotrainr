@@ -8,13 +8,12 @@ import '../../theme/app_colors.dart';
 import '../../providers/profile_images_provider.dart';
 import '../../providers/health_tracking_provider.dart';
 import '../../widgets/home_v3/hero_header_v3.dart';
-import '../../widgets/home_v3/streak_pill_v3.dart';
 import '../../widgets/home_v3/steps_card_v3.dart';
 import '../../widgets/home_v3/macro_row_v3.dart';
 import '../../widgets/home_v3/bmi_card_v3.dart';
 import '../bmi/bmi_details_screen.dart';
 import '../../widgets/home_v3/quick_access_v3.dart';
-import '../../widgets/home_v3/feed_preview_v3.dart';
+import '../../widgets/home_v3/home_nav_hint_cards.dart';
 import '../../widgets/home_v3/nearby_preview_v3.dart';
 import '../insights/insights_detail_page.dart';
 import '../../services/streak_service.dart';
@@ -26,9 +25,14 @@ import '../../repositories/metrics_repository.dart';
 import '../../providers/quest_provider.dart';
 
 class HomePageV3 extends ConsumerStatefulWidget {
-  final VoidCallback? onNavigateToCocircle;
+  final VoidCallback? onNavigateToMessagesTab;
+  final VoidCallback? onNavigateToMealsTab;
 
-  const HomePageV3({super.key, this.onNavigateToCocircle});
+  const HomePageV3({
+    super.key,
+    this.onNavigateToMessagesTab,
+    this.onNavigateToMealsTab,
+  });
 
   @override
   ConsumerState<HomePageV3> createState() => _HomePageV3State();
@@ -353,10 +357,13 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
               HeroHeaderV3(
                 username: _username,
                 notificationCount: _notificationCount,
-                // Use database URLs first, fallback to provider (for local edits)
-                coverImageUrl: _coverImageUrl ?? ref.watch(profileImagesProvider).coverImagePath,
-                avatarUrl: _avatarUrl ?? ref.watch(profileImagesProvider).profileImagePath,
-                streakDays: 0, // Remove streak from header
+                // Prefer provider: it updates immediately on edit profile (crop + upload).
+                // `_coverImageUrl` / `_avatarUrl` are one-shot RPC cache and would stay stale.
+                coverImageUrl: ref.watch(profileImagesProvider).coverImagePath ??
+                    _coverImageUrl,
+                avatarUrl: ref.watch(profileImagesProvider).profileImagePath ??
+                    _avatarUrl,
+                streakDays: _streakDays,
                 onNotificationTap: () async {
                   await context.push('/notifications');
                   if (mounted) _loadNotificationsCount();
@@ -365,25 +372,10 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
               0,
             ),
           ),
+          const SliverToBoxAdapter(child: SizedBox(height: 4)),
           SliverToBoxAdapter(
             child: Transform.translate(
-              offset: const Offset(0, -32),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: _animated(
-                  _safeSection(
-                    context,
-                    StreakPillV3(streakDays: _streakDays),
-                  ),
-                  50,
-                ),
-              ),
-            ),
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 8)),
-          SliverToBoxAdapter(
-            child: Transform.translate(
-              offset: const Offset(0, -28),
+              offset: const Offset(0, -10),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: _animated(
@@ -412,7 +404,7 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
           const SliverToBoxAdapter(child: SizedBox(height: 8)),
           SliverToBoxAdapter(
             child: Transform.translate(
-              offset: const Offset(0, -28),
+              offset: const Offset(0, -10),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: _animated(
@@ -488,7 +480,7 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
           const SliverToBoxAdapter(child: SizedBox(height: 8)),
           SliverToBoxAdapter(
             child: Transform.translate(
-              offset: const Offset(0, -26),
+              offset: const Offset(0, -10),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: _animated(
@@ -529,8 +521,16 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child:
-                  _animated(_safeSection(context, FeedPreviewV3(onViewAllTap: widget.onNavigateToCocircle)), 260),
+              child: _animated(
+                _safeSection(
+                  context,
+                  HomeNavHintCards(
+                    onOpenMessagesTab: widget.onNavigateToMessagesTab,
+                    onOpenMealsTab: widget.onNavigateToMealsTab,
+                  ),
+                ),
+                260,
+              ),
             ),
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 16)),

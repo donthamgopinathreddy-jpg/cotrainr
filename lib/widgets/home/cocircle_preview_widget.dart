@@ -33,7 +33,7 @@ class CocirclePreviewWidget extends StatelessWidget {
                 ),
               ),
               TextButton(
-                onPressed: () => context.push('/home/cocircle'),
+                onPressed: () => context.go('/home'),
                 child: const Text('See all'),
               ),
             ],
@@ -60,7 +60,7 @@ class CocirclePreviewWidget extends StatelessWidget {
                   );
                 },
                 child: GestureDetector(
-                  onTap: () => context.push('/home/cocircle'),
+                  onTap: () => context.go('/home'),
                   child: Container(
                     width: 140,
                     margin: const EdgeInsets.only(right: 12),

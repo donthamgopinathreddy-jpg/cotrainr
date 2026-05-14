@@ -20,7 +20,7 @@ class DailyStreakCard extends StatelessWidget {
     return GestureDetector(
       onTap: () {
         HapticFeedback.lightImpact();
-        context.push('/home/quest');
+        context.push('/quest');
       },
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 16),

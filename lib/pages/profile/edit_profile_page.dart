@@ -346,6 +346,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
       final url = await _storageService.uploadAvatar(imageFile);
       if (url != null && mounted) {
         await _profileRepo.updateProfile({'avatar_url': url});
+        ref.read(profileImagesProvider.notifier).updateProfileImage(url);
         if (mounted && scaffoldMessenger != null) {
           scaffoldMessenger.showSnackBar(
             const SnackBar(
@@ -384,6 +385,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
       final url = await _storageService.uploadCoverImage(imageFile);
       if (url != null && mounted) {
         await _profileRepo.updateProfile({'cover_url': url});
+        ref.read(profileImagesProvider.notifier).updateCoverImage(url);
         if (mounted && scaffoldMessenger != null) {
           scaffoldMessenger.showSnackBar(
             const SnackBar(
