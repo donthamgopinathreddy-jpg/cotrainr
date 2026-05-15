@@ -9,7 +9,7 @@ import '../meal_tracker/meal_tracker_page_v2.dart';
 import '../profile/profile_page.dart';
 import '../trainer/trainer_my_clients_page.dart';
 import '../nutritionist/nutritionist_my_clients_page.dart';
-import '../../widgets/home_v3/quick_access_v3.dart';
+import '../../providers/unread_messages_count_provider.dart';
 
 class HomeShellPage extends ConsumerStatefulWidget {
   final bool showWelcome;
@@ -152,11 +152,7 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
   void _goToTab(int index) {
     if (!mounted) return;
     setState(() => _currentIndex = index);
-    _pageController.animateToPage(
-      index,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOutCubic,
-    );
+    _pageController.jumpToPage(index);
   }
 
   @override
@@ -164,55 +160,65 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
+      backgroundColor: colorScheme.surface,
       body: Stack(
+        clipBehavior: Clip.none,
         children: [
-          PageView.builder(
-            controller: _pageController,
-            physics: const NeverScrollableScrollPhysics(),
-            onPageChanged: (index) => setState(() => _currentIndex = index),
-            itemCount: _navigationItems.length,
-            itemBuilder: (context, index) {
-              final user = ref.watch(currentUserProvider).value;
-              final isTrainer = user?.isTrainer ?? false;
-              final isNutritionist = user?.isNutritionist ?? false;
+          Positioned.fill(
+            child: PageView.builder(
+              controller: _pageController,
+              physics: const PageScrollPhysics(),
+              onPageChanged: (index) => setState(() => _currentIndex = index),
+              itemCount: _navigationItems.length,
+              itemBuilder: (context, index) {
+                final user = ref.watch(currentUserProvider).value;
+                final isTrainer = user?.isTrainer ?? false;
+                final isNutritionist = user?.isNutritionist ?? false;
 
-              final pages = [
-                HomePageV3(
-                  onNavigateToMessagesTab: () => _goToTab(2),
-                  onNavigateToMealsTab: () => _goToTab(3),
-                ),
-                isTrainer
-                    ? const TrainerMyClientsPage()
-                    : isNutritionist
-                        ? const NutritionistMyClientsPage()
-                        : const DiscoverPage(),
-                const MessagingPage(),
-                const MealTrackerPageV2(),
-                const ProfilePage(),
-              ];
-              return AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                transitionBuilder: (child, animation) {
-                  return SlideTransition(
-                    position: Tween<Offset>(
-                      begin: const Offset(0.1, 0),
-                      end: Offset.zero,
-                    ).animate(CurvedAnimation(
-                      parent: animation,
-                      curve: Curves.easeOutCubic,
-                    )),
-                    child: FadeTransition(
-                      opacity: animation,
-                      child: child,
-                    ),
-                  );
-                },
-                child: Container(
-                  key: ValueKey(index),
+                final pages = [
+                  HomePageV3(
+                    onNavigateToMessagesTab: () => _goToTab(2),
+                    onNavigateToMealsTab: () => _goToTab(3),
+                  ),
+                  isTrainer
+                      ? const TrainerMyClientsPage()
+                      : isNutritionist
+                          ? const NutritionistMyClientsPage()
+                          : const DiscoverPage(),
+                  const MessagingPage(),
+                  const MealTrackerPageV2(),
+                  const ProfilePage(),
+                ];
+                return KeyedSubtree(
+                  key: ValueKey<int>(index),
                   child: pages[index],
+                );
+              },
+            ),
+          ),
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: MediaQuery.paddingOf(context).bottom + 8,
+            child: Material(
+              color: colorScheme.surface,
+              elevation: 10,
+              shadowColor: Colors.black.withValues(alpha: 0.22),
+              borderRadius: BorderRadius.circular(28),
+              clipBehavior: Clip.antiAlias,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: List.generate(
+                    _navigationItems.length,
+                    (index) => Expanded(
+                      child: _buildNavItem(index),
+                    ),
+                  ),
                 ),
-              );
-            },
+              ),
+            ),
           ),
           if (_showWelcomeBubble)
             Positioned(
@@ -276,32 +282,6 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
             ),
         ],
       ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: colorScheme.surface,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.12),
-              blurRadius: 12,
-              offset: const Offset(0, -2),
-            ),
-          ],
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: List.generate(
-                _navigationItems.length,
-                (index) => Expanded(
-                  child: _buildNavItem(index),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
     );
   }
 
@@ -317,64 +297,39 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
       onTap: () {
         if (_currentIndex != index) {
           setState(() => _currentIndex = index);
-          _pageController.animateToPage(
-            index,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOutCubic,
-          );
+          _pageController.jumpToPage(index);
         }
       },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeInOut,
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-        margin: const EdgeInsets.symmetric(horizontal: 2),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        margin: const EdgeInsets.symmetric(horizontal: 1),
         decoration: BoxDecoration(
           gradient: isActive ? item.gradient : null,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
         ),
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 200),
-          transitionBuilder: (child, animation) {
-            return SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(0, 0.3),
-                end: Offset.zero,
-              ).animate(CurvedAnimation(
-                parent: animation,
-                curve: Curves.easeOut,
-              )),
-              child: FadeTransition(
-                opacity: animation,
-                child: child,
-              ),
-            );
-          },
-          child: Stack(
-            clipBehavior: Clip.none,
-            alignment: Alignment.center,
-            children: [
-              Icon(
-                isActive ? item.activeIcon : item.icon,
-                key: ValueKey('${item.label}_$isActive'),
-                color: isActive ? Colors.white : colorScheme.onSurface.withValues(alpha: 0.6),
-                size: 26,
-              ),
-              if (showUnreadDot)
-                Positioned(
-                  top: -2,
-                  right: 4,
-                  child: Container(
-                    width: 8,
-                    height: 8,
-                    decoration: const BoxDecoration(
-                      color: Colors.redAccent,
-                      shape: BoxShape.circle,
-                    ),
+        child: Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.center,
+          children: [
+            Icon(
+              isActive ? item.activeIcon : item.icon,
+              color: isActive ? Colors.white : colorScheme.onSurface.withValues(alpha: 0.6),
+              size: 24,
+            ),
+            if (showUnreadDot)
+              Positioned(
+                top: -2,
+                right: 4,
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(
+                    color: Colors.redAccent,
+                    shape: BoxShape.circle,
                   ),
                 ),
-            ],
-          ),
+              ),
+          ],
         ),
       ),
     );

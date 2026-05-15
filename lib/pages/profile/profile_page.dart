@@ -1,18 +1,14 @@
-import 'dart:ui';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/profile/appearance_toggle.dart';
 import '../../repositories/profile_repository.dart';
-import '../../repositories/metrics_repository.dart';
-import '../../services/streak_service.dart';
 import '../../utils/page_transitions.dart';
 import '../../widgets/common/pressable_card.dart';
-import '../../widgets/common/cover_with_blur_bridge.dart';
 import '../../providers/profile_images_provider.dart';
 import '../../pages/trainer/become_trainer_page.dart';
 import '../../pages/trainer/verification_submission_page.dart';
@@ -29,20 +25,13 @@ class ProfilePage extends ConsumerStatefulWidget {
 class _ProfilePageState extends ConsumerState<ProfilePage>
     with SingleTickerProviderStateMixin {
   final ProfileRepository _profileRepo = ProfileRepository();
-  final MetricsRepository _metricsRepo = MetricsRepository();
-  
+
   String _username = 'Loading...';
   String _handle = '@loading';
   final bool _isSubscribed = false;
   Map<String, dynamic>? _profile;
   bool _isLoadingProfile = true;
-  
-  // Real stats from Supabase
-  int _steps = 0;
-  int _streak = 0;
-  int _level = 1;
-  int _xp = 0;
-  
+
   // Check verification status - in real app, fetch from Supabase
   String? get _verificationStatus {
     if (_role == 'trainer' || _role == 'nutritionist') {
@@ -98,41 +87,6 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
         });
       }
 
-      // Fetch real stats from Supabase
-      final userId = Supabase.instance.client.auth.currentUser?.id;
-      if (userId != null) {
-        // Steps: from metrics_daily
-        final todayMetrics = await _metricsRepo.getTodayMetrics();
-        final steps = (todayMetrics?['steps'] as num?)?.toInt() ?? 0;
-
-        // Streak: from user_streaks
-        final streak = await StreakService.getCurrentStreak();
-
-        // Level & XP: from user_profiles
-        int level = 1;
-        int xp = 0;
-        try {
-          final userProfile = await Supabase.instance.client
-              .from('user_profiles')
-              .select('level, total_xp, xp')
-              .eq('user_id', userId)
-              .maybeSingle();
-          if (userProfile != null) {
-            level = (userProfile['level'] as num?)?.toInt() ?? 1;
-            xp = (userProfile['total_xp'] as num?)?.toInt() ??
-                 (userProfile['xp'] as num?)?.toInt() ?? 0;
-          }
-        } catch (_) {}
-
-        if (mounted) {
-          setState(() {
-            _steps = steps;
-            _streak = streak;
-            _level = level;
-            _xp = xp;
-          });
-        }
-      }
     } catch (e) {
       print('Error loading profile: $e');
     } finally {
@@ -155,10 +109,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final isLight = Theme.of(context).brightness == Brightness.light;
 
     return Scaffold(
-      backgroundColor: isLight ? Colors.grey.shade200 : colorScheme.background,
+      backgroundColor: colorScheme.surface,
       body: FadeTransition(
         opacity: _fadeAnimation,
         child: CustomScrollView(
@@ -166,41 +119,30 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
         slivers: [
           SliverToBoxAdapter(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _ProfileCoverHeader(
-                  coverImageUrl: _profile?['cover_url'] as String? ?? 
-                                ref.watch(profileImagesProvider).coverImagePath,
-                  avatarUrl: _profile?['avatar_url'] as String? ?? 
-                             ref.watch(profileImagesProvider).profileImagePath,
+                SizedBox(height: MediaQuery.paddingOf(context).top),
+                Padding(
+                  padding: const EdgeInsets.only(top: 12, right: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      AppearanceThemeIconButton(),
+                    ],
+                  ),
+                ),
+                _ProfileIdentitySection(
+                  avatarUrl: _profile?['avatar_url'] as String? ??
+                      ref.watch(profileImagesProvider).profileImagePath,
                   role: _role,
                   username: _username,
                   handle: _handle,
-                  level: _level,
+                  isLoading: _isLoadingProfile,
                 ),
-                Transform.translate(
-                  offset: const Offset(0, -56),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: _ProfileStatsStrip(
-                      steps: _steps,
-                      streakDays: _streak,
-                      level: _level,
-                      xp: _xp,
-                    ),
-                  ),
-                ),
-                Transform.translate(
-                  offset: const Offset(0, -44),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 10),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: const AppearanceToggle(),
-                      ),
-                      const SizedBox(height: 10),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                      const SizedBox(height: 20),
                       // Verification Card for Trainers/Nutritionists
                       if ((_role == 'trainer' || _role == 'nutritionist') && _needsVerification) ...[
                         Padding(
@@ -318,7 +260,6 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                       ],
                     ],
                   ),
-                ),
               ],
             ),
           ),
@@ -330,35 +271,32 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
   }
 }
 
-class _ProfileCoverHeader extends StatelessWidget {
-  final String? coverImageUrl;
+class _ProfileIdentitySection extends StatelessWidget {
   final String? avatarUrl;
   final String role;
   final String username;
   final String handle;
-  final int level;
+  final bool isLoading;
 
-  const _ProfileCoverHeader({
-    required this.coverImageUrl,
+  const _ProfileIdentitySection({
     required this.avatarUrl,
     required this.role,
     required this.username,
     required this.handle,
-    this.level = 1,
+    this.isLoading = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    const double coverHeight = 280; // Increased from 220 to show more image
-    const double avatarSize = 96;
+    const double avatarSize = 108;
+    const double avatarRadius = 36;
     final colorScheme = Theme.of(context).colorScheme;
 
-    // Badge: below avatar, overlapping its bottom edge
     final String label = role == 'trainer'
         ? 'TRAINER'
         : role == 'nutritionist'
             ? 'NUTRITIONIST'
-            : 'CLIENT';
+            : 'USER';
     final LinearGradient badgeGradient = role == 'trainer'
         ? AppColors.stepsGradient
         : role == 'nutritionist'
@@ -369,156 +307,111 @@ class _ProfileCoverHeader extends StatelessWidget {
               )
             : AppColors.distanceGradient;
 
-    // Cover image widget
-    Widget coverWidget = Container(
-      decoration: const BoxDecoration(
-        gradient: AppColors.heroGradient,
+    Widget avatar = Material(
+      color: Colors.transparent,
+      elevation: 8,
+      shadowColor: Colors.black.withValues(alpha: 0.22),
+      borderRadius: BorderRadius.circular(avatarRadius),
+      child: Container(
+        width: avatarSize,
+        height: avatarSize,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(avatarRadius),
+          border: Border.all(
+            color: colorScheme.outline.withValues(alpha: 0.25),
+            width: 2,
+          ),
+          color: colorScheme.surfaceContainerHighest,
+          image: !isLoading &&
+                  avatarUrl != null &&
+                  avatarUrl!.isNotEmpty
+              ? DecorationImage(
+                  image: avatarUrl!.startsWith('http')
+                      ? NetworkImage(avatarUrl!)
+                      : FileImage(File(avatarUrl!)) as ImageProvider,
+                  fit: BoxFit.cover,
+                )
+              : null,
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Center(
+          child: isLoading
+              ? SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: colorScheme.primary,
+                  ),
+                )
+              : (avatarUrl == null || avatarUrl!.isEmpty
+                  ? Icon(Icons.person_rounded,
+                      size: 44, color: colorScheme.onSurfaceVariant)
+                  : null),
+        ),
       ),
-      child: coverImageUrl != null && coverImageUrl!.isNotEmpty
-          ? Image(
-              image: coverImageUrl!.startsWith('http')
-                  ? NetworkImage(coverImageUrl!)
-                  : FileImage(File(coverImageUrl!)) as ImageProvider,
-              fit: BoxFit.cover,
-            )
-          : null,
     );
 
-    // Overlay content (avatar on left, name/user ID/badge/level on right)
-    Widget overlayContent = Row(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        // Profile picture on the left
-        Material(
-          color: Colors.transparent,
-          elevation: 8,
-          shadowColor: Colors.black.withOpacity(0.3),
-          shape: const CircleBorder(),
-          child: Container(
-            width: avatarSize,
-            height: avatarSize,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.white.withOpacity(0.7),
-                width: 1.5,
-              ),
-              image: avatarUrl != null && avatarUrl!.isNotEmpty
-                  ? DecorationImage(
-                      image: avatarUrl!.startsWith('http')
-                          ? NetworkImage(avatarUrl!)
-                          : FileImage(File(avatarUrl!)) as ImageProvider,
-                      fit: BoxFit.cover,
-                    )
-                  : null,
-              color: avatarUrl == null || avatarUrl!.isEmpty
-                  ? colorScheme.surface
-                  : null,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Center(child: avatar),
+          const SizedBox(height: 20),
+          Text(
+            username,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.4,
+              color: colorScheme.onSurface,
             ),
-            child: avatarUrl == null || avatarUrl!.isEmpty
-                ? Icon(Icons.person, size: 36, color: colorScheme.onSurface)
-                : null,
           ),
-        ),
-        const SizedBox(width: 12),
-        // Name, user ID, badge and level on the right
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Name
-              Text(
-                username,
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 4),
-              // User ID below name
-              Text(
-                handle,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.white.withOpacity(0.8),
-                ),
-              ),
-              const SizedBox(height: 10),
-              // Badge and level horizontal
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      gradient: badgeGradient,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.2),
-                        width: 1,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.person,
-                          size: 12,
-                          color: Colors.white,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          label,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                            letterSpacing: 0.3,
-                          ),
-                        ),
-                      ],
-                    ),
+          const SizedBox(height: 6),
+          Text(
+            handle,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                gradient: badgeGradient,
+                borderRadius: BorderRadius.circular(999),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.12),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
                   ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.2),
-                        width: 1,
-                      ),
-                    ),
-                    child: Text(
-                      'LVL $level',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                        letterSpacing: 0.3,
-                      ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.workspace_premium_rounded,
+                      size: 14, color: Colors.white),
+                  const SizedBox(width: 6),
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      letterSpacing: 0.4,
                     ),
                   ),
                 ],
               ),
-            ],
-          ),
-        ),
-      ],
-    );
-
-    return SizedBox(
-      height: coverHeight + avatarSize / 2 + 8,
-      child: Stack(
-        children: [
-          CoverWithBlurBridge(
-            height: coverHeight,
-            cover: coverWidget,
-            overlayContent: overlayContent,
-            overlayBottom: 28, // Increased from 22 to give breathing room
+            ),
           ),
         ],
       ),
@@ -526,170 +419,6 @@ class _ProfileCoverHeader extends StatelessWidget {
   }
 }
 
-
-class _ProfileStatsStrip extends StatelessWidget {
-  final int steps;
-  final int streakDays;
-  final int level;
-  final int xp;
-
-  const _ProfileStatsStrip({
-    required this.steps,
-    required this.streakDays,
-    required this.level,
-    required this.xp,
-  });
-
-  String _formatSteps(int steps) {
-    if (steps >= 1000) {
-      return '${(steps / 1000).toStringAsFixed(1)}k';
-    }
-    return steps.toString();
-  }
-
-  String _formatXP(int xp) {
-    if (xp >= 1000) {
-      return '${(xp / 1000).toStringAsFixed(1)}k';
-    }
-    return xp.toString();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // Use profile navigation gradient (same as bottom nav Profile tab)
-    const profileNavGradient = LinearGradient(
-      colors: [Color(0xFFFF5A5A), Color(0xFFFF8A7A)],
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-    );
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-      decoration: BoxDecoration(
-        gradient: profileNavGradient,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _StatItem(
-            icon: Icons.directions_walk_rounded,
-            label: 'Steps',
-            value: _formatSteps(steps),
-            iconColor: Colors.white,
-            textColor: Colors.white,
-            onTap: () {
-              HapticFeedback.lightImpact();
-              context.push('/home');
-            },
-          ),
-          _StatItem(
-            icon: Icons.local_fire_department_rounded,
-            label: 'Streak',
-            value: '$streakDays days',
-            iconColor: Colors.white,
-            textColor: Colors.white,
-            onTap: () {
-              HapticFeedback.lightImpact();
-              context.push('/home');
-            },
-          ),
-          _StatItem(
-            icon: Icons.emoji_events_rounded,
-            label: 'Level',
-            value: level.toString(),
-            iconColor: Colors.white,
-            textColor: Colors.white,
-            onTap: () {
-              HapticFeedback.lightImpact();
-              context.push('/quest');
-            },
-          ),
-          _StatItem(
-            icon: Icons.star_rounded,
-            label: 'XP',
-            value: _formatXP(xp),
-            iconColor: Colors.white,
-            textColor: Colors.white,
-            onTap: () {
-              HapticFeedback.lightImpact();
-              // Navigate to quest page
-              context.push('/quest');
-            },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StatItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color iconColor;
-  final VoidCallback? onTap;
-  final Color? textColor;
-
-  const _StatItem({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.iconColor,
-    this.onTap,
-    this.textColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final valueColor = textColor ?? colorScheme.onSurface;
-    final labelColor = textColor != null
-        ? textColor!.withOpacity(0.9)
-        : colorScheme.onSurface.withOpacity(0.6);
-
-    Widget content = Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(
-          icon,
-          size: 20,
-          color: iconColor,
-        ),
-        const SizedBox(height: 6),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: valueColor,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w500,
-            color: labelColor,
-          ),
-          textAlign: TextAlign.center,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-      ],
-    );
-
-    if (onTap != null) {
-      content = GestureDetector(
-        onTap: onTap,
-        child: content,
-      );
-    }
-
-    return Expanded(child: content);
-  }
-}
 
 class _FullLengthButton extends StatelessWidget {
   final String label;

@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_colors.dart';
 import '../../repositories/meal_repository.dart';
-import 'quick_access_v3.dart';
+import '../../providers/unread_messages_count_provider.dart';
 
 /// Compact home hints when the same features exist in bottom navigation (MVP).
 class HomeNavHintCards extends ConsumerStatefulWidget {

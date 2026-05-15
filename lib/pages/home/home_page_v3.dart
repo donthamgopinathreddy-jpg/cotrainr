@@ -8,8 +8,7 @@ import '../../theme/app_colors.dart';
 import '../../providers/profile_images_provider.dart';
 import '../../providers/health_tracking_provider.dart';
 import '../../widgets/home_v3/hero_header_v3.dart';
-import '../../widgets/home_v3/steps_card_v3.dart';
-import '../../widgets/home_v3/macro_row_v3.dart';
+import '../../widgets/home_v3/unified_metrics_tile_v3.dart';
 import '../../widgets/home_v3/bmi_card_v3.dart';
 import '../bmi/bmi_details_screen.dart';
 import '../../widgets/home_v3/quick_access_v3.dart';
@@ -51,8 +50,10 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
   int _notificationCount = 0;
   int _streakDays = 0;
   int _goalSteps = 10000;
+  int _goalCalories = 2000;
   double _currentWater = 0.0;
   double _goalWater = 2.5;
+  double _goalDistance = 5.0;
   int _currentSteps = 0;
   double _currentCalories = 0.0;
   double _currentDistance = 0.0;
@@ -138,7 +139,7 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
             final now = DateTime.now();
             age = now.year - dob.year;
             if (now.month < dob.month || (now.month == dob.month && now.day < dob.day)) {
-              age = age! - 1;
+              age = age - 1;
             }
           } catch (_) {}
         }
@@ -223,10 +224,14 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
     final goalsService = UserGoalsService();
     final stepsGoal = await goalsService.getStepsGoal();
     final waterGoal = await goalsService.getWaterGoal();
+    final caloriesGoal = await goalsService.getCaloriesGoal();
+    final distanceGoal = await goalsService.getDistanceGoal();
     if (mounted) {
       setState(() {
         _goalSteps = stepsGoal;
         _goalWater = waterGoal;
+        _goalCalories = caloriesGoal;
+        _goalDistance = distanceGoal;
       });
     }
   }
@@ -244,21 +249,57 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
     try {
       final metricsRepo = MetricsRepository();
       final todayMetrics = await metricsRepo.getTodayMetrics();
-      
-      if (mounted) {
-        if (todayMetrics != null) {
-          setState(() {
-            _currentSteps = (todayMetrics['steps'] as int?) ?? 0;
-            _currentCalories = (todayMetrics['calories_burned'] as num?)?.toDouble() ?? 0.0;
-            _currentDistance = (todayMetrics['distance_km'] as num?)?.toDouble() ?? 0.0;
-            _currentWater = (todayMetrics['water_intake_liters'] as num?)?.toDouble() ?? 0.0;
-          });
-          print('HomePageV3: Loaded metrics from Supabase - Steps: $_currentSteps, Water: $_currentWater L, Calories: $_currentCalories, Distance: $_currentDistance km');
-        } else {
-          print('HomePageV3: No metrics found for today, keeping current values');
-          // Don't reset to 0 if no metrics found - keep current values
+      final weeklyRows = await metricsRepo.getWeeklyMetrics();
+
+      List<double> seriesFromRows(
+        List<Map<String, dynamic>> rows,
+        String key,
+      ) {
+        final list = rows
+            .map((m) => ((m[key] as num?) ?? 0).toDouble())
+            .toList();
+        while (list.length < 7) {
+          list.insert(0, 0);
         }
+        if (list.length > 7) {
+          return list.sublist(list.length - 7);
+        }
+        return list;
       }
+
+      if (!mounted) return;
+
+      setState(() {
+        if (todayMetrics != null) {
+          _currentSteps = (todayMetrics['steps'] as int?) ?? 0;
+          _currentCalories =
+              (todayMetrics['calories_burned'] as num?)?.toDouble() ?? 0.0;
+          _currentDistance =
+              (todayMetrics['distance_km'] as num?)?.toDouble() ?? 0.0;
+          _currentWater =
+              (todayMetrics['water_intake_liters'] as num?)?.toDouble() ?? 0.0;
+          print(
+            'HomePageV3: Loaded metrics from Supabase - Steps: $_currentSteps, Water: $_currentWater L, Calories: $_currentCalories, Distance: $_currentDistance km',
+          );
+        } else {
+          print(
+            'HomePageV3: No metrics found for today, keeping current values',
+          );
+        }
+
+        _stepsWeeklyData
+          ..clear()
+          ..addAll(seriesFromRows(weeklyRows, 'steps'));
+        _caloriesWeeklyData
+          ..clear()
+          ..addAll(seriesFromRows(weeklyRows, 'calories_burned'));
+        _waterWeeklyData
+          ..clear()
+          ..addAll(seriesFromRows(weeklyRows, 'water_intake_liters'));
+        _distanceWeeklyData
+          ..clear()
+          ..addAll(seriesFromRows(weeklyRows, 'distance_km'));
+      });
     } catch (e) {
       print('HomePageV3: Error loading metrics: $e');
     }
@@ -372,115 +413,151 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
               0,
             ),
           ),
+          SliverToBoxAdapter(
+            child: Transform.translate(
+              offset: const Offset(0, -8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _animated(
+                  _safeSection(
+                    context,
+                    UnifiedMetricsTileV3(
+                      metrics: [
+                        UnifiedMetricViewModel(
+                          label: 'STEPS',
+                          icon: Icons.directions_walk_outlined,
+                          selectedIcon: Icons.directions_walk,
+                          ringGradient: AppColors.stepsGradient,
+                          barColor: AppColors.orange,
+                          progress: _goalSteps > 0
+                              ? (currentSteps / _goalSteps).clamp(0.0, 1.0)
+                              : 0.0,
+                          mainValue: currentSteps >= 1000
+                              ? '${(currentSteps / 1000).toStringAsFixed(1)}k'
+                              : '$currentSteps',
+                          subValue:
+                              'of ${_goalSteps >= 1000 ? '${(_goalSteps / 1000).toStringAsFixed(1)}k' : '$_goalSteps'} steps',
+                          weekly: List<double>.from(_stepsWeeklyData),
+                        ),
+                        UnifiedMetricViewModel(
+                          label: 'CALORIES',
+                          icon: Icons.local_fire_department_outlined,
+                          selectedIcon: Icons.local_fire_department,
+                          ringGradient: AppColors.caloriesGradient,
+                          barColor: const Color(0xFFFF6B6B),
+                          progress: _goalCalories > 0
+                              ? (currentCalories / _goalCalories)
+                                  .clamp(0.0, 1.0)
+                              : 0.0,
+                          mainValue: '$currentCalories',
+                          subValue: 'kcal · goal $_goalCalories',
+                          weekly: List<double>.from(_caloriesWeeklyData),
+                        ),
+                        UnifiedMetricViewModel(
+                          label: 'WATER',
+                          icon: Icons.water_drop_outlined,
+                          selectedIcon: Icons.water_drop,
+                          ringGradient: AppColors.waterGradient,
+                          barColor: AppColors.cyan,
+                          progress: _goalWater > 0
+                              ? (_currentWater / _goalWater).clamp(0.0, 1.0)
+                              : 0.0,
+                          mainValue: _currentWater.toStringAsFixed(1),
+                          subValue: 'of ${_goalWater.toStringAsFixed(1)} L',
+                          weekly: List<double>.from(_waterWeeklyData),
+                        ),
+                        UnifiedMetricViewModel(
+                          label: 'DISTANCE',
+                          icon: Icons.location_on_outlined,
+                          selectedIcon: Icons.location_on,
+                          ringGradient: AppColors.distanceGradient,
+                          barColor: AppColors.purple,
+                          progress: _goalDistance > 0
+                              ? (currentDistance / _goalDistance)
+                                  .clamp(0.0, 1.0)
+                              : 0.0,
+                          mainValue: currentDistance.toStringAsFixed(1),
+                          subValue:
+                              'km · goal ${_goalDistance.toStringAsFixed(1)}',
+                          weekly: List<double>.from(_distanceWeeklyData),
+                        ),
+                      ],
+                      onMetricTap: (i) {
+                        switch (i) {
+                          case 0:
+                            context.push(
+                              '/insights/steps',
+                              extra: InsightArgs(
+                                MetricType.steps,
+                                List<double>.from(_stepsWeeklyData),
+                                goal: _goalSteps.toDouble(),
+                              ),
+                            );
+                            break;
+                          case 1:
+                            context.push(
+                              '/insights/calories',
+                              extra: InsightArgs(
+                                MetricType.calories,
+                                List<double>.from(_caloriesWeeklyData),
+                                goal: _goalCalories.toDouble(),
+                              ),
+                            );
+                            break;
+                          case 2:
+                            context.push(
+                              '/insights/water',
+                              extra: InsightArgs(
+                                MetricType.water,
+                                List<double>.from(_waterWeeklyData),
+                                goal: _goalWater,
+                              ),
+                            );
+                            break;
+                          case 3:
+                            context.push(
+                              '/insights/distance',
+                              extra: InsightArgs(
+                                MetricType.distance,
+                                List<double>.from(_distanceWeeklyData),
+                                goal: _goalDistance,
+                              ),
+                            );
+                            break;
+                        }
+                      },
+                      onAddWater: () async {
+                        const waterToAdd = 0.25;
+                        final oldWater = _currentWater;
+                        final newWater = (_currentWater + waterToAdd)
+                            .clamp(0.0, _goalWater);
+                        setState(() => _currentWater = newWater);
+                        try {
+                          final metricsRepo = MetricsRepository();
+                          await metricsRepo.updateTodayMetrics(
+                            waterIntakeLiters: newWater,
+                          );
+                          ref
+                              .read(questProgressSyncServiceProvider)
+                              .onWaterUpdated(newWater);
+                        } catch (e) {
+                          print('HomePageV3: Error saving water intake: $e');
+                          if (mounted) {
+                            setState(() => _currentWater = oldWater);
+                          }
+                        }
+                      },
+                    ),
+                  ),
+                  100,
+                ),
+              ),
+            ),
+          ),
           const SliverToBoxAdapter(child: SizedBox(height: 4)),
           SliverToBoxAdapter(
             child: Transform.translate(
-              offset: const Offset(0, -10),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: _animated(
-                  _safeSection(
-                    context,
-                    StepsCardV3(
-                    steps: currentSteps,
-                    goal: _goalSteps,
-                    sparkline: _stepsWeeklyData,
-                    heroTag: 'tile_steps',
-                    onTap: () => context.push(
-                      '/insights/steps',
-                      extra: InsightArgs(
-                        MetricType.steps,
-                        _stepsWeeklyData,
-                        goal: _goalSteps.toDouble(),
-                      ),
-                    ),
-                  ),
-                ),
-                100,
-              ),
-            ),
-          ),
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 8)),
-          SliverToBoxAdapter(
-            child: Transform.translate(
-              offset: const Offset(0, -10),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: _animated(
-                  _safeSection(
-                    context,
-                    MacroRowV3(
-                    calories: currentCalories,
-                    water: _currentWater,
-                    waterGoal: _goalWater,
-                    caloriesSpark: _caloriesWeeklyData,
-                    distanceKm: currentDistance,
-                    caloriesHeroTag: 'tile_calories',
-                    waterHeroTag: 'tile_water',
-                    distanceHeroTag: 'tile_distance',
-                    onCaloriesTap: () => context.push(
-                      '/insights/calories',
-                      extra: InsightArgs(
-                        MetricType.calories,
-                        _caloriesWeeklyData,
-                      ),
-                    ),
-                    onWaterTap: () => context.push(
-                      '/insights/water',
-                      extra: InsightArgs(
-                        MetricType.water,
-                        _waterWeeklyData,
-                        goal: _goalWater,
-                      ),
-                    ),
-                    onDistanceTap: () => context.push(
-                      '/insights/distance',
-                      extra: InsightArgs(
-                        MetricType.distance,
-                        _distanceWeeklyData,
-                      ),
-                    ),
-                    onAddWater: () async {
-                      // Add 250ml (0.25L) to water intake
-                      final waterToAdd = 0.25;
-                      final oldWater = _currentWater;
-                      final newWater = (_currentWater + waterToAdd).clamp(0.0, _goalWater);
-                      
-                      // Update local state immediately for UI responsiveness
-                      setState(() {
-                        _currentWater = newWater;
-                      });
-                      
-                      // Save to Supabase - use updateTodayMetrics to set the total value
-                      try {
-                        final metricsRepo = MetricsRepository();
-                        await metricsRepo.updateTodayMetrics(waterIntakeLiters: newWater);
-                        print('HomePageV3: Saved water intake to Supabase: $newWater L (was $oldWater L)');
-                        
-                        // Also sync to quest progress
-                        ref.read(questProgressSyncServiceProvider).onWaterUpdated(newWater);
-                      } catch (e) {
-                        print('HomePageV3: Error saving water intake: $e');
-                        // Revert on error
-                        if (mounted) {
-                          setState(() {
-                            _currentWater = oldWater;
-                          });
-                        }
-                      }
-                    },
-                  ),
-                ),
-                140,
-              ),
-            ),
-          ),
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 8)),
-          SliverToBoxAdapter(
-            child: Transform.translate(
-              offset: const Offset(0, -10),
+              offset: const Offset(0, -8),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: _animated(

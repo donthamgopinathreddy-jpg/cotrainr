@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,8 +8,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../theme/app_colors.dart';
 
-/// Premium layered hero: inset rounded cover + overlapping squircle avatar,
-/// welcome row, streak bolt + count on cover (bottom-right).
+/// Premium layered hero: cover with welcome (top-left), avatar inset on the right,
+/// streak bottom-left, notification bell on the avatar corner.
 class HeroHeaderV3 extends StatefulWidget {
   final String username;
   final int notificationCount;
@@ -35,6 +36,14 @@ class HeroHeaderV3 extends StatefulWidget {
 const String _kDefaultHeroImageUrl =
     'https://images.unsplash.com/photo-1476480862126-209bfaa8edc8?auto=format&fit=crop&w=1400&q=85';
 
+/// Slight desaturation to quiet busy photography behind text.
+const List<double> _kDesaturateMatrix = <double>[
+  0.88, 0.08, 0.08, 0, 0,
+  0.08, 0.82, 0.08, 0, 0,
+  0.08, 0.08, 0.88, 0, 0,
+  0, 0, 0, 1, 0,
+];
+
 class _HeroHeaderV3State extends State<HeroHeaderV3>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
@@ -42,9 +51,8 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
   bool _streakPressed = false;
 
   static const double _coverRadius = 30;
-  static const double _avatarRadius = 26;
-  static const double _coverHeight = 172;
-  static const double _overlapPullUp = 30;
+  static const double _avatarRadius = 29;
+  static const double _coverHeight = 142;
 
   @override
   void initState() {
@@ -121,9 +129,8 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
   @override
   Widget build(BuildContext context) {
     final safeTop = MediaQuery.paddingOf(context).top;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    const double avatarSize = 76;
+    const double avatarSize = 86;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -143,7 +150,13 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    _buildCoverImage(),
+                    ImageFiltered(
+                      imageFilter: ImageFilter.blur(sigmaX: 1.4, sigmaY: 1.4),
+                      child: ColorFiltered(
+                        colorFilter: ColorFilter.matrix(_kDesaturateMatrix),
+                        child: _buildCoverImage(),
+                      ),
+                    ),
                     // Dark cinematic scrim for depth + readability
                     DecoratedBox(
                       decoration: BoxDecoration(
@@ -151,32 +164,32 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                           colors: [
-                            Colors.black.withValues(alpha: 0.45),
-                            Colors.black.withValues(alpha: 0.55),
-                            Colors.black.withValues(alpha: 0.72),
+                            Colors.black.withValues(alpha: 0.58),
+                            Colors.black.withValues(alpha: 0.68),
+                            Colors.black.withValues(alpha: 0.86),
                           ],
-                          stops: const [0.0, 0.45, 1.0],
+                          stops: const [0.0, 0.42, 1.0],
                         ),
                       ),
                     ),
-                    // Subtle vignette
+                    // Soft edge vignette (reduced noise vs strong radial)
                     DecoratedBox(
                       decoration: BoxDecoration(
                         gradient: RadialGradient(
-                          center: const Alignment(0, -0.2),
-                          radius: 1.15,
+                          center: const Alignment(0, -0.15),
+                          radius: 1.25,
                           colors: [
                             Colors.transparent,
-                            Colors.black.withValues(alpha: 0.35),
+                            Colors.black.withValues(alpha: 0.22),
                           ],
                         ),
                       ),
                     ),
-                    // Welcome + name on cover (top-left), clear of notification control
+                    // Welcome + name on cover (top-left), clear of avatar column
                     Positioned(
                       left: 14,
                       top: 14,
-                      right: 56,
+                      right: 108,
                       child: _fadeSlide(
                         _animForDelay(40),
                         Column(
@@ -227,76 +240,151 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
                     ),
                     Positioned(
                       right: 12,
-                      top: 12,
-                      child: _fadeSlide(
-                        _animForDelay(100),
-                        Material(
-                          color: Colors.black.withValues(alpha: 0.35),
-                          borderRadius: BorderRadius.circular(22),
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(22),
-                            onTap: () {
-                              HapticFeedback.lightImpact();
-                              widget.onNotificationTap?.call();
-                            },
-                            child: Padding(
-                              padding: const EdgeInsets.all(8),
-                              child: Stack(
-                                clipBehavior: Clip.none,
-                                children: [
-                                  Icon(
-                                    Icons.notifications_none_rounded,
-                                    color: Colors.white.withValues(alpha: 0.95),
-                                    size: 26,
+                      top: 0,
+                      bottom: 0,
+                      child: Align(
+                        alignment: Alignment.center,
+                        child: _fadeSlide(
+                          _animForDelay(0),
+                          Stack(
+                            clipBehavior: Clip.none,
+                            alignment: Alignment.center,
+                            children: [
+                              GestureDetector(
+                                onTapDown: (_) =>
+                                    setState(() => _avatarPressed = true),
+                                onTapUp: (_) =>
+                                    setState(() => _avatarPressed = false),
+                                onTapCancel: () =>
+                                    setState(() => _avatarPressed = false),
+                                child: AnimatedScale(
+                                  scale: _avatarPressed ? 0.97 : 1.0,
+                                  duration: const Duration(milliseconds: 100),
+                                  child: _SquircleAvatar(
+                                    size: avatarSize,
+                                    radius: _avatarRadius,
+                                    avatarUrl: widget.avatarUrl,
                                   ),
-                                  if (widget.notificationCount > 0)
-                                    Positioned(
-                                      right: -1,
-                                      top: -1,
-                                      child: Container(
-                                        width: 9,
-                                        height: 9,
+                                ),
+                              ),
+                              Positioned(
+                                top: 4,
+                                right: 4,
+                                child: _fadeSlide(
+                                  _animForDelay(100),
+                                  Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      customBorder: const CircleBorder(),
+                                      onTap: () {
+                                        HapticFeedback.lightImpact();
+                                        widget.onNotificationTap?.call();
+                                      },
+                                      child: Ink(
                                         decoration: BoxDecoration(
-                                          color: AppColors.red,
                                           shape: BoxShape.circle,
+                                          color: Colors.black
+                                              .withValues(alpha: 0.42),
                                           border: Border.all(
-                                            color: Colors.white.withValues(alpha: 0.9),
-                                            width: 1.5,
+                                            color: Colors.white
+                                                .withValues(alpha: 0.22),
+                                            width: 1,
                                           ),
                                           boxShadow: [
                                             BoxShadow(
-                                              color: AppColors.red.withValues(alpha: 0.6),
-                                              blurRadius: 6,
-                                              spreadRadius: 0,
+                                              color: Colors.black
+                                                  .withValues(alpha: 0.35),
+                                              blurRadius: 12,
+                                              offset: const Offset(0, 4),
                                             ),
+                                          ],
+                                        ),
+                                        padding: const EdgeInsets.all(8),
+                                        child: Stack(
+                                          clipBehavior: Clip.none,
+                                          alignment: Alignment.center,
+                                          children: [
+                                            Icon(
+                                              Icons.notifications_rounded,
+                                              color: Colors.white,
+                                              size: 22,
+                                              shadows: const [
+                                                Shadow(
+                                                  color: Color(0x99000000),
+                                                  offset: Offset(0, 1),
+                                                  blurRadius: 4,
+                                                ),
+                                              ],
+                                            ),
+                                            if (widget.notificationCount > 0)
+                                              Positioned(
+                                                right: -1,
+                                                top: -1,
+                                                child: Container(
+                                                  width: 8,
+                                                  height: 8,
+                                                  decoration: BoxDecoration(
+                                                    color: AppColors.red,
+                                                    shape: BoxShape.circle,
+                                                    border: Border.all(
+                                                      color: Colors.white,
+                                                      width: 1.5,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
                                           ],
                                         ),
                                       ),
                                     ),
-                                ],
+                                  ),
+                                ),
                               ),
-                            ),
+                            ],
                           ),
                         ),
                       ),
                     ),
                     if (widget.streakDays > 0)
                       Positioned(
-                        right: 12,
+                        left: 12,
                         bottom: 12,
                         child: _fadeSlide(
                           _animForDelay(90),
-                          _StreakIconBadge(
-                            days: widget.streakDays,
-                            pressed: _streakPressed,
-                            onTapDown: () =>
-                                setState(() => _streakPressed = true),
-                            onTap: () {
-                              setState(() => _streakPressed = false);
-                              HapticFeedback.lightImpact();
-                            },
-                            onTapCancel: () =>
-                                setState(() => _streakPressed = false),
+                          DecoratedBox(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(22),
+                              color: Colors.black.withValues(alpha: 0.38),
+                              border: Border.all(
+                                color:
+                                    Colors.white.withValues(alpha: 0.18),
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.25),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              child: _StreakIconBadge(
+                                days: widget.streakDays,
+                                pressed: _streakPressed,
+                                onTapDown: () =>
+                                    setState(() => _streakPressed = true),
+                                onTap: () {
+                                  setState(() => _streakPressed = false);
+                                  HapticFeedback.lightImpact();
+                                },
+                                onTapCancel: () =>
+                                    setState(() => _streakPressed = false),
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -306,39 +394,7 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
             ),
           ),
         ),
-        Transform.translate(
-          offset: Offset(0, -_overlapPullUp),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 16, 4),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Transform.translate(
-                  offset: const Offset(8, -10),
-                  child: _fadeSlide(
-                    _animForDelay(0),
-                    GestureDetector(
-                      onTapDown: (_) => setState(() => _avatarPressed = true),
-                      onTapUp: (_) => setState(() => _avatarPressed = false),
-                      onTapCancel: () =>
-                          setState(() => _avatarPressed = false),
-                      child: AnimatedScale(
-                        scale: _avatarPressed ? 0.97 : 1.0,
-                        duration: const Duration(milliseconds: 100),
-                        child: _SquircleAvatar(
-                          size: avatarSize,
-                          radius: _avatarRadius,
-                          avatarUrl: widget.avatarUrl,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        SizedBox(height: isDark ? 4 : 6),
+        const SizedBox(height: 18),
       ],
     );
   }

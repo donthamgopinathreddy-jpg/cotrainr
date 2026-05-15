@@ -5,13 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
-import '../../repositories/messages_repository.dart';
 import '../common/pressable_card.dart';
-
-final unreadMessagesCountProvider = FutureProvider<int>((ref) async {
-  final messagesRepo = MessagesRepository();
-  return await messagesRepo.getUnreadMessagesCount();
-});
 
 class QuickAccessV3 extends ConsumerWidget {
   const QuickAccessV3({super.key});

@@ -4,6 +4,62 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/theme_mode_provider.dart';
 
+/// Tap cycles System → Light → Dark; icon updates with mode. No menu / bubble.
+class AppearanceThemeIconButton extends ConsumerWidget {
+  const AppearanceThemeIconButton({super.key});
+
+  static IconData _iconFor(ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.light:
+        return Icons.light_mode_outlined;
+      case ThemeMode.dark:
+        return Icons.dark_mode_outlined;
+      case ThemeMode.system:
+        return Icons.brightness_auto_outlined;
+    }
+  }
+
+  static ThemeMode _nextMode(ThemeMode current) {
+    switch (current) {
+      case ThemeMode.system:
+        return ThemeMode.light;
+      case ThemeMode.light:
+        return ThemeMode.dark;
+      case ThemeMode.dark:
+        return ThemeMode.system;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(themeModeProvider);
+    final cs = Theme.of(context).colorScheme;
+
+    return IconButton(
+      tooltip: 'Theme: tap to cycle',
+      padding: const EdgeInsets.all(10),
+      constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+      style: IconButton.styleFrom(
+        foregroundColor: cs.onSurface,
+        backgroundColor: Colors.transparent,
+        highlightColor: Colors.transparent,
+        shadowColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        overlayColor: cs.primary.withValues(alpha: 0.10),
+      ),
+      onPressed: () {
+        HapticFeedback.selectionClick();
+        ref.read(themeModeProvider.notifier).state = _nextMode(mode);
+      },
+      icon: Icon(
+        _iconFor(mode),
+        size: 24,
+      ),
+    );
+  }
+}
+
 /// Shared appearance toggle (System/Light/Dark) with sliding pill animation.
 class AppearanceToggle extends StatelessWidget {
   const AppearanceToggle({super.key});

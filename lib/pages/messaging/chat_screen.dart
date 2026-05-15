@@ -10,7 +10,7 @@ import '../../theme/app_colors.dart';
 import '../../repositories/messages_repository.dart';
 import '../../services/storage_service.dart';
 import '../../services/messaging_policy_service.dart';
-import '../../widgets/home_v3/quick_access_v3.dart';
+import '../../providers/unread_messages_count_provider.dart';
 import '../profile/public_profile_readonly_page.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
