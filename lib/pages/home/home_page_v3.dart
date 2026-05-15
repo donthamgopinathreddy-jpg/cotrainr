@@ -554,17 +554,15 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
               ),
             ),
           ),
-          const SliverToBoxAdapter(child: SizedBox(height: 4)),
+          const SliverToBoxAdapter(child: SizedBox(height: 12)),
           SliverToBoxAdapter(
-            child: Transform.translate(
-              offset: const Offset(0, -8),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: _animated(
-                  _safeSection(
-                    context,
-                    InkWell(
-                      onTap: () => context.push('/bmi', extra: BmiDetailsArgs(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: _animated(
+                _safeSection(
+                  context,
+                  InkWell(
+                    onTap: () => context.push('/bmi', extra: BmiDetailsArgs(
                         bmi: _bmi,
                         bmiStatus: _bmiStatus,
                         heightCm: _heightCm,
@@ -572,7 +570,7 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                         gender: _gender,
                         age: _age,
                       )),
-                      borderRadius: BorderRadius.circular(24),
+                      borderRadius: BorderRadius.circular(28),
                       child: BmiCardV3(
                         bmi: _bmi,
                         status: _bmiStatus,
@@ -584,7 +582,6 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                   180,
                 ),
             ),
-          ),
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 8)),
           SliverToBoxAdapter(

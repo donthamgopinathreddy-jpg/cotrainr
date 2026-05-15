@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/design_tokens.dart';
+import 'home_premium_theme.dart';
 
 class BmiCardV3 extends StatelessWidget {
   final double bmi;
@@ -17,24 +19,29 @@ class BmiCardV3 extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isLight = Theme.of(context).brightness == Brightness.light;
     final progress = bmi > 0 ? _calculateProgressFromBmi(bmi) : 0.0;
     final statusInfo = _getStatusInfo(status);
-    
-    // Light background color matching status
-    final statusColor = bmi > 0 ? _getColorFromProgress(progress) : Colors.grey;
-    final cardBg = statusColor.withOpacity(isDark ? 0.3 : 0.25);
+    final warmAccent = isLight
+        ? const Color(0xFFE8A060)
+        : DesignTokens.accentOrange;
 
     return Container(
-      padding: const EdgeInsets.all(20),
+      clipBehavior: Clip.hardEdge,
       decoration: BoxDecoration(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: AppColors.cardShadowOf(context),
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: HomePremiumTheme.softCardShadow(isLight),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: HomePremiumTheme.bmiTileGradient(isLight, warmAccent),
+          borderRadius: BorderRadius.circular(28),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
           // Top: BMI label and value side by side
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -141,7 +148,9 @@ class BmiCardV3 extends StatelessWidget {
               ),
             ],
           ),
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -270,15 +279,17 @@ class _MetricPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+    final cs = Theme.of(context).colorScheme;
+    final isLight = Theme.of(context).brightness == Brightness.light;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: isDark
-            ? Colors.white.withOpacity(0.1)
-            : Colors.white,
+        color: cs.surface.withValues(alpha: isLight ? 0.72 : 0.45),
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: cs.onSurface.withValues(alpha: isLight ? 0.06 : 0.08),
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

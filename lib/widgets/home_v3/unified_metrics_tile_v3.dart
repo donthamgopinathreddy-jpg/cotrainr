@@ -1,11 +1,11 @@
-import 'dart:math' as math;
 import 'dart:ui' show ImageFilter, lerpDouble;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../theme/app_colors.dart';
-import '../../theme/design_tokens.dart';
+import 'home_premium_theme.dart';
+import 'metric_center_widget.dart';
 
 /// One of four home metrics (order: steps, calories, water, distance).
 class UnifiedMetricViewModel {
@@ -87,43 +87,17 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
     return x;
   }
 
-  static Color _accentStart(UnifiedMetricViewModel vm) =>
-      vm.ringGradient.colors.isNotEmpty ? vm.ringGradient.colors.first : vm.barColor;
-
-  static Color _accentEnd(UnifiedMetricViewModel vm) =>
-      vm.ringGradient.colors.length > 1 ? vm.ringGradient.colors.last : vm.barColor;
-
-  LinearGradient _tileGradientForPage(
-    double page,
-    ColorScheme cs,
-    bool isLight,
-  ) {
+  LinearGradient _tileGradientForPage(double page, bool isLight) {
     final phase = _metricPhase(page);
-    final i0 = phase.floor() % 4;
-    final i1 = (i0 + 1) % 4;
-    final t = Curves.easeInOut.transform((phase - phase.floor()).clamp(0.0, 1.0));
-    final top = Color.lerp(
-      _accentStart(widget.metrics[i0]),
-      _accentStart(widget.metrics[i1]),
-      t,
-    )!;
-    final bot = Color.lerp(
-      _accentEnd(widget.metrics[i0]),
-      _accentEnd(widget.metrics[i1]),
-      t,
-    )!;
-    // Stronger accent tint vs surface (was ~0.10/0.12 — bumped for richer tile).
-    final a0 = isLight ? 0.22 : 0.28;
-    final a1 = isLight ? 0.14 : 0.20;
-    return LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [
-        Color.lerp(cs.surface, top, a0)!,
-        Color.lerp(cs.surface, bot, a1)!,
-        cs.surface,
-      ],
-      stops: const [0.0, 0.45, 1.0],
+    final accents = List.generate(
+      4,
+      (i) => HomePremiumTheme.metricPalette(i, isLight).accent,
+    );
+    return HomePremiumTheme.metricsTileGradient(
+      _focusMetricIndex(page),
+      phase,
+      accents,
+      isLight,
     );
   }
 
@@ -167,7 +141,7 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
       clipBehavior: Clip.hardEdge,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(28),
-        boxShadow: DesignTokens.cardShadowOf(context),
+        boxShadow: HomePremiumTheme.softCardShadow(isLight),
       ),
       child: AnimatedBuilder(
         animation: _pageController,
@@ -176,14 +150,22 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
           final focus = _focusMetricIndex(page);
           final m = widget.metrics[focus];
           final weekly = _normalizeSeven(m.weekly);
-          final tileGradient = _tileGradientForPage(page, cs, isLight);
+          final tileGradient = _tileGradientForPage(page, isLight);
+          final focusPalette = HomePremiumTheme.metricPalette(focus, isLight);
 
-          return DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: tileGradient,
-              borderRadius: BorderRadius.circular(28),
-            ),
-            child: Padding(
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(28),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(
+                sigmaX: isLight ? 6 : 14,
+                sigmaY: isLight ? 6 : 14,
+              ),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: tileGradient,
+                  borderRadius: BorderRadius.circular(28),
+                ),
+                child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -195,7 +177,7 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 0.4,
-                      color: cs.onSurfaceVariant,
+                      color: HomePremiumTheme.secondaryText(isLight),
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -223,7 +205,7 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
                                       fontWeight: FontWeight.w800,
                                       height: 1.1,
                                       letterSpacing: -0.35,
-                                      color: cs.onSurface,
+                                      color: HomePremiumTheme.primaryText(isLight),
                                     ),
                                   ),
                                   const SizedBox(height: 2),
@@ -234,7 +216,7 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
                                     style: TextStyle(
                                       fontSize: 13,
                                       fontWeight: FontWeight.w600,
-                                      color: cs.onSurfaceVariant,
+                                      color: HomePremiumTheme.secondaryText(isLight),
                                     ),
                                   ),
                                 ],
@@ -253,15 +235,14 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
                   const SizedBox(height: 6),
                   LayoutBuilder(
                     builder: (context, c) {
-                      // Must fit _MetricRingColumn (~115–120px); low clamp caused bottom overflow.
-                      final h = (c.maxWidth * 0.37).clamp(120.0, 132.0);
+                      final h = (c.maxWidth * 0.32).clamp(90.0, 108.0);
                       return SizedBox(
                         height: h,
                         child: PageView.builder(
                           controller: _pageController,
                           itemCount: _kLoopLength,
                           padEnds: true,
-                          clipBehavior: Clip.none,
+                          clipBehavior: Clip.hardEdge,
                           physics: const BouncingScrollPhysics(),
                           onPageChanged: _realignLoopIfNeeded,
                           itemBuilder: (context, index) {
@@ -292,12 +273,12 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
                                     alignment: Alignment.center,
                                     child: Opacity(
                                       opacity: opacity,
-                                      child: _MetricRingColumn(
-                                        label: item.label,
+                                      child: MetricCenterWidget(
+                                        metricIndex: logical,
                                         icon: displayIcon,
-                                        gradient: item.ringGradient,
                                         progress:
                                             item.progress.clamp(0.0, 1.0),
+                                        label: item.label,
                                         mainValue: item.mainValue,
                                         subValue: item.subValue,
                                         selected: isSelected,
@@ -326,19 +307,18 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
                   _WeeklyBarChart(
                     key: ValueKey<int>(focus),
                     values: weekly,
-                    barColor: m.barColor,
-                    trackColor: cs.onSurface.withValues(
-                      alpha: isLight ? 0.07 : 0.11,
-                    ),
-                    labelColor: cs.onSurfaceVariant,
+                    barColor: focusPalette.accent,
+                    trackColor: HomePremiumTheme.weeklyTrackColor(isLight),
+                    labelColor: HomePremiumTheme.secondaryText(isLight),
                     highlightDayIndex: _todayWeekIndex(),
+                    isLight: isLight,
                   ),
                   const SizedBox(height: 8),
                   _MetricPageDots(
                     count: 4,
                     activeIndex: focus,
-                    color: cs.onSurfaceVariant,
-                    accent: m.barColor,
+                    color: HomePremiumTheme.secondaryText(isLight),
+                    accent: focusPalette.accent,
                   ),
                   if (focus == 2) ...[
                     const SizedBox(height: 10),
@@ -348,6 +328,8 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
                     ),
                   ],
                 ],
+              ),
+                ),
               ),
             ),
           );
@@ -410,169 +392,13 @@ class _MetricPageDots extends StatelessWidget {
   }
 }
 
-class _MetricRingColumn extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final LinearGradient gradient;
-  final double progress;
-  final String mainValue;
-  final String subValue;
-  final bool selected;
-
-  const _MetricRingColumn({
-    required this.label,
-    required this.icon,
-    required this.gradient,
-    required this.progress,
-    required this.mainValue,
-    required this.subValue,
-    required this.selected,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final accent = gradient.colors.isNotEmpty ? gradient.colors.first : AppColors.orange;
-    final labelColor = selected
-        ? cs.onSurface
-        : cs.onSurfaceVariant.withValues(alpha: 0.65);
-    final valueColor =
-        selected ? cs.onSurface : cs.onSurface.withValues(alpha: 0.62);
-    final subColor =
-        cs.onSurfaceVariant.withValues(alpha: selected ? 0.9 : 0.5);
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(
-          width: 72,
-          height: 72,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              CustomPaint(
-                size: const Size(72, 72),
-                painter: _RingPainter(
-                  progress: progress,
-                  gradient: gradient,
-                  trackColor: cs.onSurface.withValues(
-                    alpha: selected ? 0.14 : 0.07,
-                  ),
-                  strokeWidth: selected ? 6.0 : 4.0,
-                ),
-              ),
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: cs.surface.withValues(alpha: selected ? 0.96 : 0.88),
-                ),
-                child: Icon(
-                  icon,
-                  size: selected ? 25 : 20,
-                  color: selected
-                      ? accent
-                      : accent.withValues(alpha: 0.72),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 9,
-            fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-            letterSpacing: 0.8,
-            color: labelColor,
-          ),
-        ),
-        const SizedBox(height: 1),
-        Text(
-          mainValue,
-          style: TextStyle(
-            fontSize: selected ? 15 : 12,
-            fontWeight: FontWeight.w800,
-            height: 1.0,
-            letterSpacing: -0.3,
-            color: valueColor,
-          ),
-        ),
-        Text(
-          subValue,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 9,
-            fontWeight: FontWeight.w600,
-            color: subColor,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _RingPainter extends CustomPainter {
-  final double progress;
-  final LinearGradient gradient;
-  final Color trackColor;
-  final double strokeWidth;
-
-  _RingPainter({
-    required this.progress,
-    required this.gradient,
-    required this.trackColor,
-    this.strokeWidth = 5.0,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final stroke = strokeWidth;
-    final rect = Rect.fromLTWH(
-      stroke / 2,
-      stroke / 2,
-      size.width - stroke,
-      size.height - stroke,
-    );
-
-    final trackPaint = Paint()
-      ..color = trackColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = stroke
-      ..strokeCap = StrokeCap.round;
-
-    canvas.drawArc(rect, -math.pi / 2, math.pi * 2, false, trackPaint);
-
-    if (progress <= 0) return;
-
-    final sweep = math.pi * 2 * progress;
-    final arcPaint = Paint()
-      ..shader = gradient.createShader(rect)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = stroke
-      ..strokeCap = StrokeCap.round;
-
-    canvas.drawArc(rect, -math.pi / 2, sweep, false, arcPaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _RingPainter oldDelegate) {
-    return oldDelegate.progress != progress ||
-        oldDelegate.gradient != gradient ||
-        oldDelegate.trackColor != trackColor ||
-        oldDelegate.strokeWidth != strokeWidth;
-  }
-}
-
 class _WeeklyBarChart extends StatefulWidget {
   final List<double> values;
   final Color barColor;
   final Color trackColor;
   final Color labelColor;
   final int highlightDayIndex;
+  final bool isLight;
 
   const _WeeklyBarChart({
     super.key,
@@ -581,6 +407,7 @@ class _WeeklyBarChart extends StatefulWidget {
     required this.trackColor,
     required this.labelColor,
     required this.highlightDayIndex,
+    required this.isLight,
   });
 
   @override
@@ -679,20 +506,14 @@ class _WeeklyBarChartState extends State<_WeeklyBarChart>
                                 boxShadow: isToday
                                     ? [
                                         BoxShadow(
-                                          color: widget.barColor
-                                              .withValues(alpha: 0.45),
-                                          blurRadius: 10,
+                                          color: widget.barColor.withValues(
+                                            alpha: widget.isLight ? 0.28 : 0.38,
+                                          ),
+                                          blurRadius: 8,
                                           offset: const Offset(0, 2),
                                         ),
                                       ]
-                                    : [
-                                        BoxShadow(
-                                          color: widget.barColor
-                                              .withValues(alpha: 0.2),
-                                          blurRadius: 6,
-                                          offset: const Offset(0, 2),
-                                        ),
-                                      ],
+                                    : null,
                               ),
                             ),
                           ],

@@ -7,21 +7,20 @@ import 'package:flutter/material.dart';
 class DesignTokens {
   // ========== DARK THEME COLORS ==========
   // Pure dark black/grey - no color blend
-  static const Color darkBackground = Color(0xFF000000); // Pure black
-  static const Color darkSurface = Color(0xFF1A1A1A); // Dark grey
-  static const Color darkSurfaceElevated = Color(0xFF2A2A2A); // Lighter grey
-  static const Color darkTextPrimary = Color(0xFFFFFFFF);
-  static const Color darkTextSecondary = Color(0xB3FFFFFF); // 70% opacity
-  static const Color darkTextTertiary = Color(0x80FFFFFF); // 50% opacity
+  static const Color darkBackground = Color(0xFF14161C); // Deep charcoal
+  static const Color darkSurface = Color(0xFF1C1F26);
+  static const Color darkSurfaceElevated = Color(0xFF252932);
+  static const Color darkTextPrimary = Color(0xFFF2F2F4); // Soft white
+  static const Color darkTextSecondary = Color(0xFF9CA3AF); // Muted gray
+  static const Color darkTextTertiary = Color(0xFF6B7280);
 
   // ========== LIGHT THEME COLORS ==========
-  // Light green background as specified
-  static const Color lightBackground = Color(0xFFF0F8F4); // Light green tint
-  static const Color lightSurface = Color(0xFFFFFFFF);
+  static const Color lightBackground = Color(0xFFF6F4EF); // Warm off-white
+  static const Color lightSurface = Color(0xFFFAF8F4); // Cream card
   static const Color lightSurfaceElevated = Color(0xFFFFFFFF);
-  static const Color lightTextPrimary = Color(0xFF1A1A1A);
-  static const Color lightTextSecondary = Color(0x99000000); // 60% opacity
-  static const Color lightTextTertiary = Color(0x66000000); // 40% opacity
+  static const Color lightTextPrimary = Color(0xFF2A2D33); // Charcoal
+  static const Color lightTextSecondary = Color(0xFF6B7280);
+  static const Color lightTextTertiary = Color(0xFF9CA3AF);
 
   // ========== ACCENT COLORS (Theme-agnostic) ==========
   // Orange gradient (primary) - Apple Fitness+ inspired

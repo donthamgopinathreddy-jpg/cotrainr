@@ -1,3 +1,5 @@
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/design_tokens.dart';
@@ -25,6 +27,57 @@ class HomeShellPage extends ConsumerStatefulWidget {
 
 class _HomeShellPageState extends ConsumerState<HomeShellPage>
     with SingleTickerProviderStateMixin {
+  /// Matches metrics / BMI / quick-action tile gradients.
+  static LinearGradient _surfaceTintGradient(
+    ColorScheme cs,
+    bool isLight,
+    LinearGradient accent,
+  ) {
+    final top = accent.colors.first;
+    final bottom =
+        accent.colors.length > 1 ? accent.colors.last : accent.colors.first;
+    final a0 = isLight ? 0.48 : 0.54;
+    final a1 = isLight ? 0.34 : 0.38;
+    return LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        Color.lerp(cs.surface, top, a0)!,
+        Color.lerp(cs.surface, bottom, a1)!,
+        cs.surface,
+      ],
+      stops: const [0.0, 0.45, 1.0],
+    );
+  }
+
+  static const double _navBarRadius = 20;
+  static const double _navItemRadius = 10;
+
+  static LinearGradient _navBarWhiteGlassGradient(bool isLight) {
+    if (isLight) {
+      return LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Colors.white.withValues(alpha: 0.88),
+          Colors.white.withValues(alpha: 0.78),
+          Colors.white.withValues(alpha: 0.84),
+        ],
+        stops: const [0.0, 0.5, 1.0],
+      );
+    }
+    return LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        Colors.white.withValues(alpha: 0.18),
+        Colors.white.withValues(alpha: 0.14),
+        Colors.white.withValues(alpha: 0.16),
+      ],
+      stops: const [0.0, 0.5, 1.0],
+    );
+  }
+
   int _currentIndex = 0;
   late final PageController _pageController;
   late final AnimationController _welcomeController;
@@ -158,6 +211,7 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isLight = Theme.of(context).brightness == Brightness.light;
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
@@ -200,20 +254,46 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
             left: 16,
             right: 16,
             bottom: MediaQuery.paddingOf(context).bottom + 8,
-            child: Material(
-              color: colorScheme.surface,
-              elevation: 10,
-              shadowColor: Colors.black.withValues(alpha: 0.22),
-              borderRadius: BorderRadius.circular(28),
-              clipBehavior: Clip.antiAlias,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: List.generate(
-                    _navigationItems.length,
-                    (index) => Expanded(
-                      child: _buildNavItem(index),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(_navBarRadius),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: isLight ? 0.12 : 0.28),
+                    blurRadius: 24,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(_navBarRadius),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: _navBarWhiteGlassGradient(isLight),
+                      borderRadius: BorderRadius.circular(_navBarRadius),
+                      border: Border.all(
+                        color: Colors.white.withValues(
+                          alpha: isLight ? 0.65 : 0.28,
+                        ),
+                        width: 1,
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 6,
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: List.generate(
+                          _navigationItems.length,
+                          (index) => Expanded(
+                            child: _buildNavItem(index),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -287,8 +367,17 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
 
   Widget _buildNavItem(int index) {
     final colorScheme = Theme.of(context).colorScheme;
+    final isLight = Theme.of(context).brightness == Brightness.light;
     final item = _navigationItems[index];
     final isActive = _currentIndex == index;
+    final homeAmber = const LinearGradient(
+      colors: [DesignTokens.accentOrange, DesignTokens.accentAmber],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    );
+    final activeGradient =
+        isActive && index == 0 ? homeAmber : item.gradient;
+    final accent = activeGradient.colors.first;
 
     final badge = index == 2 ? ref.watch(unreadMessagesCountProvider) : null;
     final showUnreadDot = badge != null && badge.maybeWhen(data: (c) => c > 0, orElse: () => false);
@@ -304,8 +393,19 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
         margin: const EdgeInsets.symmetric(horizontal: 1),
         decoration: BoxDecoration(
-          gradient: isActive ? item.gradient : null,
-          borderRadius: BorderRadius.circular(14),
+          gradient: isActive
+              ? _surfaceTintGradient(colorScheme, isLight, activeGradient)
+              : null,
+          borderRadius: BorderRadius.circular(_navItemRadius),
+          boxShadow: isActive
+              ? [
+                  BoxShadow(
+                    color: accent.withValues(alpha: isLight ? 0.2 : 0.28),
+                    blurRadius: 12,
+                    spreadRadius: 0,
+                  ),
+                ]
+              : null,
         ),
         child: Stack(
           clipBehavior: Clip.none,
@@ -313,7 +413,11 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
           children: [
             Icon(
               isActive ? item.activeIcon : item.icon,
-              color: isActive ? Colors.white : colorScheme.onSurface.withValues(alpha: 0.6),
+              color: isActive
+                  ? accent
+                  : (isLight
+                      ? const Color(0xFF6B7280)
+                      : colorScheme.onSurface.withValues(alpha: 0.5)),
               size: 24,
             ),
             if (showUnreadDot)
