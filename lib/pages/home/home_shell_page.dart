@@ -1,10 +1,9 @@
-import 'dart:ui' show ImageFilter;
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/design_tokens.dart';
 import '../../providers/profile_role_provider.dart';
 import 'home_page_v3.dart';
+import '../trainer/trainer_home_page.dart';
 import '../discover/discover_page.dart';
 import '../messaging/messaging_page.dart';
 import '../meal_tracker/meal_tracker_page_v2.dart';
@@ -27,56 +26,7 @@ class HomeShellPage extends ConsumerStatefulWidget {
 
 class _HomeShellPageState extends ConsumerState<HomeShellPage>
     with SingleTickerProviderStateMixin {
-  /// Matches metrics / BMI / quick-action tile gradients.
-  static LinearGradient _surfaceTintGradient(
-    ColorScheme cs,
-    bool isLight,
-    LinearGradient accent,
-  ) {
-    final top = accent.colors.first;
-    final bottom =
-        accent.colors.length > 1 ? accent.colors.last : accent.colors.first;
-    final a0 = isLight ? 0.48 : 0.54;
-    final a1 = isLight ? 0.34 : 0.38;
-    return LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [
-        Color.lerp(cs.surface, top, a0)!,
-        Color.lerp(cs.surface, bottom, a1)!,
-        cs.surface,
-      ],
-      stops: const [0.0, 0.45, 1.0],
-    );
-  }
-
   static const double _navBarRadius = 20;
-  static const double _navItemRadius = 10;
-
-  static LinearGradient _navBarWhiteGlassGradient(bool isLight) {
-    if (isLight) {
-      return LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          Colors.white.withValues(alpha: 0.88),
-          Colors.white.withValues(alpha: 0.78),
-          Colors.white.withValues(alpha: 0.84),
-        ],
-        stops: const [0.0, 0.5, 1.0],
-      );
-    }
-    return LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [
-        Colors.white.withValues(alpha: 0.18),
-        Colors.white.withValues(alpha: 0.14),
-        Colors.white.withValues(alpha: 0.16),
-      ],
-      stops: const [0.0, 0.5, 1.0],
-    );
-  }
 
   int _currentIndex = 0;
   late final PageController _pageController;
@@ -214,7 +164,7 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
     final isLight = Theme.of(context).brightness == Brightness.light;
 
     return Scaffold(
-      backgroundColor: colorScheme.surface,
+      backgroundColor: isLight ? Colors.white : colorScheme.surface,
       body: Stack(
         clipBehavior: Clip.none,
         children: [
@@ -230,10 +180,16 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
                 final isNutritionist = user?.isNutritionist ?? false;
 
                 final pages = [
-                  HomePageV3(
-                    onNavigateToMessagesTab: () => _goToTab(2),
-                    onNavigateToMealsTab: () => _goToTab(3),
-                  ),
+                  isTrainer
+                      ? TrainerHomePage(
+                          onNavigateToMessagesTab: () => _goToTab(2),
+                          onNavigateToMealsTab: () => _goToTab(3),
+                          onNavigateToClientsTab: () => _goToTab(1),
+                        )
+                      : HomePageV3(
+                          onNavigateToMessagesTab: () => _goToTab(2),
+                          onNavigateToMealsTab: () => _goToTab(3),
+                        ),
                   isTrainer
                       ? const TrainerMyClientsPage()
                       : isNutritionist
@@ -256,44 +212,23 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
             bottom: MediaQuery.paddingOf(context).bottom + 8,
             child: Container(
               decoration: BoxDecoration(
+                color: isLight ? Colors.white : colorScheme.surface,
                 borderRadius: BorderRadius.circular(_navBarRadius),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: isLight ? 0.12 : 0.28),
-                    blurRadius: 24,
-                    offset: const Offset(0, 8),
+                    color: Colors.black.withValues(alpha: isLight ? 0.08 : 0.22),
+                    blurRadius: 16,
+                    offset: const Offset(0, 4),
                   ),
                 ],
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(_navBarRadius),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: _navBarWhiteGlassGradient(isLight),
-                      borderRadius: BorderRadius.circular(_navBarRadius),
-                      border: Border.all(
-                        color: Colors.white.withValues(
-                          alpha: isLight ? 0.65 : 0.28,
-                        ),
-                        width: 1,
-                      ),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 4,
-                        vertical: 6,
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: List.generate(
-                          _navigationItems.length,
-                          (index) => Expanded(
-                            child: _buildNavItem(index),
-                          ),
-                        ),
-                      ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(6, 14, 6, 12),
+                child: Row(
+                  children: List.generate(
+                    _navigationItems.length,
+                    (index) => Expanded(
+                      child: _buildNavItem(index),
                     ),
                   ),
                 ),
@@ -389,51 +324,53 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
           _pageController.jumpToPage(index);
         }
       },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-        margin: const EdgeInsets.symmetric(horizontal: 1),
-        decoration: BoxDecoration(
-          gradient: isActive
-              ? _surfaceTintGradient(colorScheme, isLight, activeGradient)
-              : null,
-          borderRadius: BorderRadius.circular(_navItemRadius),
-          boxShadow: isActive
-              ? [
-                  BoxShadow(
-                    color: accent.withValues(alpha: isLight ? 0.2 : 0.28),
-                    blurRadius: 12,
-                    spreadRadius: 0,
-                  ),
-                ]
-              : null,
-        ),
-        child: Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.center,
-          children: [
-            Icon(
-              isActive ? item.activeIcon : item.icon,
-              color: isActive
-                  ? accent
-                  : (isLight
-                      ? const Color(0xFF6B7280)
-                      : colorScheme.onSurface.withValues(alpha: 0.5)),
-              size: 24,
-            ),
-            if (showUnreadDot)
-              Positioned(
-                top: -2,
-                right: 4,
-                child: Container(
-                  width: 8,
-                  height: 8,
-                  decoration: const BoxDecoration(
-                    color: Colors.redAccent,
-                    shape: BoxShape.circle,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.center,
+            children: [
+              Icon(
+                isActive ? item.activeIcon : item.icon,
+                color: isActive
+                    ? accent
+                    : (isLight
+                        ? const Color(0xFF6B7280)
+                        : colorScheme.onSurface.withValues(alpha: 0.5)),
+                size: 28,
+              ),
+              if (showUnreadDot)
+                Positioned(
+                  top: -2,
+                  right: -6,
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: Colors.redAccent,
+                      shape: BoxShape.circle,
+                    ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
+          const SizedBox(height: 8),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            height: isActive ? 4 : 0,
+            width: double.infinity,
+            margin: const EdgeInsets.symmetric(horizontal: 4),
+            decoration: BoxDecoration(
+              color: isActive ? accent : null,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        ],
         ),
       ),
     );

@@ -3,9 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../theme/design_tokens.dart';
 import '../../theme/app_colors.dart';
 import '../../providers/profile_images_provider.dart';
+import '../../providers/health_tracking_provider.dart';
+import '../../providers/quest_provider.dart';
 import '../../repositories/profile_repository.dart';
 import '../../repositories/notifications_repository.dart';
 import '../../repositories/metrics_repository.dart';
@@ -13,16 +14,28 @@ import '../../services/leads_service.dart';
 import '../../services/leads_models.dart' show Lead;
 import '../../services/user_goals_service.dart';
 import '../../services/streak_service.dart';
+import '../../services/metrics_sync_service.dart';
 import '../../widgets/home_v3/hero_header_v3.dart';
-import '../../widgets/home_v3/streak_pill_v3.dart';
-import '../../widgets/home_v3/steps_card_v3.dart';
-import '../../widgets/home_v3/macro_row_v3.dart';
+import '../../widgets/home_v3/unified_metrics_tile_v3.dart';
 import '../../widgets/home_v3/bmi_card_v3.dart';
 import '../../widgets/home_v3/quick_access_v3.dart';
+import '../../widgets/home_v3/home_nav_hint_cards.dart';
+import '../../widgets/home_v3/home_premium_theme.dart';
+import '../../widgets/trainer/trainer_overview_section.dart';
+import '../bmi/bmi_details_screen.dart';
 import '../insights/insights_detail_page.dart';
 
 class TrainerHomePage extends ConsumerStatefulWidget {
-  const TrainerHomePage({super.key});
+  final VoidCallback? onNavigateToMessagesTab;
+  final VoidCallback? onNavigateToMealsTab;
+  final VoidCallback? onNavigateToClientsTab;
+
+  const TrainerHomePage({
+    super.key,
+    this.onNavigateToMessagesTab,
+    this.onNavigateToMealsTab,
+    this.onNavigateToClientsTab,
+  });
 
   @override
   ConsumerState<TrainerHomePage> createState() => _TrainerHomePageState();
@@ -38,25 +51,28 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
   int _notificationCount = 0;
   int _streakDays = 0;
   int _totalClients = 0;
-  int _activeClients = 0;
-  int _upcomingSessions = 0;
-  int _todaySessions = 0;
+  int _pendingRequests = 0;
+  List<TrainerClientPreview> _recentClients = [];
 
-  int _currentSteps = 0;
   int _goalSteps = 10000;
-  int _currentCalories = 0;
-  double _currentWater = 0;
+  int _goalCalories = 2000;
   double _goalWater = 2.5;
-  double _currentDistance = 0;
+  double _goalDistance = 5.0;
+  int _currentSteps = 0;
+  double _currentCalories = 0.0;
+  double _currentWater = 0.0;
+  double _currentDistance = 0.0;
   double _bmi = 0;
-  String _bmiStatus = '—';
+  String _bmiStatus = '';
   double? _heightCm;
   double? _weightKg;
+  String? _gender;
+  int? _age;
 
-  List<double> _stepsWeeklyData = [0, 0, 0, 0, 0, 0, 0];
-  List<double> _caloriesWeeklyData = [0, 0, 0, 0, 0, 0, 0];
-  List<double> _waterWeeklyData = [0, 0, 0, 0, 0, 0, 0];
-  List<double> _distanceWeeklyData = [0, 0, 0, 0, 0, 0, 0];
+  final List<double> _stepsWeeklyData = [];
+  final List<double> _caloriesWeeklyData = [];
+  final List<double> _waterWeeklyData = [];
+  final List<double> _distanceWeeklyData = [];
 
   @override
   void initState() {
@@ -65,14 +81,17 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
       vsync: this,
       duration: const Duration(milliseconds: 400),
     );
-    _fadeAnimation = CurvedAnimation(
-      parent: _fadeController,
-      curve: Curves.easeOut,
-    );
+    _fadeAnimation = CurvedAnimation(parent: _fadeController, curve: Curves.easeOut);
     _fadeController.forward();
     _loadNotificationsCount();
-    _loadData();
     _loadStreak();
+    _loadGoals();
+    _loadData();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(healthTrackingServiceProvider).initialize();
+      ref.read(metricsSyncServiceProvider).startSync();
+    });
   }
 
   Future<void> _loadStreak() async {
@@ -82,61 +101,124 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
     } catch (_) {}
   }
 
+  Future<void> _loadGoals() async {
+    final goals = UserGoalsService();
+    final steps = await goals.getStepsGoal();
+    final water = await goals.getWaterGoal();
+    final calories = await goals.getCaloriesGoal();
+    final distance = await goals.getDistanceGoal();
+    if (mounted) {
+      setState(() {
+        _goalSteps = steps;
+        _goalWater = water;
+        _goalCalories = calories;
+        _goalDistance = distance;
+      });
+    }
+  }
+
   Future<void> _loadData() async {
     try {
       final profileRepo = ProfileRepository();
       final metricsRepo = MetricsRepository();
       final leadsService = LeadsService();
-      final goalsService = UserGoalsService();
-
       final profile = await profileRepo.fetchMyProfile();
       final todayMetrics = await metricsRepo.getTodayMetrics();
-      final weeklyMetrics = await metricsRepo.getWeeklyMetrics();
+      final weeklyRows = await metricsRepo.getWeeklyMetrics();
       final leads = await leadsService.getMyLeads();
-      final stepsGoal = await goalsService.getStepsGoal();
-      final waterGoal = await goalsService.getWaterGoal();
 
-      final currentUserId = Supabase.instance.client.auth.currentUser?.id;
-      final myLeads = currentUserId != null
-          ? leads.where((l) => l.providerId == currentUserId && l.providerType == 'trainer').toList()
+      final uid = Supabase.instance.client.auth.currentUser?.id;
+      final myLeads = uid != null
+          ? leads.where((l) => l.providerId == uid && l.providerType == 'trainer').toList()
           : <Lead>[];
-      final accepted = myLeads.where((l) => l.status == 'accepted').length;
+      final accepted = myLeads.where((l) => l.status == 'accepted').toList();
+      final pending = myLeads.where((l) => l.status == 'requested').toList();
 
-      if (mounted) {
-        setState(() {
-          _trainerName = profile?['full_name'] as String? ?? profile?['username'] as String? ?? 'Trainer';
-          _totalClients = accepted;
-          _activeClients = accepted;
-          _currentSteps = (todayMetrics?['steps'] as num?)?.toInt() ?? 0;
-          _goalSteps = stepsGoal;
-          _currentCalories = ((todayMetrics?['calories_burned'] as num?)?.toDouble() ?? 0.0).round();
-          _currentWater = (todayMetrics?['water_intake_liters'] as num?)?.toDouble() ?? 0;
-          _goalWater = waterGoal;
-          _currentDistance = (todayMetrics?['distance_km'] as num?)?.toDouble() ?? 0;
-          _stepsWeeklyData = weeklyMetrics.map((m) => ((m['steps'] as num?) ?? 0).toDouble()).toList();
-          while (_stepsWeeklyData.length < 7) _stepsWeeklyData.insert(0, 0);
-          _stepsWeeklyData = _stepsWeeklyData.take(7).toList();
-          _caloriesWeeklyData = weeklyMetrics.map((m) => ((m['calories_burned'] as num?) ?? 0).toDouble()).toList();
-          while (_caloriesWeeklyData.length < 7) _caloriesWeeklyData.insert(0, 0);
-          _caloriesWeeklyData = _caloriesWeeklyData.take(7).toList();
-          _waterWeeklyData = weeklyMetrics.map((m) => ((m['water_intake_liters'] as num?) ?? 0).toDouble()).toList();
-          while (_waterWeeklyData.length < 7) _waterWeeklyData.insert(0, 0);
-          _waterWeeklyData = _waterWeeklyData.take(7).toList();
-          _distanceWeeklyData = weeklyMetrics.map((m) => ((m['distance_km'] as num?) ?? 0).toDouble()).toList();
-          while (_distanceWeeklyData.length < 7) _distanceWeeklyData.insert(0, 0);
-          _distanceWeeklyData = _distanceWeeklyData.take(7).toList();
-          final bmiVal = profile?['bmi'] as num?;
-          _bmi = bmiVal?.toDouble() ?? 0;
-          _bmiStatus = _bmi > 0 ? (profile?['bmi_status'] as String? ?? '—') : '—';
-          _heightCm = (profile?['height_cm'] as num?)?.toDouble();
-          _weightKg = (profile?['weight_kg'] as num?)?.toDouble();
-          if (_bmi <= 0 && _heightCm != null && _weightKg != null && _heightCm! > 0 && _weightKg! > 0) {
-            _bmi = ProfileRepository.calculateBMI(_heightCm!, _weightKg!);
-            _bmiStatus = ProfileRepository.getBMIStatus(_bmi);
-          }
-        });
+      List<double> series(List<Map<String, dynamic>> rows, String key) {
+        final list = rows.map((m) => ((m[key] as num?) ?? 0).toDouble()).toList();
+        while (list.length < 7) {
+          list.insert(0, 0);
+        }
+        if (list.length > 7) return list.sublist(list.length - 7);
+        return list;
       }
+
+      final previews = <TrainerClientPreview>[
+        ...pending.take(2).map(_leadToPreview),
+        ...accepted.take(3).map(_leadToPreview),
+      ];
+
+      if (!mounted) return;
+      setState(() {
+        _trainerName = profile?['full_name'] as String? ??
+            profile?['username'] as String? ??
+            'Trainer';
+        _totalClients = accepted.length;
+        _pendingRequests = pending.length;
+        _recentClients = previews.take(3).toList();
+        _currentSteps = (todayMetrics?['steps'] as num?)?.toInt() ?? 0;
+        _currentCalories =
+            (todayMetrics?['calories_burned'] as num?)?.toDouble() ?? 0;
+        _currentWater =
+            (todayMetrics?['water_intake_liters'] as num?)?.toDouble() ?? 0;
+        _currentDistance =
+            (todayMetrics?['distance_km'] as num?)?.toDouble() ?? 0;
+        _stepsWeeklyData
+          ..clear()
+          ..addAll(series(weeklyRows, 'steps'));
+        _caloriesWeeklyData
+          ..clear()
+          ..addAll(series(weeklyRows, 'calories_burned'));
+        _waterWeeklyData
+          ..clear()
+          ..addAll(series(weeklyRows, 'water_intake_liters'));
+        _distanceWeeklyData
+          ..clear()
+          ..addAll(series(weeklyRows, 'distance_km'));
+        _bmi = (profile?['bmi'] as num?)?.toDouble() ?? 0;
+        _bmiStatus = _bmi > 0 ? (profile?['bmi_status'] as String? ?? '') : '';
+        _heightCm = (profile?['height_cm'] as num?)?.toDouble();
+        _weightKg = (profile?['weight_kg'] as num?)?.toDouble();
+        _gender = profile?['gender'] as String?;
+        final dob = profile?['date_of_birth'] as String?;
+        if (dob != null && dob.isNotEmpty) {
+          try {
+            final d = DateTime.parse(dob);
+            final now = DateTime.now();
+            var age = now.year - d.year;
+            if (now.month < d.month ||
+                (now.month == d.month && now.day < d.day)) {
+              age--;
+            }
+            _age = age;
+          } catch (_) {}
+        }
+        if (_bmi <= 0 &&
+            _heightCm != null &&
+            _weightKg != null &&
+            _heightCm! > 0 &&
+            _weightKg! > 0) {
+          _bmi = ProfileRepository.calculateBMI(_heightCm!, _weightKg!);
+          _bmiStatus = ProfileRepository.getBMIStatus(_bmi);
+        }
+      });
     } catch (_) {}
+  }
+
+  TrainerClientPreview _leadToPreview(Lead lead) {
+    final client = lead.client;
+    final name = client?['full_name'] as String? ?? 'Client';
+    final username = client?['username'] as String? ?? '';
+    return TrainerClientPreview(
+      id: lead.clientId,
+      name: name.isNotEmpty ? name : username,
+      subtitle: lead.status == 'requested'
+          ? 'Pending request'
+          : (username.isNotEmpty ? '@$username' : 'Active client'),
+      avatarUrl: client?['avatar_url'] as String?,
+      isPending: lead.status == 'requested',
+      leadId: lead.id,
+    );
   }
 
   Future<void> _loadNotificationsCount() async {
@@ -161,22 +243,10 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
   }
 
   Widget _safeSection(BuildContext context, Widget child) {
-    final cs = Theme.of(context).colorScheme;
     try {
       return child;
-    } catch (e) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: DesignTokens.cardShadowOf(context),
-        ),
-        child: Text(
-          'Section failed to render',
-          style: TextStyle(color: cs.onSurfaceVariant),
-        ),
-      );
+    } catch (_) {
+      return const SizedBox.shrink();
     }
   }
 
@@ -190,11 +260,7 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
           opacity: value,
           child: Transform.translate(
             offset: Offset(0, 10 * (1 - value)),
-            child: Transform.scale(
-              scale: 0.99 + 0.01 * value,
-              alignment: Alignment.topCenter,
-              child: child,
-            ),
+            child: child,
           ),
         );
       },
@@ -203,36 +269,37 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
 
   Future<void> _onRefresh() async {
     HapticFeedback.mediumImpact();
+    await ref.read(metricsSyncServiceProvider).syncNow();
     await Future.wait([
       _loadData(),
       _loadNotificationsCount(),
       _loadStreak(),
+      _loadGoals(),
     ]);
+    ref.read(stepsNotifierProvider.notifier).refresh();
+    ref.invalidate(caloriesProvider);
+    ref.invalidate(distanceProvider);
   }
 
   @override
   Widget build(BuildContext context) {
-    final textPrimary = DesignTokens.textPrimaryOf(context);
-    final textSecondary = DesignTokens.textSecondaryOf(context);
-    final surfaceColor = DesignTokens.surfaceOf(context);
-    final borderColor = DesignTokens.borderColorOf(context);
-    final cs = Theme.of(context).colorScheme;
     final isLight = Theme.of(context).brightness == Brightness.light;
+    final bg = isLight ? HomePremiumTheme.lightWarmBg : HomePremiumTheme.darkCharcoal;
+    final currentSteps = ref.watch(stepsNotifierProvider).value ?? _currentSteps;
 
     return Scaffold(
-      backgroundColor: isLight ? Colors.white : cs.background,
+      backgroundColor: bg,
       body: FadeTransition(
         opacity: _fadeAnimation,
         child: RefreshIndicator(
           onRefresh: _onRefresh,
-          color: AppColors.orange,
+          color: const Color(0xFF3ED598),
           child: CustomScrollView(
             controller: _scrollController,
             physics: const AlwaysScrollableScrollPhysics(
               parent: BouncingScrollPhysics(),
             ),
             slivers: [
-              // Hero Header (matches client)
               SliverToBoxAdapter(
                 child: _animated(
                   HeroHeaderV3(
@@ -240,7 +307,7 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
                     notificationCount: _notificationCount,
                     coverImageUrl: ref.watch(profileImagesProvider).coverImagePath,
                     avatarUrl: ref.watch(profileImagesProvider).profileImagePath,
-                    streakDays: 0,
+                    streakDays: _streakDays,
                     onNotificationTap: () async {
                       await context.push('/notifications');
                       if (mounted) _loadNotificationsCount();
@@ -249,121 +316,143 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
                   0,
                 ),
               ),
-              // Streak pill - Transform.translate to overlap header (matches client)
               SliverToBoxAdapter(
-                child: Transform.translate(
-                  offset: const Offset(0, -32),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: _animated(
-                      _safeSection(context, StreakPillV3(streakDays: _streakDays)),
-                      50,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                  child: _animated(
+                    _safeSection(
+                      context,
+                      UnifiedMetricsTileV3(
+                        metrics: [
+                          UnifiedMetricViewModel(
+                            label: 'STEPS',
+                            icon: Icons.directions_walk_outlined,
+                            selectedIcon: Icons.directions_walk,
+                            ringGradient: AppColors.stepsGradient,
+                            barColor: AppColors.orange,
+                            progress: _goalSteps > 0
+                                ? (currentSteps / _goalSteps).clamp(0.0, 1.0)
+                                : 0.0,
+                            mainValue: currentSteps >= 1000
+                                ? '${(currentSteps / 1000).toStringAsFixed(1)}k'
+                                : '$currentSteps',
+                            subValue:
+                                'of ${_goalSteps >= 1000 ? '${(_goalSteps / 1000).toStringAsFixed(1)}k' : '$_goalSteps'} steps',
+                            weekly: List<double>.from(_stepsWeeklyData),
+                          ),
+                          UnifiedMetricViewModel(
+                            label: 'CALORIES',
+                            icon: Icons.local_fire_department_outlined,
+                            selectedIcon: Icons.local_fire_department,
+                            ringGradient: AppColors.caloriesGradient,
+                            barColor: const Color(0xFFFF6B6B),
+                            progress: _goalCalories > 0
+                                ? (_currentCalories / _goalCalories).clamp(0.0, 1.0)
+                                : 0.0,
+                            mainValue: _currentCalories.round().toString(),
+                            subValue: 'kcal · goal $_goalCalories',
+                            weekly: List<double>.from(_caloriesWeeklyData),
+                          ),
+                          UnifiedMetricViewModel(
+                            label: 'WATER',
+                            icon: Icons.water_drop_outlined,
+                            selectedIcon: Icons.water_drop,
+                            ringGradient: AppColors.waterGradient,
+                            barColor: AppColors.cyan,
+                            progress: _goalWater > 0
+                                ? (_currentWater / _goalWater).clamp(0.0, 1.0)
+                                : 0.0,
+                            mainValue: _currentWater.toStringAsFixed(1),
+                            subValue: 'of ${_goalWater.toStringAsFixed(1)} L',
+                            weekly: List<double>.from(_waterWeeklyData),
+                          ),
+                          UnifiedMetricViewModel(
+                            label: 'DISTANCE',
+                            icon: Icons.location_on_outlined,
+                            selectedIcon: Icons.location_on,
+                            ringGradient: AppColors.distanceGradient,
+                            barColor: AppColors.purple,
+                            progress: _goalDistance > 0
+                                ? (_currentDistance / _goalDistance).clamp(0.0, 1.0)
+                                : 0.0,
+                            mainValue: _currentDistance.toStringAsFixed(1),
+                            subValue:
+                                'km · goal ${_goalDistance.toStringAsFixed(1)}',
+                            weekly: List<double>.from(_distanceWeeklyData),
+                          ),
+                        ],
+                        onMetricTap: (i) => _openInsight(context, i),
+                        onAddWater: () async {
+                          const add = 0.25;
+                          final old = _currentWater;
+                          final neu = (_currentWater + add).clamp(0.0, _goalWater);
+                          setState(() => _currentWater = neu);
+                          try {
+                            await MetricsRepository().updateTodayMetrics(
+                              waterIntakeLiters: neu,
+                            );
+                            ref.read(questProgressSyncServiceProvider).onWaterUpdated(neu);
+                          } catch (_) {
+                            if (mounted) setState(() => _currentWater = old);
+                          }
+                        },
+                      ),
                     ),
+                    80,
                   ),
                 ),
               ),
-              const SliverToBoxAdapter(child: SizedBox(height: 8)),
-              // Steps Card
+              const SliverToBoxAdapter(child: SizedBox(height: 12)),
               SliverToBoxAdapter(
-                child: Transform.translate(
-                  offset: const Offset(0, -28),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: _animated(
-                      _safeSection(
-                        context,
-                        StepsCardV3(
-                          steps: _currentSteps,
-                          goal: _goalSteps,
-                          sparkline: _stepsWeeklyData,
-                          heroTag: 'tile_steps_trainer',
-                          onTap: () => context.push(
-                            '/insights/steps',
-                            extra: InsightArgs(
-                              MetricType.steps,
-                              _stepsWeeklyData,
-                              goal: _goalSteps.toDouble(),
-                            ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _animated(
+                    _safeSection(
+                      context,
+                      InkWell(
+                        onTap: () => context.push(
+                          '/bmi',
+                          extra: BmiDetailsArgs(
+                            bmi: _bmi,
+                            bmiStatus: _bmiStatus,
+                            heightCm: _heightCm,
+                            weightKg: _weightKg,
+                            gender: _gender,
+                            age: _age,
                           ),
                         ),
-                      ),
-                      100,
-                    ),
-                  ),
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 8)),
-              // Calories, Water, Distance Row
-              SliverToBoxAdapter(
-                child: Transform.translate(
-                  offset: const Offset(0, -28),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: _animated(
-                      _safeSection(
-                        context,
-                        MacroRowV3(
-                          calories: _currentCalories,
-                          water: _currentWater,
-                          waterGoal: _goalWater,
-                          caloriesSpark: _caloriesWeeklyData,
-                          distanceKm: _currentDistance,
-                          caloriesHeroTag: 'tile_calories_trainer',
-                          waterHeroTag: 'tile_water_trainer',
-                          distanceHeroTag: 'tile_distance_trainer',
-                          onCaloriesTap: () => context.push(
-                            '/insights/calories',
-                            extra: InsightArgs(
-                              MetricType.calories,
-                              _caloriesWeeklyData,
-                            ),
-                          ),
-                          onWaterTap: () => context.push(
-                            '/insights/water',
-                            extra: InsightArgs(
-                              MetricType.water,
-                              _waterWeeklyData,
-                              goal: _goalWater,
-                            ),
-                          ),
-                          onDistanceTap: () => context.push(
-                            '/insights/distance',
-                            extra: InsightArgs(
-                              MetricType.distance,
-                              _distanceWeeklyData,
-                            ),
-                          ),
-                        ),
-                      ),
-                      140,
-                    ),
-                  ),
-                ),
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 8)),
-              // BMI Card
-              SliverToBoxAdapter(
-                child: Transform.translate(
-                  offset: const Offset(0, -26),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: _animated(
-                      _safeSection(
-                        context,
-                        BmiCardV3(
+                        borderRadius: BorderRadius.circular(28),
+                        child: BmiCardV3(
                           bmi: _bmi,
                           status: _bmiStatus,
                           heightCm: _heightCm,
                           weightKg: _weightKg,
                         ),
                       ),
-                      180,
                     ),
+                    140,
                   ),
                 ),
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 8)),
-              // Quick Access
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _animated(
+                    _safeSection(
+                      context,
+                      TrainerOverviewSection(
+                        totalClients: _totalClients,
+                        pendingRequests: _pendingRequests,
+                        recentClients: _recentClients,
+                        onViewAllClients: widget.onNavigateToClientsTab,
+                      ),
+                    ),
+                    180,
+                  ),
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 8)),
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -371,223 +460,55 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
                 ),
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 8)),
-              // Stats Cards
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _buildStatCard(
-                        'Total Clients',
-                        _totalClients.toString(),
-                        Icons.people,
-                        DesignTokens.accentOrange,
-                        surfaceColor,
-                        borderColor,
+                  child: _animated(
+                    _safeSection(
+                      context,
+                      HomeNavHintCards(
+                        onOpenMessagesTab: widget.onNavigateToMessagesTab,
+                        onOpenMealsTab: widget.onNavigateToMealsTab,
                       ),
                     ),
-                    const SizedBox(width: DesignTokens.spacing12),
-                    Expanded(
-                      child: _buildStatCard(
-                        'Active',
-                        _activeClients.toString(),
-                        Icons.check_circle,
-                        DesignTokens.accentGreen,
-                        surfaceColor,
-                        borderColor,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SliverToBoxAdapter(child: SizedBox(height: 8)),
-
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _buildStatCard(
-                        'Upcoming',
-                        _upcomingSessions.toString(),
-                        Icons.calendar_today,
-                        DesignTokens.accentBlue,
-                        surfaceColor,
-                        borderColor,
-                      ),
-                    ),
-                    const SizedBox(width: DesignTokens.spacing12),
-                    Expanded(
-                      child: _buildStatCard(
-                        'Today',
-                        _todaySessions.toString(),
-                        Icons.today,
-                        DesignTokens.accentAmber,
-                        surfaceColor,
-                        borderColor,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SliverToBoxAdapter(child: SizedBox(height: 8)),
-
-            // Recent Activity
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text(
-                  'Recent Activity',
-                  style: TextStyle(
-                    color: textPrimary,
-                    fontSize: DesignTokens.fontSizeH3,
-                    fontWeight: DesignTokens.fontWeightBold,
+                    260,
                   ),
                 ),
               ),
-            ),
-
-            const SliverToBoxAdapter(child: SizedBox(height: 8)),
-
-            // Recent activity list
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Container(
-                  padding: const EdgeInsets.all(DesignTokens.spacing16),
-                  decoration: BoxDecoration(
-                    color: surfaceColor,
-                    borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
-                    border: Border.all(color: borderColor),
-                  ),
-                  child: Column(
-                    children: [
-                      _buildActivityItem(
-                        'New client request from John Doe',
-                        '2 hours ago',
-                        Icons.person_add,
-                        textPrimary,
-                        textSecondary,
-                      ),
-                      const Divider(height: 24),
-                      _buildActivityItem(
-                        'Session completed with Jane Smith',
-                        '5 hours ago',
-                        Icons.check_circle,
-                        textPrimary,
-                        textSecondary,
-                      ),
-                      const Divider(height: 24),
-                      _buildActivityItem(
-                        'Upcoming session in 30 minutes',
-                        'Just now',
-                        Icons.access_time,
-                        DesignTokens.accentOrange,
-                        textSecondary,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-            const SliverToBoxAdapter(child: SizedBox(height: 96)),
-          ],
-        ),
-      ),
-    ),
-  );
-  }
-
-  Widget _buildStatCard(
-    String label,
-    String value,
-    IconData icon,
-    Color color,
-    Color surfaceColor,
-    Color borderColor,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(DesignTokens.spacing16),
-      decoration: BoxDecoration(
-        color: surfaceColor,
-        borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
-        border: Border.all(color: borderColor),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: color, size: 24),
-          const SizedBox(height: DesignTokens.spacing12),
-          Text(
-            value,
-            style: TextStyle(
-              color: DesignTokens.textPrimaryOf(context),
-              fontSize: DesignTokens.fontSizeH1,
-              fontWeight: DesignTokens.fontWeightBold,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              color: DesignTokens.textSecondaryOf(context),
-              fontSize: DesignTokens.fontSizeBodySmall,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActivityItem(
-    String title,
-    String time,
-    IconData icon,
-    Color titleColor,
-    Color timeColor,
-  ) {
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(DesignTokens.spacing8),
-          decoration: BoxDecoration(
-            color: DesignTokens.surfaceOf(context),
-            borderRadius: BorderRadius.circular(DesignTokens.radiusSmall),
-          ),
-          child: Icon(icon, size: 20, color: titleColor),
-        ),
-        const SizedBox(width: DesignTokens.spacing12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: TextStyle(
-                  color: titleColor,
-                  fontSize: DesignTokens.fontSizeBody,
-                  fontWeight: DesignTokens.fontWeightMedium,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                time,
-                style: TextStyle(
-                  color: timeColor,
-                  fontSize: DesignTokens.fontSizeBodySmall,
-                ),
-              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 96)),
             ],
           ),
         ),
-      ],
+      ),
     );
+  }
+
+  void _openInsight(BuildContext context, int i) {
+    switch (i) {
+      case 0:
+        context.push(
+          '/insights/steps',
+          extra: InsightArgs(MetricType.steps, List<double>.from(_stepsWeeklyData),
+              goal: _goalSteps.toDouble()),
+        );
+      case 1:
+        context.push(
+          '/insights/calories',
+          extra: InsightArgs(MetricType.calories, List<double>.from(_caloriesWeeklyData),
+              goal: _goalCalories.toDouble()),
+        );
+      case 2:
+        context.push(
+          '/insights/water',
+          extra: InsightArgs(MetricType.water, List<double>.from(_waterWeeklyData),
+              goal: _goalWater),
+        );
+      case 3:
+        context.push(
+          '/insights/distance',
+          extra: InsightArgs(MetricType.distance, List<double>.from(_distanceWeeklyData),
+              goal: _goalDistance),
+        );
+    }
   }
 }

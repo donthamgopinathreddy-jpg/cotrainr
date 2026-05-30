@@ -4,6 +4,9 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/design_tokens.dart';
+import '../../widgets/home_v3/home_premium_theme.dart';
+import '../../widgets/trainer/trainer_theme.dart';
+import '../../widgets/common/pressable_card.dart';
 import '../../services/leads_service.dart';
 import '../../services/leads_models.dart' show Lead;
 import 'create_client_page.dart';
@@ -121,13 +124,14 @@ class _TrainerMyClientsPageState extends State<TrainerMyClientsPage>
 
   @override
   Widget build(BuildContext context) {
-    final textPrimary = DesignTokens.textPrimaryOf(context);
-    final textSecondary = DesignTokens.textSecondaryOf(context);
-    final surfaceColor = DesignTokens.surfaceOf(context);
-    final borderColor = DesignTokens.borderColorOf(context);
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final textPrimary = HomePremiumTheme.primaryText(isLight);
+    final textSecondary = HomePremiumTheme.secondaryText(isLight);
+    final bg = isLight ? HomePremiumTheme.lightWarmBg : HomePremiumTheme.darkCharcoal;
+    final cardColor = isLight ? HomePremiumTheme.lightCreamCard : HomePremiumTheme.darkCard;
 
     return Scaffold(
-      backgroundColor: DesignTokens.backgroundOf(context),
+      backgroundColor: bg,
       body: SafeArea(
         child: FadeTransition(
           opacity: _fadeAnimation,
@@ -139,58 +143,39 @@ class _TrainerMyClientsPageState extends State<TrainerMyClientsPage>
                 child: Row(
                   children: [
                     ShaderMask(
-                      shaderCallback: (rect) => const LinearGradient(
-                        colors: [Color(0xFF3ED598), Color(0xFF4DA3FF)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ).createShader(rect),
+                      shaderCallback: (rect) =>
+                          TrainerTheme.gradient.createShader(rect),
                       child: const Icon(
-                        Icons.person_add_outlined,
-                        size: 26,
+                        Icons.groups_rounded,
+                        size: 24,
                         color: Colors.white,
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    ShaderMask(
-                      shaderCallback: (rect) => const LinearGradient(
-                        colors: [Color(0xFF3ED598), Color(0xFF4DA3FF)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ).createShader(rect),
-                      child: Text(
-                        'MY CLIENTS',
-                        style: GoogleFonts.montserrat(
-                          fontSize: 30,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.2,
-                          color: Colors.white,
-                        ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'My Clients',
+                      style: GoogleFonts.montserrat(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        color: textPrimary,
+                        letterSpacing: -0.5,
                       ),
                     ),
                     const Spacer(),
-                    GestureDetector(
+                    PressableCard(
+                      borderRadius: 14,
                       onTap: () {
                         HapticFeedback.lightImpact();
                         _showAddClientDialog(context);
                       },
                       child: Container(
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: surfaceColor,
-                          borderRadius: BorderRadius.circular(12),
+                          gradient: TrainerTheme.gradient,
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: HomePremiumTheme.softCardShadow(isLight),
                         ),
-                        child: ShaderMask(
-                          shaderCallback: (rect) => const LinearGradient(
-                            colors: [Color(0xFF3ED598), Color(0xFF4DA3FF)],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ).createShader(rect),
-                          child: const Icon(
-                            Icons.add,
-                            color: Colors.white,
-                            size: 24,
-                          ),
-                        ),
+                        child: const Icon(Icons.add_rounded, color: Colors.white, size: 22),
                       ),
                     ),
                   ],
@@ -204,15 +189,9 @@ class _TrainerMyClientsPageState extends State<TrainerMyClientsPage>
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Container(
                   decoration: BoxDecoration(
-                    color: surfaceColor,
+                    color: cardColor,
                     borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.04),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
+                    boxShadow: HomePremiumTheme.softCardShadow(isLight),
                   ),
                   child: Row(
                     children: [
@@ -248,8 +227,8 @@ class _TrainerMyClientsPageState extends State<TrainerMyClientsPage>
                     : RefreshIndicator(
                         onRefresh: _loadLeads,
                         child: _selectedTabIndex == 0
-                            ? _buildClientsList(_myClients, textPrimary, textSecondary, surfaceColor, borderColor)
-                            : _buildClientsList(_pendingRequests, textPrimary, textSecondary, surfaceColor, borderColor),
+                            ? _buildClientsList(_myClients, textPrimary, textSecondary, cardColor, isLight)
+                            : _buildClientsList(_pendingRequests, textPrimary, textSecondary, cardColor, isLight),
                       ),
               ),
             ],
@@ -274,11 +253,7 @@ class _TrainerMyClientsPageState extends State<TrainerMyClientsPage>
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 14),
         decoration: BoxDecoration(
-          gradient: isSelected ? const LinearGradient(
-            colors: [Color(0xFF3ED598), Color(0xFF4DA3FF)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ) : null,
+          gradient: isSelected ? TrainerTheme.gradient : null,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(
@@ -300,8 +275,8 @@ class _TrainerMyClientsPageState extends State<TrainerMyClientsPage>
     List<ClientItem> clients,
     Color textPrimary,
     Color textSecondary,
-    Color surfaceColor,
-    Color borderColor,
+    Color cardColor,
+    bool isLight,
   ) {
     if (clients.isEmpty) {
       return ListView(
@@ -347,7 +322,7 @@ class _TrainerMyClientsPageState extends State<TrainerMyClientsPage>
       itemCount: clients.length,
       itemBuilder: (context, index) {
         final client = clients[index];
-        return _buildClientCard(context, client, textPrimary, textSecondary, surfaceColor, borderColor);
+        return _buildClientCard(context, client, textPrimary, textSecondary, cardColor, isLight);
       },
     );
   }
@@ -357,21 +332,15 @@ class _TrainerMyClientsPageState extends State<TrainerMyClientsPage>
     ClientItem client,
     Color textPrimary,
     Color textSecondary,
-    Color surfaceColor,
-    Color borderColor,
+    Color cardColor,
+    bool isLight,
   ) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: surfaceColor,
+        color: isLight ? Colors.white : cardColor,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        boxShadow: HomePremiumTheme.softCardShadow(isLight),
       ),
       child: Material(
         color: Colors.transparent,
@@ -390,8 +359,8 @@ class _TrainerMyClientsPageState extends State<TrainerMyClientsPage>
               );
             }
           },
-          splashColor: DesignTokens.accentOrange.withOpacity(0.1),
-          highlightColor: DesignTokens.accentOrange.withOpacity(0.05),
+          splashColor: TrainerTheme.accent.withValues(alpha: 0.12),
+          highlightColor: TrainerTheme.accent.withValues(alpha: 0.06),
           child: Padding(
             padding: const EdgeInsets.all(20),
             child: Row(
@@ -432,7 +401,7 @@ class _TrainerMyClientsPageState extends State<TrainerMyClientsPage>
                             color: DesignTokens.accentGreen,
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: surfaceColor,
+                              color: cardColor,
                               width: 2,
                             ),
                           ),
@@ -585,11 +554,7 @@ class _TrainerMyClientsPageState extends State<TrainerMyClientsPage>
                               vertical: 6,
                             ),
                             decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFF3ED598), Color(0xFF4DA3FF)],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
+                              gradient: TrainerTheme.gradient,
                               borderRadius: BorderRadius.circular(8),
                               boxShadow: [
                                 BoxShadow(

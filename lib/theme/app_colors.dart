@@ -66,9 +66,12 @@ class AppColors {
     end: Alignment.bottomRight,
   );
 
-  /// Become a Trainer tile, page, and profile button (orange → pink)
+  /// Become a Trainer tile, page, and profile button (blue → sky)
+  static const Color becomeTrainerAccent = Color(0xFF4DA8D4);
+  static const Color becomeTrainerAccentSoft = Color(0xFF7DD3FC);
+
   static const LinearGradient becomeTrainerGradient = LinearGradient(
-    colors: [orange, pink],
+    colors: [becomeTrainerAccent, becomeTrainerAccentSoft],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );

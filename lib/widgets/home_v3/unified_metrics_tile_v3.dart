@@ -52,6 +52,26 @@ class UnifiedMetricsTileV3 extends StatefulWidget {
 class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
   static const int _kLoopLength = 40000;
   static const int _kInitialPage = 20000;
+  static const double _chartBarInset = 4.0;
+  static const int _chartDayCount = 7;
+  static const double _defaultBarWidth = 6.0;
+  static const double _todayBarWidth = 7.0;
+  /// Nudges ring left from Sunday bar center in the metrics row.
+  static const double _ringShiftLeft = 36.0;
+
+  static double _chartBarWidth(int dayIndex, int todayIndex) =>
+      dayIndex == todayIndex ? _todayBarWidth : _defaultBarWidth;
+
+  /// Horizontal center of a day column bar (matches [_WeeklyBarChart] layout).
+  static double _chartBarCenterX(double chartWidth, int dayIndex, int todayIndex) {
+    final cell = chartWidth / _chartDayCount;
+    final inner = cell - 2 * _chartBarInset;
+    return dayIndex * cell + _chartBarInset + inner / 2;
+  }
+
+  static double _chartBarLeftX(double chartWidth, int dayIndex, int todayIndex) =>
+      _chartBarCenterX(chartWidth, dayIndex, todayIndex) -
+      _chartBarWidth(dayIndex, todayIndex) / 2;
 
   late final PageController _pageController;
 
@@ -60,7 +80,7 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
     super.initState();
     assert(_kInitialPage % 4 == 0);
     _pageController = PageController(
-      viewportFraction: 0.78,
+      viewportFraction: 1.0,
       initialPage: _kInitialPage,
       keepPage: true,
     );
@@ -157,8 +177,8 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
             borderRadius: BorderRadius.circular(28),
             child: BackdropFilter(
               filter: ImageFilter.blur(
-                sigmaX: isLight ? 6 : 14,
-                sigmaY: isLight ? 6 : 14,
+                sigmaX: isLight ? 2 : 14,
+                sigmaY: isLight ? 2 : 14,
               ),
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -166,82 +186,44 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
                   borderRadius: BorderRadius.circular(28),
                 ),
                 child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(
-                    'This week',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.4,
-                      color: HomePremiumTheme.secondaryText(isLight),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(12),
-                      onTap: () {
-                        HapticFeedback.lightImpact();
-                        widget.onMetricTap(_focusMetricIndex(_page));
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    m.label,
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w800,
-                                      height: 1.1,
-                                      letterSpacing: -0.35,
-                                      color: HomePremiumTheme.primaryText(isLight),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    '${m.mainValue} ${m.subValue}',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                      color: HomePremiumTheme.secondaryText(isLight),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Icon(
-                              Icons.chevron_right_rounded,
-                              color: cs.onSurfaceVariant,
-                              size: 24,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
                   LayoutBuilder(
-                    builder: (context, c) {
-                      final h = (c.maxWidth * 0.32).clamp(90.0, 108.0);
+                    builder: (context, constraints) {
+                      final chartW = constraints.maxWidth;
+                      final today = _todayWeekIndex();
+                      final mondayLeft = _chartBarLeftX(chartW, 0, today);
+                      return Padding(
+                        padding: EdgeInsets.only(left: mondayLeft),
+                        child: Text(
+                          'This week',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.4,
+                            color: HomePremiumTheme.secondaryText(isLight),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final chartW = constraints.maxWidth;
+                      final today = _todayWeekIndex();
+                      final mondayLeft = _chartBarLeftX(chartW, 0, today);
+                      final sundayCenter = _chartBarCenterX(chartW, 6, today);
+
                       return SizedBox(
-                        height: h,
+                        height: 96,
                         child: PageView.builder(
                           controller: _pageController,
                           itemCount: _kLoopLength,
-                          padEnds: true,
+                          padEnds: false,
                           clipBehavior: Clip.hardEdge,
                           physics: const BouncingScrollPhysics(),
                           onPageChanged: _realignLoopIfNeeded,
@@ -250,54 +232,111 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
                             final item = widget.metrics[logical];
                             final dist = (page - index).abs();
                             final t = _focusT(dist);
-                            final scale = lerpDouble(0.78, 1.0, t)!;
-                            final opacity = lerpDouble(0.32, 1.0, t)!;
+                            final opacity = lerpDouble(0.45, 1.0, t)!;
                             final isSelected = dist < 0.48;
                             final displayIcon = isSelected
                                 ? (item.selectedIcon ?? item.icon)
                                 : item.icon;
-                            final blur = ((1.0 - t) * 3.2).clamp(0.0, 4.0);
-                            final slideY = (1.0 - t) * 10.0;
+                            final ringSize = isSelected ? 92.0 : 72.0;
 
-                            Widget core = GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: () {
-                                HapticFeedback.lightImpact();
-                                _animateToLogicalMetric(logical);
-                              },
-                              child: Center(
-                                child: Transform.translate(
-                                  offset: Offset(0, slideY),
-                                  child: Transform.scale(
-                                    scale: scale,
-                                    alignment: Alignment.center,
-                                    child: Opacity(
-                                      opacity: opacity,
-                                      child: MetricCenterWidget(
-                                        metricIndex: logical,
-                                        icon: displayIcon,
-                                        progress:
-                                            item.progress.clamp(0.0, 1.0),
-                                        label: item.label,
-                                        mainValue: item.mainValue,
-                                        subValue: item.subValue,
-                                        selected: isSelected,
+                            return Opacity(
+                              opacity: opacity,
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(12),
+                                  onTap: () {
+                                    HapticFeedback.lightImpact();
+                                    if (isSelected) {
+                                      widget.onMetricTap(logical);
+                                    } else {
+                                      _animateToLogicalMetric(logical);
+                                    }
+                                  },
+                                  child: Stack(
+                                    clipBehavior: Clip.none,
+                                    children: [
+                                      Positioned(
+                                        left: mondayLeft,
+                                        right: chartW -
+                                            sundayCenter +
+                                            ringSize / 2 -
+                                            _ringShiftLeft +
+                                            8,
+                                        top: 4,
+                                        bottom: 4,
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            Text(
+                                              item.label,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize:
+                                                    isSelected ? 13 : 12,
+                                                fontWeight: FontWeight.w700,
+                                                letterSpacing: 0.6,
+                                                color: HomePremiumTheme
+                                                    .secondaryText(isLight),
+                                              ),
+                                            ),
+                                            SizedBox(
+                                                height: isSelected ? 4 : 3),
+                                            Text(
+                                              item.mainValue,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize:
+                                                    isSelected ? 26 : 22,
+                                                fontWeight: FontWeight.w800,
+                                                height: 1.0,
+                                                letterSpacing: -0.5,
+                                                color: HomePremiumTheme
+                                                    .primaryText(isLight),
+                                              ),
+                                            ),
+                                            SizedBox(
+                                                height: isSelected ? 3 : 2),
+                                            Text(
+                                              item.subValue,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize:
+                                                    isSelected ? 12 : 11,
+                                                fontWeight: FontWeight.w600,
+                                                color: HomePremiumTheme
+                                                    .secondaryText(isLight),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
-                                    ),
+                                      Positioned(
+                                        left: sundayCenter -
+                                            ringSize / 2 -
+                                            _ringShiftLeft,
+                                        top: (96 - ringSize) / 2,
+                                        width: ringSize,
+                                        height: ringSize,
+                                        child: MetricCenterWidget(
+                                          metricIndex: logical,
+                                          icon: displayIcon,
+                                          progress:
+                                              item.progress.clamp(0.0, 1.0),
+                                          selected: isSelected,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
                             );
-                            if (blur > 0.5) {
-                              core = ImageFiltered(
-                                imageFilter: ImageFilter.blur(
-                                  sigmaX: blur,
-                                  sigmaY: blur,
-                                ),
-                                child: core,
-                              );
-                            }
-                            return core;
                           },
                         ),
                       );
@@ -472,7 +511,9 @@ class _WeeklyBarChartState extends State<_WeeklyBarChart>
                   final isToday = i == widget.highlightDayIndex;
                   return Expanded(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: _UnifiedMetricsTileV3State._chartBarInset,
+                      ),
                       child: Align(
                         alignment: Alignment.bottomCenter,
                         child: Stack(

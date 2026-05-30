@@ -17,6 +17,7 @@ import '../../pages/trainer/become_trainer_page.dart';
 import '../../pages/trainer/trainer_dashboard_page.dart';
 import '../../pages/trainer/create_client_page.dart';
 import '../../pages/trainer/client_detail_page.dart';
+import '../../pages/trainer/trainer_coach_notes_page.dart';
 import '../../pages/trainer/verification_submission_page.dart';
 import '../../pages/nutritionist/nutritionist_dashboard_page.dart';
 import '../../pages/nutritionist/nutritionist_client_detail_page.dart';
@@ -26,6 +27,7 @@ import '../../pages/video_sessions/session_detail_page.dart';
 import '../../pages/meal_tracker/meal_tracker_page_v2.dart';
 import '../../pages/coach_notes/coach_notes_page.dart';
 import '../../pages/ai_planner/ai_planner_page.dart';
+import '../../pages/nutrition_goal_planner/nutrition_goal_planner_page.dart';
 import '../../pages/quest/quest_page.dart';
 import '../../pages/bmi/bmi_details_screen.dart';
 
@@ -55,7 +57,7 @@ final GoRouter appRouter = GoRouter(
         if (user != null && user.userMetadata != null) {
           final role = user.userMetadata?['role']?.toString().toLowerCase();
           if (role == 'trainer') {
-            return '/trainer/dashboard';
+            return '/home';
           } else if (role == 'nutritionist') {
             return '/nutritionist/dashboard';
           }
@@ -196,6 +198,14 @@ final GoRouter appRouter = GoRouter(
       ),
     ),
     GoRoute(
+      path: '/nutrition-goals',
+      name: 'nutritionGoals',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const NutritionGoalPlannerPage(),
+        state: state,
+      ),
+    ),
+    GoRoute(
       path: '/insights/steps',
       name: 'insightsSteps',
       pageBuilder: (context, state) => _fadeSlidePage(
@@ -254,6 +264,14 @@ final GoRouter appRouter = GoRouter(
       name: 'trainerDashboard',
       pageBuilder: (context, state) => _fadeSlidePage(
         child: const TrainerDashboardPage(),
+        state: state,
+      ),
+    ),
+    GoRoute(
+      path: '/trainer/notes',
+      name: 'trainerCoachNotes',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const TrainerCoachNotesPage(),
         state: state,
       ),
     ),

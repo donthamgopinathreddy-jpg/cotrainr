@@ -65,6 +65,7 @@ class NutritionGoals {
   final int goalCarbs;
   final int goalFats;
   final int goalFiber;
+  final int? goalWaterMl;
 
   const NutritionGoals({
     this.goalCalories = 2000,
@@ -72,6 +73,7 @@ class NutritionGoals {
     this.goalCarbs = 200,
     this.goalFats = 65,
     this.goalFiber = 30,
+    this.goalWaterMl,
   });
 }
 
@@ -301,7 +303,9 @@ class MealRepository {
     try {
       final res = await _supabase
           .from('nutrition_goals')
-          .select('goal_calories, goal_protein, goal_carbs, goal_fats, goal_fiber')
+          .select(
+            'goal_calories, goal_protein, goal_carbs, goal_fats, goal_fiber, goal_water_ml',
+          )
           .eq('user_id', _currentUserId!)
           .maybeSingle();
 
@@ -312,6 +316,7 @@ class MealRepository {
           goalCarbs: (res['goal_carbs'] as num?)?.toInt() ?? 200,
           goalFats: (res['goal_fats'] as num?)?.toInt() ?? 65,
           goalFiber: (res['goal_fiber'] as num?)?.toInt() ?? 30,
+          goalWaterMl: (res['goal_water_ml'] as num?)?.toInt(),
         );
       }
       // Insert defaults row when missing

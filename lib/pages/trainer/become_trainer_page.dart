@@ -189,7 +189,7 @@ class _BecomeTrainerPageState extends State<BecomeTrainerPage> {
               child: Text(
                 'OK',
                 style: TextStyle(
-                  color: AppColors.orange,
+                  color: AppColors.becomeTrainerAccent,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -384,7 +384,7 @@ class _BecomeTrainerPageState extends State<BecomeTrainerPage> {
                             ? null
                             : AppColors.becomeTrainerGradient,
                         color: _isSubmitting
-                            ? AppColors.orange.withOpacity(0.5)
+                            ? AppColors.becomeTrainerAccent.withOpacity(0.5)
                             : null,
                         borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
                       ),
@@ -443,7 +443,7 @@ class _BecomeTrainerPageState extends State<BecomeTrainerPage> {
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
-        prefixIcon: Icon(icon, color: AppColors.orange),
+        prefixIcon: Icon(icon, color: AppColors.becomeTrainerAccent),
         filled: true,
         fillColor: colorScheme.surface,
         border: OutlineInputBorder(
@@ -494,7 +494,7 @@ class _BecomeTrainerPageState extends State<BecomeTrainerPage> {
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
-        prefixIcon: Icon(icon, color: AppColors.orange),
+        prefixIcon: Icon(icon, color: AppColors.becomeTrainerAccent),
         filled: true,
         fillColor: colorScheme.surface,
         border: OutlineInputBorder(
@@ -521,7 +521,7 @@ class _BecomeTrainerPageState extends State<BecomeTrainerPage> {
         fontSize: 16,
       ),
       dropdownColor: colorScheme.surface,
-      icon: const Icon(Icons.arrow_drop_down, color: AppColors.orange),
+      icon: const Icon(Icons.arrow_drop_down, color: AppColors.becomeTrainerAccent),
     );
   }
 
@@ -592,12 +592,12 @@ class _BecomeTrainerPageState extends State<BecomeTrainerPage> {
                         Container(
                           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: AppColors.orange.withOpacity(0.1),
+            color: AppColors.becomeTrainerAccent.withOpacity(0.1),
             shape: BoxShape.circle,
           ),
           child: Icon(
             icon,
-            color: AppColors.orange,
+            color: AppColors.becomeTrainerAccent,
                             size: 32,
                           ),
                         ),

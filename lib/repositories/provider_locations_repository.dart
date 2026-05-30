@@ -13,9 +13,54 @@ class ProviderLocationsRepository {
   /// Get current user ID
   String? get _currentUserId => _supabase.auth.currentUser?.id;
 
-  /// Build WKT for PostGIS geography (SRID 4326 = WGS84)
-  static String _toPointWkt(double lat, double lng) =>
-      'SRID=4326;POINT($lng $lat)';
+  /// GeoJSON point for PostGIS geography (lng, lat per RFC 7946).
+  static Map<String, dynamic> _toGeoJsonPoint(double lat, double lng) => {
+        'type': 'Point',
+        'coordinates': [lng, lat],
+      };
+
+  /// Ensures a `providers` row exists. Location inserts FK to providers(user_id).
+  Future<void> _ensureProviderRecord() async {
+    final userId = _currentUserId;
+    if (userId == null) {
+      throw Exception('User not authenticated');
+    }
+
+    final existing = await _supabase
+        .from('providers')
+        .select('user_id')
+        .eq('user_id', userId)
+        .maybeSingle();
+    if (existing != null) return;
+
+    String? role;
+    try {
+      final profile = await _supabase.rpc('get_my_profile');
+      final list = (profile as List).cast<Map<String, dynamic>>();
+      if (list.isNotEmpty) {
+        role = list.first['role']?.toString().toLowerCase();
+      }
+    } catch (_) {}
+
+    final providerType = switch (role) {
+      'nutritionist' => 'nutritionist',
+      'trainer' => 'trainer',
+      _ => throw Exception(
+          'Only trainers and nutritionists can save service locations. '
+          'Complete trainer signup or verification first.',
+        ),
+    };
+
+    try {
+      await _supabase.from('providers').insert({
+        'user_id': userId,
+        'provider_type': providerType,
+      });
+    } on PostgrestException catch (e) {
+      if (e.code == '23505') return;
+      rethrow;
+    }
+  }
 
   /// Fetch all locations for the current provider
   Future<List<ProviderLocation>> fetchMyLocations() async {
@@ -46,18 +91,31 @@ class ProviderLocationsRepository {
       throw Exception('User not authenticated');
     }
 
+    await _ensureProviderRecord();
+
     // Ensure provider_id matches current user
     final locationWithProvider = location.copyWith(providerId: _currentUserId!);
 
     try {
       final json = locationWithProvider.toJson();
 
-      // Override geo with explicit SRID=4326 WKT for reliable PostGIS storage
-      json['geo'] = _toPointWkt(location.latitude, location.longitude);
+      json['geo'] = _toGeoJsonPoint(
+        location.latitude,
+        location.longitude,
+      );
 
       // Remove id for insert, keep for update
-      if (location.id.isEmpty) {
+      final isInsert = location.id.isEmpty;
+      if (isInsert) {
         json.remove('id');
+        final existing = await _supabase
+            .from('provider_locations')
+            .select('id')
+            .eq('provider_id', _currentUserId!)
+            .limit(1);
+        if ((existing as List).isEmpty) {
+          json['is_primary'] = true;
+        }
       }
 
       // Ensure home locations have is_public_exact=false
@@ -65,7 +123,7 @@ class ProviderLocationsRepository {
         json['is_public_exact'] = false;
       }
 
-      final response = location.id.isEmpty
+      final response = isInsert
           ? await _supabase
               .from('provider_locations')
               .insert(json)
@@ -80,7 +138,10 @@ class ProviderLocationsRepository {
               .single();
 
       return ProviderLocation.fromJson(response);
+    } on PostgrestException catch (e) {
+      throw Exception('Failed to save location: ${e.message}');
     } catch (e) {
+      if (e is Exception) rethrow;
       throw Exception('Failed to save location: $e');
     }
   }

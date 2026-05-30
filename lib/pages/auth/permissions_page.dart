@@ -235,7 +235,7 @@ class _PermissionsPageState extends State<PermissionsPage> {
       // Navigate to appropriate dashboard based on role
       switch (widget.userRole.toLowerCase()) {
         case 'trainer':
-          context.go('/trainer/dashboard');
+          context.go('/home');
           break;
         case 'nutritionist':
           context.go('/nutritionist/dashboard');

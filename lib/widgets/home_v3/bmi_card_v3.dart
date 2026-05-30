@@ -1,7 +1,38 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
-import '../../theme/design_tokens.dart';
 import 'home_premium_theme.dart';
+
+/// BMI meter scale — shared by tile tint, value, status, and indicator.
+abstract final class BmiMeterColors {
+  static const scale = LinearGradient(
+    colors: [
+      Color(0xFF3FA9F5), // Underweight
+      Color(0xFF22C55E), // Normal
+      Color(0xFFFACC15), // Overweight
+      Color(0xFFFF5A5A), // Obese
+    ],
+    stops: [0.0, 0.25, 0.5, 0.75],
+  );
+
+  static const stops = [0.0, 0.25, 0.5, 0.75];
+
+  static Color fromProgress(double progress) {
+    const colors = [
+      Color(0xFF3FA9F5),
+      Color(0xFF22C55E),
+      Color(0xFFFACC15),
+      Color(0xFFFF5A5A),
+    ];
+    final clamped = progress.clamp(0.0, 1.0);
+    for (var i = 0; i < stops.length - 1; i++) {
+      if (clamped <= stops[i + 1]) {
+        final t = (clamped - stops[i]) / (stops[i + 1] - stops[i]);
+        return Color.lerp(colors[i], colors[i + 1], t.clamp(0.0, 1.0))!;
+      }
+    }
+    return colors.last;
+  }
+}
 
 class BmiCardV3 extends StatelessWidget {
   final double bmi;
@@ -21,12 +52,14 @@ class BmiCardV3 extends StatelessWidget {
   Widget build(BuildContext context) {
     final isLight = Theme.of(context).brightness == Brightness.light;
     final progress = bmi > 0 ? _calculateProgressFromBmi(bmi) : 0.0;
-    final statusInfo = _getStatusInfo(status);
-    final warmAccent = isLight
-        ? const Color(0xFFE8A060)
-        : DesignTokens.accentOrange;
+    final meterColor = bmi > 0
+        ? BmiMeterColors.fromProgress(progress)
+        : (isLight ? const Color(0xFF9CA3AF) : const Color(0xFF6B7280));
+    final statusInfo = _getStatusInfo(status, meterColor);
 
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOutCubic,
       clipBehavior: Clip.hardEdge,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(28),
@@ -34,7 +67,7 @@ class BmiCardV3 extends StatelessWidget {
       ),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          gradient: HomePremiumTheme.bmiTileGradient(isLight, warmAccent),
+          gradient: HomePremiumTheme.bmiTileGradient(isLight, meterColor),
           borderRadius: BorderRadius.circular(28),
         ),
         child: Padding(
@@ -92,7 +125,7 @@ class BmiCardV3 extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 36,
                         fontWeight: FontWeight.w900,
-                        color: bmi > 0 ? _getColorFromProgress(progress) : AppColors.textPrimaryOf(context),
+                        color: bmi > 0 ? meterColor : AppColors.textPrimaryOf(context),
                         height: 1.0,
                       ),
                     ),
@@ -202,57 +235,19 @@ class BmiCardV3 extends StatelessWidget {
     }
   }
 
-  Color _getColorFromProgress(double progress) {
-    // Map progress (0.0 to 1.0) to gradient colors matching the scale
-    const colors = [
-      Color(0xFF3FA9F5), // Blue - Underweight (0.0)
-      Color(0xFF22C55E), // Green - Normal (0.25)
-      Color(0xFFFACC15), // Yellow - Overweight (0.5)
-      Color(0xFFFF5A5A), // Red - Obese (0.75)
-    ];
-    const stops = [0.0, 0.25, 0.5, 0.75];
-    
-    // Clamp progress to valid range
-    final clampedProgress = progress.clamp(0.0, 1.0);
-    
-    // Find the two colors to interpolate between
-    for (int i = 0; i < stops.length - 1; i++) {
-      if (clampedProgress <= stops[i + 1]) {
-        final t = (clampedProgress - stops[i]) / (stops[i + 1] - stops[i]);
-        return Color.lerp(colors[i], colors[i + 1], t.clamp(0.0, 1.0))!;
-      }
-    }
-    // If progress > 0.75, use red (obese)
-    return colors.last;
-  }
-
-  _StatusInfo _getStatusInfo(String status) {
+  _StatusInfo _getStatusInfo(String status, Color meterColor) {
     switch (status.toLowerCase()) {
       case 'underweight':
-        return _StatusInfo(
-          color: const Color(0xFF3FA9F5),
-          label: 'Underweight',
-        );
+        return _StatusInfo(color: meterColor, label: 'Underweight');
       case 'normal':
-        return _StatusInfo(
-          color: const Color(0xFF22C55E),
-          label: 'Normal',
-        );
+      case 'healthy':
+        return _StatusInfo(color: meterColor, label: 'Normal');
       case 'overweight':
-        return _StatusInfo(
-          color: const Color(0xFFFF8A00),
-          label: 'Overweight',
-        );
+        return _StatusInfo(color: meterColor, label: 'Overweight');
       case 'obese':
-        return _StatusInfo(
-          color: const Color(0xFFFF5A5A),
-          label: 'Obese',
-        );
+        return _StatusInfo(color: meterColor, label: 'Obese');
       default:
-        return _StatusInfo(
-          color: Colors.grey,
-          label: 'Unknown',
-        );
+        return _StatusInfo(color: meterColor, label: 'Unknown');
     }
   }
 }
@@ -279,17 +274,27 @@ class _MetricPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final isLight = Theme.of(context).brightness == Brightness.light;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: cs.surface.withValues(alpha: isLight ? 0.72 : 0.45),
+        color: isLight ? Colors.white : Colors.white.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: cs.onSurface.withValues(alpha: isLight ? 0.06 : 0.08),
+          color: isLight
+              ? HomePremiumTheme.lightCharcoalText.withValues(alpha: 0.08)
+              : Colors.white.withValues(alpha: 0.12),
         ),
+        boxShadow: isLight
+            ? [
+                BoxShadow(
+                  color: HomePremiumTheme.lightCharcoalText.withValues(alpha: 0.06),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+            : null,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -369,15 +374,7 @@ class _GradientScaleBar extends StatelessWidget {
                   height: scaleHeight,
                   width: double.infinity,
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [
-                        Color(0xFF3FA9F5), // Blue
-                        Color(0xFF22C55E), // Green
-                        Color(0xFFFACC15), // Yellow
-                        Color(0xFFFF5A5A), // Red
-                      ],
-                      stops: [0.0, 0.25, 0.5, 0.75],
-                    ),
+                    gradient: BmiMeterColors.scale,
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
@@ -390,7 +387,7 @@ class _GradientScaleBar extends StatelessWidget {
                     width: indicatorSize,
                     height: indicatorSize,
                     decoration: BoxDecoration(
-                      color: _getColorFromProgress(progress),
+                      color: BmiMeterColors.fromProgress(progress),
                       shape: BoxShape.circle,
                       border: Border.all(
                         color: Colors.white,
@@ -451,27 +448,4 @@ class _GradientScaleBar extends StatelessWidget {
     );
   }
 
-  Color _getColorFromProgress(double progress) {
-    // Map progress (0.0 to 1.0) to gradient colors matching the scale
-    const colors = [
-      Color(0xFF3FA9F5), // Blue - Underweight (0.0)
-      Color(0xFF22C55E), // Green - Normal (0.25)
-      Color(0xFFFACC15), // Yellow - Overweight (0.5)
-      Color(0xFFFF5A5A), // Red - Obese (0.75)
-    ];
-    const stops = [0.0, 0.25, 0.5, 0.75];
-    
-    // Clamp progress to valid range
-    final clampedProgress = progress.clamp(0.0, 1.0);
-    
-    // Find the two colors to interpolate between
-    for (int i = 0; i < stops.length - 1; i++) {
-      if (clampedProgress <= stops[i + 1]) {
-        final t = (clampedProgress - stops[i]) / (stops[i + 1] - stops[i]);
-        return Color.lerp(colors[i], colors[i + 1], t.clamp(0.0, 1.0))!;
-      }
-    }
-    // If progress > 0.75, use red (obese)
-    return colors.last;
-  }
 }

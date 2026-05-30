@@ -80,9 +80,35 @@ class HomePremiumTheme {
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: [
-          Color.lerp(lightCreamCard, top, 0.28)!,
-          Color.lerp(lightCreamCard, bot, 0.16)!,
-          lightCreamCard,
+          Color.lerp(lightCreamCard, top, 0.56)!,
+          Color.lerp(lightCreamCard, bot, 0.42)!,
+          Color.lerp(lightCreamCard, bot, 0.22)!,
+        ],
+        stops: const [0.0, 0.40, 1.0],
+      );
+    }
+    return LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        Color.lerp(darkCard, top, 0.36)!,
+        Color.lerp(darkCard, bot, 0.24)!,
+        Color.lerp(darkCard, bot, 0.10)!,
+      ],
+      stops: const [0.0, 0.45, 1.0],
+    );
+  }
+
+  /// Tile tint from [accent] — use BMI meter color for the current category.
+  static LinearGradient bmiTileGradient(bool isLight, Color accent) {
+    if (isLight) {
+      return LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Color.lerp(lightCreamCard, accent, 0.50)!,
+          Color.lerp(lightCreamCard, accent, 0.36)!,
+          Color.lerp(lightCreamCard, accent, 0.18)!,
         ],
         stops: const [0.0, 0.42, 1.0],
       );
@@ -91,35 +117,9 @@ class HomePremiumTheme {
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
       colors: [
-        Color.lerp(darkCard, top, 0.22)!,
-        Color.lerp(darkCard, bot, 0.14)!,
-        darkCard.withValues(alpha: 0.92),
-      ],
-      stops: const [0.0, 0.45, 1.0],
-    );
-  }
-
-  static LinearGradient bmiTileGradient(bool isLight, Color accent) {
-    final warm = isLight ? const Color(0xFFE8A060) : DesignTokens.accentOrange;
-    if (isLight) {
-      return LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          Color.lerp(lightCreamCard, warm, 0.22)!,
-          Color.lerp(lightCreamCard, accent, 0.12)!,
-          lightCreamCard,
-        ],
-        stops: const [0.0, 0.45, 1.0],
-      );
-    }
-    return LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [
-        Color.lerp(darkCard, warm, 0.18)!,
-        Color.lerp(darkCard, accent, 0.10)!,
-        darkCard,
+        Color.lerp(darkCard, accent, 0.38)!,
+        Color.lerp(darkCard, accent, 0.24)!,
+        Color.lerp(darkCard, accent, 0.12)!,
       ],
       stops: const [0.0, 0.45, 1.0],
     );

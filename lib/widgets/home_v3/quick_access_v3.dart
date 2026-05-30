@@ -9,7 +9,7 @@ import '../../theme/design_tokens.dart';
 import 'home_premium_theme.dart';
 import '../common/pressable_card.dart';
 
-/// Quick actions — horizontal stacked carousel (swipe to cycle cards).
+/// Quick actions — infinite loop carousel with circular swipe.
 class QuickAccessV3 extends ConsumerStatefulWidget {
   const QuickAccessV3({super.key});
 
@@ -18,18 +18,20 @@ class QuickAccessV3 extends ConsumerStatefulWidget {
 }
 
 class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
-  static const int _visibleLayers = 3;
-  static const double _cardHeight = 92.0;
-  static const double _layerShiftX = 14.0;
-  static const double _layerScaleStep = 0.045;
+  static const int _kLoopLength = 40000;
+  static const int _kInitialPage = 20000;
+  static const double _cardHeight = 72.0;
 
   late final PageController _pageController;
-  int _activeIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    _pageController = PageController(viewportFraction: 0.88);
+    _pageController = PageController(
+      viewportFraction: 0.88,
+      initialPage: _kInitialPage,
+      keepPage: true,
+    );
   }
 
   @override
@@ -38,62 +40,112 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
     super.dispose();
   }
 
-  static LinearGradient _surfaceTint(
+  int get _logicalIndex {
+    if (!_pageController.hasClients) {
+      return 0;
+    }
+    final p = (_pageController.page ?? _kInitialPage.toDouble()).round();
+    final items = _itemsForRole(_role);
+    if (items.isEmpty) return 0;
+    return ((p % items.length) + items.length) % items.length;
+  }
+
+  String get _role =>
+      Supabase.instance.client.auth.currentUser?.userMetadata?['role']
+          ?.toString()
+          .toLowerCase() ??
+      'client';
+
+  static LinearGradient _cardGradient(
     ColorScheme cs,
     bool isLight,
-    LinearGradient accent,
+    LinearGradient source,
   ) {
-    final top = accent.colors.first;
-    final bottom =
-        accent.colors.length > 1 ? accent.colors.last : accent.colors.first;
-    final a0 = isLight ? 0.34 : 0.40;
-    final a1 = isLight ? 0.22 : 0.26;
+    final blend = isLight ? 0.52 : 0.44;
+    final surface = isLight ? HomePremiumTheme.lightCreamCard : cs.surface;
     return LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
       colors: [
-        Color.lerp(cs.surface, top, a0)!,
-        Color.lerp(cs.surface, bottom, a1)!,
-        cs.surface,
+        Color.lerp(surface, source.colors.first, blend)!,
+        Color.lerp(surface, source.colors.last, blend)!,
       ],
-      stops: const [0.0, 0.45, 1.0],
     );
   }
 
   List<_QuickTileData> _itemsForRole(String userRole) {
     final exclude = <String>[];
-    if (userRole == 'trainer' || userRole == 'nutritionist') {
-      exclude.addAll(['BECOME A TRAINER', 'SUBSCRIPTION', 'AI PLANNER', 'NOTES']);
+    final isTrainer = userRole == 'trainer';
+    final isNutritionist = userRole == 'nutritionist';
+    if (isTrainer || isNutritionist) {
+      exclude.addAll([
+        'BECOME A TRAINER',
+        'SUBSCRIPTION',
+        'AI PLANNER',
+        'Coach Notes',
+      ]);
     }
     return [
-      if (!exclude.contains('NOTES'))
+      if (isTrainer)
         _QuickTileData(
-          'Coach Notes',
-          Icons.note_rounded,
-          const LinearGradient(colors: [Color(0xFFE53935), Color(0xFFE96A6A)]),
+          title: 'Client Notes',
+          icon: Icons.edit_note_rounded,
+          accent: const Color(0xFFE53935),
+          gradient: const LinearGradient(
+            colors: [Color(0xFFE53935), Color(0xFFFF8A80)],
+          ),
+          subtitle: 'Notes for clients',
+        ),
+      if (!isTrainer && !isNutritionist)
+        _QuickTileData(
+          title: 'Coach Notes',
+          icon: Icons.note_rounded,
+          accent: const Color(0xFFE53935),
+          gradient: const LinearGradient(
+            colors: [Color(0xFFE53935), Color(0xFFFF8A80)],
+          ),
         ),
       _QuickTileData(
-        'Video Sessions',
-        Icons.videocam_rounded,
-        const LinearGradient(colors: [AppColors.purple, Color(0xFFB38CFF)]),
+        title: 'Video Sessions',
+        icon: Icons.videocam_rounded,
+        accent: const Color(0xFF7C6AE6),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF7C6AE6), Color(0xFFB4A7FF)],
+        ),
+      ),
+      _QuickTileData(
+        title: 'Nutrition Goals',
+        icon: Icons.track_changes_rounded,
+        accent: const Color(0xFF2EBD85),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF2EBD85), Color(0xFF65E6B3)],
+        ),
+        subtitle: 'Calculate macros',
       ),
       if (!exclude.contains('AI PLANNER'))
         _QuickTileData(
-          'AI Planner',
-          Icons.auto_awesome_rounded,
-          const LinearGradient(colors: [AppColors.orange, AppColors.yellow]),
+          title: 'AI Planner',
+          icon: Icons.auto_awesome_rounded,
+          accent: const Color(0xFFFF9500),
+          gradient: const LinearGradient(
+            colors: [Color(0xFFFF9500), Color(0xFFFFD54F)],
+          ),
         ),
       if (!exclude.contains('BECOME A TRAINER'))
         _QuickTileData(
-          'Become a Trainer',
-          Icons.school_rounded,
-          AppColors.becomeTrainerGradient,
+          title: 'Become a Trainer',
+          icon: Icons.school_rounded,
+          accent: AppColors.becomeTrainerAccent,
+          gradient: AppColors.becomeTrainerGradient,
         ),
       if (!exclude.contains('SUBSCRIPTION'))
         _QuickTileData(
-          'Subscription',
-          Icons.card_membership_rounded,
-          const LinearGradient(colors: [AppColors.purple, AppColors.pink]),
+          title: 'Subscription',
+          icon: Icons.card_membership_rounded,
+          accent: const Color(0xFFE91E8C),
+          gradient: const LinearGradient(
+            colors: [Color(0xFFE91E8C), Color(0xFFFF6BB5)],
+          ),
         ),
     ];
   }
@@ -106,19 +158,79 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
         return () => context.push('/trainer/become');
       case 'Coach Notes':
         return () => context.push('/coach-notes');
+      case 'Client Notes':
+        return () => context.push('/trainer/notes');
       case 'Video Sessions':
         return () => context.push('/video');
+      case 'Nutrition Goals':
+        return () => context.push('/nutrition-goals');
       default:
         return null;
     }
   }
 
-  void _goTo(int index) {
+  void _realignLoopIfNeeded(int page) {
+    const margin = 800;
+    if (page >= margin && page < _kLoopLength - margin) return;
+    final items = _itemsForRole(_role);
+    if (items.isEmpty) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_pageController.hasClients) return;
+      final n = items.length;
+      final logical = ((page % n) + n) % n;
+      final mid = _kLoopLength ~/ 2;
+      final aligned = mid - (mid % n) + logical;
+      _pageController.jumpToPage(aligned);
+    });
+  }
+
+  void _goToLogical(int logicalIndex) {
     if (!_pageController.hasClients) return;
+    final items = _itemsForRole(_role);
+    final n = items.length;
+    if (n == 0) return;
+
+    final pos = _pageController.page ?? _kInitialPage.toDouble();
+    final p = pos.round();
+    final at = ((p % n) + n) % n;
+    final target = p - at + logicalIndex;
     _pageController.animateToPage(
-      index,
+      target,
       duration: const Duration(milliseconds: 320),
       curve: Curves.easeOutCubic,
+    );
+  }
+
+  static Widget _circularPageChild({
+    required double pageOffset,
+    required Widget child,
+  }) {
+    final t = pageOffset.clamp(-1.2, 1.2);
+    final focus = (1 - t.abs()).clamp(0.0, 1.0);
+    final angle = t * -0.5;
+    final lift = (1 - focus) * 10.0;
+    final scale = 0.9 + focus * 0.1;
+    final opacity = 0.5 + focus * 0.5;
+
+    final matrix = Matrix4.identity()
+      ..setEntry(3, 2, 0.0011)
+      ..rotateY(angle);
+
+    return Opacity(
+      opacity: opacity,
+      child: Transform.translate(
+        offset: Offset(0, lift),
+        child: Transform(
+          alignment: Alignment.center,
+          transform: matrix,
+          child: Transform.scale(
+            scale: scale,
+            alignment: Alignment.center,
+            child: child,
+          ),
+        ),
+      ),
     );
   }
 
@@ -126,14 +238,11 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isLight = Theme.of(context).brightness == Brightness.light;
-    final role =
-        Supabase.instance.client.auth.currentUser?.userMetadata?['role']
-                ?.toString()
-                .toLowerCase() ??
-            'client';
-    final items = _itemsForRole(role);
+    final items = _itemsForRole(_role);
 
     if (items.isEmpty) return const SizedBox.shrink();
+
+    final activeIndex = _logicalIndex;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -171,13 +280,12 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         SizedBox(
-          height: _cardHeight,
+          height: _cardHeight + 12,
           child: items.length == 1
               ? _QuickActionCard(
                   item: items[0],
-                  isFront: true,
                   isLight: isLight,
                   colorScheme: cs,
                   onTap: () {
@@ -190,42 +298,38 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
                   padEnds: true,
                   clipBehavior: Clip.none,
                   physics: const BouncingScrollPhysics(),
-                  itemCount: items.length,
-                  onPageChanged: (i) => setState(() => _activeIndex = i),
-                  itemBuilder: (context, pageIndex) {
+                  itemCount: _kLoopLength,
+                  onPageChanged: (i) {
+                    setState(() {});
+                    _realignLoopIfNeeded(i);
+                  },
+                  itemBuilder: (context, index) {
+                    final logical = index % items.length;
+                    final item = items[logical];
+
                     return AnimatedBuilder(
                       animation: _pageController,
                       builder: (context, _) {
                         final page = _pageController.hasClients
-                            ? (_pageController.page ?? pageIndex.toDouble()) -
-                                pageIndex
+                            ? (_pageController.page ?? index.toDouble()) - index
                             : 0.0;
-                        final focus = (1 - page.abs()).clamp(0.0, 1.0);
-                        final parallax = page * 10.0;
 
-                        return Transform.translate(
-                          offset: Offset(parallax, 0),
-                          child: Opacity(
-                            opacity: 0.55 + focus * 0.45,
-                            child: Transform.scale(
-                              scale: 0.94 + focus * 0.06,
-                              alignment: Alignment.centerLeft,
-                              child: _HorizontalStackSlide(
-                                items: items,
-                                frontIndex: pageIndex,
-                                isLight: isLight,
-                                colorScheme: cs,
-                                cardHeight: _cardHeight,
-                                layerShiftX: _layerShiftX,
-                                layerScaleStep: _layerScaleStep,
-                                maxLayers: _visibleLayers,
-                                focus: focus,
-                                onOpen: (title) {
-                                  HapticFeedback.lightImpact();
-                                  _routeFor(context, title)?.call();
-                                },
-                                onBringForward: _goTo,
-                              ),
+                        return _circularPageChild(
+                          pageOffset: page,
+                          child: SizedBox(
+                            height: _cardHeight,
+                            child: _QuickActionCard(
+                              item: item,
+                              isLight: isLight,
+                              colorScheme: cs,
+                              onTap: () {
+                                HapticFeedback.lightImpact();
+                                if (page.abs() < 0.35) {
+                                  _routeFor(context, item.title)?.call();
+                                } else {
+                                  _goToLogical(logical);
+                                }
+                              },
                             ),
                           ),
                         );
@@ -235,15 +339,15 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
                 ),
         ),
         if (items.length > 1) ...[
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(items.length, (i) {
-              final active = i == _activeIndex;
+              final active = i == activeIndex;
               return GestureDetector(
                 onTap: () {
                   HapticFeedback.selectionClick();
-                  _goTo(i);
+                  _goToLogical(i);
                 },
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 260),
@@ -254,7 +358,7 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(999),
                     color: active
-                        ? items[i].gradient.colors.first
+                        ? items[i].accent
                         : HomePremiumTheme.secondaryText(isLight)
                             .withValues(alpha: 0.28),
                   ),
@@ -270,108 +374,28 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
 
 class _QuickTileData {
   final String title;
+  final String? subtitle;
   final IconData icon;
+  final Color accent;
   final LinearGradient gradient;
 
-  const _QuickTileData(this.title, this.icon, this.gradient);
-}
-
-/// Cards fan to the right; front card is left-most and tappable.
-class _HorizontalStackSlide extends StatelessWidget {
-  final List<_QuickTileData> items;
-  final int frontIndex;
-  final bool isLight;
-  final ColorScheme colorScheme;
-  final double cardHeight;
-  final double layerShiftX;
-  final double layerScaleStep;
-  final int maxLayers;
-  final double focus;
-  final void Function(String title) onOpen;
-  final void Function(int index) onBringForward;
-
-  const _HorizontalStackSlide({
-    required this.items,
-    required this.frontIndex,
-    required this.isLight,
-    required this.colorScheme,
-    required this.cardHeight,
-    required this.layerShiftX,
-    required this.layerScaleStep,
-    required this.maxLayers,
-    required this.focus,
-    required this.onOpen,
-    required this.onBringForward,
+  const _QuickTileData({
+    required this.title,
+    required this.icon,
+    required this.accent,
+    required this.gradient,
+    this.subtitle,
   });
-
-  @override
-  Widget build(BuildContext context) {
-    final n = items.length;
-    final layers = n < maxLayers ? n : maxLayers;
-    final backInset = layerShiftX * (layers - 1);
-
-    return Padding(
-      padding: EdgeInsets.only(right: backInset),
-      child: SizedBox(
-        height: cardHeight,
-        child: Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.centerLeft,
-          children: [
-            for (int depth = layers - 1; depth >= 1; depth--)
-              Positioned(
-                left: depth * layerShiftX,
-                top: 0,
-                right: 0,
-                height: cardHeight,
-                child: Transform.scale(
-                  scale: 1 - depth * layerScaleStep,
-                  alignment: Alignment.centerLeft,
-                  child: Opacity(
-                    opacity: 0.72 + focus * 0.2,
-                    child: _QuickActionCard(
-                      item: items[(frontIndex + depth) % n],
-                      isFront: false,
-                      isLight: isLight,
-                      colorScheme: colorScheme,
-                      onTap: () {
-                        HapticFeedback.selectionClick();
-                        onBringForward((frontIndex + depth) % n);
-                      },
-                    ),
-                  ),
-                ),
-              ),
-            Positioned(
-              left: 0,
-              top: 0,
-              right: 0,
-              height: cardHeight,
-              child: _QuickActionCard(
-                item: items[frontIndex],
-                isFront: true,
-                isLight: isLight,
-                colorScheme: colorScheme,
-                onTap: () => onOpen(items[frontIndex].title),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 class _QuickActionCard extends StatelessWidget {
   final _QuickTileData item;
-  final bool isFront;
   final bool isLight;
   final ColorScheme colorScheme;
   final VoidCallback onTap;
 
   const _QuickActionCard({
     required this.item,
-    required this.isFront,
     required this.isLight,
     required this.colorScheme,
     required this.onTap,
@@ -379,8 +403,8 @@ class _QuickActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = item.gradient.colors.first;
-    final gradient = _QuickAccessV3State._surfaceTint(
+    final accent = item.accent;
+    final fill = _QuickAccessV3State._cardGradient(
       colorScheme,
       isLight,
       item.gradient,
@@ -388,58 +412,63 @@ class _QuickActionCard extends StatelessWidget {
 
     return PressableCard(
       onTap: onTap,
-      borderRadius: 18,
+      borderRadius: 14,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          gradient: gradient,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: accent.withValues(alpha: isFront ? 0.28 : 0.14),
-          ),
-          boxShadow: isFront ? HomePremiumTheme.softCardShadow(isLight) : null,
+          gradient: fill,
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: HomePremiumTheme.softCardShadow(isLight),
         ),
         child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: isFront ? 14 : 12,
-            vertical: isFront ? 14 : 12,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
             children: [
               Container(
-                width: isFront ? 42 : 36,
-                height: isFront ? 42 : 36,
+                width: 36,
+                height: 36,
                 decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(12),
+                  color: accent.withValues(alpha: isLight ? 0.22 : 0.28),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(
-                  item.icon,
-                  color: accent,
-                  size: isFront ? 22 : 18,
-                ),
+                child: Icon(item.icon, color: accent, size: 18),
               ),
-              SizedBox(width: isFront ? 12 : 10),
+              const SizedBox(width: 10),
               Expanded(
-                child: Text(
-                  item.title,
-                  maxLines: isFront ? 2 : 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: isFront ? 14 : 12,
-                    fontWeight: FontWeight.w700,
-                    height: 1.2,
-                    color: HomePremiumTheme.primaryText(isLight).withValues(
-                      alpha: isFront ? 1.0 : 0.78,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      item.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: HomePremiumTheme.primaryText(isLight),
+                      ),
                     ),
-                  ),
+                    if (item.subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        item.subtitle!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: HomePremiumTheme.secondaryText(isLight),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-              if (isFront)
-                Icon(
-                  Icons.arrow_forward_ios_rounded,
-                  size: 14,
-                  color: HomePremiumTheme.secondaryText(isLight),
-                ),
+              Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 12,
+                color: HomePremiumTheme.secondaryText(isLight),
+              ),
             ],
           ),
         ),

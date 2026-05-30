@@ -128,6 +128,49 @@ class CoachNotesRepository {
     return notes.length; // For now, no read/unread; badge could show count if desired
   }
 
+  /// All notes written by the current coach, with client profile info.
+  Future<List<CoachNote>> getAllNotesByCoach() async {
+    if (_currentUserId == null) return [];
+
+    try {
+      final res = await _supabase
+          .from('coach_notes')
+          .select('id, coach_id, client_id, content, created_at')
+          .eq('coach_id', _currentUserId!)
+          .order('created_at', ascending: false);
+
+      final rows = res as List<dynamic>;
+      if (rows.isEmpty) return [];
+
+      final clientIds =
+          rows.map((r) => (r as Map)['client_id'] as String).toSet().toList();
+      final profiles = await _supabase
+          .from('profiles')
+          .select('id, full_name, avatar_url')
+          .inFilter('id', clientIds);
+
+      final profileMap = <String, Map<String, dynamic>>{};
+      for (final p in profiles as List) {
+        final m = p as Map<String, dynamic>;
+        profileMap[m['id'] as String] = m;
+      }
+
+      return rows.map((r) {
+        final map = r as Map<String, dynamic>;
+        final clientId = map['client_id'] as String;
+        final profile = profileMap[clientId];
+        return CoachNote.fromJson(
+          map,
+          coachName: profile?['full_name'] as String?,
+          coachAvatarUrl: profile?['avatar_url'] as String?,
+          coachType: 'client',
+        );
+      }).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
   /// Fetch notes for a specific client (used by trainer/nutritionist dashboard).
   /// Coach must have accepted lead with this client.
   Future<List<CoachNote>> getNotesForClient(String clientId) async {

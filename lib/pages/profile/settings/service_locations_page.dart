@@ -405,11 +405,15 @@ class _ServiceLocationsPageState extends ConsumerState<ServiceLocationsPage> {
       }
     } catch (e) {
       if (mounted) {
+        final message = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Failed to save location'),
+            content: Text(
+              message.length > 120 ? '${message.substring(0, 117)}...' : message,
+            ),
             backgroundColor: AppColors.red,
             behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 5),
           ),
         );
       }
