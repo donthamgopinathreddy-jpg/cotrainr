@@ -20,6 +20,7 @@ import '../../widgets/home_v3/unified_metrics_tile_v3.dart';
 import '../../widgets/home_v3/bmi_card_v3.dart';
 import '../../widgets/home_v3/quick_access_v3.dart';
 import '../../widgets/home_v3/home_nav_hint_cards.dart';
+import '../../widgets/home_v3/nearby_preview_v3.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
 import '../../widgets/trainer/trainer_overview_section.dart';
 import '../bmi/bmi_details_screen.dart';
@@ -89,8 +90,8 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
     _loadData();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       ref.read(healthTrackingServiceProvider).initialize();
-      ref.read(metricsSyncServiceProvider).startSync();
     });
   }
 
@@ -464,6 +465,16 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: _animated(
+                    _safeSection(context, const NearbyPreviewV3()),
+                    260,
+                  ),
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 16)),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _animated(
                     _safeSection(
                       context,
                       HomeNavHintCards(
@@ -471,7 +482,7 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
                         onOpenMealsTab: widget.onNavigateToMealsTab,
                       ),
                     ),
-                    260,
+                    300,
                   ),
                 ),
               ),

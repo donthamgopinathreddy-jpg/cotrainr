@@ -90,6 +90,30 @@ class MetricsRepository {
     }
   }
 
+  /// Metrics for the last [days] days (inclusive of today).
+  Future<List<Map<String, dynamic>>> getMetricsForDays(int days) async {
+    if (_currentUserId == null || days < 1) return [];
+
+    try {
+      final today = DateTime.now();
+      final start = today.subtract(Duration(days: days - 1));
+      final startDate = DateTime(start.year, start.month, start.day);
+      final startString = startDate.toIso8601String().split('T')[0];
+
+      final response = await _supabase
+          .from('metrics_daily')
+          .select()
+          .eq('user_id', _currentUserId!)
+          .gte('date', startString)
+          .order('date', ascending: true);
+
+      return (response as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      print('Error fetching metrics for $days days: $e');
+      return [];
+    }
+  }
+
   /// Get monthly metrics (last 30 days)
   Future<List<Map<String, dynamic>>> getMonthlyMetrics() async {
     if (_currentUserId == null) return [];

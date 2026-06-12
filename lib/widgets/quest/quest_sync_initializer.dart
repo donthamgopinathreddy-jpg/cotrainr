@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../config/feature_flags.dart';
 import '../../providers/quest_provider.dart';
 import '../../services/background_health_tracker.dart';
 
@@ -65,27 +66,33 @@ class _QuestSyncInitializerState extends ConsumerState<QuestSyncInitializer>
   }
 
   void _initializeSync() {
-    final syncService = ref.read(questProgressSyncServiceProvider);
-    syncService.startAutoSync();
-    
-    // Start background health tracking
-    final backgroundTracker = ref.read(backgroundHealthTrackerProvider);
-    backgroundTracker.startTracking();
-    
+    if (FeatureFlags.enableQuest) {
+      ref.read(questProgressSyncServiceProvider).startAutoSync();
+    } else {
+      FeatureFlags.logBlockedOnce(
+        'quest_auto_sync',
+        'Quest disabled: skipping quest auto sync',
+      );
+    }
+
+    ref.read(backgroundHealthTrackerProvider).startTracking();
+
     _isInitialized = true;
-    print('QuestSyncInitializer: Started auto-sync for quest progress and background health tracking');
+    print(
+      'QuestSyncInitializer: Started background health tracking'
+      '${FeatureFlags.enableQuest ? ' + quest auto-sync' : ' (quest disabled)'}',
+    );
   }
 
   void _stopSync() {
-    final syncService = ref.read(questProgressSyncServiceProvider);
-    syncService.stopAutoSync();
-    
-    // Stop background health tracking
-    final backgroundTracker = ref.read(backgroundHealthTrackerProvider);
-    backgroundTracker.stopTracking();
-    
+    if (FeatureFlags.enableQuest) {
+      ref.read(questProgressSyncServiceProvider).stopAutoSync();
+    }
+
+    ref.read(backgroundHealthTrackerProvider).stopTracking();
+
     _isInitialized = false;
-    print('QuestSyncInitializer: Stopped auto-sync for quest progress and background health tracking');
+    print('QuestSyncInitializer: Stopped background sync services');
   }
 
   @override

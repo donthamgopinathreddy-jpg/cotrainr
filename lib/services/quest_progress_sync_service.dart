@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../config/feature_flags.dart';
 import '../repositories/quest_repository.dart';
 import '../repositories/metrics_repository.dart';
 
@@ -22,6 +23,13 @@ class QuestProgressSyncService {
 
   /// Start automatic syncing (every 30 seconds)
   void startAutoSync() {
+    if (!FeatureFlags.enableQuest) {
+      FeatureFlags.logBlockedOnce(
+        'quest_start_auto_sync',
+        'Quest disabled: skipping quest auto sync',
+      );
+      return;
+    }
     if (_syncTimer != null) return;
     
     // Initial sync
@@ -41,6 +49,13 @@ class QuestProgressSyncService {
 
   /// Sync current metrics to all active quests
   Future<void> syncMetricsToQuests() async {
+    if (!FeatureFlags.enableQuest) {
+      FeatureFlags.logBlockedOnce(
+        'quest_metrics_sync',
+        'Quest disabled: skipping quest progress sync',
+      );
+      return;
+    }
     if (_isSyncing) return;
     
     final userId = _supabase.auth.currentUser?.id;
@@ -143,16 +158,18 @@ class QuestProgressSyncService {
 
   /// Sync metrics when steps are updated
   Future<void> onStepsUpdated(int newSteps) async {
-    // Update metrics first
     await _metricsRepo.updateTodayMetrics(steps: newSteps);
-    // Then sync to quests
-    await syncMetricsToQuests();
+    if (FeatureFlags.enableQuest) {
+      await syncMetricsToQuests();
+    }
   }
 
   /// Sync metrics when water is updated
   Future<void> onWaterUpdated(double newWater) async {
     await _metricsRepo.updateTodayMetrics(waterIntakeLiters: newWater);
-    await syncMetricsToQuests();
+    if (FeatureFlags.enableQuest) {
+      await syncMetricsToQuests();
+    }
   }
 
   /// Sync metrics when calories/distance are updated
@@ -164,6 +181,8 @@ class QuestProgressSyncService {
       caloriesBurned: calories,
       distanceKm: distance,
     );
-    await syncMetricsToQuests();
+    if (FeatureFlags.enableQuest) {
+      await syncMetricsToQuests();
+    }
   }
 }

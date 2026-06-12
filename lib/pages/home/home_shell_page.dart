@@ -4,6 +4,7 @@ import '../../theme/design_tokens.dart';
 import '../../providers/profile_role_provider.dart';
 import 'home_page_v3.dart';
 import '../trainer/trainer_home_page.dart';
+import '../nutritionist/nutritionist_home_page.dart';
 import '../discover/discover_page.dart';
 import '../messaging/messaging_page.dart';
 import '../meal_tracker/meal_tracker_page_v2.dart';
@@ -29,7 +30,8 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
   static const double _navBarRadius = 20;
 
   int _currentIndex = 0;
-  late final PageController _pageController;
+  final Set<int> _visitedTabIndexes = {0};
+  final List<Widget?> _pageCache = List.filled(5, null);
   late final AnimationController _welcomeController;
   late final Animation<double> _welcomeFade;
   late final Animation<Offset> _welcomeSlide;
@@ -102,8 +104,6 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
   @override
   void initState() {
     super.initState();
-    _pageController = PageController(initialPage: _currentIndex);
-
     _welcomeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
@@ -147,15 +147,62 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
 
   @override
   void dispose() {
-    _pageController.dispose();
     _welcomeController.dispose();
     super.dispose();
   }
 
   void _goToTab(int index) {
     if (!mounted) return;
-    setState(() => _currentIndex = index);
-    _pageController.jumpToPage(index);
+    setState(() {
+      _currentIndex = index;
+      _visitedTabIndexes.add(index);
+    });
+  }
+
+  Widget _buildPage(int index) {
+    final user = ref.read(currentUserProvider).value;
+    final isTrainer = user?.isTrainer ?? false;
+    final isNutritionist = user?.isNutritionist ?? false;
+
+    switch (index) {
+      case 0:
+        if (isTrainer) {
+          return TrainerHomePage(
+            onNavigateToMessagesTab: () => _goToTab(2),
+            onNavigateToMealsTab: () => _goToTab(3),
+            onNavigateToClientsTab: () => _goToTab(1),
+          );
+        }
+        if (isNutritionist) {
+          return NutritionistHomePage(
+            onNavigateToMessagesTab: () => _goToTab(2),
+            onNavigateToMealsTab: () => _goToTab(3),
+            onNavigateToClientsTab: () => _goToTab(1),
+          );
+        }
+        return HomePageV3(
+          onNavigateToMessagesTab: () => _goToTab(2),
+          onNavigateToMealsTab: () => _goToTab(3),
+        );
+      case 1:
+        return isTrainer
+            ? const TrainerMyClientsPage()
+            : isNutritionist
+                ? const NutritionistMyClientsPage()
+                : const DiscoverPage();
+      case 2:
+        return const MessagingPage();
+      case 3:
+        return const MealTrackerPageV2();
+      case 4:
+        return const ProfilePage();
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  Widget _pageFor(int index) {
+    return _pageCache[index] ??= _buildPage(index);
   }
 
   @override
@@ -169,41 +216,18 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
         clipBehavior: Clip.none,
         children: [
           Positioned.fill(
-            child: PageView.builder(
-              controller: _pageController,
-              physics: const PageScrollPhysics(),
-              onPageChanged: (index) => setState(() => _currentIndex = index),
-              itemCount: _navigationItems.length,
-              itemBuilder: (context, index) {
-                final user = ref.watch(currentUserProvider).value;
-                final isTrainer = user?.isTrainer ?? false;
-                final isNutritionist = user?.isNutritionist ?? false;
-
-                final pages = [
-                  isTrainer
-                      ? TrainerHomePage(
-                          onNavigateToMessagesTab: () => _goToTab(2),
-                          onNavigateToMealsTab: () => _goToTab(3),
-                          onNavigateToClientsTab: () => _goToTab(1),
-                        )
-                      : HomePageV3(
-                          onNavigateToMessagesTab: () => _goToTab(2),
-                          onNavigateToMealsTab: () => _goToTab(3),
-                        ),
-                  isTrainer
-                      ? const TrainerMyClientsPage()
-                      : isNutritionist
-                          ? const NutritionistMyClientsPage()
-                          : const DiscoverPage(),
-                  const MessagingPage(),
-                  const MealTrackerPageV2(),
-                  const ProfilePage(),
-                ];
-                return KeyedSubtree(
-                  key: ValueKey<int>(index),
-                  child: pages[index],
-                );
-              },
+            child: IndexedStack(
+              index: _currentIndex,
+              sizing: StackFit.expand,
+              children: List.generate(
+                _navigationItems.length,
+                (index) {
+                  if (!_visitedTabIndexes.contains(index)) {
+                    return const SizedBox.shrink();
+                  }
+                  return _pageFor(index);
+                },
+              ),
             ),
           ),
           Positioned(
@@ -320,8 +344,7 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
     return GestureDetector(
       onTap: () {
         if (_currentIndex != index) {
-          setState(() => _currentIndex = index);
-          _pageController.jumpToPage(index);
+          _goToTab(index);
         }
       },
       behavior: HitTestBehavior.opaque,

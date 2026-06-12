@@ -157,8 +157,18 @@ class BmiCardV3 extends StatelessWidget {
             isCompact: true,
           ),
           
-          const SizedBox(height: 16),
-          
+          const SizedBox(height: 12),
+
+          if (bmi > 0 && heightCm != null && heightCm! > 0) ...[
+            _TargetInfoRow(
+              bmi: bmi,
+              heightCm: heightCm!,
+              weightKg: weightKg,
+              context: context,
+            ),
+            const SizedBox(height: 12),
+          ],
+
           // Height and Weight pills in a row
           Row(
             children: [
@@ -257,6 +267,114 @@ class _StatusInfo {
   final String label;
 
   _StatusInfo({required this.color, required this.label});
+}
+
+/// Compact actionable BMI target (healthy range upper/lower bound).
+class _TargetInfoRow extends StatelessWidget {
+  static const _healthyMax = 24.9;
+  static const _healthyMin = 18.5;
+
+  final double bmi;
+  final double heightCm;
+  final double? weightKg;
+  final BuildContext context;
+
+  const _TargetInfoRow({
+    required this.bmi,
+    required this.heightCm,
+    required this.weightKg,
+    required this.context,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final heightM = heightCm / 100;
+    final isLight = Theme.of(context).brightness == Brightness.light;
+
+    if (bmi >= _healthyMin && bmi <= _healthyMax) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: isLight
+              ? const Color(0xFF22C55E).withValues(alpha: 0.12)
+              : Colors.white.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Text(
+          'You are in the healthy BMI range',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: const Color(0xFF22C55E),
+          ),
+        ),
+      );
+    }
+
+    final targetBmi = bmi > _healthyMax ? _healthyMax : _healthyMin;
+    final targetWeight = targetBmi * heightM * heightM;
+    final current = weightKg ?? 0;
+    final diff = current > 0 ? (current - targetWeight).abs() : 0.0;
+    final diffLabel = bmi > _healthyMax
+        ? '${diff.toStringAsFixed(1)} kg to healthy range'
+        : '${diff.toStringAsFixed(1)} kg to healthy range';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: isLight
+            ? Colors.white.withValues(alpha: 0.65)
+            : Colors.white.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isLight
+              ? HomePremiumTheme.lightCharcoalText.withValues(alpha: 0.08)
+              : Colors.white.withValues(alpha: 0.1),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Target BMI ${targetBmi.toStringAsFixed(1)}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textSecondaryOf(context),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Target Weight ${targetWeight.toStringAsFixed(1)} kg',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimaryOf(context),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (current > 0)
+            Text(
+              diffLabel,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: BmiMeterColors.fromProgress(
+                  bmi > _healthyMax ? 0.65 : 0.2,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 class _MetricPill extends StatelessWidget {

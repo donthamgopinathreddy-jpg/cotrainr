@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/motion/motion.dart';
 import '../theme/design_tokens.dart';
+import '../config/feature_flags.dart';
 import '../../pages/auth/login_page.dart';
 import '../../pages/auth/signup_wizard_page.dart';
 import '../../pages/auth/welcome_page.dart';
@@ -59,7 +60,7 @@ final GoRouter appRouter = GoRouter(
           if (role == 'trainer') {
             return '/home';
           } else if (role == 'nutritionist') {
-            return '/nutritionist/dashboard';
+            return '/home';
           }
         }
       } catch (e) {
@@ -327,6 +328,8 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/quest',
       name: 'quest',
+      redirect: (context, state) =>
+          FeatureFlags.enableQuest ? null : '/home',
       pageBuilder: (context, state) => _fadeSlidePage(
         child: const QuestPage(),
         state: state,

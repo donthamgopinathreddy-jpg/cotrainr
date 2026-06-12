@@ -7,6 +7,7 @@ import '../../services/notification_service.dart';
 import '../../services/meeting_storage_service.dart';
 import '../../repositories/notifications_repository.dart';
 import '../../repositories/profile_repository.dart';
+import '../../config/feature_flags.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 enum NotificationType {
@@ -143,18 +144,21 @@ class _NotificationPageState extends State<NotificationPage> {
         type == NotificationType.following ||
         type == NotificationType.followRequest ||
         type == NotificationType.comment) {
-      return communityOn;
+      return communityOn && FeatureFlags.communityNotificationsActive;
     }
     // Reminders: habit/meal reminders (type 'reminder' in DB)
     if (dbType.toLowerCase() == 'reminder') {
       return remindersOn;
     }
-    // Achievements: quest, streak, steps goal, achievement
+    // Quest / achievement (Quest system)
     if (type == NotificationType.questCompleted ||
-        type == NotificationType.streakReached ||
-        type == NotificationType.stepsGoalAchieved ||
-        type == NotificationType.goalReached ||
         type == NotificationType.achievement) {
+      return achievementsOn && FeatureFlags.questNotificationsActive;
+    }
+    // Home streak + goal progress (independent of Quest)
+    if (type == NotificationType.streakReached ||
+        type == NotificationType.stepsGoalAchieved ||
+        type == NotificationType.goalReached) {
       return achievementsOn;
     }
     // Meetings, messages: always show (important)

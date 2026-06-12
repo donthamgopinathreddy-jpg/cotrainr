@@ -1,13 +1,16 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../config/feature_flags.dart';
 import 'health_tracking_service.dart';
 import 'metrics_sync_service.dart';
 import '../providers/quest_provider.dart';
 
 /// Provider for background health tracker
 final backgroundHealthTrackerProvider = Provider<BackgroundHealthTracker>((ref) {
-  return BackgroundHealthTracker(ref);
+  final tracker = BackgroundHealthTracker(ref);
+  ref.onDispose(tracker.dispose);
+  return tracker;
 });
 
 /// Service that continuously tracks health data in the background
@@ -28,11 +31,6 @@ class BackgroundHealthTracker {
         stopTracking();
       }
     });
-
-    // Start tracking if already signed in
-    if (Supabase.instance.client.auth.currentUser != null) {
-      startTracking();
-    }
   }
 
   /// Start continuous background tracking
@@ -95,9 +93,16 @@ class BackgroundHealthTracker {
       final metricsSyncService = _ref.read(metricsSyncServiceProvider);
       await metricsSyncService.syncNow();
 
-      // 3. Sync metrics to quest progress
-      final questSyncService = _ref.read(questProgressSyncServiceProvider);
-      await questSyncService.syncMetricsToQuests();
+      // 3. Sync metrics to quest progress (MVP: only when Quest enabled)
+      if (FeatureFlags.enableQuest) {
+        final questSyncService = _ref.read(questProgressSyncServiceProvider);
+        await questSyncService.syncMetricsToQuests();
+      } else {
+        FeatureFlags.logBlockedOnce(
+          'health_tracker_quest',
+          'Quest disabled: skipping quest sync in health tracker',
+        );
+      }
 
       print('BackgroundHealthTracker: Track cycle complete');
     } catch (e, stackTrace) {

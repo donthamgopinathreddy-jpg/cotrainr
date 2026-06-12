@@ -1,9 +1,11 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
-import '../../theme/app_colors.dart';
-import '../../theme/design_tokens.dart';
-import '../profile/edit_profile_page.dart';
+
+import '../../widgets/home_v3/bmi_card_v3.dart';
+import '../../widgets/home_v3/home_premium_theme.dart';
 
 /// Args passed from Home BMI tile via go_router state.extra
 class BmiDetailsArgs {
@@ -24,21 +26,59 @@ class BmiDetailsArgs {
   });
 }
 
-/// UI-only helper: compute BMI category from bmi value (no backend changes)
-String _bmiCategoryFromValue(double bmi) {
-  if (bmi == 0.0) return '';
+// ─── BMI helpers ─────────────────────────────────────────────────────────────
+
+String bmiCategoryFromValue(double bmi) {
+  if (bmi <= 0) return '';
   if (bmi < 18.5) return 'Underweight';
-  if (bmi < 25) return 'Normal';
+  if (bmi < 25) return 'Healthy';
   if (bmi < 30) return 'Overweight';
   return 'Obese';
 }
 
-/// UI-only: compute BMI from height and weight (for slider simulation)
-double _simulateBmi(double heightCm, double weightKg) {
-  if (heightCm <= 0 || weightKg <= 0) return 0.0;
+double bmiFromHeightWeight(double heightCm, double weightKg) {
+  if (heightCm <= 0 || weightKg <= 0) return 0;
   final h = heightCm / 100.0;
   return weightKg / (h * h);
 }
+
+double bmiProgress(double bmi) {
+  if (bmi < 18.5) return bmi <= 0 ? 0 : (bmi / 18.5) * 0.25;
+  if (bmi <= 24.9) return 0.25 + ((bmi - 18.5) / 6.4) * 0.25;
+  if (bmi <= 29.9) return 0.5 + ((bmi - 25.0) / 4.9) * 0.25;
+  const maxBmi = 40.0;
+  if (bmi >= maxBmi) return 1.0;
+  return 0.75 + ((bmi - 30.0) / 10.0) * 0.25;
+}
+
+({double minKg, double maxKg, double targetKg}) healthyWeights(double heightCm) {
+  final h = heightCm / 100.0;
+  final minKg = 18.5 * h * h;
+  final maxKg = 24.9 * h * h;
+  return (minKg: minKg, maxKg: maxKg, targetKg: maxKg);
+}
+
+String formatHeight(double? cm) {
+  if (cm == null || cm <= 0) return '--';
+  final totalIn = (cm / 2.54).round();
+  return '${cm.round()} cm / ${totalIn ~/ 12}\'${totalIn % 12}"';
+}
+
+String formatWeightKg(double? kg) {
+  if (kg == null || kg <= 0) return '--';
+  return '${kg.toStringAsFixed(1)} kg';
+}
+
+String healthyRangeMessage(double bmi, double weightKg, double minKg, double maxKg) {
+  if (weightKg <= 0) return 'Add weight to see your progress';
+  if (bmi >= 18.5 && bmi <= 24.9) return 'You are in the healthy range';
+  if (weightKg > maxKg) {
+    return '${(weightKg - maxKg).toStringAsFixed(1)} kg away from healthy range';
+  }
+  return '${(minKg - weightKg).toStringAsFixed(1)} kg away from healthy range';
+}
+
+// ─── Screen ──────────────────────────────────────────────────────────────────
 
 class BmiDetailsScreen extends StatefulWidget {
   final BmiDetailsArgs args;
@@ -50,778 +90,93 @@ class BmiDetailsScreen extends StatefulWidget {
 }
 
 class _BmiDetailsScreenState extends State<BmiDetailsScreen>
-    with TickerProviderStateMixin {
-  late AnimationController _appBarAnimController;
-  late Animation<double> _appBarFade;
-  late Animation<Offset> _appBarSlide;
-
-  double _simulatedWeightKg = 0;
-  int? _selectedMilestoneIndex;
-  double? _goalWeightKg;
-
-  @override
-  void initState() {
-    super.initState();
-    final h = (widget.args.heightCm ?? 0) / 100.0;
-    _simulatedWeightKg =
-        widget.args.weightKg ?? (h > 0 ? 22 * h * h : 70);
-    _appBarAnimController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 500),
-    );
-    _appBarFade = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(
-        parent: _appBarAnimController,
-        curve: Curves.easeOutCubic,
-      ),
-    );
-    _appBarSlide = Tween<Offset>(
-      begin: const Offset(0, -0.3),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _appBarAnimController,
-        curve: Curves.easeOutCubic,
-      ),
-    );
-    _appBarAnimController.forward();
-  }
-
-  @override
-  void dispose() {
-    _appBarAnimController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: DesignTokens.backgroundOf(context),
-      body: CustomScrollView(
-        slivers: [
-          SliverAppBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back_ios_new),
-              onPressed: () => context.pop(),
-            ),
-            title: null,
-          ),
-          SliverToBoxAdapter(
-            child: FadeTransition(
-              opacity: _appBarFade,
-              child: SlideTransition(
-                position: _appBarSlide,
-                child: _BmiAppBar(
-                  onInfoTap: () => _showBmiInfoSheet(context),
-                ),
-              ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: _BmiFullScreenLayout(
-              args: widget.args,
-              simulatedWeightKg: _simulatedWeightKg,
-              selectedMilestoneIndex: _selectedMilestoneIndex,
-              goalWeightKg: _goalWeightKg,
-              onWeightChanged: (w) =>
-                  setState(() => _simulatedWeightKg = w),
-              onMilestoneSelected: (idx, weightKg) {
-                HapticFeedback.lightImpact();
-                setState(() {
-                  _selectedMilestoneIndex = idx;
-                  _goalWeightKg = weightKg;
-                });
-              },
-              onSetGoal: _handleSetGoal,
-              onLogWeight: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const EditProfilePage(),
-                ),
-              ),
-              onUpdateWeight: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const EditProfilePage(),
-                ),
-              ),
-              onUpdateHeight: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const EditProfilePage(),
-                ),
-              ),
-              onZoneTap: _showZoneSheet,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _handleSetGoal() {
-    final weight = _goalWeightKg ?? _simulatedWeightKg;
-    if (weight <= 0) return;
-    HapticFeedback.mediumImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Goal set: ${weight.toStringAsFixed(1)} kg'),
-        behavior: SnackBarBehavior.floating,
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
-
-  void _showBmiInfoSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: DesignTokens.surfaceOf(context),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'About BMI',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimaryOf(context),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Body Mass Index (BMI) is a measure of body fat based on height and weight. '
-              'It provides a general indicator of whether your weight is healthy for your height.\n\n'
-              '• Underweight: BMI below 18.5\n'
-              '• Normal: BMI 18.5–24.9\n'
-              '• Overweight: BMI 25–29.9\n'
-              '• Obese: BMI 30 or above\n\n'
-              'BMI is a screening tool and does not diagnose body fatness or health. '
-              'Body composition, muscle mass, and other factors vary individually.',
-              style: TextStyle(
-                fontSize: 14,
-                height: 1.5,
-                color: AppColors.textSecondaryOf(context),
-              ),
-            ),
-            const SizedBox(height: 24),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showZoneSheet(BuildContext context, int zoneIndex) {
-    const zones = [
-      ('Underweight', 'BMI below 18.5', 'Consider consulting a healthcare provider for nutrition guidance.'),
-      ('Healthy', 'BMI 18.5–24.9', 'You\'re in the healthy range. Maintain balanced nutrition and activity.'),
-      ('Overweight', 'BMI 25–29.9', 'Gradual weight loss through diet and exercise can improve health.'),
-      ('Obese', 'BMI 30 or above', 'Consult a healthcare provider for a personalized plan.'),
-    ];
-    final z = zones[zoneIndex.clamp(0, 3)];
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: DesignTokens.surfaceOf(context),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              z.$1,
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimaryOf(context),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              z.$2,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textSecondaryOf(context),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              z.$3,
-              style: TextStyle(
-                fontSize: 14,
-                height: 1.5,
-                color: AppColors.textSecondaryOf(context),
-              ),
-            ),
-            const SizedBox(height: 24),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─── AppBar (minimal, modern) ───────────────────────────────────────────────
-
-class _BmiAppBar extends StatelessWidget {
-  final VoidCallback onInfoTap;
-
-  const _BmiAppBar({required this.onInfoTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Row(
-        children: [
-          Text(
-            'Body Mass Index',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textSecondaryOf(context),
-              letterSpacing: 0.2,
-            ),
-          ),
-          const Spacer(),
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: onInfoTap,
-              borderRadius: BorderRadius.circular(12),
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: Icon(
-                  Icons.help_outline_rounded,
-                  size: 22,
-                  color: AppColors.textSecondaryOf(context),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── BmiScaleBar (tappable zones) ─────────────────────────────────────────────
-
-class BmiScaleBar extends StatefulWidget {
-  final double progress;
-  final double bmi;
-  final void Function(int zoneIndex) onZoneTap;
-
-  const BmiScaleBar({
-    super.key,
-    required this.progress,
-    required this.bmi,
-    required this.onZoneTap,
-  });
-
-  @override
-  State<BmiScaleBar> createState() => _BmiScaleBarState();
-}
-
-class _BmiScaleBarState extends State<BmiScaleBar> {
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final barWidth = constraints.maxWidth;
-            final indicatorLeft = widget.progress > 0 && widget.bmi > 0
-                ? (barWidth * widget.progress.clamp(0.0, 1.0)) - 9
-                : 0.0;
-
-            return Column(
-              children: [
-                SizedBox(
-                  height: 18,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      Row(
-                        children: List.generate(4, (i) {
-                          return Expanded(
-                            child: _TapScaleZone(
-                              onTap: () => widget.onZoneTap(i),
-                              child: Container(
-                                margin: EdgeInsets.only(
-                                  right: i < 3 ? 2 : 0,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: _zoneColor(i).withValues(alpha: 0.85),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                              ),
-                            ),
-                          );
-                        }),
-                      ),
-                      if (widget.progress > 0 && widget.bmi > 0)
-                        TweenAnimationBuilder<double>(
-                          tween: Tween(begin: 0, end: 1),
-                          duration: const Duration(milliseconds: 700),
-                          curve: Curves.easeOutCubic,
-                          builder: (context, value, _) {
-                            return Positioned(
-                              left: indicatorLeft * value,
-                              top: 0,
-                              child: Container(
-                                width: 18,
-                                height: 18,
-                                decoration: BoxDecoration(
-                                  color: _colorFromProgress(widget.progress),
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: Colors.white,
-                                    width: 2.5,
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: _colorFromProgress(widget.progress).withValues(alpha: 0.4),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _TapLabel('<18.5', 0, context, widget.onZoneTap),
-                    _TapLabel('18.5–24.9', 1, context, widget.onZoneTap),
-                    _TapLabel('25–29.9', 2, context, widget.onZoneTap),
-                    _TapLabel('≥30', 3, context, widget.onZoneTap),
-                  ],
-                ),
-              ],
-            );
-          },
-        ),
-      ],
-    );
-  }
-
-  Color _zoneColor(int i) {
-    const colors = [
-      Color(0xFF60A5FA), // blue
-      Color(0xFF34D399), // emerald
-      Color(0xFFFBBF24), // amber
-      Color(0xFFF87171), // rose
-    ];
-    return colors[i.clamp(0, 3)];
-  }
-}
-
-class _TapLabel extends StatefulWidget {
-  final String text;
-  final int zoneIndex;
-  final BuildContext context;
-  final void Function(int) onZoneTap;
-
-  const _TapLabel(this.text, this.zoneIndex, this.context, this.onZoneTap);
-
-  @override
-  State<_TapLabel> createState() => _TapLabelState();
-}
-
-class _TapLabelState extends State<_TapLabel> {
-  bool _pressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) {
-        HapticFeedback.selectionClick();
-        setState(() => _pressed = true);
-      },
-      onTapUp: (_) => setState(() => _pressed = false),
-      onTapCancel: () => setState(() => _pressed = false),
-      onTap: () => widget.onZoneTap(widget.zoneIndex),
-      child: AnimatedScale(
-        scale: _pressed ? 0.92 : 1.0,
-        duration: const Duration(milliseconds: 100),
-        curve: Curves.easeOut,
-        child: Text(
-          widget.text,
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textSecondaryOf(context).withValues(alpha: 0.7),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Tap scale feedback (micro-interaction) ──────────────────────────────────
-
-class _TapScaleZone extends StatefulWidget {
-  final VoidCallback onTap;
-  final Widget child;
-
-  const _TapScaleZone({required this.onTap, required this.child});
-
-  @override
-  State<_TapScaleZone> createState() => _TapScaleZoneState();
-}
-
-class _TapScaleZoneState extends State<_TapScaleZone> {
-  bool _pressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: (_) {
-        HapticFeedback.selectionClick();
-        setState(() => _pressed = true);
-      },
-      onTapUp: (_) => setState(() => _pressed = false),
-      onTapCancel: () => setState(() => _pressed = false),
-      onTap: widget.onTap,
-      child: AnimatedScale(
-        scale: _pressed ? 0.94 : 1.0,
-        duration: const Duration(milliseconds: 100),
-        curve: Curves.easeOut,
-        alignment: Alignment.center,
-        child: widget.child,
-      ),
-    );
-  }
-}
-
-// ─── Helper functions (used by BmiHeroCard, BmiScaleBar) ────────────────────
-
-double _progressFromBmi(double bmi) {
-  if (bmi < 18.5) {
-    if (bmi <= 0) return 0.0;
-    return (bmi / 18.5) * 0.25;
-  } else if (bmi <= 24.9) {
-    return 0.25 + ((bmi - 18.5) / (24.9 - 18.5)) * 0.25;
-  } else if (bmi <= 29.9) {
-    return 0.5 + ((bmi - 25.0) / (29.9 - 25.0)) * 0.25;
-  } else {
-    const maxBmi = 40.0;
-    if (bmi >= maxBmi) return 1.0;
-    return 0.75 + ((bmi - 30.0) / (maxBmi - 30.0)) * 0.25;
-  }
-}
-
-Color _colorFromProgress(double progress) {
-  const colors = [
-    Color(0xFF60A5FA),
-    Color(0xFF34D399),
-    Color(0xFFFBBF24),
-    Color(0xFFF87171),
-  ];
-  const stops = [0.0, 0.25, 0.5, 0.75];
-  final p = progress.clamp(0.0, 1.0);
-  for (int i = 0; i < stops.length - 1; i++) {
-    if (p <= stops[i + 1]) {
-      final t = (p - stops[i]) / (stops[i + 1] - stops[i]);
-      return Color.lerp(colors[i], colors[i + 1], t.clamp(0.0, 1.0))!;
-    }
-  }
-  return colors.last;
-}
-
-String _formatHeight(double? heightCm) {
-  if (heightCm == null || heightCm <= 0) return '--';
-  final cm = heightCm.toInt();
-  final totalInches = (heightCm / 2.54).round();
-  final feet = totalInches ~/ 12;
-  final inches = totalInches % 12;
-  return '$cm cm / $feet\'$inches"';
-}
-
-String _formatWeight(double? weightKg) {
-  if (weightKg == null || weightKg <= 0) return '--';
-  final kg = weightKg.toStringAsFixed(1);
-  final lbs = (weightKg / 0.453592).round();
-  return '$kg kg / $lbs lbs';
-}
-
-// ─── Full-screen BMI layout (no 3D avatar) ────────────────────────────────────
-
-class _BmiFullScreenLayout extends StatelessWidget {
-  final BmiDetailsArgs args;
-  final double simulatedWeightKg;
-  final int? selectedMilestoneIndex;
-  final double? goalWeightKg;
-  final void Function(double) onWeightChanged;
-  final void Function(int, double) onMilestoneSelected;
-  final VoidCallback onSetGoal;
-  final VoidCallback onLogWeight;
-  final VoidCallback onUpdateWeight;
-  final VoidCallback onUpdateHeight;
-  final void Function(BuildContext, int) onZoneTap;
-
-  const _BmiFullScreenLayout({
-    required this.args,
-    required this.simulatedWeightKg,
-    required this.selectedMilestoneIndex,
-    required this.goalWeightKg,
-    required this.onWeightChanged,
-    required this.onMilestoneSelected,
-    required this.onSetGoal,
-    required this.onLogWeight,
-    required this.onUpdateWeight,
-    required this.onUpdateHeight,
-    required this.onZoneTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 16),
-          _AnimatedSection(
-            delay: 0,
-            child: _BmiHeroFullWidth(
-              args: args,
-              onZoneTap: onZoneTap,
-            ),
-          ),
-          const SizedBox(height: 20),
-          _AnimatedSection(
-            delay: 80,
-            child: _WeightSimulatorCard(
-              args: args,
-              simulatedWeightKg: simulatedWeightKg,
-              onWeightChanged: onWeightChanged,
-            ),
-          ),
-          const SizedBox(height: 20),
-          _AnimatedSection(
-            delay: 160,
-            child: HealthyRangeCard(
-              args: args,
-              selectedMilestoneIndex: selectedMilestoneIndex,
-              goalWeightKg: goalWeightKg,
-              simulatedWeightKg: simulatedWeightKg,
-              onMilestoneSelected: onMilestoneSelected,
-            ),
-          ),
-          const SizedBox(height: 20),
-          _AnimatedSection(
-            delay: 240,
-            child: TrendsCard(onLogWeightTap: onLogWeight),
-          ),
-          const SizedBox(height: 20),
-          _AnimatedSection(
-            delay: 320,
-            child: QuickActionsGrid(
-              args: args,
-              goalWeightKg: goalWeightKg ?? simulatedWeightKg,
-              selectedMilestoneIndex: selectedMilestoneIndex,
-              onSetGoal: onSetGoal,
-              onUpdateWeight: onUpdateWeight,
-              onUpdateHeight: onUpdateHeight,
-            ),
-          ),
-          const SizedBox(height: 40),
-        ],
-      ),
-    );
-  }
-}
-
-class _AnimatedSection extends StatefulWidget {
-  final int delay;
-  final Widget child;
-
-  const _AnimatedSection({required this.delay, required this.child});
-
-  @override
-  State<_AnimatedSection> createState() => _AnimatedSectionState();
-}
-
-class _AnimatedSectionState extends State<_AnimatedSection>
     with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _animation;
+  late double _simWeightKg;
+  late AnimationController _pulseCtrl;
+  late Animation<double> _pulseAnim;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
+    final h = widget.args.heightCm ?? 0;
+    _simWeightKg = widget.args.weightKg ??
+        (h > 0 ? 22 * (h / 100) * (h / 100) : 70);
+    _pulseCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 450),
+      duration: const Duration(milliseconds: 900),
     );
-    _animation = CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeOutCubic,
+    _pulseAnim = Tween<double>(begin: 1.0, end: 1.12).animate(
+      CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut),
     );
-    Future.delayed(Duration(milliseconds: widget.delay), () {
-      if (mounted) _controller.forward();
+    _pulseCtrl.repeat(reverse: true);
+    Future.delayed(const Duration(milliseconds: 1200), () {
+      if (mounted) _pulseCtrl.stop();
     });
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _pulseCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final reduceMotion = MediaQuery.of(context).disableAnimations;
-    if (reduceMotion) return widget.child;
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final bg = isLight ? HomePremiumTheme.lightWarmBg : HomePremiumTheme.darkCharcoal;
 
-    return AnimatedBuilder(
-      animation: _animation,
-      builder: (context, _) => Opacity(
-        opacity: _animation.value,
-        child: Transform.translate(
-          offset: Offset(0, 20 * (1 - _animation.value)),
-          child: widget.child,
-        ),
-      ),
-    );
-  }
-}
-
-class _BmiHeroFullWidth extends StatelessWidget {
-  final BmiDetailsArgs args;
-  final void Function(BuildContext, int) onZoneTap;
-
-  const _BmiHeroFullWidth({
-    required this.args,
-    required this.onZoneTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bmi = args.bmi;
-    final progress = bmi > 0 ? _progressFromBmi(bmi) : 0.0;
-    final statusColor = bmi > 0 ? _colorFromProgress(progress) : Colors.grey;
-    final category =
-        args.bmiStatus.isNotEmpty ? args.bmiStatus : _bmiCategoryFromValue(bmi);
-
-    return Container(
-      width: double.infinity,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Hero card: gradient mesh, centered content
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(32),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  statusColor.withValues(alpha: isDark ? 0.28 : 0.22),
-                  statusColor.withValues(alpha: isDark ? 0.15 : 0.10),
-                ],
-              ),
-              border: Border.all(
-                color: statusColor.withValues(alpha: 0.25),
-                width: 1,
-              ),
+    return Scaffold(
+      backgroundColor: bg,
+      body: CustomScrollView(
+        physics: const BouncingScrollPhysics(),
+        slivers: [
+          SliverAppBar(
+            pinned: true,
+            backgroundColor: bg.withValues(alpha: 0.92),
+            elevation: 0,
+            leading: IconButton(
+              icon: Icon(Icons.arrow_back_ios_new_rounded,
+                  color: HomePremiumTheme.primaryText(isLight), size: 20),
+              onPressed: () => context.pop(),
             ),
-            child: Column(
-              children: [
-                // Large display number
-                TweenAnimationBuilder<double>(
-                  tween: Tween(begin: 0, end: bmi > 0 ? bmi : 0),
-                  duration: const Duration(milliseconds: 800),
-                  curve: Curves.easeOutCubic,
-                  builder: (context, value, _) => Semantics(
-                    label: 'BMI value ${value.toStringAsFixed(1)}',
-                    child: Text(
-                      bmi > 0 ? value.toStringAsFixed(1) : '--',
-                      style: TextStyle(
-                        fontSize: 72,
-                        fontWeight: FontWeight.w200,
-                        color: bmi > 0 ? statusColor : AppColors.textPrimaryOf(context),
-                        height: 1.0,
-                        letterSpacing: -3,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                if (category.isNotEmpty)
-                  TweenAnimationBuilder<double>(
-                    tween: Tween(begin: 0, end: 1),
-                    duration: const Duration(milliseconds: 500),
-                    curve: Curves.easeOutBack,
-                    builder: (context, value, _) => Opacity(
-                      opacity: value,
-                      child: Transform.scale(
-                        scale: value,
-                        child: Text(
-                          category,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: statusColor.withValues(alpha: 0.95),
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                const SizedBox(height: 32),
-                BmiScaleBar(
-                  progress: progress,
-                  bmi: bmi,
-                  onZoneTap: (idx) => onZoneTap(context, idx),
-                ),
-              ],
+            title: Text(
+              'BMI Details',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: HomePremiumTheme.primaryText(isLight),
+              ),
             ),
           ),
-          const SizedBox(height: 20),
-          // Bento-style metric row
-          Row(
-            children: [
-              Expanded(
-                child: _MetricChip(
-                  icon: Icons.height_rounded,
-                  label: 'Height',
-                  value: _formatHeight(args.heightCm),
-                  context: context,
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
+                _BmiHeroCard(args: widget.args, pulseAnim: _pulseAnim),
+                const SizedBox(height: 12),
+                _BmiRangeVisual(
+                  bmi: widget.args.bmi,
+                  pulseAnim: _pulseAnim,
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _MetricChip(
-                  icon: Icons.monitor_weight_rounded,
-                  label: 'Weight',
-                  value: _formatWeight(args.weightKg),
-                  context: context,
+                const SizedBox(height: 12),
+                _BodyInfoRow(args: widget.args),
+                const SizedBox(height: 12),
+                _HealthyRangeCard(args: widget.args),
+                const SizedBox(height: 12),
+                _WeightGoalSimulator(
+                  args: widget.args,
+                  simWeightKg: _simWeightKg,
+                  onWeightChanged: (w) {
+                    HapticFeedback.selectionClick();
+                    setState(() => _simWeightKg = w);
+                  },
                 ),
-              ),
-            ],
+                const SizedBox(height: 12),
+                const _BmiEducationAccordion(),
+                const SizedBox(height: 12),
+                const _BmiDisclaimerCard(),
+              ]),
+            ),
           ),
         ],
       ),
@@ -829,142 +184,407 @@ class _BmiHeroFullWidth extends StatelessWidget {
   }
 }
 
-class _WeightSimulatorCard extends StatefulWidget {
-  final BmiDetailsArgs args;
-  final double simulatedWeightKg;
-  final void Function(double) onWeightChanged;
+// ─── Premium card shell ────────────────────────────────────────────────────────
 
-  const _WeightSimulatorCard({
-    required this.args,
-    required this.simulatedWeightKg,
-    required this.onWeightChanged,
+class _PremiumCard extends StatelessWidget {
+  final Widget child;
+  final LinearGradient? gradient;
+  final int delayMs;
+
+  const _PremiumCard({
+    required this.child,
+    this.gradient,
+    this.delayMs = 0,
   });
 
   @override
-  State<_WeightSimulatorCard> createState() => _WeightSimulatorCardState();
+  Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: Duration(milliseconds: 400 + delayMs),
+      curve: Curves.easeOutCubic,
+      builder: (context, t, child) {
+        return Opacity(
+          opacity: t,
+          child: Transform.translate(
+            offset: Offset(0, 12 * (1 - t)),
+            child: child,
+          ),
+        );
+      },
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: gradient,
+          color: gradient == null
+              ? (isLight
+                  ? HomePremiumTheme.lightCreamCard
+                  : HomePremiumTheme.darkCard)
+              : null,
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: HomePremiumTheme.softCardShadow(isLight),
+          border: Border.all(
+            color: isLight
+                ? HomePremiumTheme.lightCharcoalText.withValues(alpha: 0.06)
+                : Colors.white.withValues(alpha: 0.06),
+          ),
+        ),
+        child: child,
+      ),
+    );
+  }
 }
 
-class _WeightSimulatorCardState extends State<_WeightSimulatorCard> {
+// ─── Section 1: Hero ─────────────────────────────────────────────────────────
+
+class _BmiHeroCard extends StatelessWidget {
+  final BmiDetailsArgs args;
+  final Animation<double> pulseAnim;
+
+  const _BmiHeroCard({required this.args, required this.pulseAnim});
+
   @override
   Widget build(BuildContext context) {
-    final heightCm = widget.args.heightCm ?? 0;
-    final heightM = heightCm / 100.0;
-    final minKg = 40.0;
-    final maxKg = heightM > 0
-        ? (35 * heightM * heightM).clamp(60.0, 180.0)
-        : 120.0;
-    final rawWeight = (widget.simulatedWeightKg > 0
-            ? widget.simulatedWeightKg
-            : (heightM > 0 ? 22.0 * heightM * heightM : 70.0))
-        .toDouble();
-    final weight = rawWeight.clamp(minKg, maxKg);
-    final simBmi = _simulateBmi(heightCm, weight);
-    final simCategory = _bmiCategoryFromValue(simBmi);
-    final progress = simBmi > 0 ? _progressFromBmi(simBmi) : 0.0;
-    final simColor = _colorFromProgress(progress);
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final bmi = args.bmi;
+    final progress = bmi > 0 ? bmiProgress(bmi) : 0.0;
+    final accent = bmi > 0
+        ? BmiMeterColors.fromProgress(progress)
+        : HomePremiumTheme.secondaryText(isLight);
+    final status = args.bmiStatus.isNotEmpty
+        ? args.bmiStatus
+        : bmiCategoryFromValue(bmi);
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: DesignTokens.surfaceOf(context),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: DesignTokens.borderColorOf(context),
-          width: 1,
-        ),
-        boxShadow: isDark
-            ? []
-            : [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
+    final heightCm = args.heightCm ?? 0;
+    final weightKg = args.weightKg ?? 0;
+    String subline = '';
+    if (heightCm > 0 && weightKg > 0) {
+      final range = healthyWeights(heightCm);
+      subline = healthyRangeMessage(bmi, weightKg, range.minKg, range.maxKg);
+    }
+
+    return _PremiumCard(
+      delayMs: 0,
+      gradient: HomePremiumTheme.bmiTileGradient(isLight, accent),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'BMI',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: HomePremiumTheme.secondaryText(isLight),
+              letterSpacing: 0.3,
+            ),
+          ),
+          const SizedBox(height: 6),
+          TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: bmi > 0 ? bmi : 0),
+            duration: const Duration(milliseconds: 550),
+            curve: Curves.easeOutCubic,
+            builder: (context, v, _) {
+              return Text(
+                bmi > 0 ? v.toStringAsFixed(1) : '--',
+                style: TextStyle(
+                  fontSize: 52,
+                  fontWeight: FontWeight.w800,
+                  color: HomePremiumTheme.primaryText(isLight),
+                  height: 1.0,
+                  letterSpacing: -1.5,
                 ),
-              ],
+              );
+            },
+          ),
+          const SizedBox(height: 8),
+          if (status.isNotEmpty)
+            Text(
+              status,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: accent,
+              ),
+            ),
+          if (subline.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              subline,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: HomePremiumTheme.secondaryText(isLight),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Section 2: Range visual ─────────────────────────────────────────────────
+
+class _BmiRangeVisual extends StatelessWidget {
+  final double bmi;
+  final Animation<double> pulseAnim;
+
+  const _BmiRangeVisual({required this.bmi, required this.pulseAnim});
+
+  @override
+  Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    return _PremiumCard(
+      delayMs: 60,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'BMI Range',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: HomePremiumTheme.primaryText(isLight),
+            ),
+          ),
+          const SizedBox(height: 16),
+          _BmiRangeBar(
+            bmi: bmi,
+            pulseAnim: pulseAnim,
+            showYouLabel: true,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BmiRangeBar extends StatelessWidget {
+  final double bmi;
+  final Animation<double> pulseAnim;
+  final bool showYouLabel;
+  final bool animateDot;
+
+  const _BmiRangeBar({
+    required this.bmi,
+    required this.pulseAnim,
+    this.showYouLabel = true,
+    this.animateDot = true,
+  });
+
+  static const _zones = ['Underweight', 'Healthy', 'Overweight', 'Obese'];
+  static const _zoneColors = [
+    Color(0xFF3FA9F5),
+    Color(0xFF22C55E),
+    Color(0xFFFACC15),
+    Color(0xFFFF5A5A),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final progress = bmi > 0 ? bmiProgress(bmi) : 0.0;
+    final dotColor = bmi > 0
+        ? BmiMeterColors.fromProgress(progress)
+        : Colors.grey;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        final dotLeft = (w * progress.clamp(0.02, 0.98)) - 8;
+
+        return Column(
+          children: [
+            SizedBox(
+              height: 14,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Row(
+                    children: List.generate(4, (i) {
+                      return Expanded(
+                        child: Container(
+                          height: 14,
+                          margin: EdgeInsets.only(right: i < 3 ? 3 : 0),
+                          decoration: BoxDecoration(
+                            color: _zoneColors[i].withValues(alpha: 0.85),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                  if (bmi > 0)
+                    animateDot
+                        ? TweenAnimationBuilder<double>(
+                            tween: Tween(begin: 0, end: dotLeft),
+                            duration: const Duration(milliseconds: 500),
+                            curve: Curves.easeOutCubic,
+                            builder: (context, left, _) =>
+                                _buildDot(left, dotColor, pulseAnim),
+                          )
+                        : _buildDot(dotLeft, dotColor, pulseAnim),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: List.generate(4, (i) {
+                return Expanded(
+                  child: Text(
+                    _zones[i],
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: HomePremiumTheme.secondaryText(isLight),
+                    ),
+                  ),
+                );
+              }),
+            ),
+            if (showYouLabel && bmi > 0) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: dotColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'You · Current BMI: ${bmi.toStringAsFixed(1)}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: HomePremiumTheme.primaryText(isLight),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildDot(double left, Color dotColor, Animation<double> pulse) {
+    return Positioned(
+      left: left,
+      top: -3,
+      child: AnimatedBuilder(
+        animation: pulse,
+        builder: (context, child) {
+          return Transform.scale(scale: pulse.value, child: child);
+        },
+        child: Container(
+          width: 20,
+          height: 20,
+          decoration: BoxDecoration(
+            color: dotColor,
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 2.5),
+            boxShadow: [
+              BoxShadow(
+                color: dotColor.withValues(alpha: 0.45),
+                blurRadius: 8,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Section 3: Body info ────────────────────────────────────────────────────
+
+class _BodyInfoRow extends StatelessWidget {
+  final BmiDetailsArgs args;
+
+  const _BodyInfoRow({required this.args});
+
+  @override
+  Widget build(BuildContext context) {
+    return _PremiumCard(
+      delayMs: 120,
+      child: Row(
+        children: [
+          Expanded(
+            child: _MiniMetricTile(
+              icon: Icons.height_rounded,
+              label: 'Height',
+              value: formatHeight(args.heightCm),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: _MiniMetricTile(
+              icon: Icons.monitor_weight_outlined,
+              label: 'Weight',
+              value: formatWeightKg(args.weightKg),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MiniMetricTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _MiniMetricTile({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isLight
+            ? Colors.white.withValues(alpha: 0.7)
+            : Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isLight
+              ? HomePremiumTheme.lightCharcoalText.withValues(alpha: 0.08)
+              : Colors.white.withValues(alpha: 0.08),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Weight simulator',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimaryOf(context),
-                  letterSpacing: 0.2,
-                ),
-              ),
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 200),
-                switchInCurve: Curves.easeOutBack,
-                switchOutCurve: Curves.easeIn,
-                transitionBuilder: (child, animation) => ScaleTransition(
-                  scale: animation,
-                  child: FadeTransition(opacity: animation, child: child),
-                ),
-                child: Container(
-                  key: ValueKey(weight.toStringAsFixed(1)),
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: simColor.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    '${weight.toStringAsFixed(1)} kg',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      color: simColor,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              activeTrackColor: simColor,
-              inactiveTrackColor:
-                  DesignTokens.textTertiaryOf(context).withValues(alpha: 0.25),
-              thumbColor: simColor,
-            ),
-            child: Slider(
-              value: weight,
-              min: minKg,
-              max: maxKg,
-              onChanged: (v) {
-                HapticFeedback.selectionClick();
-                widget.onWeightChanged(v);
-              },
+          Icon(icon, size: 18, color: HomePremiumTheme.secondaryText(isLight)),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: HomePremiumTheme.secondaryText(isLight),
             ),
           ),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 220),
-            switchInCurve: Curves.easeInOut,
-            switchOutCurve: Curves.easeInOut,
-            transitionBuilder: (child, animation) => FadeTransition(
-              opacity: animation,
-              child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0, 0.1),
-                  end: Offset.zero,
-                ).animate(animation),
-                child: child,
-              ),
-            ),
-            child: Text(
-              'BMI ${simBmi.toStringAsFixed(1)} · $simCategory',
-              key: ValueKey('$weight'),
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textSecondaryOf(context),
-              ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              color: HomePremiumTheme.primaryText(isLight),
             ),
           ),
         ],
@@ -973,500 +593,439 @@ class _WeightSimulatorCardState extends State<_WeightSimulatorCard> {
   }
 }
 
-// ─── HealthyRangeCard ───────────────────────────────────────────────────────
+// ─── Section 4: Healthy range ────────────────────────────────────────────────
 
-class HealthyRangeCard extends StatelessWidget {
+class _HealthyRangeCard extends StatelessWidget {
   final BmiDetailsArgs args;
-  final int? selectedMilestoneIndex;
-  final double? goalWeightKg;
-  final double simulatedWeightKg;
-  final void Function(int index, double weightKg) onMilestoneSelected;
 
-  const HealthyRangeCard({
-    super.key,
-    required this.args,
-    required this.selectedMilestoneIndex,
-    required this.goalWeightKg,
-    required this.simulatedWeightKg,
-    required this.onMilestoneSelected,
-  });
+  const _HealthyRangeCard({required this.args});
 
   @override
   Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
     final heightCm = args.heightCm ?? 0;
-    final heightM = heightCm / 100.0;
-
-    if (heightM <= 0) {
-      return _card(
-        context,
-        title: 'Healthy weight range',
+    if (heightCm <= 0) {
+      return _PremiumCard(
+        delayMs: 180,
         child: Text(
-          'Add height to see your healthy weight range.',
+          'Add height in your profile to see healthy weight range.',
           style: TextStyle(
-            fontSize: 14,
-            color: AppColors.textSecondaryOf(context),
+            fontSize: 13,
+            color: HomePremiumTheme.secondaryText(isLight),
           ),
         ),
       );
     }
 
-    final minKg = 18.5 * (heightM * heightM);
-    final maxKg = 24.9 * (heightM * heightM);
-    final midKg = 22.0 * (heightM * heightM);
-    final leanKg = 20.0 * (heightM * heightM);
+    final range = healthyWeights(heightCm);
     final weight = args.weightKg ?? 0;
+    final needToChange = weight > range.maxKg
+        ? weight - range.maxKg
+        : weight < range.minKg
+            ? range.minKg - weight
+            : 0.0;
+    final isAbove = weight > range.maxKg;
 
-    String message;
-    if (weight <= 0) {
-      message =
-          'Healthy range: ${minKg.toStringAsFixed(1)}–${maxKg.toStringAsFixed(1)} kg';
-    } else if (weight < minKg) {
-      final delta = minKg - weight;
-      message = 'You are ${delta.toStringAsFixed(1)} kg below the healthy range';
-    } else if (weight <= maxKg) {
-      message = 'You are within the healthy range';
-    } else {
-      final delta = weight - maxKg;
-      message = 'You are ${delta.toStringAsFixed(1)} kg above the healthy range';
-    }
-
-    final isUnderweight = (args.bmi > 0 && args.bmi < 18.5);
-    final milestones = <({String label, double weightKg})>[
-      (label: 'Reach 24.9 BMI', weightKg: maxKg),
-      (label: 'Mid healthy (22 BMI)', weightKg: midKg),
-      if (!isUnderweight) (label: 'Lean (20 BMI)', weightKg: leanKg),
-    ];
-
-    return _card(
-      context,
-      title: 'Healthy weight range',
+    return _PremiumCard(
+      delayMs: 180,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '${minKg.toStringAsFixed(1)}–${maxKg.toStringAsFixed(1)} kg',
+            'Healthy Weight Range',
             style: TextStyle(
-              fontSize: 18,
+              fontSize: 14,
               fontWeight: FontWeight.w700,
-              color: AppColors.textPrimaryOf(context),
+              color: HomePremiumTheme.primaryText(isLight),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 14),
           Text(
-            message,
-            style: TextStyle(
-              fontSize: 14,
-              color: AppColors.textSecondaryOf(context),
+            '${range.minKg.toStringAsFixed(1)} kg – ${range.maxKg.toStringAsFixed(1)} kg',
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF22C55E),
             ),
           ),
-          const SizedBox(height: 16),
-          Text(
-            'Target ladder',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textPrimaryOf(context),
+          const SizedBox(height: 14),
+          _RangeStatRow(
+            label: 'Target Weight',
+            value: '${range.targetKg.toStringAsFixed(1)} kg',
+            color: const Color(0xFF22C55E),
+          ),
+          if (needToChange > 0) ...[
+            const SizedBox(height: 8),
+            _RangeStatRow(
+              label: isAbove ? 'Need to Lose' : 'Need to Gain',
+              value: '${needToChange.toStringAsFixed(1)} kg',
+              color: const Color(0xFFF59E0B),
             ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: List.generate(milestones.length, (i) {
-              final m = milestones[i];
-              final isSelected = selectedMilestoneIndex == i;
-              return _TapScaleZone(
-                onTap: () => onMilestoneSelected(i, m.weightKg),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  curve: Curves.easeInOut,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? AppColors.green.withValues(alpha: 0.2)
-                        : DesignTokens.surfaceElevatedOf(context),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: isSelected
-                          ? AppColors.green
-                          : DesignTokens.borderColorOf(context),
-                      width: isSelected ? 2 : 1,
-                    ),
-                  ),
-                  child: Text(
-                    '${m.label} (${m.weightKg.toStringAsFixed(1)} kg)',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimaryOf(context),
-                    ),
-                  ),
-                ),
-              );
-            }),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _card(BuildContext context,
-      {required String title, required Widget child}) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: DesignTokens.surfaceOf(context),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: DesignTokens.borderColorOf(context),
-          width: 1,
-        ),
-        boxShadow: isDark
-            ? []
-            : [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textPrimaryOf(context),
-              letterSpacing: 0.2,
+          ] else if (weight > 0) ...[
+            const SizedBox(height: 8),
+            Text(
+              'You are within the healthy range',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF22C55E),
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-          child,
+          ],
         ],
       ),
     );
   }
 }
 
-// ─── TrendsCard ─────────────────────────────────────────────────────────────
+class _RangeStatRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
 
-class TrendsCard extends StatefulWidget {
-  final VoidCallback onLogWeightTap;
-
-  const TrendsCard({super.key, required this.onLogWeightTap});
-
-  @override
-  State<TrendsCard> createState() => _TrendsCardState();
-}
-
-class _TrendsCardState extends State<TrendsCard>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _bounceController;
-
-  @override
-  void initState() {
-    super.initState();
-    _bounceController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 500),
-    );
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _bounceController.forward();
-    });
-  }
-
-  @override
-  void dispose() {
-    _bounceController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: DesignTokens.surfaceOf(context),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: DesignTokens.borderColorOf(context),
-          width: 1,
-        ),
-        boxShadow: isDark
-            ? []
-            : [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Trends',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textPrimaryOf(context),
-              letterSpacing: 0.2,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Center(
-            child: Column(
-              children: [
-                TweenAnimationBuilder<double>(
-                  tween: Tween(begin: 0, end: 1),
-                  duration: const Duration(milliseconds: 600),
-                  curve: Curves.easeOutBack,
-                  builder: (context, value, _) {
-                    return Transform.scale(
-                      scale: value,
-                      child: Icon(
-                        Icons.show_chart,
-                        size: 48,
-                        color: DesignTokens.textTertiaryOf(context),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Log weight weekly to unlock trends',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: AppColors.textSecondaryOf(context),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                FilledButton.icon(
-                  onPressed: widget.onLogWeightTap,
-                  icon: const Icon(Icons.add_chart_rounded, size: 20),
-                  label: const Text('Log weight'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.blue,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 14,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── QuickActionsGrid ────────────────────────────────────────────────────────
-
-class QuickActionsGrid extends StatelessWidget {
-  final BmiDetailsArgs args;
-  final double goalWeightKg;
-  final int? selectedMilestoneIndex;
-  final VoidCallback onSetGoal;
-  final VoidCallback onUpdateWeight;
-  final VoidCallback onUpdateHeight;
-
-  const QuickActionsGrid({
-    super.key,
-    required this.args,
-    required this.goalWeightKg,
-    required this.selectedMilestoneIndex,
-    required this.onSetGoal,
-    required this.onUpdateWeight,
-    required this.onUpdateHeight,
+  const _RangeStatRow({
+    required this.label,
+    required this.value,
+    required this.color,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isOverweight = args.bmi >= 25;
-    final isUnderweight = args.bmi > 0 && args.bmi < 18.5;
-
-    final actions = <({String label, IconData icon, VoidCallback onTap})>[
-      if (isOverweight)
-        (label: 'Set Healthy Target', icon: Icons.flag, onTap: onSetGoal)
-      else if (isUnderweight)
-        (label: 'Gain Weight Target', icon: Icons.trending_up, onTap: onSetGoal)
-      else
-        (label: 'Set Goal', icon: Icons.flag, onTap: onSetGoal),
-      (label: 'Update Weight', icon: Icons.monitor_weight, onTap: onUpdateWeight),
-      (label: 'Update Height', icon: Icons.height, onTap: onUpdateHeight),
-    ];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    return Row(
       children: [
-        Text(
-          'Quick actions',
-          style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textPrimaryOf(context),
-            letterSpacing: 0.2,
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: HomePremiumTheme.secondaryText(isLight),
+            ),
           ),
         ),
-        const SizedBox(height: 14),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: actions.map((a) {
-            return _ActionButton(
-              label: a.label,
-              icon: a.icon,
-              onTap: a.onTap,
-            );
-          }).toList(),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+            color: color,
+          ),
         ),
       ],
     );
   }
 }
 
-class _ActionButton extends StatefulWidget {
-  final String label;
-  final IconData icon;
-  final VoidCallback? onTap;
+// ─── Section 5: Weight simulator ───────────────────────────────────────────
 
-  const _ActionButton({
-    required this.label,
-    required this.icon,
-    this.onTap,
+class _WeightGoalSimulator extends StatelessWidget {
+  final BmiDetailsArgs args;
+  final double simWeightKg;
+  final ValueChanged<double> onWeightChanged;
+
+  const _WeightGoalSimulator({
+    required this.args,
+    required this.simWeightKg,
+    required this.onWeightChanged,
   });
 
   @override
-  State<_ActionButton> createState() => _ActionButtonState();
-}
-
-class _ActionButtonState extends State<_ActionButton> {
-  bool _pressed = false;
-
-  @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) => setState(() => _pressed = false),
-      onTapCancel: () => setState(() => _pressed = false),
-      onTap: widget.onTap,
-      child: AnimatedScale(
-        scale: _pressed ? 0.97 : 1.0,
-        duration: DesignTokens.interactionDuration,
-        curve: DesignTokens.interactionCurve,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-          decoration: BoxDecoration(
-            color: DesignTokens.surfaceOf(context),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: DesignTokens.borderColorOf(context),
-              width: 1,
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final heightCm = args.heightCm ?? 0;
+    final heightM = heightCm / 100.0;
+
+    if (heightM <= 0) {
+      return _PremiumCard(
+        delayMs: 240,
+        child: Text(
+          'Add height to use the weight goal simulator.',
+          style: TextStyle(
+            fontSize: 13,
+            color: HomePremiumTheme.secondaryText(isLight),
+          ),
+        ),
+      );
+    }
+
+    final range = healthyWeights(heightCm);
+    final rawMin = range.minKg * 0.85;
+    final rawMax = math.min(range.maxKg * 1.35, 160.0);
+    final minKg = math.min(rawMin, rawMax - 0.5);
+    final maxKg = math.max(rawMax, minKg + 0.5);
+    final weight = simWeightKg.clamp(minKg, maxKg);
+    final currentBmi = args.bmi;
+    final simBmi = bmiFromHeightWeight(heightCm, weight);
+    final simStatus = bmiCategoryFromValue(simBmi);
+    final simProgress = bmiProgress(simBmi);
+    final simColor = BmiMeterColors.fromProgress(simProgress);
+    final targetKg = range.targetKg;
+    final targetBmi = 24.9;
+
+    return _PremiumCard(
+      delayMs: 240,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Weight Goal Simulator',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: HomePremiumTheme.primaryText(isLight),
             ),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+          const SizedBox(height: 14),
+          Row(
             children: [
-              Icon(widget.icon,
-                  size: 18, color: AppColors.textSecondaryOf(context)),
-              const SizedBox(width: 8),
-              Text(
-                widget.label,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimaryOf(context),
+              Expanded(
+                child: _SimValueBlock(
+                  label: 'Current Weight',
+                  value: formatWeightKg(args.weightKg),
+                ),
+              ),
+              Icon(Icons.arrow_forward_rounded,
+                  size: 16, color: HomePremiumTheme.secondaryText(isLight)),
+              Expanded(
+                child: _SimValueBlock(
+                  label: 'Target Weight',
+                  value: '${targetKg.toStringAsFixed(1)} kg',
+                  alignEnd: true,
                 ),
               ),
             ],
           ),
-        ),
+          const SizedBox(height: 12),
+          Text(
+            '${weight.toStringAsFixed(1)} kg → ${targetKg.toStringAsFixed(1)} kg',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: HomePremiumTheme.secondaryText(isLight),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'BMI: ${currentBmi > 0 ? currentBmi.toStringAsFixed(1) : '--'} → ${simBmi.toStringAsFixed(1)} (target ${targetBmi.toStringAsFixed(1)})',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: HomePremiumTheme.primaryText(isLight),
+            ),
+          ),
+          const SizedBox(height: 6),
+          AnimatedDefaultTextStyle(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeOutCubic,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: simColor,
+            ),
+            child: Text(simStatus),
+          ),
+          const SizedBox(height: 12),
+          _BmiRangeBar(
+            bmi: simBmi,
+            pulseAnim: const AlwaysStoppedAnimation<double>(1.0),
+            showYouLabel: false,
+            animateDot: false,
+          ),
+          const SizedBox(height: 8),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              activeTrackColor: simColor,
+              inactiveTrackColor:
+                  HomePremiumTheme.secondaryText(isLight).withValues(alpha: 0.2),
+              thumbColor: simColor,
+              overlayColor: simColor.withValues(alpha: 0.12),
+            ),
+            child: Slider(
+              value: weight,
+              min: minKg,
+              max: maxKg,
+              onChanged: onWeightChanged,
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-// ─── _MetricChip (modern pill) ──────────────────────────────────────────────────
-
-class _MetricChip extends StatelessWidget {
-  final IconData icon;
+class _SimValueBlock extends StatelessWidget {
   final String label;
   final String value;
-  final BuildContext context;
+  final bool alignEnd;
 
-  const _MetricChip({
-    required this.icon,
+  const _SimValueBlock({
     required this.label,
     required this.value,
-    required this.context,
+    this.alignEnd = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: isDark
-            ? Colors.white.withValues(alpha: 0.06)
-            : Colors.white.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: DesignTokens.borderColorOf(context),
-          width: 1,
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.06),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, size: 20, color: AppColors.textSecondaryOf(context)),
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    return Column(
+      crossAxisAlignment:
+          alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: HomePremiumTheme.secondaryText(isLight),
           ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.textSecondaryOf(context),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    value,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimaryOf(context),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+            color: HomePremiumTheme.primaryText(isLight),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Section 6: Education accordion ─────────────────────────────────────────
+
+class _BmiEducationAccordion extends StatefulWidget {
+  const _BmiEducationAccordion();
+
+  @override
+  State<_BmiEducationAccordion> createState() => _BmiEducationAccordionState();
+}
+
+class _BmiEducationAccordionState extends State<_BmiEducationAccordion> {
+  bool _expanded = false;
+
+  static const _categories = [
+    ('Underweight', 'Below 18.5'),
+    ('Healthy', '18.5 – 24.9'),
+    ('Overweight', '25 – 29.9'),
+    ('Obese', '30+'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    return _PremiumCard(
+      delayMs: 300,
+      child: Column(
+        children: [
+          InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'BMI Categories',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: HomePremiumTheme.primaryText(isLight),
+                      ),
                     ),
                   ),
-                ),
-              ],
+                  AnimatedRotation(
+                    turns: _expanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 250),
+                    curve: Curves.easeOutCubic,
+                    child: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: HomePremiumTheme.secondaryText(isLight),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          AnimatedCrossFade(
+            firstChild: const SizedBox.shrink(),
+            secondChild: Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Column(
+                children: _categories.map((c) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            c.$1,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: HomePremiumTheme.primaryText(isLight),
+                            ),
+                          ),
+                        ),
+                        Text(
+                          c.$2,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: HomePremiumTheme.secondaryText(isLight),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+            crossFadeState:
+                _expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+            duration: const Duration(milliseconds: 250),
+            sizeCurve: Curves.easeOutCubic,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Section 7: Disclaimer ───────────────────────────────────────────────────
+
+class _BmiDisclaimerCard extends StatelessWidget {
+  const _BmiDisclaimerCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    return _PremiumCard(
+      delayMs: 360,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.info_outline_rounded,
+            size: 18,
+            color: HomePremiumTheme.secondaryText(isLight),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'BMI is a general health screening tool based on height and weight. '
+              'It does not account for muscle mass, body composition, age, gender, '
+              'or medical conditions. Consult a healthcare professional for '
+              'personalized health advice.',
+              style: TextStyle(
+                fontSize: 12,
+                height: 1.45,
+                fontWeight: FontWeight.w500,
+                color: HomePremiumTheme.secondaryText(isLight),
+              ),
             ),
           ),
         ],

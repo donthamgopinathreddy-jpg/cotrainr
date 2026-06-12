@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -53,8 +54,13 @@ class _DiscoverPageState extends State<DiscoverPage>
 
   final ProviderLocationsRepository _repo = ProviderLocationsRepository();
 
-  static const _defaultLat = 17.3850;
-  static const _defaultLng = 78.4867;
+  static const _discoverGradient = LinearGradient(
+    colors: [Color(0xFF3ED598), Color(0xFF4DA3FF)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  static const _discoverAccent = Color(0xFF3ED598);
 
   @override
   void initState() {
@@ -82,6 +88,7 @@ class _DiscoverPageState extends State<DiscoverPage>
 
   /// Load real data from Supabase using nearby_providers RPC
   Future<void> _loadRealData() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -93,30 +100,33 @@ class _DiscoverPageState extends State<DiscoverPage>
     try {
       // Get user location
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!mounted) return;
       if (!serviceEnabled) {
         setState(() {
-          _errorMessage = 'Location services are disabled. Please enable location services to discover nearby providers.';
+          _errorMessage = 'location_disabled';
           _isLoading = false;
         });
         return;
       }
 
       LocationPermission permission = await Geolocator.checkPermission();
+      if (!mounted) return;
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
+        if (!mounted) return;
         if (permission == LocationPermission.denied) {
           setState(() {
-            _errorMessage = 'Location permissions are denied. Please enable location permissions to discover nearby providers.';
+            _errorMessage = 'location_denied';
             _isLoading = false;
           });
           return;
         }
       }
 
+      if (!mounted) return;
       if (permission == LocationPermission.deniedForever) {
         setState(() {
-          _errorMessage =
-              'Location access is required to discover nearby providers. Enable it in app settings.';
+          _errorMessage = 'location_denied_forever';
           _isLoading = false;
         });
         return;
@@ -125,7 +135,7 @@ class _DiscoverPageState extends State<DiscoverPage>
       _userPosition = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.medium,
       );
-
+      if (!mounted) return;
       // Fetch nearby trainers
       final trainerResults = await _repo.fetchNearbyProviders(
         userLat: _userPosition!.latitude,
@@ -139,6 +149,7 @@ class _DiscoverPageState extends State<DiscoverPage>
         userLng: _userPosition!.longitude,
         filters: _filters.copyWith(providerTypes: ['nutritionist']),
       );
+      if (!mounted) return;
 
       // Map trainer results to DiscoverItem
       for (var result in trainerResults) {
@@ -222,16 +233,49 @@ class _DiscoverPageState extends State<DiscoverPage>
       _trainers.sort((a, b) => a.distance.compareTo(b.distance));
       _nutritionists.sort((a, b) => a.distance.compareTo(b.distance));
 
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
       });
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('Discover load error: $e');
+      if (kDebugMode) debugPrint('$st');
+      if (!mounted) return;
       setState(() {
-        _errorMessage = 'Failed to load providers: ${e.toString()}';
+        _errorMessage = _classifyLoadError(e);
         _isLoading = false;
       });
     }
   }
+
+  String _classifyLoadError(Object e) {
+    final raw = e.toString().toLowerCase();
+    if (raw.contains('nearby_providers') ||
+        raw.contains('postgrestexception') ||
+        raw.contains('could not find function')) {
+      return 'backend_unavailable';
+    }
+    return 'generic';
+  }
+
+  String _friendlyErrorMessage() {
+    switch (_errorMessage) {
+      case 'location_disabled':
+        return 'Location services are off. Enable them to discover nearby providers.';
+      case 'location_denied':
+        return 'Location permission is required to find providers near you.';
+      case 'location_denied_forever':
+        return 'Location access was denied. Open settings to enable it.';
+      case 'backend_unavailable':
+        return 'We couldn\'t load providers right now.\nPlease try again.';
+      default:
+        return 'We couldn\'t load providers right now.\nPlease try again.';
+    }
+  }
+
+  bool get _errorNeedsSettings =>
+      _errorMessage == 'location_denied_forever' ||
+      _errorMessage == 'location_disabled';
 
 
   List<DiscoverItem> get _currentItems {
@@ -254,17 +298,14 @@ class _DiscoverPageState extends State<DiscoverPage>
         : _selectedTabIndex == 1
             ? FilterType.nutritionists
             : FilterType.centers;
-    final accentColor = _tabAccent(_selectedTabIndex);
-    final gradient = _tabGradient(_selectedTabIndex);
-    
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => DiscoverFilterSheet(
         filterType: filterType,
-        accentColor: accentColor,
-        gradient: gradient,
+        accentColor: _discoverAccent,
+        gradient: _discoverGradient,
         initialFilters: _filters,
         onApply: (filters) {
           setState(() {
@@ -284,38 +325,6 @@ class _DiscoverPageState extends State<DiscoverPage>
         },
       ),
     );
-  }
-
-
-  LinearGradient _tabGradient(int index) {
-    if (index == 1) {
-      return const LinearGradient(
-        colors: [
-          Color(0xFF3ED598),
-          Color(0xFF4DA3FF),
-        ],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      );
-    }
-    if (index == 2) {
-      return LinearGradient(
-        colors: [DesignTokens.accentPurple, DesignTokens.accentBlueLight],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      );
-    }
-    return LinearGradient(
-      colors: [DesignTokens.accentOrange, DesignTokens.accentAmber],
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-    );
-  }
-
-  Color _tabAccent(int index) {
-    if (index == 1) return const Color(0xFF3ED598); // Green for Nutritionists
-    if (index == 2) return const Color(0xFF8B5CF6); // Purple for Centers
-    return const Color(0xFFFF8A00); // Orange for Trainers
   }
 
 
@@ -355,11 +364,7 @@ class _DiscoverPageState extends State<DiscoverPage>
                     _DiscoverSearchBar(
                       controller: _searchController,
                       focusNode: _searchFocusNode,
-                      hintText: _selectedTabIndex == 0
-                          ? 'Search trainers...'
-                          : _selectedTabIndex == 1
-                              ? 'Search nutritionists...'
-                              : 'Search centers...',
+                      selectedTabIndex: _selectedTabIndex,
                       onFilterTap: () => _showFilterSheet(context),
                     ),
                     const SizedBox(height: DesignTokens.spacing16),
@@ -370,15 +375,23 @@ class _DiscoverPageState extends State<DiscoverPage>
                         HapticFeedback.selectionClick();
                         setState(() => _selectedTabIndex = index);
                       },
-                      selectedGradient: _tabGradient(_selectedTabIndex),
-                      selectedAccent: _tabAccent(_selectedTabIndex),
+                      selectedGradient: _discoverGradient,
                     ),
                     const SizedBox(height: DesignTokens.spacing12),
                   ],
                 ),
               ),
             ),
-            if (_isLoading)
+            if (_isLoading) ...[
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: DesignTokens.spacing16,
+                    vertical: DesignTokens.spacing8,
+                  ),
+                  child: _DiscoverLoadingHeader(),
+                ),
+              ),
               SliverPadding(
                 padding: const EdgeInsets.symmetric(horizontal: DesignTokens.spacing16),
                 sliver: SliverList(
@@ -387,10 +400,11 @@ class _DiscoverPageState extends State<DiscoverPage>
                       padding: EdgeInsets.only(bottom: 14),
                       child: _DiscoverSkeletonCard(),
                     ),
-                    childCount: 3,
+                    childCount: 4,
                   ),
                 ),
-              )
+              ),
+            ]
             else if (_errorMessage != null)
               SliverToBoxAdapter(child: _buildErrorState())
             else if (_currentItems.isEmpty)
@@ -419,8 +433,8 @@ class _DiscoverPageState extends State<DiscoverPage>
                           padding: const EdgeInsets.only(bottom: 14),
                           child: _DiscoverResultCard(
                             item: item,
-                            accentColor: _tabAccent(_selectedTabIndex),
-                            accentGradient: _tabGradient(_selectedTabIndex),
+                            accentColor: _discoverAccent,
+                            accentGradient: _discoverGradient,
                             isCenter: _selectedTabIndex == 2,
                             requestStatus: _requestStatus[item.id] ?? 'none',
                             onTap: () {
@@ -512,13 +526,13 @@ class _DiscoverPageState extends State<DiscoverPage>
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              Icons.location_searching_rounded,
+              Icons.search_off_rounded,
               size: 48,
               color: DesignTokens.textSecondaryOf(context),
             ),
             const SizedBox(height: DesignTokens.spacing16),
             Text(
-              'No providers nearby',
+              'No providers found',
               style: TextStyle(
                 fontSize: DesignTokens.fontSizeH3,
                 fontWeight: FontWeight.w700,
@@ -527,12 +541,22 @@ class _DiscoverPageState extends State<DiscoverPage>
             ),
             const SizedBox(height: DesignTokens.spacing8),
             Text(
-              'Try expanding your search radius or check back later. Providers need to set their service locations to appear here.',
+              'Try changing filters or distance.',
               style: TextStyle(
                 fontSize: DesignTokens.fontSizeBodySmall,
                 color: DesignTokens.textSecondaryOf(context),
               ),
               textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: DesignTokens.spacing16),
+            OutlinedButton.icon(
+              onPressed: () {
+                HapticFeedback.selectionClick();
+                setState(() => _filters = const DiscoverFilters());
+                _loadRealData();
+              },
+              icon: const Icon(Icons.filter_alt_off_rounded, size: 18),
+              label: const Text('Reset filters'),
             ),
           ],
         ),
@@ -547,13 +571,13 @@ class _DiscoverPageState extends State<DiscoverPage>
         child: Column(
           children: [
             Icon(
-              Icons.error_outline_rounded,
+              Icons.cloud_off_rounded,
               size: 48,
-              color: DesignTokens.accentRed,
+              color: DesignTokens.textSecondaryOf(context),
             ),
             const SizedBox(height: DesignTokens.spacing16),
             Text(
-              'Error loading providers',
+              'Something went wrong',
               style: TextStyle(
                 fontSize: DesignTokens.fontSizeH3,
                 fontWeight: FontWeight.w700,
@@ -562,25 +586,99 @@ class _DiscoverPageState extends State<DiscoverPage>
             ),
             const SizedBox(height: DesignTokens.spacing8),
             Text(
-              _errorMessage ?? 'Unknown error',
+              _friendlyErrorMessage(),
               style: TextStyle(
                 fontSize: DesignTokens.fontSizeBodySmall,
                 color: DesignTokens.textSecondaryOf(context),
+                height: 1.4,
               ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: DesignTokens.spacing16),
-            ElevatedButton.icon(
-              onPressed: () => _loadRealData(),
-              icon: const Icon(Icons.refresh_rounded),
-              label: const Text('Retry'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: DesignTokens.accentOrange,
-                foregroundColor: Colors.white,
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                FilledButton.icon(
+                  onPressed: () {
+                    HapticFeedback.mediumImpact();
+                    _loadRealData();
+                  },
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Retry'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _discoverAccent,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+                if (_errorNeedsSettings) ...[
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      await Geolocator.openAppSettings();
+                    },
+                    icon: const Icon(Icons.settings_rounded, size: 18),
+                    label: const Text('Settings'),
+                  ),
+                ],
+              ],
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _DiscoverLoadingHeader extends StatefulWidget {
+  @override
+  State<_DiscoverLoadingHeader> createState() => _DiscoverLoadingHeaderState();
+}
+
+class _DiscoverLoadingHeaderState extends State<_DiscoverLoadingHeader>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: Tween<double>(begin: 0.55, end: 1).animate(
+        CurvedAnimation(parent: _pulse, curve: Curves.easeInOut),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: const Color(0xFF3ED598),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            'Finding the best matches…',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: DesignTokens.textSecondaryOf(context),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -656,13 +754,13 @@ class _DiscoverHeaderRow extends StatelessWidget {
 class _DiscoverSearchBar extends StatefulWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
-  final String hintText;
+  final int selectedTabIndex;
   final VoidCallback onFilterTap;
 
   const _DiscoverSearchBar({
     required this.controller,
     required this.focusNode,
-    required this.hintText,
+    required this.selectedTabIndex,
     required this.onFilterTap,
   });
 
@@ -671,6 +769,17 @@ class _DiscoverSearchBar extends StatefulWidget {
 }
 
 class _DiscoverSearchBarState extends State<_DiscoverSearchBar> {
+  String get _hintText {
+    switch (widget.selectedTabIndex) {
+      case 1:
+        return 'Search nutritionists...';
+      case 2:
+        return 'Search centers...';
+      default:
+        return 'Search trainers...';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -706,7 +815,7 @@ class _DiscoverSearchBarState extends State<_DiscoverSearchBar> {
         decoration: InputDecoration(
           filled: true,
           fillColor: Colors.transparent,
-          hintText: widget.hintText,
+          hintText: _hintText,
           hintStyle: TextStyle(
             fontSize: 15,
             fontWeight: FontWeight.w400,
@@ -753,14 +862,12 @@ class _DiscoverSegmentTabs extends StatelessWidget {
   final int selectedIndex;
   final ValueChanged<int> onTabChanged;
   final LinearGradient selectedGradient;
-  final Color selectedAccent;
 
   const _DiscoverSegmentTabs({
     required this.tabs,
     required this.selectedIndex,
     required this.onTabChanged,
     required this.selectedGradient,
-    required this.selectedAccent,
   });
 
   @override

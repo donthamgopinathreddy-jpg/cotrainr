@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../config/feature_flags.dart';
 import '../models/quest_models.dart';
 
 /// Repository for quest, challenge, achievement, and leaderboard operations
@@ -17,6 +18,13 @@ class QuestRepository {
   /// Get daily quests for current user
   /// Returns list of active daily quests with progress
   Future<List<ActiveQuest>> getDailyQuests() async {
+    if (!FeatureFlags.enableQuest) {
+      FeatureFlags.logBlockedOnce(
+        'quest_get_daily',
+        'Quest disabled: skipping getDailyQuests / allocate_daily_quests',
+      );
+      return [];
+    }
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) throw Exception('User not authenticated');
 
@@ -194,6 +202,7 @@ class QuestRepository {
 
   /// Get weekly quests for current user
   Future<List<ActiveQuest>> getWeeklyQuests() async {
+    if (!FeatureFlags.enableQuest) return [];
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) throw Exception('User not authenticated');
 
@@ -356,6 +365,7 @@ class QuestRepository {
     String questInstanceId,
     double delta,
   ) async {
+    if (!FeatureFlags.enableQuest) return {};
     final response = await _supabase.rpc('update_quest_progress', params: {
       'p_quest_instance_id': questInstanceId,
       'p_delta': delta,
@@ -367,6 +377,7 @@ class QuestRepository {
   /// Claim quest rewards
   /// Returns awarded XP, coins, and new level
   Future<Map<String, dynamic>> claimQuestRewards(String questInstanceId) async {
+    if (!FeatureFlags.enableQuest) return {};
     final response = await _supabase.rpc('claim_quest_rewards', params: {
       'p_quest_instance_id': questInstanceId,
     });
@@ -376,6 +387,7 @@ class QuestRepository {
 
   /// Refill daily quest slot (max 2 per day)
   Future<List<Map<String, dynamic>>> refillQuests() async {
+    if (!FeatureFlags.enableQuest) return [];
     final response = await _supabase.rpc('refill_quests');
 
     return List<Map<String, dynamic>>.from(response);
@@ -387,6 +399,7 @@ class QuestRepository {
 
   /// Get active challenges for current user
   Future<List<ChallengeQuest>> getActiveChallenges() async {
+    if (!FeatureFlags.enableQuest) return [];
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) throw Exception('User not authenticated');
 
@@ -568,6 +581,7 @@ class QuestRepository {
 
   /// Get all achievements with user progress
   Future<List<Achievement>> getAchievements() async {
+    if (!FeatureFlags.enableQuest) return [];
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) throw Exception('User not authenticated');
 
@@ -629,6 +643,7 @@ class QuestRepository {
     int? cursorPoints,
     String? cursorUserId,
   }) async {
+    if (!FeatureFlags.leaderboardsActive) return [];
     final response = await _supabase.rpc('get_leaderboard', params: {
       'p_period_type': periodType,
       'p_period_start': periodStart.toIso8601String().split('T')[0],

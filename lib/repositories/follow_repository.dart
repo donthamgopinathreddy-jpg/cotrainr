@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../config/feature_flags.dart';
 
 /// Repository for managing user follows
 class FollowRepository {
@@ -7,12 +8,16 @@ class FollowRepository {
   FollowRepository({SupabaseClient? supabase})
       : _supabase = supabase ?? Supabase.instance.client;
 
+  bool get _enabled =>
+      FeatureFlags.enableCoCircle && FeatureFlags.enableSocialProfiles;
+
   /// Get current user ID
   String? get _currentUserId => _supabase.auth.currentUser?.id;
 
   /// Check if current user is following another user.
   /// follower_id = current user, following_id = target user.
   Future<bool> isFollowing(String targetUserId) async {
+    if (!_enabled) return false;
     if (_currentUserId == null) return false;
 
     try {
@@ -32,6 +37,7 @@ class FollowRepository {
 
   /// Batch check: returns Set of target user IDs that current user follows.
   Future<Set<String>> getFollowingStatusForUsers(List<String> targetUserIds) async {
+    if (!_enabled) return {};
     if (_currentUserId == null || targetUserIds.isEmpty) return {};
 
     try {
@@ -52,6 +58,7 @@ class FollowRepository {
 
   /// Follow a user
   Future<bool> followUser(String userId) async {
+    if (!_enabled) return false;
     if (_currentUserId == null) return false;
     if (_currentUserId == userId) return false; // Can't follow yourself
 
@@ -69,6 +76,7 @@ class FollowRepository {
 
   /// Unfollow a user
   Future<bool> unfollowUser(String userId) async {
+    if (!_enabled) return false;
     if (_currentUserId == null) return false;
 
     try {
@@ -86,6 +94,7 @@ class FollowRepository {
 
   /// Get follower count for a user
   Future<int> getFollowerCount(String userId) async {
+    if (!_enabled) return 0;
     try {
       final response = await _supabase
           .from('user_follows')
@@ -101,6 +110,7 @@ class FollowRepository {
 
   /// Get following count for a user
   Future<int> getFollowingCount(String userId) async {
+    if (!_enabled) return 0;
     try {
       final response = await _supabase
           .from('user_follows')
@@ -116,6 +126,7 @@ class FollowRepository {
 
   /// Get list of followers for a user with follow status
   Future<List<Map<String, dynamic>>> getFollowers(String userId) async {
+    if (!_enabled) return [];
     try {
       // Fetch follower IDs first (user_follows FKs point to auth.users, not profiles)
       final response = await _supabase
@@ -169,6 +180,7 @@ class FollowRepository {
 
   /// Get list of users that a user is following with follow status
   Future<List<Map<String, dynamic>>> getFollowing(String userId) async {
+    if (!_enabled) return [];
     try {
       // Fetch following IDs first
       final response = await _supabase

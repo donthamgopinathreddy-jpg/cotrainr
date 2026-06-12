@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../config/feature_flags.dart';
 import '../models/quest_models.dart';
 import '../repositories/quest_repository.dart';
 import '../services/quest_progress_sync_service.dart';
@@ -16,30 +17,35 @@ final currentUserIdProvider = Provider<String?>((ref) {
 
 /// Provider for daily quests
 final dailyQuestsProvider = FutureProvider<List<ActiveQuest>>((ref) async {
+  if (!FeatureFlags.enableQuest) return [];
   final repo = ref.watch(questRepositoryProvider);
   return await repo.getDailyQuests();
 });
 
 /// Provider for weekly quests
 final weeklyQuestsProvider = FutureProvider<List<ActiveQuest>>((ref) async {
+  if (!FeatureFlags.enableQuest) return [];
   final repo = ref.watch(questRepositoryProvider);
   return await repo.getWeeklyQuests();
 });
 
 /// Provider for active challenges
 final activeChallengesProvider = FutureProvider<List<ChallengeQuest>>((ref) async {
+  if (!FeatureFlags.enableQuest) return [];
   final repo = ref.watch(questRepositoryProvider);
   return await repo.getActiveChallenges();
 });
 
 /// Provider for achievements
 final achievementsProvider = FutureProvider<List<Achievement>>((ref) async {
+  if (!FeatureFlags.enableQuest) return [];
   final repo = ref.watch(questRepositoryProvider);
   return await repo.getAchievements();
 });
 
 /// Provider for leaderboard (daily)
 final dailyLeaderboardProvider = FutureProvider<List<LeaderboardEntry>>((ref) async {
+  if (!FeatureFlags.leaderboardsActive) return [];
   final repo = ref.watch(questRepositoryProvider);
   final now = DateTime.now();
   return await repo.getLeaderboard(
@@ -51,6 +57,7 @@ final dailyLeaderboardProvider = FutureProvider<List<LeaderboardEntry>>((ref) as
 
 /// Provider for user XP
 final userXPProvider = FutureProvider<int>((ref) async {
+  if (!FeatureFlags.enableQuest) return 0;
   final userId = ref.watch(currentUserIdProvider);
   if (userId == null) return 0;
   
@@ -72,6 +79,7 @@ final userXPProvider = FutureProvider<int>((ref) async {
 
 /// Provider for user level
 final userLevelProvider = FutureProvider<int>((ref) async {
+  if (!FeatureFlags.enableQuest) return 1;
   final userId = ref.watch(currentUserIdProvider);
   if (userId == null) return 1;
   
@@ -90,6 +98,7 @@ final userLevelProvider = FutureProvider<int>((ref) async {
 
 /// Provider for XP needed for next level
 final xpForNextLevelProvider = FutureProvider<int>((ref) async {
+  if (!FeatureFlags.enableQuest) return 100;
   final userId = ref.watch(currentUserIdProvider);
   final levelAsync = ref.watch(userLevelProvider);
   final xpAsync = ref.watch(userXPProvider);

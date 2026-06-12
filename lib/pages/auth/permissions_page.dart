@@ -238,7 +238,7 @@ class _PermissionsPageState extends State<PermissionsPage> {
           context.go('/home');
           break;
         case 'nutritionist':
-          context.go('/nutritionist/dashboard');
+          context.go('/home');
           break;
         default:
           context.go('/home');

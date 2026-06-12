@@ -7,6 +7,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
 import '../../repositories/posts_repository.dart';
+import '../../config/feature_flags.dart';
 import '../../utils/page_transitions.dart';
 import '../../pages/cocircle/user_profile_page.dart';
 
@@ -53,10 +54,18 @@ class _FeedPreviewV3State extends State<FeedPreviewV3> {
   @override
   void initState() {
     super.initState();
-    _loadRealPosts();
+    if (FeatureFlags.enableCoCircle) {
+      _loadRealPosts();
+    } else {
+      _isLoading = false;
+    }
   }
 
   Future<void> _loadRealPosts() async {
+    if (!FeatureFlags.enableCoCircle) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
     setState(() => _isLoading = true);
     try {
       // Fetch more posts so each tile can cycle through on swipe

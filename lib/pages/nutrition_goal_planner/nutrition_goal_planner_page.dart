@@ -4,8 +4,10 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../repositories/nutrition_goal_planner_repository.dart';
 import '../../services/nutrition_goal_calculator.dart';
+import '../../services/nutrition_planner_local_storage.dart';
 import '../../widgets/common/pressable_card.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
+import '../../widgets/nutrition_goal_planner/food_sources_section.dart';
 
 class NutritionGoalPlannerPage extends StatefulWidget {
   const NutritionGoalPlannerPage({super.key});
@@ -42,6 +44,7 @@ class _NutritionGoalPlannerPageState extends State<NutritionGoalPlannerPage>
   bool _goalTypeTouched = false;
 
   NutritionGoalResult? _result;
+  DietPreference _dietPreference = DietPreference.all;
 
   static const _goalTypeIcons = <String, IconData>{
     'fat_loss': Icons.trending_down_rounded,
@@ -98,21 +101,41 @@ class _NutritionGoalPlannerPageState extends State<NutritionGoalPlannerPage>
 
   Future<void> _loadProfile() async {
     final snap = await _repo.loadProfileSnapshot();
+    final diet = await _repo.loadDietPreference();
     if (!mounted) return;
     if (snap.age != null) _ageCtrl.text = '${snap.age}';
     if (snap.heightCm != null) {
       _heightCtrl.text = snap.heightCm!.toStringAsFixed(0);
     }
     if (snap.weightKg != null) {
-      final w = snap.weightKg!.toStringAsFixed(1);
-      _currentWeightCtrl.text = w;
-      _targetWeightCtrl.text = w;
+      _currentWeightCtrl.text = snap.weightKg!.toStringAsFixed(1);
+    }
+    if (snap.targetWeightKg != null) {
+      _targetWeightCtrl.text = snap.targetWeightKg!.toStringAsFixed(1);
+    } else if (snap.weightKg != null) {
+      _targetWeightCtrl.text = snap.weightKg!.toStringAsFixed(1);
+    }
+    if (snap.timelineDays != null) {
+      _timelineCtrl.text = '${snap.timelineDays}';
     }
     if (snap.gender != null && snap.gender!.isNotEmpty) {
       _gender = snap.gender!;
     }
+    if (snap.goalType != null && snap.goalType!.isNotEmpty) {
+      _goalType = snap.goalType!;
+      _goalTypeTouched = true;
+    }
+    if (snap.activityLevel != null && snap.activityLevel!.isNotEmpty) {
+      _activityLevel = snap.activityLevel!;
+    }
+    _dietPreference = diet;
     _syncSuggestedGoalType();
     setState(() => _loadingProfile = false);
+  }
+
+  Future<void> _onDietPreferenceChanged(DietPreference diet) async {
+    setState(() => _dietPreference = diet);
+    await _repo.saveDietPreference(diet);
   }
 
   bool get _bodyValid {
@@ -835,6 +858,20 @@ class _NutritionGoalPlannerPageState extends State<NutritionGoalPlannerPage>
             ),
           );
         }),
+        const SizedBox(height: 24),
+        _animated(
+          FoodSourcesSection(
+            isLight: isLight,
+            selectedDiet: _dietPreference,
+            proteinGoalG: r.proteinG,
+            carbsGoalG: r.carbsG,
+            fiberGoalG: r.fiberG,
+            fatsGoalG: r.fatG,
+            onDietChanged: _onDietPreferenceChanged,
+          ),
+          340,
+        ),
+        const SizedBox(height: 24),
       ],
     );
   }

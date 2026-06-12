@@ -91,9 +91,8 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
     
     // Initialize health tracking service for background step counting
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       ref.read(healthTrackingServiceProvider).initialize();
-      // Start metrics sync service
-      ref.read(metricsSyncServiceProvider).startSync();
     });
   }
   
@@ -373,13 +372,6 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
     final currentCalories = providerCalories > 0 ? providerCalories.toInt() : _currentCalories.toInt();
     final currentDistance = providerDistance > 0 ? providerDistance : _currentDistance;
     
-    // Sync metrics to Supabase when provider values change
-    if (providerSteps > 0 || providerCalories > 0 || providerDistance > 0) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        ref.read(metricsSyncServiceProvider).syncNow();
-      });
-    }
-    
     return FadeTransition(
       opacity: _fadeAnimation,
       child: Scaffold(
@@ -595,6 +587,14 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
+              child:
+                  _animated(_safeSection(context, const NearbyPreviewV3()), 260),
+            ),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 16)),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               child: _animated(
                 _safeSection(
                   context,
@@ -603,16 +603,8 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                     onOpenMealsTab: widget.onNavigateToMealsTab,
                   ),
                 ),
-                260,
+                300,
               ),
-            ),
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 16)),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child:
-                  _animated(_safeSection(context, const NearbyPreviewV3()), 300),
             ),
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 96)),

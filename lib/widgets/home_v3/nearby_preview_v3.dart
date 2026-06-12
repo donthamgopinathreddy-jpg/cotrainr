@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:geolocator/geolocator.dart';
-import '../../models/provider_location_model.dart';
-import '../../models/discover_filters.dart';
-import '../../repositories/provider_locations_repository.dart';
+import 'package:google_fonts/google_fonts.dart';
+
+import '../../data/nearby_fitness_places_data.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
+import '../../widgets/common/shimmer_skeleton.dart';
+import 'home_premium_theme.dart';
 
 class NearbyPreviewV3 extends StatefulWidget {
   const NearbyPreviewV3({super.key});
@@ -17,139 +18,116 @@ class NearbyPreviewV3 extends StatefulWidget {
 
 class _NearbyPreviewV3State extends State<NearbyPreviewV3> {
   String _selectedFilter = 'All';
-  List<_NearbyPlace> _allPlaces = [];
+  List<NearbyFitnessResult> _results = [];
   bool _isLoading = true;
-  String? _errorMessage;
-  Position? _userPosition;
-  final ProviderLocationsRepository _repo = ProviderLocationsRepository();
+  _NearbyFitnessState _state = _NearbyFitnessState.loading;
+  LocationPermission? _permission;
 
-  final List<_FilterChip> _allChips = [
-    _FilterChip('All', Icons.business, 'All'),
-    _FilterChip('Gyms', Icons.fitness_center, 'Gyms'),
-    _FilterChip('Yoga', Icons.self_improvement, 'Yoga'),
-    _FilterChip('Parks', Icons.park, 'Parks'),
+  static const _categories = [
+    ('All', Icons.apps_rounded),
+    ('Gyms', Icons.fitness_center_rounded),
+    ('Yoga', Icons.self_improvement_rounded),
+    ('Parks', Icons.park_rounded),
+    ('Boxing', Icons.sports_mma_rounded),
+    ('Running', Icons.directions_run_rounded),
+    ('Wellness', Icons.spa_rounded),
+    ('Swimming', Icons.pool_rounded),
+    ('Sports', Icons.sports_soccer_rounded),
+    ('Physio', Icons.healing_rounded),
   ];
 
   @override
   void initState() {
     super.initState();
-    _loadNearbyPlaces();
+    _loadPlaces();
   }
 
-  Future<void> _loadNearbyPlaces() async {
+  Future<void> _loadPlaces() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
-      _errorMessage = null;
+      _state = _NearbyFitnessState.loading;
     });
 
     try {
-      // Get user's current location
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!mounted) return;
       if (!serviceEnabled) {
         setState(() {
-          _errorMessage = 'Location services are disabled';
+          _state = _NearbyFitnessState.locationDisabled;
           _isLoading = false;
         });
         return;
       }
 
-      LocationPermission permission = await Geolocator.checkPermission();
+      var permission = await Geolocator.checkPermission();
+      if (!mounted) return;
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
+      if (!mounted) return;
+      _permission = permission;
 
       if (permission == LocationPermission.deniedForever ||
           permission == LocationPermission.denied) {
         setState(() {
-          _errorMessage = 'Enable location to discover nearby providers';
+          _state = _NearbyFitnessState.permissionDenied;
           _isLoading = false;
         });
         return;
       }
 
-      _userPosition = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium,
       );
 
-      // Map filter to location types (canonical repo method)
-      List<LocationType>? locationTypes;
-      if (_selectedFilter == 'Gyms') {
-        locationTypes = [LocationType.gym];
-      } else if (_selectedFilter == 'Yoga') {
-        locationTypes = [LocationType.studio];
-      } else if (_selectedFilter == 'Parks') {
-        locationTypes = [LocationType.park];
-      }
-      // 'All' means null (no filter)
-
-      final results = await _repo.fetchNearbyProviders(
-        userLat: _userPosition!.latitude,
-        userLng: _userPosition!.longitude,
-        filters: DiscoverFilters(
-          maxDistanceKm: 10.0,
-          locationTypes: locationTypes?.map((e) => e.value).toList(),
-        ),
+      final results = nearbyFitnessPlaces(
+        userLat: position.latitude,
+        userLng: position.longitude,
+        categoryFilter: _selectedFilter,
       );
 
-      final places = <_NearbyPlace>[];
-      
-      for (final result in results) {
-        final displayName = result['display_name'] as String? ?? 'Unknown';
-        final distanceKm = (result['distance_km'] as num?)?.toDouble() ?? 0.0;
-        final locationType = result['location_type'] as String? ?? 'other';
-        
-        // Format distance
-        String distanceStr;
-        if (distanceKm < 1.0) {
-          distanceStr = '${(distanceKm * 1000).toStringAsFixed(0)} m';
-        } else {
-          distanceStr = '${distanceKm.toStringAsFixed(1)} km';
-        }
-        
-        // Map location type to category
-        String category;
-        if (locationType == 'gym') {
-          category = 'Gyms';
-        } else if (locationType == 'studio') {
-          category = 'Yoga';
-        } else if (locationType == 'park') {
-          category = 'Parks';
-        } else {
-          category = 'All';
-        }
-        
-        places.add(_NearbyPlace(displayName, distanceStr, category));
-      }
-
-      if (mounted) {
-        setState(() {
-          _allPlaces = places;
-          _isLoading = false;
-        });
-      }
+      if (!mounted) return;
+      setState(() {
+        _results = results;
+        _state = results.isEmpty
+            ? _NearbyFitnessState.empty
+            : _NearbyFitnessState.loaded;
+        _isLoading = false;
+      });
     } catch (e) {
-      debugPrint('Error loading nearby places: $e');
-      if (mounted) {
-        setState(() {
-          _errorMessage = 'Failed to load nearby places';
-          _isLoading = false;
-        });
-      }
+      debugPrint('NearbyFitness load error: $e');
+      if (!mounted) return;
+      setState(() {
+        _state = _NearbyFitnessState.error;
+        _isLoading = false;
+      });
     }
   }
 
-  List<_NearbyPlace> get _filteredPlaces {
-    if (_selectedFilter == 'All') {
-      return _allPlaces;
+  void _onFilterTap(String filter) {
+    if (_selectedFilter == filter) return;
+    HapticFeedback.selectionClick();
+    setState(() => _selectedFilter = filter);
+    if (_state == _NearbyFitnessState.loaded ||
+        _state == _NearbyFitnessState.empty) {
+      _loadPlaces();
     }
-    return _allPlaces.where((place) => place.category == _selectedFilter).toList();
+  }
+
+  Future<void> _enableLocation() async {
+    if (_permission == LocationPermission.deniedForever) {
+      await Geolocator.openAppSettings();
+      return;
+    }
+    await Geolocator.requestPermission();
+    await _loadPlaces();
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor = isDark ? Colors.black.withOpacity(0.85) : Colors.white;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -157,8 +135,9 @@ class _NearbyPreviewV3State extends State<NearbyPreviewV3> {
         Row(
           children: [
             ShaderMask(
-              shaderCallback: (bounds) => AppColors.stepsGradient.createShader(bounds),
-              child: Icon(
+              shaderCallback: (bounds) =>
+                  AppColors.stepsGradient.createShader(bounds),
+              child: const Icon(
                 Icons.location_on_rounded,
                 size: 22,
                 color: Colors.white,
@@ -174,58 +153,74 @@ class _NearbyPreviewV3State extends State<NearbyPreviewV3> {
               ),
             ),
             const SizedBox(width: 8),
-            Text(
-              'Nearby Places',
-              style: GoogleFonts.montserrat(
-                fontSize: DesignTokens.fontSizeSection,
-                fontWeight: FontWeight.w500,
-                color: cs.onSurface,
-                letterSpacing: -0.5,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Nearby Fitness',
+                    style: GoogleFonts.montserrat(
+                      fontSize: DesignTokens.fontSizeSection,
+                      fontWeight: FontWeight.w600,
+                      color: cs.onSurface,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Find gyms, parks and wellness spots around you.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: HomePremiumTheme.secondaryText(!isDark),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 14),
         SizedBox(
-          height: 40,
+          height: 38,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            itemCount: _allChips.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemCount: _categories.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 8),
             itemBuilder: (context, index) {
-              final chip = _allChips[index];
-              final isActive = _selectedFilter == chip.value;
+              final chip = _categories[index];
+              final isActive = _selectedFilter == chip.$1;
               return GestureDetector(
-                onTap: () {
-                  HapticFeedback.lightImpact();
-                  setState(() {
-                    _selectedFilter = chip.value;
-                  });
-                  // Reload places when filter changes
-                  _loadNearbyPlaces();
-                },
+                onTap: () => _onFilterTap(chip.$1),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   curve: Curves.easeOut,
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(
-                    gradient: isActive
-                        ? AppColors.stepsGradient
-                        : null,
-                    color: null,
+                    gradient: isActive ? AppColors.stepsGradient : null,
+                    color: isActive
+                        ? null
+                        : (isDark
+                            ? HomePremiumTheme.darkCard
+                            : HomePremiumTheme.lightCreamCard),
                     borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: isActive
+                          ? Colors.transparent
+                          : cs.onSurface.withValues(alpha: 0.12),
+                    ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        chip.icon,
-                        color: Colors.white,
-                        size: 16,
+                        chip.$2,
+                        size: 14,
+                        color: isActive ? Colors.white : cs.onSurface,
                       ),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: 5),
                       Text(
-                        chip.label,
+                        chip.$1,
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
@@ -240,203 +235,311 @@ class _NearbyPreviewV3State extends State<NearbyPreviewV3> {
           ),
         ),
         const SizedBox(height: 12),
-        _isLoading
-            ? Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(20.0),
-                  child: CircularProgressIndicator(
-                    color: AppColors.orange,
-                  ),
-                ),
-              )
-            : _errorMessage != null
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(20.0),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.location_off_rounded,
-                            color: cs.onSurfaceVariant,
-                            size: 40,
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            _errorMessage!,
-                            style: TextStyle(
-                              color: cs.onSurfaceVariant,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Enable location in settings to discover nearby trainers and nutritionists',
-                            style: TextStyle(
-                              color: cs.onSurfaceVariant.withOpacity(0.8),
-                              fontSize: 12,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              TextButton.icon(
-                                onPressed: _loadNearbyPlaces,
-                                icon: const Icon(Icons.refresh_rounded, size: 18),
-                                label: const Text('Retry'),
-                              ),
-                              TextButton.icon(
-                                onPressed: () async {
-                                  await Geolocator.openAppSettings();
-                                },
-                                icon: const Icon(Icons.settings_rounded, size: 18),
-                                label: const Text('Settings'),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                : _filteredPlaces.isEmpty
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(20.0),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.location_searching_rounded,
-                                size: 40,
-                                color: cs.onSurfaceVariant.withOpacity(0.6),
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                'No providers near you',
-                                style: TextStyle(
-                                  color: cs.onSurfaceVariant,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Try expanding the search radius or check back later',
-                                style: TextStyle(
-                                  color: cs.onSurfaceVariant.withOpacity(0.8),
-                                  fontSize: 12,
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                    : Column(
-                        children: _filteredPlaces.map((place) {
-            final textColor = isDark ? Colors.white : Colors.black;
-            return Container(
-              height: 90,
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: cardColor,
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: DesignTokens.cardShadowOf(context),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      gradient: AppColors.stepsGradient,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.location_on_rounded,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          place.name,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            color: textColor,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Container(
-                              width: 6,
-                              height: 6,
-                              decoration: const BoxDecoration(
-                                color: AppColors.green,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              '${place.distance} away',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                color: isDark ? Colors.white.withOpacity(0.8) : Colors.black.withOpacity(0.7),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      gradient: AppColors.stepsGradient,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.arrow_forward_ios_rounded,
-                      color: Colors.white,
-                      size: 18,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }).toList(),
-        ),
+        _buildBody(context, isDark),
       ],
+    );
+  }
+
+  Widget _buildBody(BuildContext context, bool isDark) {
+    if (_isLoading) {
+      return SizedBox(
+        height: 118,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: 3,
+          separatorBuilder: (_, _) => const SizedBox(width: 10),
+          itemBuilder: (_, _) => const ShimmerHorizontalCard(width: 188, height: 108),
+        ),
+      );
+    }
+
+    switch (_state) {
+      case _NearbyFitnessState.locationDisabled:
+      case _NearbyFitnessState.permissionDenied:
+        return _locationState(
+          isDark: isDark,
+          showSettings: _state == _NearbyFitnessState.permissionDenied ||
+              _permission == LocationPermission.deniedForever,
+        );
+      case _NearbyFitnessState.error:
+        return _retryState(isDark);
+      case _NearbyFitnessState.empty:
+        return _emptyState(isDark);
+      case _NearbyFitnessState.loaded:
+        return _resultsRow(isDark);
+      case _NearbyFitnessState.loading:
+        return const SizedBox.shrink();
+    }
+  }
+
+  Widget _resultsRow(bool isDark) {
+    return SizedBox(
+      height: 118,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: _results.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 10),
+        itemBuilder: (context, index) {
+          final item = _results[index];
+          return _FitnessPlaceCard(result: item, isDark: isDark);
+        },
+      ),
+    );
+  }
+
+  Widget _locationState({required bool isDark, required bool showSettings}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? HomePremiumTheme.darkCard : HomePremiumTheme.lightCreamCard,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: DesignTokens.cardShadowOf(context),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            Icons.location_disabled_rounded,
+            size: 36,
+            color: HomePremiumTheme.secondaryText(!isDark),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Enable location to explore nearby fitness',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: HomePremiumTheme.primaryText(!isDark),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Find gyms, yoga studios, parks, wellness centers and running spots near you.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 12,
+              color: HomePremiumTheme.secondaryText(!isDark),
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              FilledButton.icon(
+                onPressed: _enableLocation,
+                icon: const Icon(Icons.location_on_rounded, size: 18),
+                label: Text(showSettings ? 'Open Settings' : 'Enable Location'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF3ED598),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: _loadPlaces,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('Retry'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _retryState(bool isDark) {
+    return _friendlyState(
+      isDark: isDark,
+      icon: Icons.wifi_off_rounded,
+      title: 'Could not load nearby fitness',
+      description: 'Please try again in a moment.',
+      action: _loadPlaces,
+      actionLabel: 'Retry',
+    );
+  }
+
+  Widget _emptyState(bool isDark) {
+    return _friendlyState(
+      isDark: isDark,
+      icon: Icons.search_off_rounded,
+      title: 'No fitness spots found nearby',
+      description:
+          'Try changing category or increasing distance.',
+      action: _loadPlaces,
+      actionLabel: 'Retry',
+    );
+  }
+
+  Widget _friendlyState({
+    required bool isDark,
+    required IconData icon,
+    required String title,
+    required String description,
+    required VoidCallback action,
+    required String actionLabel,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? HomePremiumTheme.darkCard : HomePremiumTheme.lightCreamCard,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 34, color: HomePremiumTheme.secondaryText(!isDark)),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: HomePremiumTheme.primaryText(!isDark),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            description,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 12,
+              color: HomePremiumTheme.secondaryText(!isDark),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextButton.icon(
+            onPressed: action,
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: Text(actionLabel),
+          ),
+        ],
+      ),
     );
   }
 }
 
-class _FilterChip {
-  final String label;
-  final IconData icon;
-  final String value;
-
-  _FilterChip(this.label, this.icon, this.value);
+enum _NearbyFitnessState {
+  loading,
+  loaded,
+  empty,
+  locationDisabled,
+  permissionDenied,
+  error,
 }
 
-class _NearbyPlace {
-  final String name;
-  final String distance;
-  final String category;
+class _FitnessPlaceCard extends StatelessWidget {
+  final NearbyFitnessResult result;
+  final bool isDark;
 
-  _NearbyPlace(this.name, this.distance, this.category);
+  const _FitnessPlaceCard({required this.result, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    final place = result.place;
+    final distance = formatFitnessDistance(result.distanceKm);
+    final status = place.isOpen ? 'Open now' : 'Closed';
+
+    return Container(
+      width: 188,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark ? HomePremiumTheme.darkCard : HomePremiumTheme.lightCreamCard,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: DesignTokens.cardShadowOf(context),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.06)
+              : Colors.black.withValues(alpha: 0.04),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  gradient: AppColors.stepsGradient,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  _categoryIcon(place.category),
+                  size: 15,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  place.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: HomePremiumTheme.primaryText(!isDark),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${place.category} · $distance',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: HomePremiumTheme.secondaryText(!isDark),
+            ),
+          ),
+          const Spacer(),
+          Row(
+            children: [
+              const Icon(Icons.star_rounded, size: 14, color: Color(0xFFF5B942)),
+              const SizedBox(width: 2),
+              Text(
+                place.rating.toStringAsFixed(1),
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: HomePremiumTheme.primaryText(!isDark),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '· $status',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: place.isOpen
+                      ? const Color(0xFF22C55E)
+                      : HomePremiumTheme.secondaryText(!isDark),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  IconData _categoryIcon(String category) {
+    return switch (category) {
+      'Gyms' => Icons.fitness_center_rounded,
+      'Yoga' => Icons.self_improvement_rounded,
+      'Parks' => Icons.park_rounded,
+      'Boxing' => Icons.sports_mma_rounded,
+      'Running' => Icons.directions_run_rounded,
+      'Wellness' => Icons.spa_rounded,
+      'Swimming' => Icons.pool_rounded,
+      'Sports' => Icons.sports_soccer_rounded,
+      'Physio' => Icons.healing_rounded,
+      _ => Icons.place_rounded,
+    };
+  }
 }

@@ -7,8 +7,12 @@ import 'package:image_picker/image_picker.dart';
 import 'package:crop_your_image/crop_your_image.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../providers/profile_images_provider.dart';
+import '../../services/nutrition_planner_local_storage.dart';
 import '../../services/storage_service.dart';
 import '../../repositories/profile_repository.dart';
+import '../../theme/account_hub_theme.dart';
+import '../../widgets/common/pressable_card.dart';
+import '../../widgets/profile/account_hub_widgets.dart';
 
 class EditProfilePage extends ConsumerStatefulWidget {
   const EditProfilePage({super.key});
@@ -23,8 +27,8 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   final _lastNameController = TextEditingController();
   final _userIdController = TextEditingController();
   final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _goalWeightController = TextEditingController();
   final _dobController = TextEditingController();
   final _heightController = TextEditingController();
   final _weightController = TextEditingController();
@@ -42,9 +46,12 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
 
   final StorageService _storageService = StorageService();
   final ProfileRepository _profileRepo = ProfileRepository();
+  final NutritionPlannerLocalStorage _plannerStorage =
+      NutritionPlannerLocalStorage();
   bool _isLoading = false;
   bool _isUploadingImage = false;
   bool _isInitializing = true;
+  bool _emailVerified = false;
 
   @override
   void initState() {
@@ -128,6 +135,15 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
           }
         }
 
+        final planner = await _plannerStorage.loadSavedState();
+        if (planner != null) {
+          _goalWeightController.text =
+              planner.targetWeightKg.toStringAsFixed(1);
+        }
+
+        final user = Supabase.instance.client.auth.currentUser;
+        _emailVerified = user?.emailConfirmedAt != null;
+
         // Load profile images
         if (mounted) {
           try {
@@ -177,8 +193,8 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
     _lastNameController.dispose();
     _userIdController.dispose();
     _emailController.dispose();
-    _passwordController.dispose();
     _phoneController.dispose();
+    _goalWeightController.dispose();
     _dobController.dispose();
     _heightController.dispose();
     _weightController.dispose();
@@ -502,16 +518,34 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
       await _profileRepo.updateProfile(updates);
       print('EditProfilePage: Profile saved successfully to Supabase');
 
-      // Handle password change if provided
-      if (_passwordController.text.isNotEmpty) {
-        try {
-          final supabase = Supabase.instance.client;
-          await supabase.auth.updateUser(
-            UserAttributes(password: _passwordController.text.trim()),
+      final goalWeight = double.tryParse(_goalWeightController.text.trim());
+      if (goalWeight != null && goalWeight > 0) {
+        final existing = await _plannerStorage.loadSavedState();
+        if (existing != null) {
+          await _plannerStorage.savePlannerState(
+            SavedNutritionPlannerState(
+              goalCalories: existing.goalCalories,
+              goalProtein: existing.goalProtein,
+              goalCarbs: existing.goalCarbs,
+              goalFats: existing.goalFats,
+              goalFiber: existing.goalFiber,
+              goalWaterMl: existing.goalWaterMl,
+              bmr: existing.bmr,
+              maintenanceCalories: existing.maintenanceCalories,
+              goalType: existing.goalType,
+              activityLevel: existing.activityLevel,
+              formulaVersion: existing.formulaVersion,
+              plannerAge: existing.plannerAge,
+              plannerGender: existing.plannerGender,
+              plannerHeightCm: existing.plannerHeightCm,
+              currentWeightKg: (updates['weight_kg'] as num?)?.toDouble() ??
+                  existing.currentWeightKg,
+              targetWeightKg: goalWeight,
+              timelineDays: existing.timelineDays,
+              weeklyChangeKg: existing.weeklyChangeKg,
+              savedAt: DateTime.now(),
+            ),
           );
-        } catch (e) {
-          print('Error updating password: $e');
-          // Continue even if password update fails
         }
       }
 
@@ -552,12 +586,27 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
     }
   }
 
+  double? _currentHeightCm() {
+    if (_useMetricHeight) {
+      return int.tryParse(_heightController.text.trim())?.toDouble();
+    }
+    final feet = int.tryParse(_heightFeetController.text.trim()) ?? 0;
+    final inches = int.tryParse(_heightInchesController.text.trim()) ?? 0;
+    if (feet == 0 && inches == 0) return null;
+    return ((feet * 12) + inches) * 2.54;
+  }
+
+  double? _currentWeightKg() {
+    final raw = double.tryParse(_weightController.text.trim());
+    if (raw == null) return null;
+    return _useMetricWeight ? raw : raw * 0.453592;
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final profileImages = ref.watch(profileImagesProvider);
-    final isLight = Theme.of(context).brightness == Brightness.light;
-    final bgColor = isLight ? Colors.grey.shade200 : colorScheme.background;
+    final bgColor = AccountHubTheme.pageBg(context);
 
     return Scaffold(
       backgroundColor: bgColor,
@@ -620,182 +669,242 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                 Form(
                   key: _formKey,
                   child: ListView(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
                     children: [
-                      // Profile and Cover Photo Section
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _PhotoSelector(
-                              label: 'Profile Photo',
-                              imagePath: profileImages.profileImagePath,
-                              onTap: _isUploadingImage
-                                  ? () {}
-                                  : () => _pickProfileImage(),
+                      _EditSection(
+                        title: 'Profile',
+                        delayMs: 0,
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: _PhotoSelector(
+                                label: 'Profile Photo',
+                                imagePath: profileImages.profileImagePath,
+                                onTap: _isUploadingImage
+                                    ? () {}
+                                    : _pickProfileImage,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _PhotoSelector(
-                              label: 'Cover Photo',
-                              imagePath: profileImages.coverImagePath,
-                              onTap: _isUploadingImage
-                                  ? () {}
-                                  : () => _pickCoverImage(),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: _PhotoSelector(
+                                label: 'Cover Photo',
+                                imagePath: profileImages.coverImagePath,
+                                onTap: _isUploadingImage
+                                    ? () {}
+                                    : _pickCoverImage,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 24),
-                      // First Name
-                      _FormField(
-                        controller: _firstNameController,
-                        label: 'First Name',
-                        icon: Icons.person_outline,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter your first name';
-                          }
-                          return null;
-                        },
+                      _EditSection(
+                        title: 'Personal Information',
+                        delayMs: 40,
+                        child: Column(
+                          children: [
+                            _FormField(
+                              controller: _firstNameController,
+                              label: 'First Name',
+                              icon: Icons.person_outline,
+                              validator: (v) =>
+                                  v == null || v.isEmpty ? 'Required' : null,
+                            ),
+                            const SizedBox(height: 12),
+                            _FormField(
+                              controller: _lastNameController,
+                              label: 'Last Name',
+                              icon: Icons.person_outline,
+                              validator: (v) =>
+                                  v == null || v.isEmpty ? 'Required' : null,
+                            ),
+                            const SizedBox(height: 12),
+                            _FormField(
+                              controller: _userIdController,
+                              label: 'Username / User ID',
+                              icon: Icons.badge_outlined,
+                              enabled: false,
+                              helperText: 'Cannot be changed',
+                            ),
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 16),
-                      // Last Name
-                      _FormField(
-                        controller: _lastNameController,
-                        label: 'Last Name',
-                        icon: Icons.person_outline,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter your last name';
-                          }
-                          return null;
-                        },
+                      _EditSection(
+                        title: 'Contact',
+                        delayMs: 80,
+                        child: Column(
+                          children: [
+                            _FormField(
+                              controller: _emailController,
+                              label: 'Email',
+                              icon: Icons.email_outlined,
+                              keyboardType: TextInputType.emailAddress,
+                              suffix: _emailVerified
+                                  ? const Icon(Icons.verified_rounded,
+                                      color: AccountHubTheme.goalsGreen,
+                                      size: 20)
+                                  : null,
+                              validator: (v) {
+                                if (v == null || v.isEmpty) return 'Required';
+                                final emailRe = RegExp(r'^[^@]+@[^@]+\.[^@]+');
+                                if (!emailRe.hasMatch(v)) {
+                                  return 'Enter a valid email';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            _FormField(
+                              controller: _phoneController,
+                              label: 'Phone Number',
+                              icon: Icons.phone_outlined,
+                              keyboardType: TextInputType.phone,
+                              validator: (v) {
+                                if (v == null || v.isEmpty) return null;
+                                if (v.length < 8) return 'Enter a valid phone';
+                                return null;
+                              },
+                            ),
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 16),
-                      // User ID (non-editable)
-                      _FormField(
-                        controller: _userIdController,
-                        label: 'User ID',
-                        icon: Icons.badge_outlined,
-                        enabled: false,
+                      _EditSection(
+                        title: 'Health Information',
+                        delayMs: 120,
+                        child: Column(
+                          children: [
+                            _FormField(
+                              controller: _dobController,
+                              label: 'Date of Birth',
+                              icon: Icons.calendar_today_outlined,
+                              readOnly: true,
+                              onTap: () => _selectDate(context),
+                              validator: (v) {
+                                if (v == null || v.isEmpty) return 'Required';
+                                final parsed = DateTime.tryParse(v);
+                                if (parsed != null &&
+                                    parsed.isAfter(DateTime.now())) {
+                                  return 'Cannot be in the future';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            _GenderSelector(
+                              selectedGender: _selectedGender,
+                              genders: _genders,
+                              onChanged: (v) =>
+                                  setState(() => _selectedGender = v),
+                            ),
+                            const SizedBox(height: 12),
+                            _HeightWeightField(
+                              label: 'Height',
+                              icon: Icons.height,
+                              useMetric: _useMetricHeight,
+                              metricController: _heightController,
+                              imperialFeetController: _heightFeetController,
+                              imperialInchesController: _heightInchesController,
+                              onUnitToggle: (useMetric) {
+                                setState(() {
+                                  _useMetricHeight = useMetric;
+                                  _convertHeightUnits(useMetric);
+                                });
+                              },
+                              onChanged: (_) => setState(() {}),
+                              validator: (v) {
+                                if (v == null || v.isEmpty) return 'Required';
+                                final n = double.tryParse(v);
+                                if (n == null || n <= 0) return 'Must be > 0';
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            _HeightWeightField(
+                              label: 'Weight',
+                              icon: Icons.monitor_weight_outlined,
+                              useMetric: _useMetricWeight,
+                              metricController: _weightController,
+                              onUnitToggle: (useMetric) {
+                                setState(() {
+                                  _useMetricWeight = useMetric;
+                                  _convertWeightUnits(useMetric);
+                                });
+                              },
+                              onChanged: (_) => setState(() {}),
+                              validator: (v) {
+                                if (v == null || v.isEmpty) return 'Required';
+                                final n = double.tryParse(v);
+                                if (n == null || n <= 0) return 'Must be > 0';
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: 12),
+                            _FormField(
+                              controller: _goalWeightController,
+                              label: 'Goal Weight (kg)',
+                              icon: Icons.flag_outlined,
+                              keyboardType: TextInputType.number,
+                              validator: (v) {
+                                if (v == null || v.isEmpty) return null;
+                                final n = double.tryParse(v);
+                                if (n == null || n <= 0) return 'Must be > 0';
+                                return null;
+                              },
+                            ),
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 16),
-                      // Email
-                      _FormField(
-                        controller: _emailController,
-                        label: 'Email Address',
-                        icon: Icons.email_outlined,
-                        keyboardType: TextInputType.emailAddress,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter your email';
-                          }
-                          if (!value.contains('@')) {
-                            return 'Please enter a valid email';
-                          }
-                          return null;
-                        },
+                      _EditSection(
+                        title: 'Live Fitness Preview',
+                        delayMs: 160,
+                        child: _BmiPreviewCard(
+                          heightCm: _currentHeightCm(),
+                          weightKg: _currentWeightKg(),
+                        ),
                       ),
-                      const SizedBox(height: 16),
-                      // Password
-                      _FormField(
-                        controller: _passwordController,
-                        label: 'Password',
-                        icon: Icons.lock_outline,
-                        obscureText: true,
-                        hintText: 'Leave empty to keep current password',
-                      ),
-                      const SizedBox(height: 16),
-                      // Phone Number
-                      _FormField(
-                        controller: _phoneController,
-                        label: 'Phone Number',
-                        icon: Icons.phone_outlined,
-                        keyboardType: TextInputType.phone,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter your phone number';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      // Date of Birth
-                      _FormField(
-                        controller: _dobController,
-                        label: 'Date of Birth',
-                        icon: Icons.calendar_today_outlined,
-                        readOnly: true,
-                        onTap: () => _selectDate(context),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please select your date of birth';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      // Gender
-                      _GenderSelector(
-                        selectedGender: _selectedGender,
-                        genders: _genders,
-                        onChanged: (value) =>
-                            setState(() => _selectedGender = value),
-                      ),
-                      const SizedBox(height: 16),
-                      // Height Field with Unit Toggle
-                      _HeightWeightField(
-                        label: 'Height',
-                        icon: Icons.height,
-                        useMetric: _useMetricHeight,
-                        metricController: _heightController,
-                        imperialFeetController: _heightFeetController,
-                        imperialInchesController: _heightInchesController,
-                        onUnitToggle: (useMetric) {
-                          setState(() {
-                            _useMetricHeight = useMetric;
-                            _convertHeightUnits(useMetric);
-                          });
-                        },
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Required';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      // Weight Field with Unit Toggle
-                      _HeightWeightField(
-                        label: 'Weight',
-                        icon: Icons.monitor_weight_outlined,
-                        useMetric: _useMetricWeight,
-                        metricController: _weightController,
-                        imperialFeetController: null,
-                        imperialInchesController: null,
-                        onUnitToggle: (useMetric) {
-                          setState(() {
-                            _useMetricWeight = useMetric;
-                            _convertWeightUnits(useMetric);
-                          });
-                        },
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Required';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 24),
                     ],
                   ),
                 ),
                 if (_isUploadingImage)
                   Container(
-                    color: Colors.black.withOpacity(0.3),
+                    color: Colors.black.withValues(alpha: 0.3),
                     child: const Center(child: CircularProgressIndicator()),
                   ),
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  bottom: 16 + MediaQuery.paddingOf(context).bottom,
+                  child: PressableCard(
+                    onTap: _isLoading ? null : _saveProfile,
+                    borderRadius: 16,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      decoration: BoxDecoration(
+                        color: colorScheme.primary,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Center(
+                        child: _isLoading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Text(
+                                'Save Changes',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
     );
@@ -987,6 +1096,108 @@ class _CropDialogState extends State<_CropDialog> {
   }
 }
 
+class _EditSection extends StatelessWidget {
+  final String title;
+  final Widget child;
+  final int delayMs;
+
+  const _EditSection({
+    required this.title,
+    required this.child,
+    this.delayMs = 0,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: 1),
+        duration: Duration(milliseconds: 280 + delayMs),
+        curve: Curves.easeOutCubic,
+        builder: (context, t, child) {
+          return Opacity(
+            opacity: t,
+            child: Transform.translate(
+              offset: Offset(0, 8 * (1 - t)),
+              child: child,
+            ),
+          );
+        },
+        child: HubSectionCard(
+          title: title,
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+class _BmiPreviewCard extends StatelessWidget {
+  final double? heightCm;
+  final double? weightKg;
+
+  const _BmiPreviewCard({required this.heightCm, required this.weightKg});
+
+  @override
+  Widget build(BuildContext context) {
+    final h = heightCm ?? 0;
+    final w = weightKg ?? 0;
+    final bmi = h > 0 && w > 0
+        ? ProfileRepository.calculateBMI(h, w)
+        : 0.0;
+    final status =
+        bmi > 0 ? ProfileRepository.getBMIStatus(bmi) : '—';
+    final heightM = h / 100;
+    const healthyMax = 24.9;
+    final targetWeight =
+        heightM > 0 ? healthyMax * heightM * heightM : 0.0;
+    final diff = w > 0 && targetWeight > 0 ? (w - targetWeight).abs() : 0.0;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOutCubic,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text('BMI ', style: AccountHubTheme.rowSubtitle(context)),
+              Text(
+                bmi > 0 ? bmi.toStringAsFixed(1) : '—',
+                style: AccountHubTheme.rowTitle(context),
+              ),
+              const Spacer(),
+              Text(status, style: AccountHubTheme.rowSubtitle(context)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Target BMI 24.9 · Target ${targetWeight > 0 ? '${targetWeight.toStringAsFixed(1)} kg' : '—'}',
+            style: AccountHubTheme.rowSubtitle(context),
+          ),
+          if (diff > 0) ...[
+            const SizedBox(height: 4),
+            Text(
+              '${diff.toStringAsFixed(1)} kg to healthy range',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: AccountHubTheme.goalsGreen,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _PhotoSelector extends StatelessWidget {
   final String label;
   final String? imagePath;
@@ -1002,53 +1213,73 @@ class _PhotoSelector extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return InkWell(
+    return PressableCard(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: 12,
       child: LayoutBuilder(
         builder: (context, constraints) {
           final size = constraints.maxWidth.clamp(0.0, 160.0);
           return Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: size,
-                  height: size,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(11),
-                    child: imagePath != null && imagePath!.isNotEmpty
-                    ? Image(
-                        image: imagePath!.startsWith('http')
-                            ? NetworkImage(imagePath!)
-                            : FileImage(File(imagePath!)) as ImageProvider,
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                        height: double.infinity,
-                      )
-                    : Container(
-                        width: double.infinity,
-                        color: colorScheme.surfaceContainerHighest,
-                        child: Icon(
-                          Icons.add_photo_alternate,
-                          size: 36,
-                          color: colorScheme.onSurface.withOpacity(0.5),
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: size,
+                height: size,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(11),
+                      child: imagePath != null && imagePath!.isNotEmpty
+                          ? Image(
+                              image: imagePath!.startsWith('http')
+                                  ? NetworkImage(imagePath!)
+                                  : FileImage(File(imagePath!))
+                                      as ImageProvider,
+                              fit: BoxFit.cover,
+                            )
+                          : Container(
+                              color: colorScheme.surfaceContainerHighest,
+                              child: Icon(
+                                Icons.add_photo_alternate,
+                                size: 36,
+                                color:
+                                    colorScheme.onSurface.withValues(alpha: 0.5),
+                              ),
+                            ),
+                    ),
+                    Positioned(
+                      right: 6,
+                      bottom: 6,
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.55),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.photo_camera_outlined,
+                          size: 16,
+                          color: Colors.white,
                         ),
                       ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: colorScheme.onSurface.withOpacity(0.7),
                     ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: colorScheme.onSurface.withValues(alpha: 0.7),
                   ),
                 ),
-              ],
-            );
+              ),
+            ],
+          );
         },
       ),
     );
@@ -1063,9 +1294,12 @@ class _FormField extends StatelessWidget {
   final bool readOnly;
   final bool obscureText;
   final String? hintText;
+  final String? helperText;
+  final Widget? suffix;
   final TextInputType? keyboardType;
   final String? Function(String?)? validator;
   final VoidCallback? onTap;
+  final ValueChanged<String>? onChanged;
 
   const _FormField({
     required this.controller,
@@ -1075,9 +1309,12 @@ class _FormField extends StatelessWidget {
     this.readOnly = false,
     this.obscureText = false,
     this.hintText,
+    this.helperText,
+    this.suffix,
     this.keyboardType,
     this.validator,
     this.onTap,
+    this.onChanged,
   });
 
   @override
@@ -1092,6 +1329,7 @@ class _FormField extends StatelessWidget {
       keyboardType: keyboardType,
       validator: validator,
       onTap: onTap,
+      onChanged: onChanged,
       style: TextStyle(
         color: enabled
             ? colorScheme.onSurface
@@ -1101,6 +1339,8 @@ class _FormField extends StatelessWidget {
       decoration: InputDecoration(
         labelText: label,
         hintText: hintText,
+        helperText: helperText,
+        suffixIcon: suffix,
         prefixIcon: Icon(icon, color: colorScheme.onSurface.withOpacity(0.7)),
         filled: true,
         fillColor: colorScheme.surface,
@@ -1226,6 +1466,7 @@ class _HeightWeightField extends StatelessWidget {
   final TextEditingController? imperialFeetController;
   final TextEditingController? imperialInchesController;
   final ValueChanged<bool> onUnitToggle;
+  final ValueChanged<String>? onChanged;
   final String? Function(String?)? validator;
 
   const _HeightWeightField({
@@ -1236,6 +1477,7 @@ class _HeightWeightField extends StatelessWidget {
     this.imperialFeetController,
     this.imperialInchesController,
     required this.onUnitToggle,
+    this.onChanged,
     this.validator,
   });
 
@@ -1305,6 +1547,7 @@ class _HeightWeightField extends StatelessWidget {
                   icon: Icons.height,
                   keyboardType: TextInputType.number,
                   validator: validator,
+                  onChanged: onChanged,
                 ),
               ),
               const SizedBox(width: 16),
@@ -1315,6 +1558,7 @@ class _HeightWeightField extends StatelessWidget {
                   icon: Icons.height,
                   keyboardType: TextInputType.number,
                   validator: validator,
+                  onChanged: onChanged,
                 ),
               ),
             ],
@@ -1329,6 +1573,7 @@ class _HeightWeightField extends StatelessWidget {
             icon: icon,
             keyboardType: TextInputType.number,
             validator: validator,
+            onChanged: onChanged,
           ),
       ],
     );

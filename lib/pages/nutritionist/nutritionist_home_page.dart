@@ -2,18 +2,42 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../theme/design_tokens.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_colors.dart';
 import '../../providers/profile_images_provider.dart';
+import '../../providers/health_tracking_provider.dart';
+import '../../providers/quest_provider.dart';
 import '../../repositories/profile_repository.dart';
 import '../../repositories/notifications_repository.dart';
+import '../../repositories/metrics_repository.dart';
+import '../../services/leads_service.dart';
+import '../../services/leads_models.dart' show Lead;
+import '../../services/user_goals_service.dart';
 import '../../services/streak_service.dart';
+import '../../services/metrics_sync_service.dart';
 import '../../widgets/home_v3/hero_header_v3.dart';
-import '../../widgets/home_v3/streak_pill_v3.dart';
+import '../../widgets/home_v3/unified_metrics_tile_v3.dart';
+import '../../widgets/home_v3/bmi_card_v3.dart';
 import '../../widgets/home_v3/quick_access_v3.dart';
+import '../../widgets/home_v3/home_nav_hint_cards.dart';
+import '../../widgets/home_v3/nearby_preview_v3.dart';
+import '../../widgets/home_v3/home_premium_theme.dart';
+import '../../widgets/nutritionist/nutritionist_overview_section.dart';
+import '../../widgets/trainer/trainer_overview_section.dart';
+import '../bmi/bmi_details_screen.dart';
+import '../insights/insights_detail_page.dart';
 
 class NutritionistHomePage extends ConsumerStatefulWidget {
-  const NutritionistHomePage({super.key});
+  final VoidCallback? onNavigateToMessagesTab;
+  final VoidCallback? onNavigateToMealsTab;
+  final VoidCallback? onNavigateToClientsTab;
+
+  const NutritionistHomePage({
+    super.key,
+    this.onNavigateToMessagesTab,
+    this.onNavigateToMealsTab,
+    this.onNavigateToClientsTab,
+  });
 
   @override
   ConsumerState<NutritionistHomePage> createState() => _NutritionistHomePageState();
@@ -25,26 +49,32 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
 
-  // Mock data - in real app, fetch from Supabase
-  final String _nutritionistName = 'Nutritionist Name';
+  String _nutritionistName = 'Nutritionist';
   int _notificationCount = 0;
   int _streakDays = 0;
-  final int _totalClients = 15;
-  final int _activeClients = 10;
-  final int _upcomingConsultations = 4;
-  final int _todayConsultations = 3;
-  
-  // Recent messages mock data
-  final List<Map<String, dynamic>> _recentMessages = [
-    {'name': 'John Doe', 'message': 'Can you review my meal plan?', 'time': '2h ago'},
-    {'name': 'Jane Smith', 'message': 'I have a question about macros', 'time': '5h ago'},
-  ];
-  
-  // Upcoming sessions mock data
-  final List<Map<String, dynamic>> _upcomingSessions = [
-    {'client': 'John Doe', 'time': 'Today, 2:00 PM', 'type': 'Video Consultation'},
-    {'client': 'Jane Smith', 'time': 'Tomorrow, 10:00 AM', 'type': 'Video Consultation'},
-  ];
+  int _totalClients = 0;
+  int _pendingRequests = 0;
+  List<TrainerClientPreview> _recentClients = [];
+
+  int _goalSteps = 10000;
+  int _goalCalories = 2000;
+  double _goalWater = 2.5;
+  double _goalDistance = 5.0;
+  int _currentSteps = 0;
+  double _currentCalories = 0.0;
+  double _currentWater = 0.0;
+  double _currentDistance = 0.0;
+  double _bmi = 0;
+  String _bmiStatus = '';
+  double? _heightCm;
+  double? _weightKg;
+  String? _gender;
+  int? _age;
+
+  final List<double> _stepsWeeklyData = [];
+  final List<double> _caloriesWeeklyData = [];
+  final List<double> _waterWeeklyData = [];
+  final List<double> _distanceWeeklyData = [];
 
   @override
   void initState() {
@@ -53,13 +83,17 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
       vsync: this,
       duration: const Duration(milliseconds: 400),
     );
-    _fadeAnimation = CurvedAnimation(
-      parent: _fadeController,
-      curve: Curves.easeOut,
-    );
+    _fadeAnimation = CurvedAnimation(parent: _fadeController, curve: Curves.easeOut);
     _fadeController.forward();
     _loadNotificationsCount();
     _loadStreak();
+    _loadGoals();
+    _loadData();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(healthTrackingServiceProvider).initialize();
+    });
   }
 
   Future<void> _loadStreak() async {
@@ -67,6 +101,128 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
       final streak = await StreakService.updateStreakOnLogin();
       if (mounted) setState(() => _streakDays = streak);
     } catch (_) {}
+  }
+
+  Future<void> _loadGoals() async {
+    final goals = UserGoalsService();
+    final steps = await goals.getStepsGoal();
+    final water = await goals.getWaterGoal();
+    final calories = await goals.getCaloriesGoal();
+    final distance = await goals.getDistanceGoal();
+    if (mounted) {
+      setState(() {
+        _goalSteps = steps;
+        _goalWater = water;
+        _goalCalories = calories;
+        _goalDistance = distance;
+      });
+    }
+  }
+
+  Future<void> _loadData() async {
+    try {
+      final profileRepo = ProfileRepository();
+      final metricsRepo = MetricsRepository();
+      final leadsService = LeadsService();
+      final profile = await profileRepo.fetchMyProfile();
+      final todayMetrics = await metricsRepo.getTodayMetrics();
+      final weeklyRows = await metricsRepo.getWeeklyMetrics();
+      final leads = await leadsService.getMyLeads();
+
+      final uid = Supabase.instance.client.auth.currentUser?.id;
+      final myLeads = uid != null
+          ? leads
+              .where((l) => l.providerId == uid && l.providerType == 'nutritionist')
+              .toList()
+          : <Lead>[];
+      final accepted = myLeads.where((l) => l.status == 'accepted').toList();
+      final pending = myLeads.where((l) => l.status == 'requested').toList();
+
+      List<double> series(List<Map<String, dynamic>> rows, String key) {
+        final list = rows.map((m) => ((m[key] as num?) ?? 0).toDouble()).toList();
+        while (list.length < 7) {
+          list.insert(0, 0);
+        }
+        if (list.length > 7) return list.sublist(list.length - 7);
+        return list;
+      }
+
+      final previews = <TrainerClientPreview>[
+        ...pending.take(2).map(_leadToPreview),
+        ...accepted.take(3).map(_leadToPreview),
+      ];
+
+      if (!mounted) return;
+      setState(() {
+        _nutritionistName = profile?['full_name'] as String? ??
+            profile?['username'] as String? ??
+            'Nutritionist';
+        _totalClients = accepted.length;
+        _pendingRequests = pending.length;
+        _recentClients = previews.take(3).toList();
+        _currentSteps = (todayMetrics?['steps'] as num?)?.toInt() ?? 0;
+        _currentCalories =
+            (todayMetrics?['calories_burned'] as num?)?.toDouble() ?? 0;
+        _currentWater =
+            (todayMetrics?['water_intake_liters'] as num?)?.toDouble() ?? 0;
+        _currentDistance =
+            (todayMetrics?['distance_km'] as num?)?.toDouble() ?? 0;
+        _stepsWeeklyData
+          ..clear()
+          ..addAll(series(weeklyRows, 'steps'));
+        _caloriesWeeklyData
+          ..clear()
+          ..addAll(series(weeklyRows, 'calories_burned'));
+        _waterWeeklyData
+          ..clear()
+          ..addAll(series(weeklyRows, 'water_intake_liters'));
+        _distanceWeeklyData
+          ..clear()
+          ..addAll(series(weeklyRows, 'distance_km'));
+        _bmi = (profile?['bmi'] as num?)?.toDouble() ?? 0;
+        _bmiStatus = _bmi > 0 ? (profile?['bmi_status'] as String? ?? '') : '';
+        _heightCm = (profile?['height_cm'] as num?)?.toDouble();
+        _weightKg = (profile?['weight_kg'] as num?)?.toDouble();
+        _gender = profile?['gender'] as String?;
+        final dob = profile?['date_of_birth'] as String?;
+        if (dob != null && dob.isNotEmpty) {
+          try {
+            final d = DateTime.parse(dob);
+            final now = DateTime.now();
+            var age = now.year - d.year;
+            if (now.month < d.month ||
+                (now.month == d.month && now.day < d.day)) {
+              age--;
+            }
+            _age = age;
+          } catch (_) {}
+        }
+        if (_bmi <= 0 &&
+            _heightCm != null &&
+            _weightKg != null &&
+            _heightCm! > 0 &&
+            _weightKg! > 0) {
+          _bmi = ProfileRepository.calculateBMI(_heightCm!, _weightKg!);
+          _bmiStatus = ProfileRepository.getBMIStatus(_bmi);
+        }
+      });
+    } catch (_) {}
+  }
+
+  TrainerClientPreview _leadToPreview(Lead lead) {
+    final client = lead.client;
+    final name = client?['full_name'] as String? ?? 'Client';
+    final username = client?['username'] as String? ?? '';
+    return TrainerClientPreview(
+      id: lead.clientId,
+      name: name.isNotEmpty ? name : username,
+      subtitle: lead.status == 'requested'
+          ? 'Pending request'
+          : (username.isNotEmpty ? '@$username' : 'Active client'),
+      avatarUrl: client?['avatar_url'] as String?,
+      isPending: lead.status == 'requested',
+      leadId: lead.id,
+    );
   }
 
   Future<void> _loadNotificationsCount() async {
@@ -83,14 +239,6 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
     } catch (_) {}
   }
 
-  Future<void> _onRefresh() async {
-    HapticFeedback.mediumImpact();
-    await Future.wait([
-      _loadNotificationsCount(),
-      _loadStreak(),
-    ]);
-  }
-
   @override
   void dispose() {
     _scrollController.dispose();
@@ -99,22 +247,10 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
   }
 
   Widget _safeSection(BuildContext context, Widget child) {
-    final cs = Theme.of(context).colorScheme;
     try {
       return child;
-    } catch (e) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: cs.surface,
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: DesignTokens.cardShadowOf(context),
-        ),
-        child: Text(
-          'Section failed to render',
-          style: TextStyle(color: cs.onSurfaceVariant),
-        ),
-      );
+    } catch (_) {
+      return const SizedBox.shrink();
     }
   }
 
@@ -128,40 +264,46 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
           opacity: value,
           child: Transform.translate(
             offset: Offset(0, 10 * (1 - value)),
-            child: Transform.scale(
-              scale: 0.99 + 0.01 * value,
-              alignment: Alignment.topCenter,
-              child: child,
-            ),
+            child: child,
           ),
         );
       },
     );
   }
 
+  Future<void> _onRefresh() async {
+    HapticFeedback.mediumImpact();
+    await ref.read(metricsSyncServiceProvider).syncNow();
+    await Future.wait([
+      _loadData(),
+      _loadNotificationsCount(),
+      _loadStreak(),
+      _loadGoals(),
+    ]);
+    ref.read(stepsNotifierProvider.notifier).refresh();
+    ref.invalidate(caloriesProvider);
+    ref.invalidate(distanceProvider);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final textPrimary = DesignTokens.textPrimaryOf(context);
-    final textSecondary = DesignTokens.textSecondaryOf(context);
-    final surfaceColor = DesignTokens.surfaceOf(context);
-    final borderColor = DesignTokens.borderColorOf(context);
-    final cs = Theme.of(context).colorScheme;
     final isLight = Theme.of(context).brightness == Brightness.light;
+    final bg = isLight ? HomePremiumTheme.lightWarmBg : HomePremiumTheme.darkCharcoal;
+    final currentSteps = ref.watch(stepsNotifierProvider).value ?? _currentSteps;
 
     return Scaffold(
-      backgroundColor: isLight ? Colors.white : cs.background,
+      backgroundColor: bg,
       body: FadeTransition(
         opacity: _fadeAnimation,
         child: RefreshIndicator(
           onRefresh: _onRefresh,
-          color: AppColors.orange,
+          color: const Color(0xFF3ED598),
           child: CustomScrollView(
             controller: _scrollController,
             physics: const AlwaysScrollableScrollPhysics(
               parent: BouncingScrollPhysics(),
             ),
             slivers: [
-              // Hero Header (matches client)
               SliverToBoxAdapter(
                 child: _animated(
                   HeroHeaderV3(
@@ -169,7 +311,7 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
                     notificationCount: _notificationCount,
                     coverImageUrl: ref.watch(profileImagesProvider).coverImagePath,
                     avatarUrl: ref.watch(profileImagesProvider).profileImagePath,
-                    streakDays: 0,
+                    streakDays: _streakDays,
                     onNotificationTap: () async {
                       await context.push('/notifications');
                       if (mounted) _loadNotificationsCount();
@@ -178,397 +320,209 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
                   0,
                 ),
               ),
-              // Streak pill - Transform.translate to overlap header (matches client)
               SliverToBoxAdapter(
-                child: Transform.translate(
-                  offset: const Offset(0, -32),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: _animated(
-                      _safeSection(context, StreakPillV3(streakDays: _streakDays)),
-                      50,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                  child: _animated(
+                    _safeSection(
+                      context,
+                      UnifiedMetricsTileV3(
+                        metrics: [
+                          UnifiedMetricViewModel(
+                            label: 'STEPS',
+                            icon: Icons.directions_walk_outlined,
+                            selectedIcon: Icons.directions_walk,
+                            ringGradient: AppColors.stepsGradient,
+                            barColor: AppColors.orange,
+                            progress: _goalSteps > 0
+                                ? (currentSteps / _goalSteps).clamp(0.0, 1.0)
+                                : 0.0,
+                            mainValue: currentSteps >= 1000
+                                ? '${(currentSteps / 1000).toStringAsFixed(1)}k'
+                                : '$currentSteps',
+                            subValue:
+                                'of ${_goalSteps >= 1000 ? '${(_goalSteps / 1000).toStringAsFixed(1)}k' : '$_goalSteps'} steps',
+                            weekly: List<double>.from(_stepsWeeklyData),
+                          ),
+                          UnifiedMetricViewModel(
+                            label: 'CALORIES',
+                            icon: Icons.local_fire_department_outlined,
+                            selectedIcon: Icons.local_fire_department,
+                            ringGradient: AppColors.caloriesGradient,
+                            barColor: const Color(0xFFFF6B6B),
+                            progress: _goalCalories > 0
+                                ? (_currentCalories / _goalCalories).clamp(0.0, 1.0)
+                                : 0.0,
+                            mainValue: _currentCalories.round().toString(),
+                            subValue: 'kcal · goal $_goalCalories',
+                            weekly: List<double>.from(_caloriesWeeklyData),
+                          ),
+                          UnifiedMetricViewModel(
+                            label: 'WATER',
+                            icon: Icons.water_drop_outlined,
+                            selectedIcon: Icons.water_drop,
+                            ringGradient: AppColors.waterGradient,
+                            barColor: AppColors.cyan,
+                            progress: _goalWater > 0
+                                ? (_currentWater / _goalWater).clamp(0.0, 1.0)
+                                : 0.0,
+                            mainValue: _currentWater.toStringAsFixed(1),
+                            subValue: 'of ${_goalWater.toStringAsFixed(1)} L',
+                            weekly: List<double>.from(_waterWeeklyData),
+                          ),
+                          UnifiedMetricViewModel(
+                            label: 'DISTANCE',
+                            icon: Icons.location_on_outlined,
+                            selectedIcon: Icons.location_on,
+                            ringGradient: AppColors.distanceGradient,
+                            barColor: AppColors.purple,
+                            progress: _goalDistance > 0
+                                ? (_currentDistance / _goalDistance).clamp(0.0, 1.0)
+                                : 0.0,
+                            mainValue: _currentDistance.toStringAsFixed(1),
+                            subValue:
+                                'km · goal ${_goalDistance.toStringAsFixed(1)}',
+                            weekly: List<double>.from(_distanceWeeklyData),
+                          ),
+                        ],
+                        onMetricTap: (i) => _openInsight(context, i),
+                        onAddWater: () async {
+                          const add = 0.25;
+                          final old = _currentWater;
+                          final neu = (_currentWater + add).clamp(0.0, _goalWater);
+                          setState(() => _currentWater = neu);
+                          try {
+                            await MetricsRepository().updateTodayMetrics(
+                              waterIntakeLiters: neu,
+                            );
+                            ref.read(questProgressSyncServiceProvider).onWaterUpdated(neu);
+                          } catch (_) {
+                            if (mounted) setState(() => _currentWater = old);
+                          }
+                        },
+                      ),
                     ),
+                    80,
+                  ),
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 12)),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _animated(
+                    _safeSection(
+                      context,
+                      InkWell(
+                        onTap: () => context.push(
+                          '/bmi',
+                          extra: BmiDetailsArgs(
+                            bmi: _bmi,
+                            bmiStatus: _bmiStatus,
+                            heightCm: _heightCm,
+                            weightKg: _weightKg,
+                            gender: _gender,
+                            age: _age,
+                          ),
+                        ),
+                        borderRadius: BorderRadius.circular(28),
+                        child: BmiCardV3(
+                          bmi: _bmi,
+                          status: _bmiStatus,
+                          heightCm: _heightCm,
+                          weightKg: _weightKg,
+                        ),
+                      ),
+                    ),
+                    140,
                   ),
                 ),
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 8)),
-              // Quick Access
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: _animated(_safeSection(context, const QuickAccessV3()), 100),
+                  child: _animated(
+                    _safeSection(
+                      context,
+                      NutritionistOverviewSection(
+                        totalClients: _totalClients,
+                        pendingRequests: _pendingRequests,
+                        recentClients: _recentClients,
+                        onViewAllClients: widget.onNavigateToClientsTab,
+                      ),
+                    ),
+                    180,
+                  ),
                 ),
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 8)),
-              // Stats Cards
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: _buildStatCard(
-                          'Total Clients',
-                          _totalClients.toString(),
-                          Icons.people,
-                          DesignTokens.accentOrange,
-                          surfaceColor,
-                          borderColor,
-                        ),
-                      ),
-                      const SizedBox(width: DesignTokens.spacing12),
-                      Expanded(
-                        child: _buildStatCard(
-                          'Active',
-                          _activeClients.toString(),
-                          Icons.check_circle,
-                          DesignTokens.accentGreen,
-                          surfaceColor,
-                          borderColor,
-                        ),
-                      ),
-                    ],
+                  child: _animated(_safeSection(context, const QuickAccessV3()), 220),
                 ),
               ),
-            ),
-
-            const SliverToBoxAdapter(child: SizedBox(height: 8)),
-
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _buildStatCard(
-                        'Upcoming',
-                        _upcomingConsultations.toString(),
-                        Icons.calendar_today,
-                        DesignTokens.accentBlue,
-                        surfaceColor,
-                        borderColor,
-                      ),
-                    ),
-                    const SizedBox(width: DesignTokens.spacing12),
-                    Expanded(
-                      child: _buildStatCard(
-                        'Today',
-                        _todayConsultations.toString(),
-                        Icons.today,
-                        DesignTokens.accentAmber,
-                        surfaceColor,
-                        borderColor,
-                      ),
-                    ),
-                  ],
+              const SliverToBoxAdapter(child: SizedBox(height: 8)),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _animated(
+                    _safeSection(context, const NearbyPreviewV3()),
+                    260,
+                  ),
                 ),
               ),
-            ),
-
-            const SliverToBoxAdapter(child: SizedBox(height: 8)),
-
-            // Upcoming Sessions
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Upcoming Sessions',
-                      style: TextStyle(
-                        color: textPrimary,
-                        fontSize: DesignTokens.fontSizeH3,
-                        fontWeight: DesignTokens.fontWeightBold,
+              const SliverToBoxAdapter(child: SizedBox(height: 16)),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _animated(
+                    _safeSection(
+                      context,
+                      HomeNavHintCards(
+                        onOpenMessagesTab: widget.onNavigateToMessagesTab,
+                        onOpenMealsTab: widget.onNavigateToMealsTab,
                       ),
                     ),
-                    TextButton(
-                      onPressed: () {
-                        context.push('/video');
-                      },
-                      child: Text(
-                        'View All',
-                        style: TextStyle(color: DesignTokens.accentOrange),
-                      ),
-                    ),
-                  ],
+                    300,
+                  ),
                 ),
               ),
-            ),
-
-            const SliverToBoxAdapter(child: SizedBox(height: 8)),
-
-            // Upcoming sessions list
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: _buildUpcomingSessionsList(textPrimary, textSecondary, surfaceColor, borderColor),
-              ),
-            ),
-
-            const SliverToBoxAdapter(child: SizedBox(height: 8)),
-
-            // Recent Messages
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Recent Messages',
-                      style: TextStyle(
-                        color: textPrimary,
-                        fontSize: DesignTokens.fontSizeH3,
-                        fontWeight: DesignTokens.fontWeightBold,
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        context.push('/messaging');
-                      },
-                      child: Text(
-                        'View All',
-                        style: TextStyle(color: DesignTokens.accentOrange),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SliverToBoxAdapter(child: SizedBox(height: 8)),
-
-            // Recent messages list
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: _buildRecentMessagesList(textPrimary, textSecondary, surfaceColor, borderColor),
-              ),
-            ),
-
-            const SliverToBoxAdapter(child: SizedBox(height: 96)),
-          ],
+              const SliverToBoxAdapter(child: SizedBox(height: 96)),
+            ],
+          ),
         ),
-      ),
-    ),
-  );
-  }
-
-  Widget _buildStatCard(
-    String label,
-    String value,
-    IconData icon,
-    Color color,
-    Color surfaceColor,
-    Color borderColor,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(DesignTokens.spacing16),
-      decoration: BoxDecoration(
-        color: surfaceColor,
-        borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
-        border: Border.all(color: borderColor),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: color, size: 24),
-          const SizedBox(height: DesignTokens.spacing12),
-          Text(
-            value,
-            style: TextStyle(
-              color: DesignTokens.textPrimaryOf(context),
-              fontSize: DesignTokens.fontSizeH1,
-              fontWeight: DesignTokens.fontWeightBold,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              color: DesignTokens.textSecondaryOf(context),
-              fontSize: DesignTokens.fontSizeBodySmall,
-            ),
-          ),
-        ],
       ),
     );
   }
 
-  Widget _buildUpcomingSessionsList(
-    Color textPrimary,
-    Color textSecondary,
-    Color surfaceColor,
-    Color borderColor,
-  ) {
-    if (_upcomingSessions.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(DesignTokens.spacing20),
-        decoration: BoxDecoration(
-          color: surfaceColor,
-          borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
-          border: Border.all(color: borderColor),
-        ),
-        child: Center(
-          child: Column(
-            children: [
-              Icon(Icons.calendar_today_outlined, size: 48, color: textSecondary.withOpacity(0.5)),
-              const SizedBox(height: 12),
-              Text(
-                'No upcoming sessions',
-                style: TextStyle(
-                  color: textSecondary,
-                  fontSize: DesignTokens.fontSizeBody,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
+  void _openInsight(BuildContext context, int i) {
+    switch (i) {
+      case 0:
+        context.push(
+          '/insights/steps',
+          extra: InsightArgs(MetricType.steps, List<double>.from(_stepsWeeklyData),
+              goal: _goalSteps.toDouble()),
+        );
+      case 1:
+        context.push(
+          '/insights/calories',
+          extra: InsightArgs(MetricType.calories, List<double>.from(_caloriesWeeklyData),
+              goal: _goalCalories.toDouble()),
+        );
+      case 2:
+        context.push(
+          '/insights/water',
+          extra: InsightArgs(MetricType.water, List<double>.from(_waterWeeklyData),
+              goal: _goalWater),
+        );
+      case 3:
+        context.push(
+          '/insights/distance',
+          extra: InsightArgs(MetricType.distance, List<double>.from(_distanceWeeklyData),
+              goal: _goalDistance),
+        );
     }
-
-    return Container(
-      padding: const EdgeInsets.all(DesignTokens.spacing16),
-      decoration: BoxDecoration(
-        color: surfaceColor,
-        borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
-        border: Border.all(color: borderColor),
-      ),
-      child: Column(
-        children: _upcomingSessions.map((session) => Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  gradient: DesignTokens.primaryGradient,
-                  borderRadius: BorderRadius.circular(DesignTokens.radiusSmall),
-                ),
-                child: const Icon(Icons.video_call, color: Colors.white, size: 20),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      session['client'] as String,
-                      style: TextStyle(
-                        color: textPrimary,
-                        fontSize: DesignTokens.fontSizeBody,
-                        fontWeight: DesignTokens.fontWeightSemiBold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      session['time'] as String,
-                      style: TextStyle(
-                        color: textSecondary,
-                        fontSize: DesignTokens.fontSizeBodySmall,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(Icons.chevron_right, color: textSecondary, size: 20),
-            ],
-          ),
-        )).toList(),
-      ),
-    );
-  }
-
-  Widget _buildRecentMessagesList(
-    Color textPrimary,
-    Color textSecondary,
-    Color surfaceColor,
-    Color borderColor,
-  ) {
-    if (_recentMessages.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(DesignTokens.spacing20),
-        decoration: BoxDecoration(
-          color: surfaceColor,
-          borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
-          border: Border.all(color: borderColor),
-        ),
-        child: Center(
-          child: Column(
-            children: [
-              Icon(Icons.message_outlined, size: 48, color: textSecondary.withOpacity(0.5)),
-              const SizedBox(height: 12),
-              Text(
-                'No recent messages',
-                style: TextStyle(
-                  color: textSecondary,
-                  fontSize: DesignTokens.fontSizeBody,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(DesignTokens.spacing16),
-      decoration: BoxDecoration(
-        color: surfaceColor,
-        borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
-        border: Border.all(color: borderColor),
-      ),
-      child: Column(
-        children: _recentMessages.map((message) => Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  gradient: DesignTokens.secondaryGradient,
-                  borderRadius: BorderRadius.circular(DesignTokens.radiusSmall),
-                ),
-                child: const Icon(Icons.message, color: Colors.white, size: 20),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      message['name'] as String,
-                      style: TextStyle(
-                        color: textPrimary,
-                        fontSize: DesignTokens.fontSizeBody,
-                        fontWeight: DesignTokens.fontWeightSemiBold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      message['message'] as String,
-                      style: TextStyle(
-                        color: textSecondary,
-                        fontSize: DesignTokens.fontSizeBodySmall,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              Text(
-                message['time'] as String,
-                style: TextStyle(
-                  color: textSecondary.withOpacity(0.7),
-                  fontSize: DesignTokens.fontSizeBodySmall,
-                ),
-              ),
-            ],
-          ),
-        )).toList(),
-      ),
-    );
   }
 }

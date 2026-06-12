@@ -140,6 +140,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             conversation: row,
           )
         : false;
+    if (!mounted) return;
     setState(() {
       _conversationRow = row;
       _otherUserId = other;
@@ -148,6 +149,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _loadMessages() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
     });
@@ -261,13 +263,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   void _scrollToBottom() {
     Future.delayed(const Duration(milliseconds: 100), () {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
+      if (!mounted || !_scrollController.hasClients) return;
+      _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
-        );
-      }
+      );
     });
   }
 

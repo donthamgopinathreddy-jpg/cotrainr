@@ -1,5 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../services/nutrition_planner_local_storage.dart';
+
 /// Day data for meal tracker: meals grouped by meal_type with items and daily totals.
 class DayMealsData {
   final Map<String, List<MealItemRow>> mealsByType;
@@ -99,9 +101,13 @@ class DayAggregate {
 /// Repository for meal tracker: meals, meal_items, nutrition_goals.
 class MealRepository {
   final SupabaseClient _supabase;
+  final NutritionPlannerLocalStorage _plannerStorage;
 
-  MealRepository({SupabaseClient? supabase})
-      : _supabase = supabase ?? Supabase.instance.client;
+  MealRepository({
+    SupabaseClient? supabase,
+    NutritionPlannerLocalStorage? plannerStorage,
+  })  : _supabase = supabase ?? Supabase.instance.client,
+        _plannerStorage = plannerStorage ?? NutritionPlannerLocalStorage();
 
   String? get _currentUserId => _supabase.auth.currentUser?.id;
 
@@ -294,68 +300,20 @@ class MealRepository {
     return (unit: unit, quantity: quantity);
   }
 
-  /// Fetch nutrition goals. Creates defaults row if missing (upsert).
+  /// Fetch nutrition goals from device storage (Nutrition Goal Planner).
   Future<NutritionGoals> getNutritionGoals() async {
-    if (_currentUserId == null) {
-      return const NutritionGoals();
-    }
-
     try {
-      final res = await _supabase
-          .from('nutrition_goals')
-          .select(
-            'goal_calories, goal_protein, goal_carbs, goal_fats, goal_fiber, goal_water_ml',
-          )
-          .eq('user_id', _currentUserId!)
-          .maybeSingle();
-
-      if (res != null) {
-        return NutritionGoals(
-          goalCalories: (res['goal_calories'] as num?)?.toInt() ?? 2000,
-          goalProtein: (res['goal_protein'] as num?)?.toInt() ?? 150,
-          goalCarbs: (res['goal_carbs'] as num?)?.toInt() ?? 200,
-          goalFats: (res['goal_fats'] as num?)?.toInt() ?? 65,
-          goalFiber: (res['goal_fiber'] as num?)?.toInt() ?? 30,
-          goalWaterMl: (res['goal_water_ml'] as num?)?.toInt(),
-        );
-      }
-      // Insert defaults row when missing
-      await _supabase.from('nutrition_goals').upsert(
-        {
-          'user_id': _currentUserId!,
-          'goal_calories': 2000,
-          'goal_protein': 150,
-          'goal_carbs': 200,
-          'goal_fats': 65,
-          'goal_fiber': 30,
-          'updated_at': DateTime.now().toIso8601String(),
-        },
-        onConflict: 'user_id',
-      );
-      return const NutritionGoals();
+      return await _plannerStorage.loadMealTrackerGoals();
     } catch (e) {
       print('MealRepository.getNutritionGoals: $e');
       return const NutritionGoals();
     }
   }
 
-  /// Upsert nutrition goals.
+  /// Save nutrition goals to device storage.
   Future<void> upsertNutritionGoals(NutritionGoals goals) async {
-    if (_currentUserId == null) return;
-
     try {
-      await _supabase.from('nutrition_goals').upsert(
-        {
-          'user_id': _currentUserId!,
-          'goal_calories': goals.goalCalories,
-          'goal_protein': goals.goalProtein,
-          'goal_carbs': goals.goalCarbs,
-          'goal_fats': goals.goalFats,
-          'goal_fiber': goals.goalFiber,
-          'updated_at': DateTime.now().toIso8601String(),
-        },
-        onConflict: 'user_id',
-      );
+      await _plannerStorage.saveMealTrackerGoals(goals);
     } catch (e) {
       print('MealRepository.upsertNutritionGoals: $e');
       rethrow;

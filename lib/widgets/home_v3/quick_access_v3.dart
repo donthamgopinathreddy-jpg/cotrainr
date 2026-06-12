@@ -28,7 +28,7 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
   void initState() {
     super.initState();
     _pageController = PageController(
-      viewportFraction: 0.88,
+      viewportFraction: 0.86,
       initialPage: _kInitialPage,
       keepPage: true,
     );
@@ -202,34 +202,21 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
     );
   }
 
-  static Widget _circularPageChild({
+  /// Flat carousel transform — scale + fade only (no 3D / vertical stacking).
+  static Widget _carouselPageChild({
     required double pageOffset,
     required Widget child,
   }) {
-    final t = pageOffset.clamp(-1.2, 1.2);
-    final focus = (1 - t.abs()).clamp(0.0, 1.0);
-    final angle = t * -0.5;
-    final lift = (1 - focus) * 10.0;
-    final scale = 0.9 + focus * 0.1;
-    final opacity = 0.5 + focus * 0.5;
-
-    final matrix = Matrix4.identity()
-      ..setEntry(3, 2, 0.0011)
-      ..rotateY(angle);
+    final focus = (1 - pageOffset.abs()).clamp(0.0, 1.0);
+    final scale = 0.86 + focus * 0.14;
+    final opacity = 0.38 + focus * 0.62;
 
     return Opacity(
       opacity: opacity,
-      child: Transform.translate(
-        offset: Offset(0, lift),
-        child: Transform(
-          alignment: Alignment.center,
-          transform: matrix,
-          child: Transform.scale(
-            scale: scale,
-            alignment: Alignment.center,
-            child: child,
-          ),
-        ),
+      child: Transform.scale(
+        scale: scale,
+        alignment: Alignment.center,
+        child: child,
       ),
     );
   }
@@ -282,7 +269,7 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
         ),
         const SizedBox(height: 10),
         SizedBox(
-          height: _cardHeight + 12,
+          height: _cardHeight + 8,
           child: items.length == 1
               ? _QuickActionCard(
                   item: items[0],
@@ -296,8 +283,9 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
               : PageView.builder(
                   controller: _pageController,
                   padEnds: true,
-                  clipBehavior: Clip.none,
-                  physics: const BouncingScrollPhysics(),
+                  pageSnapping: true,
+                  clipBehavior: Clip.hardEdge,
+                  physics: const PageScrollPhysics(),
                   itemCount: _kLoopLength,
                   onPageChanged: (i) {
                     setState(() {});
@@ -314,22 +302,26 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
                             ? (_pageController.page ?? index.toDouble()) - index
                             : 0.0;
 
-                        return _circularPageChild(
-                          pageOffset: page,
-                          child: SizedBox(
-                            height: _cardHeight,
-                            child: _QuickActionCard(
-                              item: item,
-                              isLight: isLight,
-                              colorScheme: cs,
-                              onTap: () {
-                                HapticFeedback.lightImpact();
-                                if (page.abs() < 0.35) {
-                                  _routeFor(context, item.title)?.call();
-                                } else {
-                                  _goToLogical(logical);
-                                }
-                              },
+                        return Align(
+                          alignment: Alignment.center,
+                          child: _carouselPageChild(
+                            pageOffset: page,
+                            child: SizedBox(
+                              height: _cardHeight,
+                              width: double.infinity,
+                              child: _QuickActionCard(
+                                item: item,
+                                isLight: isLight,
+                                colorScheme: cs,
+                                onTap: () {
+                                  HapticFeedback.lightImpact();
+                                  if (page.abs() < 0.35) {
+                                    _routeFor(context, item.title)?.call();
+                                  } else {
+                                    _goToLogical(logical);
+                                  }
+                                },
+                              ),
                             ),
                           ),
                         );

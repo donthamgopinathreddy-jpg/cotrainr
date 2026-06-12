@@ -1,21 +1,15 @@
 import 'dart:ui';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:fl_chart/fl_chart.dart';
-import '../../services/user_goals_service.dart';
+
+import '../../models/metric_insight_types.dart';
 import '../../repositories/metrics_repository.dart';
+import '../../services/user_goals_service.dart';
+import '../../theme/insight_metric_theme.dart';
+import '../../widgets/insights/insight_premium_widgets.dart';
 
-enum MetricType { steps, water, calories, distance }
-
-class InsightArgs {
-  final MetricType t;
-  final List<double> w;
-  final double? goal;
-
-  InsightArgs(this.t, this.w, {this.goal});
-}
+export '../../models/metric_insight_types.dart';
 
 class InsightsDetailPage extends StatefulWidget {
   final InsightArgs args;
@@ -27,39 +21,222 @@ class InsightsDetailPage extends StatefulWidget {
 }
 
 class _InsightsDetailPageState extends State<InsightsDetailPage>
-    with SingleTickerProviderStateMixin {
-  late final TabController _rangeController;
+    with TickerProviderStateMixin {
+  int _rangeIndex = 0;
   int? _selectedIndex;
   bool _caloriesConsumed = true;
   late final List<DateTime> _weekDates;
-  late final List<DateTime> _monthDates;
   List<double>? _monthData;
-  bool _isLoadingMonthData = false;
+  List<double>? _quarterData;
+  List<DateTime>? _monthDates;
+  List<DateTime>? _quarterDates;
+  bool _isLoadingExtended = false;
   double? _currentGoal;
+  double? _previousPeriodTotal;
   final MetricsRepository _metricsRepo = MetricsRepository();
+
+  static const _rangeDays = [7, 30, 90];
+  static const _rangeLabels = ['Last 7 days', 'Last 30 days', 'Last 90 days'];
 
   @override
   void initState() {
     super.initState();
-    _rangeController = TabController(length: 2, vsync: this);
-    _rangeController.addListener(() {
+    final now = DateTime.now();
+    _weekDates = _datesForDays(7, now);
+    _loadGoal();
+    _loadPreviousPeriodTotal(7);
+  }
+
+  List<DateTime> _datesForDays(int days, DateTime now) {
+    return List.generate(days, (index) {
+      final day = now.subtract(Duration(days: days - 1 - index));
+      return DateTime(day.year, day.month, day.day);
+    });
+  }
+
+  List<double> _buildDataFromMetrics(
+    List<Map<String, dynamic>> metrics,
+    List<DateTime> dates,
+  ) {
+    final map = <String, double>{};
+    for (final row in metrics) {
+      final dateStr = row['date'] as String?;
+      if (dateStr == null) continue;
+      map[dateStr] = _metricValueFromRow(row, widget.args.t);
+    }
+    return dates
+        .map((d) => map[d.toIso8601String().split('T')[0]] ?? 0.0)
+        .toList();
+  }
+
+  Future<void> _loadPreviousPeriodTotal(int days) async {
+    try {
+      final today = DateTime.now();
+      final prevEnd = today.subtract(Duration(days: days));
+      final prevStart = today.subtract(Duration(days: days * 2 - 1));
+      final metrics = await _metricsRepo.getMetricsForDays(days * 2);
+      double total = 0;
+      for (final m in metrics) {
+        final dateStr = m['date'] as String?;
+        if (dateStr == null) continue;
+        final d = DateTime.tryParse(dateStr);
+        if (d == null) continue;
+        final day = DateTime(d.year, d.month, d.day);
+        final start = DateTime(prevStart.year, prevStart.month, prevStart.day);
+        final end = DateTime(prevEnd.year, prevEnd.month, prevEnd.day);
+        if (day.isBefore(start) || day.isAfter(end)) continue;
+        total += _metricValueFromRow(m, widget.args.t);
+      }
+      if (mounted) setState(() => _previousPeriodTotal = total);
+    } catch (_) {
+      if (mounted) setState(() => _previousPeriodTotal = null);
+    }
+  }
+
+  Future<void> _ensureRangeData(int rangeIndex) async {
+    if (rangeIndex == 0 || _isLoadingExtended) return;
+    final days = _rangeDays[rangeIndex];
+    final cached = rangeIndex == 1 ? _monthData : _quarterData;
+    if (cached != null) return;
+
+    if (!mounted) return;
+    setState(() => _isLoadingExtended = true);
+    try {
+      final now = DateTime.now();
+      final dates = _datesForDays(days, now);
+      final metrics = await _metricsRepo.getMetricsForDays(days);
+      final data = _buildDataFromMetrics(metrics, dates);
       if (mounted) {
         setState(() {
-          _selectedIndex = null;
+          if (rangeIndex == 1) {
+            _monthDates = dates;
+            _monthData = data;
+          } else {
+            _quarterDates = dates;
+            _quarterData = data;
+          }
+          _isLoadingExtended = false;
         });
       }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          if (rangeIndex == 1) {
+            _monthDates = _datesForDays(30, DateTime.now());
+            _monthData = List.filled(30, 0.0);
+          } else {
+            _quarterDates = _datesForDays(90, DateTime.now());
+            _quarterData = List.filled(90, 0.0);
+          }
+          _isLoadingExtended = false;
+        });
+      }
+    }
+  }
+
+  void _onRangeChanged(int index) {
+    if (_rangeIndex == index) return;
+    HapticFeedback.selectionClick();
+    setState(() {
+      _rangeIndex = index;
+      _selectedIndex = null;
     });
+    _loadPreviousPeriodTotal(_rangeDays[index]);
+    _ensureRangeData(index);
+  }
+
+  static double _metricValueFromRow(Map<String, dynamic> row, MetricType type) {
+    switch (type) {
+      case MetricType.steps:
+        return (row['steps'] as num?)?.toDouble() ?? 0;
+      case MetricType.water:
+        return (row['water_intake_liters'] as num?)?.toDouble() ?? 0;
+      case MetricType.calories:
+        return (row['calories_burned'] as num?)?.toDouble() ?? 0;
+      case MetricType.distance:
+        return (row['distance_km'] as num?)?.toDouble() ?? 0;
+    }
+  }
+
+  static bool _hasMeaningfulData(List<double> data) =>
+      data.any((v) => v > 0.001);
+
+  String _comparisonLabel(double periodTotal, List<double> data) {
+    if (!_hasMeaningfulData(data)) return 'No comparison yet';
+    final prev = _previousPeriodTotal;
+    if (prev == null || prev <= 0) return 'No comparison yet';
+    final pct = (((periodTotal - prev) / prev) * 100).round();
+    if (pct == 0) return 'Same as last period';
+    final sign = pct > 0 ? '+' : '';
+    final period = _rangeIndex == 0 ? 'Last Week' : 'Last Period';
+    return '$sign$pct% vs $period';
+  }
+
+  static int _todayIndexInDates(List<DateTime> dates) {
     final now = DateTime.now();
-    _weekDates = List.generate(7, (index) {
-      final day = now.subtract(Duration(days: 6 - index));
-      return DateTime(day.year, day.month, day.day);
-    });
-    _monthDates = List.generate(30, (index) {
-      final day = now.subtract(Duration(days: 29 - index));
-      return DateTime(day.year, day.month, day.day);
-    });
-    _loadGoal();
-    _loadMonthlyData();
+    final today = DateTime(now.year, now.month, now.day);
+    for (var i = dates.length - 1; i >= 0; i--) {
+      final d = dates[i];
+      if (DateTime(d.year, d.month, d.day) == today) return i;
+    }
+    return dates.isEmpty ? 0 : dates.length - 1;
+  }
+
+  static int _goalDaysMet(List<double> data, double? goal) {
+    if (goal == null || goal <= 0) return 0;
+    return data.where((v) => v >= goal).length;
+  }
+
+  static double _goalCompletionPct(List<double> data, double? goal) {
+    if (goal == null || goal <= 0 || data.isEmpty) return 0;
+    return (_goalDaysMet(data, goal) / data.length * 100).clamp(0.0, 100.0);
+  }
+
+  String _aiInsightBody(
+    InsightMetricTheme theme,
+    List<double> data,
+    double? goal,
+    String comparisonLabel,
+  ) {
+    final metricName = switch (theme.type) {
+      MetricType.water => 'water',
+      MetricType.steps => 'steps',
+      MetricType.calories => 'calorie',
+      MetricType.distance => 'distance',
+    };
+    final days = data.length;
+    final met = _goalDaysMet(data, goal);
+    final periodLabel = _rangeIndex == 0 ? '7 days' : '$days days';
+
+    final buffer = StringBuffer();
+    if (goal != null && goal > 0) {
+      buffer.writeln(
+        'You achieved your $metricName goal on $met of the last $periodLabel.',
+      );
+    } else {
+      buffer.writeln(
+        'You logged $metricName activity on ${_hasMeaningfulData(data) ? days : 0} of the last $periodLabel.',
+      );
+    }
+
+    if (comparisonLabel.contains('%')) {
+      final trend = comparisonLabel.startsWith('+')
+          ? 'increased'
+          : comparisonLabel.startsWith('-')
+              ? 'decreased'
+              : 'held steady';
+      if (trend == 'held steady') {
+        buffer.write('Your totals stayed consistent compared to the prior period.');
+      } else {
+        final pct = comparisonLabel.split('%').first.replaceAll(RegExp(r'[^\d\-+]'), '');
+        buffer.write(
+          'Your $metricName totals $trend ${pct.replaceAll('-', '')}% compared to the prior period.',
+        );
+      }
+    } else {
+      buffer.write('Keep tracking to unlock richer trends over time.');
+    }
+    return buffer.toString().trim();
   }
 
   Future<void> _loadGoal() async {
@@ -79,87 +256,17 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
         goal = await goalsService.getDistanceGoal();
         break;
     }
-    if (mounted) {
-      setState(() {
-        _currentGoal = goal;
-      });
-    }
+    if (mounted) setState(() => _currentGoal = goal);
   }
 
-  Future<void> _loadMonthlyData() async {
-    if (_isLoadingMonthData || _monthData != null) return;
-    
-    setState(() {
-      _isLoadingMonthData = true;
-    });
-
-    try {
-      final monthlyMetrics = await _metricsRepo.getMonthlyMetrics();
-      
-      // Create a map of date -> metric value for quick lookup
-      final metricsMap = <String, double>{};
-      for (final metric in monthlyMetrics) {
-        final dateStr = metric['date'] as String?;
-        if (dateStr == null) continue;
-        
-        double value = 0.0;
-        switch (widget.args.t) {
-          case MetricType.steps:
-            value = (metric['steps'] as num?)?.toDouble() ?? 0.0;
-            break;
-          case MetricType.water:
-            value = (metric['water_intake_liters'] as num?)?.toDouble() ?? 0.0;
-            break;
-          case MetricType.calories:
-            value = (metric['calories_burned'] as num?)?.toDouble() ?? 0.0;
-            break;
-          case MetricType.distance:
-            value = (metric['distance_km'] as num?)?.toDouble() ?? 0.0;
-            break;
-        }
-        metricsMap[dateStr] = value;
-      }
-      
-      // Build monthly data array matching _monthDates
-      final monthData = <double>[];
-      for (final date in _monthDates) {
-        final dateStr = date.toIso8601String().split('T')[0];
-        monthData.add(metricsMap[dateStr] ?? 0.0);
-      }
-      
-      if (mounted) {
-        setState(() {
-          _monthData = monthData;
-          _isLoadingMonthData = false;
-        });
-      }
-    } catch (e) {
-      print('Error loading monthly data: $e');
-      if (mounted) {
-        setState(() {
-          _monthData = List.filled(30, 0.0); // Default to zeros on error
-          _isLoadingMonthData = false;
-        });
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _rangeController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _showGoalPicker(BuildContext context, double? currentGoal) async {
-    final goal = currentGoal ?? widget.args.goal ?? 0.0;
-    final config = _MetricConfig.from(widget.args.t);
+  Future<void> _showGoalPicker(BuildContext context, InsightMetricTheme theme) async {
+    final goal = _currentGoal ?? widget.args.goal ?? 0.0;
     final goalsService = UserGoalsService();
-    
-    // Get common goals based on metric type
+
     final List<double> commonGoals;
     final String unit;
     final String hintText;
-    
+
     switch (widget.args.t) {
       case MetricType.steps:
         commonGoals = [5000, 7500, 10000, 12000, 15000];
@@ -182,15 +289,17 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
         hintText = 'Enter custom kilometers';
         break;
     }
-    
-    final TextEditingController customGoalController = TextEditingController(
-      text: !commonGoals.contains(goal) 
-          ? (widget.args.t == MetricType.steps || widget.args.t == MetricType.calories
+
+    final customGoalController = TextEditingController(
+      text: !commonGoals.contains(goal)
+          ? (widget.args.t == MetricType.steps ||
+                  widget.args.t == MetricType.calories
               ? goal.toInt().toString()
               : goal.toStringAsFixed(1))
           : '',
     );
-    
+
+    if (!context.mounted) return;
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -198,16 +307,17 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) {
           double? selectedGoal = goal;
-          bool isCustom = !commonGoals.contains(goal);
-          
+          var isCustom = !commonGoals.contains(goal);
+
           return Padding(
             padding: EdgeInsets.only(
               bottom: MediaQuery.of(context).viewInsets.bottom,
             ),
             child: Container(
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                color: InsightMetricTheme.surfaceCard,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(24)),
               ),
               padding: const EdgeInsets.all(24),
               child: SingleChildScrollView(
@@ -216,69 +326,72 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Set Daily ${config.title} Goal',
-                      style: TextStyle(
+                      'Set Daily ${theme.title.replaceAll(' Insights', '')} Goal',
+                      style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
-                        color: Theme.of(context).colorScheme.onSurface,
+                        color: Colors.white,
                       ),
                     ),
                     const SizedBox(height: 16),
-                    // Common goals
-                    ...commonGoals.map((goal) => ListTile(
-                      title: Text(
-                        widget.args.t == MetricType.steps || widget.args.t == MetricType.calories
-                            ? '${goal.toInt()} $unit'
-                            : '${goal.toStringAsFixed(1)} $unit',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Theme.of(context).colorScheme.onSurface,
-                        ),
-                      ),
-                      trailing: !isCustom && selectedGoal == goal
-                          ? Icon(
-                              Icons.check_rounded,
-                              color: Theme.of(context).colorScheme.primary,
-                            )
-                          : null,
-                      onTap: () {
-                        setModalState(() {
-                          selectedGoal = goal;
-                          isCustom = false;
-                          customGoalController.clear();
-                        });
-                      },
-                    )),
+                    ...commonGoals.map((g) => ListTile(
+                          title: Text(
+                            widget.args.t == MetricType.steps ||
+                                    widget.args.t == MetricType.calories
+                                ? '${g.toInt()} $unit'
+                                : '${g.toStringAsFixed(1)} $unit',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                          trailing: !isCustom && selectedGoal == g
+                              ? Icon(Icons.check_rounded, color: theme.accent)
+                              : null,
+                          onTap: () {
+                            setModalState(() {
+                              selectedGoal = g;
+                              isCustom = false;
+                              customGoalController.clear();
+                            });
+                          },
+                        )),
                     const SizedBox(height: 8),
-                    // Custom input
                     Text(
                       'Custom',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        color: Colors.white.withValues(alpha: 0.55),
                       ),
                     ),
                     const SizedBox(height: 8),
                     TextField(
                       controller: customGoalController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
                       decoration: InputDecoration(
                         hintText: hintText,
                         hintStyle: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          color: Colors.white.withValues(alpha: 0.4),
                         ),
                         suffixIcon: customGoalController.text.isNotEmpty
                             ? IconButton(
                                 icon: Icon(
                                   Icons.check_rounded,
                                   color: isCustom && selectedGoal != null
-                                      ? Theme.of(context).colorScheme.primary
-                                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                                      ? theme.accent
+                                      : Colors.white.withValues(alpha: 0.4),
                                 ),
                                 onPressed: () {
-                                  final value = double.tryParse(customGoalController.text);
+                                  final value =
+                                      double.tryParse(customGoalController.text);
                                   if (value != null && value > 0) {
                                     setModalState(() {
                                       selectedGoal = value;
@@ -288,30 +401,16 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
                                 },
                               )
                             : null,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(
-                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                          ),
-                        ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
                           borderSide: BorderSide(
-                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                            color: Colors.white.withValues(alpha: 0.12),
                           ),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(
-                            color: Theme.of(context).colorScheme.primary,
-                            width: 2,
-                          ),
+                          borderSide: BorderSide(color: theme.accent, width: 2),
                         ),
-                      ),
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Theme.of(context).colorScheme.onSurface,
                       ),
                       onChanged: (value) {
                         setModalState(() {
@@ -328,7 +427,6 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
                       },
                     ),
                     const SizedBox(height: 24),
-                    // Save and Cancel buttons
                     Row(
                       children: [
                         Expanded(
@@ -338,20 +436,21 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
                               Navigator.pop(context);
                             },
                             style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 14),
                               side: BorderSide(
-                                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                color: Colors.white.withValues(alpha: 0.15),
                               ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                            child: Text(
+                            child: const Text(
                               'Cancel',
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w600,
-                                color: Theme.of(context).colorScheme.onSurface,
+                                color: Colors.white,
                               ),
                             ),
                           ),
@@ -359,46 +458,49 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
                         const SizedBox(width: 12),
                         Expanded(
                           child: ElevatedButton(
-                            onPressed: selectedGoal == null ? null : () async {
-                              final finalGoal = selectedGoal!;
-                              customGoalController.dispose();
-                              Navigator.pop(context);
-                              
-                              // Save goal based on metric type
-                              bool success = false;
-                              switch (widget.args.t) {
-                                case MetricType.steps:
-                                  success = await goalsService.setStepsGoal(finalGoal.toInt());
-                                  break;
-                                case MetricType.water:
-                                  success = await goalsService.setWaterGoal(finalGoal);
-                                  break;
-                                case MetricType.calories:
-                                  success = await goalsService.setCaloriesGoal(finalGoal.toInt());
-                                  break;
-                                case MetricType.distance:
-                                  success = await goalsService.setDistanceGoal(finalGoal);
-                                  break;
-                              }
-                              
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      success
-                                          ? 'Goal set to ${widget.args.t == MetricType.steps || widget.args.t == MetricType.calories ? finalGoal.toInt() : finalGoal.toStringAsFixed(1)} $unit'
-                                          : 'Failed to save goal',
-                                    ),
-                                    duration: const Duration(seconds: 2),
-                                  ),
-                                );
-                                // Refresh the page to show updated goal
-                                await _loadGoal();
-                              }
-                            },
+                            onPressed: selectedGoal == null
+                                ? null
+                                : () async {
+                                    final finalGoal = selectedGoal!;
+                                    customGoalController.dispose();
+                                    Navigator.pop(context);
+                                    var success = false;
+                                    switch (widget.args.t) {
+                                      case MetricType.steps:
+                                        success = await goalsService
+                                            .setStepsGoal(finalGoal.toInt());
+                                        break;
+                                      case MetricType.water:
+                                        success = await goalsService
+                                            .setWaterGoal(finalGoal);
+                                        break;
+                                      case MetricType.calories:
+                                        success = await goalsService
+                                            .setCaloriesGoal(finalGoal.toInt());
+                                        break;
+                                      case MetricType.distance:
+                                        success = await goalsService
+                                            .setDistanceGoal(finalGoal);
+                                        break;
+                                    }
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            success
+                                                ? 'Goal updated'
+                                                : 'Failed to save goal',
+                                          ),
+                                        ),
+                                      );
+                                      await _loadGoal();
+                                    }
+                                  },
                             style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              backgroundColor: Theme.of(context).colorScheme.primary,
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 14),
+                              backgroundColor: theme.accent,
                               foregroundColor: Colors.white,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
@@ -425,144 +527,181 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
     );
   }
 
+  ({List<double> data, List<DateTime> dates}) _activeRange() {
+    switch (_rangeIndex) {
+      case 1:
+        return (
+          data: _monthData ?? List.filled(30, 0.0),
+          dates: _monthDates ?? _datesForDays(30, DateTime.now()),
+        );
+      case 2:
+        return (
+          data: _quarterData ?? List.filled(90, 0.0),
+          dates: _quarterDates ?? _datesForDays(90, DateTime.now()),
+        );
+      default:
+        return (data: widget.args.w, dates: _weekDates);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final config = _MetricConfig.from(widget.args.t);
-    final isMonth = _rangeController.index == 1;
-    
-    // Load monthly data if needed when month tab is selected
-    if (isMonth && _monthData == null && !_isLoadingMonthData) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _loadMonthlyData();
-      });
-    }
-    
-    final data = isMonth ? (_monthData ?? List.filled(30, 0.0)) : widget.args.w;
-    final dates = isMonth ? _monthDates : _weekDates;
+    final theme = InsightMetricTheme.from(widget.args.t);
+
+    final range = _activeRange();
+    final data = range.data;
+    final dates = range.dates;
     final goal = _currentGoal ?? widget.args.goal;
     final total = data.isEmpty ? 0.0 : data.fold<double>(0, (a, b) => a + b);
     final average = data.isEmpty ? 0.0 : total / data.length;
     final peak = data.isEmpty ? 0.0 : data.reduce((a, b) => a > b ? a : b);
-    
-    // Calculate consistency (how consistent the values are - lower variance = higher consistency)
-    double consistency = 0.0;
-    if (data.isNotEmpty && average > 0) {
-      // Calculate standard deviation
-      final variance = data.map((v) => (v - average) * (v - average)).fold<double>(0.0, (a, b) => a + b) / data.length;
-      final stdDev = variance > 0 ? math.sqrt(variance) : 0.0; // Standard deviation = sqrt(variance)
-      // Calculate coefficient of variation (CV) - lower CV = higher consistency
-      final cv = stdDev > 0 && average > 0 ? (stdDev / average) : 0.0;
-      // Convert to consistency score (0-1): lower CV = higher consistency
-      // Use a more forgiving scale: CV of 0 = 1.0, CV of 0.5 = 0.5, CV >= 1.0 = 0
-      consistency = (1.0 - (cv * 2).clamp(0.0, 1.0)).clamp(0.0, 1.0);
-    } else if (data.isNotEmpty) {
-      // If average is 0 but we have data, check if all values are the same (perfect consistency)
-      final allSame = data.every((v) => v == data.first);
-      consistency = allSame ? 1.0 : 0.0;
-    }
-    
-    // Calculate goal hit rate (percentage of days that met or exceeded goal)
-    double goalHitRate = 0.0;
-    if (data.isNotEmpty && goal != null && goal > 0) {
-      final daysHitGoal = data.where((v) => v >= goal).length;
-      goalHitRate = daysHitGoal / data.length;
-    }
-    
-    final cs = Theme.of(context).colorScheme;
+    final hasData = _hasMeaningfulData(data);
+    final todayIndex = _todayIndexInDates(dates);
+    final weekTodayIndex = _todayIndexInDates(_weekDates);
+    final todayValue = widget.args.w.isEmpty
+        ? 0.0
+        : widget.args.w[weekTodayIndex.clamp(0, widget.args.w.length - 1)];
+    final todayCompletion = goal != null && goal > 0
+        ? (todayValue / goal * 100).clamp(0.0, 999.0)
+        : 0.0;
+    final goalCompletion = _goalCompletionPct(data, goal);
+    final comparisonLabel = _comparisonLabel(total, data);
+    final aiBody = _aiInsightBody(theme, data, goal, comparisonLabel);
+
+    final breakdownCount = 7;
+    final breakdownDates = dates.length >= breakdownCount
+        ? dates.sublist(dates.length - breakdownCount)
+        : dates;
+    final breakdownData = data.length >= breakdownCount
+        ? data.sublist(data.length - breakdownCount)
+        : data;
+    final breakdownOffset = dates.length - breakdownCount;
+    final breakdownHighlight = breakdownDates.isEmpty
+        ? 0
+        : (_selectedIndex != null && _selectedIndex! >= breakdownOffset
+            ? _selectedIndex! - breakdownOffset
+            : _todayIndexInDates(breakdownDates));
 
     return Scaffold(
-      backgroundColor: cs.surface,
-      body: Container(
-        decoration: BoxDecoration(
-          color: cs.surface,
-        ),
-        child: SafeArea(
-          child: CustomScrollView(
-            slivers: [
-              SliverAppBar(
-                pinned: true,
-                backgroundColor: Colors.transparent,
-                flexibleSpace: ClipRect(
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: cs.surface.withOpacity(0.85),
-                      ),
-                    ),
+      backgroundColor: InsightMetricTheme.pageBg,
+      body: SafeArea(
+        child: CustomScrollView(
+          slivers: [
+            SliverAppBar(
+              pinned: true,
+              backgroundColor: Colors.transparent,
+              flexibleSpace: ClipRect(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                  child: Container(
+                    color: InsightMetricTheme.pageBg.withValues(alpha: 0.92),
                   ),
                 ),
-                elevation: 0,
-                titleSpacing: 0,
-                title: Padding(
-                  padding: const EdgeInsets.only(left: 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        config.title,
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          color: cs.onSurface,
-                        ),
-                      ),
-                      Text(
-                        'Last 7 days',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          color: cs.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => _showGoalPicker(context, _currentGoal ?? goal),
-                    child: Text(
-                      'Set goal',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: cs.onSurface,
-                        ),
-                      ),
-                    ),
-                  const SizedBox(width: 8),
-                ],
               ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 8),
-                      _KpiHeader(
-                        config: config,
-                        value: total,
-                        unit: config.unit,
-                        deltaLabel: '+12%',
+              elevation: 0,
+              titleSpacing: 0,
+              title: Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      theme.title,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
                       ),
+                    ),
+                    Text(
+                      _rangeLabels[_rangeIndex],
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white.withValues(alpha: 0.5),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => _showGoalPicker(context, theme),
+                  child: Text(
+                    'Set goal',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: theme.accent,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 8),
+                    TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0, end: 1),
+                      duration: const Duration(milliseconds: 400),
+                      curve: Curves.easeOutCubic,
+                      builder: (context, t, child) {
+                        return Opacity(
+                          opacity: t,
+                          child: Transform.translate(
+                            offset: Offset(0, 16 * (1 - t)),
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: InsightHeroCard(
+                        theme: theme,
+                        displayValue: todayValue,
+                        goal: goal,
+                        completionPct: todayCompletion,
+                        comparisonLabel: comparisonLabel,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    InsightRangePills(
+                      selectedIndex: _rangeIndex,
+                      accent: theme.accent,
+                      onChanged: _onRangeChanged,
+                    ),
+                    const SizedBox(height: 12),
+                    if (theme.type == MetricType.calories)
+                      _CaloriesModeToggle(
+                        accent: theme.accent,
+                        isConsumed: _caloriesConsumed,
+                        onChanged: (v) => setState(() => _caloriesConsumed = v),
+                      ),
+                    if (theme.type == MetricType.calories)
                       const SizedBox(height: 12),
-                      _RangeTabs(controller: _rangeController),
-                      const SizedBox(height: 12),
-                      if (config.type == MetricType.calories)
-                        _ConsumedToggle(
-                          isLeft: _caloriesConsumed,
-                          onChanged: (value) {
-                            setState(() => _caloriesConsumed = value);
-                          },
+                    if (_isLoadingExtended && _rangeIndex > 0)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 24),
+                        child: Center(
+                          child: CircularProgressIndicator(
+                            color: theme.accent,
+                            strokeWidth: 2,
+                          ),
                         ),
-                      if (config.type == MetricType.calories)
-                        const SizedBox(height: 8),
-                      _GraphCard(
-                        config: config,
+                      )
+                    else if (!hasData)
+                      InsightEmptyState(theme: theme)
+                    else ...[
+                      InsightGraphCard(
+                        theme: theme,
                         data: data,
                         goal: goal,
                         dates: dates,
+                        currentDayIndex: todayIndex,
+                        selectedIndex: _selectedIndex,
                         onTouchIndex: (index) {
                           if (_selectedIndex != index) {
                             HapticFeedback.lightImpact();
@@ -571,733 +710,98 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
                         },
                       ),
                       const SizedBox(height: 12),
-                      if (!isMonth)
-                        _WeekdayRow(
-                          dates: dates,
-                          highlightIndex: _selectedIndex,
+                      InsightDailyBreakdown(
+                        theme: theme,
+                        weekData: breakdownData,
+                        weekDates: breakdownDates,
+                        highlightIndex: breakdownHighlight.clamp(
+                          0,
+                          breakdownDates.length - 1,
                         ),
-                      if (isMonth && dates.isNotEmpty)
-                        _RangeSummaryRow(
-                          start: dates.first,
-                          end: dates.last,
-                        ),
+                      ),
                       const SizedBox(height: 12),
-                      _InsightsCards(
-                        config: config,
+                      InsightStatsGrid(
+                        theme: theme,
                         average: average,
                         peak: peak,
-                        consistency: consistency,
-                        goalHitRate: goalHitRate,
-                        unit: config.unit,
+                        total: total,
+                        goalCompletionPct: goalCompletion,
                       ),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 12),
+                      InsightAiSummaryCard(theme: theme, body: aiBody),
                     ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MetricConfig {
-  final MetricType type;
-  final String title;
-  final String unit;
-  final LinearGradient gradient;
-  final Color fillColor;
-  final String heroTag;
-
-  _MetricConfig({
-    required this.type,
-    required this.title,
-    required this.unit,
-    required this.gradient,
-    required this.fillColor,
-    required this.heroTag,
-  });
-
-  factory _MetricConfig.from(MetricType type) {
-    switch (type) {
-      case MetricType.steps:
-        return _MetricConfig(
-          type: type,
-          title: 'Steps Insights',
-          unit: 'steps',
-          gradient: const LinearGradient(
-            colors: [Color(0xFFFF8A00), Color(0xFFFFB74D)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          fillColor: const Color(0xFFFF8A00).withOpacity(0.18),
-          heroTag: 'tile_steps',
-        );
-      case MetricType.water:
-        return _MetricConfig(
-          type: type,
-          title: 'Water Insights',
-          unit: 'L',
-          gradient: const LinearGradient(
-            colors: [Color(0xFF1EA7FF), Color(0xFF6FD3FF)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          fillColor: const Color(0xFF1EA7FF).withOpacity(0.18),
-          heroTag: 'tile_water',
-        );
-      case MetricType.calories:
-        return _MetricConfig(
-          type: type,
-          title: 'Calories Insights',
-          unit: 'kcal',
-          gradient: const LinearGradient(
-            colors: [Color(0xFFFF4D6D), Color(0xFFFF8FA3)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          fillColor: const Color(0xFFFF4D6D).withOpacity(0.18),
-          heroTag: 'tile_calories',
-        );
-      case MetricType.distance:
-        return _MetricConfig(
-          type: type,
-          title: 'Distance Insights',
-          unit: 'km',
-          gradient: const LinearGradient(
-            colors: [Color(0xFF6C63FF), Color(0xFF9D9BFF)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          fillColor: const Color(0xFF6C63FF).withOpacity(0.18),
-          heroTag: 'tile_distance',
-        );
-    }
-  }
-}
-
-class _KpiHeader extends StatelessWidget {
-  final _MetricConfig config;
-  final double value;
-  final String unit;
-  final String deltaLabel;
-
-  const _KpiHeader({
-    required this.config,
-    required this.value,
-    required this.unit,
-    required this.deltaLabel,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return _GlassCard(
-      radius: 28,
-      gradient: config.gradient,
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.18),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              _metricIcon(config.type),
-              color: Colors.white,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              child: Text(
-                value.toStringAsFixed(1),
-                key: ValueKey(value),
-                style: const TextStyle(
-                  fontSize: 36,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ),
-          Text(
-            unit,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Colors.white.withOpacity(0.7),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text(
-              deltaLabel,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: Colors.white,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RangeTabs extends StatelessWidget {
-  final TabController controller;
-
-  const _RangeTabs({required this.controller});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.all(2),
-      decoration: BoxDecoration(
-        color: isDark ? Colors.white.withOpacity(0.05) : cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: TabBar(
-        controller: controller,
-        indicator: BoxDecoration(
-          color: isDark ? Colors.white.withOpacity(0.22) : cs.primary.withOpacity(0.2),
-          borderRadius: BorderRadius.circular(999),
-        ),
-        dividerColor: Colors.transparent,
-        labelStyle: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-        ),
-        indicatorSize: TabBarIndicatorSize.tab,
-        labelPadding: EdgeInsets.zero,
-        unselectedLabelColor: isDark ? Colors.white.withOpacity(0.6) : cs.onSurfaceVariant,
-        labelColor: isDark ? Colors.white : cs.onSurface,
-        tabs: const [
-          Tab(text: 'Week'),
-          Tab(text: 'Month'),
-        ],
-      ),
-    );
-  }
-}
-
-class _GraphCard extends StatelessWidget {
-  final _MetricConfig config;
-  final List<double> data;
-  final double? goal;
-  final List<DateTime> dates;
-  final ValueChanged<int?> onTouchIndex;
-
-  const _GraphCard({
-    required this.config,
-    required this.data,
-    required this.goal,
-    required this.dates,
-    required this.onTouchIndex,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Hero(
-      tag: config.heroTag,
-      child: _GlassCard(
-        radius: 24,
-        gradient: config.gradient,
-        child: SizedBox(
-          height: 220,
-          child: TweenAnimationBuilder<double>(
-            tween: Tween(begin: 0.0, end: 1.0),
-            duration: const Duration(milliseconds: 800),
-            curve: Curves.easeOutCubic,
-            builder: (context, value, _) {
-              return LineChart(
-                _lineChartData(value),
-                duration: const Duration(milliseconds: 0),
-              );
-            },
-          ),
-        ),
-      ),
-    );
-  }
-
-  LineChartData _lineChartData(double progress) {
-    final spots = <FlSpot>[];
-    for (var i = 0; i < data.length; i++) {
-      spots.add(FlSpot(i.toDouble(), data[i]));
-    }
-    return LineChartData(
-      minX: 0,
-      maxX: data.length - 1,
-      lineTouchData: LineTouchData(
-        enabled: true,
-        handleBuiltInTouches: true,
-        touchTooltipData: LineTouchTooltipData(
-          tooltipBgColor: Colors.black.withOpacity(0.45),
-          tooltipRoundedRadius: 14,
-          getTooltipItems: (spots) {
-            return spots.map((spot) {
-              final index = spot.x.toInt().clamp(0, dates.length - 1);
-              final date = dates[index];
-              final dateLabel = '${date.day}/${date.month}';
-              return LineTooltipItem(
-                '${spot.y.toStringAsFixed(1)} ${config.unit}\n$dateLabel',
-                const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              );
-            }).toList();
-          },
-        ),
-        touchCallback: (event, response) {
-          onTouchIndex(response?.lineBarSpots?.first.spotIndex);
-        },
-        getTouchedSpotIndicator: (barData, spotIndexes) {
-          return spotIndexes.map((index) {
-            return TouchedSpotIndicatorData(
-              FlLine(
-                color: Colors.white.withOpacity(0.35),
-                strokeWidth: 2,
-              ),
-              FlDotData(
-                show: true,
-                getDotPainter: (spot, percent, bar, index) {
-                  return FlDotCirclePainter(
-                    radius: 3,
-                    color: Colors.white,
-                    strokeColor: Colors.white,
-                  );
-                },
-              ),
-            );
-          }).toList();
-        },
-      ),
-      gridData: FlGridData(show: false),
-      titlesData: FlTitlesData(
-        show: true,
-        leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        bottomTitles: AxisTitles(
-          sideTitles: SideTitles(
-            showTitles: true,
-            getTitlesWidget: (value, meta) {
-              final index = value.toInt();
-              if (index < 0 || index >= dates.length) {
-                return const SizedBox.shrink();
-              }
-              final date = dates[index];
-              final label = '${date.day}';
-              return Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white.withOpacity(0.6),
-                ),
-              );
-            },
-          ),
-        ),
-      ),
-      borderData: FlBorderData(show: false),
-      lineBarsData: [
-        LineChartBarData(
-          spots: spots,
-          isCurved: true,
-          color: Colors.white,
-          barWidth: 3,
-          dotData: FlDotData(show: false),
-          belowBarData: BarAreaData(
-            show: true,
-            color: config.fillColor.withOpacity(0.16 * progress),
-          ),
-        ),
-      ],
-      extraLinesData: goal == null
-          ? ExtraLinesData()
-          : ExtraLinesData(horizontalLines: [
-              HorizontalLine(
-                y: goal!,
-                color: Colors.white.withOpacity(0.35),
-                strokeWidth: 1,
-                dashArray: [6, 6],
-              ),
-            ]),
-    );
-  }
-}
-
-class _WeekdayRow extends StatelessWidget {
-  final List<DateTime> dates;
-  final int? highlightIndex;
-
-  const _WeekdayRow({required this.dates, required this.highlightIndex});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return _GlassCard(
-      radius: 22,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: List.generate(dates.length, (index) {
-          final isActive = index == highlightIndex;
-          final date = dates[index];
-          final weekday = _weekdayShort(date.weekday);
-          final activeColor = isDark ? Colors.white : cs.onSurface;
-          final inactiveColor = isDark ? Colors.white.withOpacity(0.6) : cs.onSurfaceVariant;
-          return Column(
-            children: [
-              Text(
-                weekday,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: isActive ? activeColor : inactiveColor,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                '${date.day}',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: isActive ? activeColor : inactiveColor,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Container(
-                width: 6,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: isActive
-                      ? (isDark ? Colors.white : cs.primary)
-                      : (isDark ? Colors.white.withOpacity(0.2) : cs.surfaceContainerHighest),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-              ),
-            ],
-          );
-        }),
-      ),
-    );
-  }
-}
-
-String _weekdayShort(int weekday) {
-  const names = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-  return names[(weekday - 1).clamp(0, 6)];
-}
-
-class _RangeSummaryRow extends StatelessWidget {
-  final DateTime start;
-  final DateTime end;
-
-  const _RangeSummaryRow({required this.start, required this.end});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return _GlassCard(
-      radius: 22,
-      child: Row(
-        children: [
-          Icon(
-            Icons.calendar_month_outlined,
-            color: isDark ? Colors.white : cs.onSurface,
-            size: 16,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            '${start.day}/${start.month} - ${end.day}/${end.month}',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: isDark ? Colors.white : cs.onSurface,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _InsightsCards extends StatelessWidget {
-  final _MetricConfig config;
-  final double average;
-  final double peak;
-  final double consistency;
-  final double goalHitRate;
-  final String unit;
-
-  const _InsightsCards({
-    required this.config,
-    required this.average,
-    required this.peak,
-    required this.consistency,
-    required this.goalHitRate,
-    required this.unit,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: _InsightStatCard(
-                icon: Icons.trending_up_rounded,
-                label: 'Peak day',
-                value: peak.toStringAsFixed(1),
-                unit: unit,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _InsightStatCard(
-                icon: Icons.show_chart_rounded,
-                label: 'Avg',
-                value: average.toStringAsFixed(1),
-                unit: unit,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: _InsightStatCard(
-                icon: Icons.timeline_rounded,
-                label: 'Consistency',
-                value: '${(consistency * 100).toInt()}%',
-                unit: '',
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _InsightStatCard(
-                icon: Icons.emoji_events_outlined,
-                label: 'Goal hit',
-                value: '${(goalHitRate * 100).toInt()}%',
-                unit: '',
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _InsightStatCard extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final String unit;
-
-  const _InsightStatCard({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.unit,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return _GlassCard(
-      radius: 22,
-      gradient: null,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            icon,
-            size: 16,
-            color: isDark ? Colors.white.withOpacity(0.8) : cs.onSurface.withOpacity(0.8),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: isDark ? Colors.white.withOpacity(0.6) : cs.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 6),
-          RichText(
-            text: TextSpan(
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                color: isDark ? Colors.white : cs.onSurface,
-              ),
-              children: [
-                TextSpan(text: value),
-                if (unit.isNotEmpty)
-                  TextSpan(
-                    text: ' $unit',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: isDark ? Colors.white.withOpacity(0.7) : cs.onSurfaceVariant,
+                    SizedBox(
+                      height: 24 + MediaQuery.paddingOf(context).bottom,
                     ),
-                  ),
-              ],
+                  ],
+                ),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
-class _ConsumedToggle extends StatelessWidget {
-  final bool isLeft;
+class _CaloriesModeToggle extends StatelessWidget {
+  final Color accent;
+  final bool isConsumed;
   final ValueChanged<bool> onChanged;
 
-  const _ConsumedToggle({required this.isLeft, required this.onChanged});
+  const _CaloriesModeToggle({
+    required this.accent,
+    required this.isConsumed,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return _GlassCard(
+    return InsightPremiumCard(
       radius: 22,
+      color: InsightMetricTheme.surfaceCard,
+      padding: const EdgeInsets.all(6),
       child: Row(
         children: [
           Expanded(
-            child: _ToggleChip(
-              label: 'Consumed',
-              isActive: isLeft,
-              onTap: () => onChanged(true),
-            ),
+            child: _chip('Consumed', isConsumed, () => onChanged(true)),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
           Expanded(
-            child: _ToggleChip(
-              label: 'Burned',
-              isActive: !isLeft,
-              onTap: () => onChanged(false),
-            ),
+            child: _chip('Burned', !isConsumed, () => onChanged(false)),
           ),
         ],
       ),
     );
   }
-}
 
-class _ToggleChip extends StatelessWidget {
-  final String label;
-  final bool isActive;
-  final VoidCallback onTap;
-
-  const _ToggleChip({
-    required this.label,
-    required this.isActive,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _chip(String label, bool active, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
-          color: isActive ? Colors.white.withOpacity(0.14) : Colors.transparent,
+          color: active ? accent.withValues(alpha: 0.2) : Colors.transparent,
           borderRadius: BorderRadius.circular(16),
+          border: active
+              ? Border.all(color: accent.withValues(alpha: 0.35))
+              : null,
         ),
         child: Center(
           child: Text(
             label,
             style: TextStyle(
               fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: Colors.white.withOpacity(isActive ? 1 : 0.6),
+              fontWeight: FontWeight.w700,
+              color: active
+                  ? Colors.white
+                  : Colors.white.withValues(alpha: 0.45),
             ),
           ),
         ),
       ),
     );
-  }
-}
-
-class _GlassCard extends StatelessWidget {
-  final Widget child;
-  final double radius;
-  final LinearGradient? gradient;
-
-  const _GlassCard({
-    required this.child,
-    required this.radius,
-    this.gradient,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(radius),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            gradient: gradient,
-            color: gradient == null 
-                ? (isDark ? Colors.white.withOpacity(0.12) : cs.surfaceContainerHighest)
-                : null,
-            borderRadius: BorderRadius.circular(radius),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(isDark ? 0.18 : 0.08),
-                blurRadius: 20,
-                spreadRadius: -2,
-              ),
-            ],
-          ),
-          child: child,
-        ),
-      ),
-    );
-  }
-}
-
-IconData _metricIcon(MetricType type) {
-  switch (type) {
-    case MetricType.steps:
-      return Icons.directions_walk_outlined;
-    case MetricType.water:
-      return Icons.water_drop_outlined;
-    case MetricType.calories:
-      return Icons.local_fire_department_outlined;
-    case MetricType.distance:
-      return Icons.location_on_outlined;
   }
 }

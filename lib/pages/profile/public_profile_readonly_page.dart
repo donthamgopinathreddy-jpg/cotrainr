@@ -35,6 +35,7 @@ class _PublicProfileReadonlyPageState extends State<PublicProfileReadonlyPage> {
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     setState(() => _loading = true);
     try {
       final list =

@@ -41,6 +41,7 @@ class _MessagingPageState extends State<MessagingPage> {
   }
 
   Future<void> _loadConversations() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
     });
@@ -100,7 +101,7 @@ class _MessagingPageState extends State<MessagingPage> {
 
   void _setupRealtimeSubscription() {
     _conversationsChannel = _messagesRepo.subscribeToConversations((update) {
-      // Reload conversations when updated
+      if (!mounted) return;
       _loadConversations();
     });
   }
@@ -183,6 +184,7 @@ class _MessagingPageState extends State<MessagingPage> {
           label: 'Undo',
           textColor: Colors.white,
           onPressed: () {
+            if (!mounted) return;
             if (_deletedConversation != null && _deletedIndex != null) {
               setState(() {
                 _allConversations.insert(_deletedIndex!, _deletedConversation!);

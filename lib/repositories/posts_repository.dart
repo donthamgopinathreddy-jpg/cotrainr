@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../config/feature_flags.dart';
 
 /// Repository for managing social posts (Cocircle)
 class PostsRepository {
@@ -7,6 +8,8 @@ class PostsRepository {
   PostsRepository({SupabaseClient? supabase})
     : _supabase = supabase ?? Supabase.instance.client;
 
+  bool get _enabled => FeatureFlags.enableCoCircle;
+
   /// Fetch recent posts for Cocircle feed (Instagram-style).
   /// Uses get_cocircle_feed RPC: single query, no N+1.
   Future<List<Map<String, dynamic>>> fetchRecentPosts({
@@ -14,6 +17,13 @@ class PostsRepository {
     String? lastCreatedAt,
     String? lastId,
   }) async {
+    if (!_enabled) {
+      FeatureFlags.logBlockedOnce(
+        'cocircle_feed',
+        'CoCircle disabled: skipping feed fetch (get_cocircle_feed)',
+      );
+      return [];
+    }
     try {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) {
@@ -83,6 +93,7 @@ class PostsRepository {
     String? lastCreatedAt,
     String? lastId,
   }) async {
+    if (!_enabled) return [];
     try {
       print('Fetching posts for user: $userId');
 
@@ -171,6 +182,7 @@ class PostsRepository {
 
   /// Fetch post media for a post
   Future<List<Map<String, dynamic>>> fetchPostMedia(String postId) async {
+    if (!_enabled) return [];
     try {
       final response = await _supabase
           .from('post_media')
@@ -188,6 +200,7 @@ class PostsRepository {
   /// Toggle like on a post (like if not liked, unlike if liked).
   /// DB triggers update likes_count; we return fresh count from posts.
   Future<Map<String, dynamic>> toggleLike(String postId) async {
+    if (!_enabled) return {'liked': false, 'likes_count': 0};
     try {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) {
@@ -230,6 +243,7 @@ class PostsRepository {
 
   /// Fetch comments for a post
   Future<List<Map<String, dynamic>>> fetchComments(String postId) async {
+    if (!_enabled) return [];
     try {
       // Fetch comments without join first
       final commentsResponse = await _supabase
@@ -287,6 +301,7 @@ class PostsRepository {
     String postId,
     String content,
   ) async {
+    if (!_enabled) throw StateError('CoCircle is disabled');
     try {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) {
@@ -319,6 +334,7 @@ class PostsRepository {
   /// Delete a post (only by the author)
   /// Also deletes associated media files from storage and database records (via CASCADE)
   Future<void> deletePost(String postId) async {
+    if (!_enabled) return;
     try {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) {

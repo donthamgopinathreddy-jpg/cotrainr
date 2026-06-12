@@ -416,7 +416,7 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => _AddFoodSheet(
+      builder: (sheetContext) => _AddFoodSheet(
         mealType: mealType,
         mealOptions: List<String>.from(_mealOrder),
         foodCatalogRepo: _foodCatalogRepo,
@@ -457,7 +457,8 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
             _ringController.reset();
             _ringController.forward();
             HapticFeedback.mediumImpact();
-            Navigator.pop(context);
+            Navigator.pop(sheetContext);
+            if (!mounted) return;
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text('Added to $meal'),

@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
+import '../config/feature_flags.dart';
 
 /// Repository for managing notifications from Supabase
 class NotificationsRepository {
@@ -103,17 +104,44 @@ class NotificationsRepository {
           .eq('user_id', _currentUserId!)
           .eq('read', false);
       final list = (response as List).cast<Map<String, dynamic>>();
-      return list.where((n) {
+      var communityFiltered = 0;
+      var questFiltered = 0;
+      final count = list.where((n) {
         final type = (n['type'] as String?)?.toLowerCase() ?? '';
-        if (type == 'like' || type == 'following' || type == 'follow' || type == 'comment') {
-          return community;
+        if (type == 'like' ||
+            type == 'following' ||
+            type == 'follow' ||
+            type == 'comment') {
+          final show = community && FeatureFlags.communityNotificationsActive;
+          if (!show) communityFiltered++;
+          return show;
         }
         if (type == 'reminder') return reminders;
-        if (type == 'quest' || type == 'streak' || type == 'goal_reached' || type == 'steps_goal' || type == 'achievement') {
+        if (type == 'quest' || type == 'achievement') {
+          final show = achievements && FeatureFlags.questNotificationsActive;
+          if (!show) questFiltered++;
+          return show;
+        }
+        if (type == 'streak' ||
+            type == 'goal_reached' ||
+            type == 'steps_goal') {
           return achievements;
         }
         return true; // meeting, message, etc.
       }).length;
+      if (communityFiltered > 0) {
+        FeatureFlags.logBlockedOnce(
+          'notif_community',
+          'CoCircle disabled: excluding $communityFiltered community notification(s) from count',
+        );
+      }
+      if (questFiltered > 0) {
+        FeatureFlags.logBlockedOnce(
+          'notif_quest',
+          'Quest disabled: excluding $questFiltered quest notification(s) from count',
+        );
+      }
+      return count;
     } catch (e) {
       return 0;
     }
@@ -121,6 +149,7 @@ class NotificationsRepository {
 
   /// Fetch post preview (content + first media URL) for notification display
   Future<Map<String, dynamic>?> fetchPostPreview(String postId) async {
+    if (!FeatureFlags.enableCoCircle) return null;
     try {
       final postResponse = await _supabase
           .from('posts')
