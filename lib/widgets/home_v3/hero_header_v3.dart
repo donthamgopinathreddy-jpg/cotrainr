@@ -6,7 +6,9 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import '../../models/coaching_insight.dart';
 import '../../theme/app_colors.dart';
+import 'coaching_insight_carousel.dart';
 
 /// Premium layered hero: welcome (top-left), bell (top-right), avatar right,
 /// compact streak pill (bottom-left).
@@ -16,6 +18,7 @@ class HeroHeaderV3 extends StatefulWidget {
   final String? coverImageUrl;
   final String? avatarUrl;
   final int streakDays;
+  final List<CoachingInsight> coachingInsights;
   final VoidCallback? onNotificationTap;
 
   const HeroHeaderV3({
@@ -25,6 +28,7 @@ class HeroHeaderV3 extends StatefulWidget {
     this.coverImageUrl,
     this.avatarUrl,
     required this.streakDays,
+    this.coachingInsights = const [],
     this.onNotificationTap,
   });
 
@@ -52,7 +56,7 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
 
   static const double _coverRadius = 30;
   static const double _avatarRadius = 29;
-  static const double _coverHeight = 142;
+  static const double _coverHeight = 158;
 
   @override
   void initState() {
@@ -279,10 +283,16 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
                                   ),
                                 ],
                               ),
-                              maxLines: 2,
+                              maxLines: 1,
                               softWrap: true,
                               overflow: TextOverflow.ellipsis,
                             ),
+                            if (widget.coachingInsights.isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              CoachingInsightCarousel(
+                                insights: widget.coachingInsights,
+                              ),
+                            ],
                           ],
                         ),
                       ),

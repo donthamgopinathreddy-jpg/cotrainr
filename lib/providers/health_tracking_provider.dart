@@ -1,89 +1,49 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/daily_metrics_snapshot.dart';
 import '../services/health_tracking_service.dart';
 
 /// Provider for health tracking service (singleton - do not dispose, used by background tracker)
 final healthTrackingServiceProvider = Provider<HealthTrackingService>((ref) {
   final service = HealthTrackingService();
-  // Initialize service when provider is first accessed
   service.initialize();
-  // Do NOT dispose - HealthTrackingService is a singleton used by BackgroundHealthTracker
-  // and other services. Disposing would break background metrics sync.
   return service;
 });
 
-/// Provider for today's step count (deprecated - use stepsNotifierProvider instead)
-/// Updates every 30 seconds to track steps in background
-final stepsProvider = StreamProvider<int>((ref) async* {
-  final service = ref.watch(healthTrackingServiceProvider);
-  
-  // Initialize service if not already initialized
-  await service.initialize();
-  
-  // Emit initial value
-  int currentSteps = await service.getTodaySteps();
-  yield currentSteps;
-  
-  // Keep stream alive and update every 30 seconds
-  await for (final _ in Stream.periodic(const Duration(seconds: 30))) {
-    try {
-      final steps = await service.getTodaySteps();
-      if (steps != currentSteps) {
-        currentSteps = steps;
-        yield steps;
-      }
-    } catch (e) {
-      print('Error updating steps: $e');
-    }
-  }
-});
-
-/// StateNotifier for step count with periodic updates
-class StepsNotifier extends StateNotifier<AsyncValue<int>> {
+/// Unified daily metrics with source metadata — updates every 30 seconds.
+class DailyMetricsNotifier extends StateNotifier<AsyncValue<DailyMetricsSnapshot>> {
   final HealthTrackingService _service;
   Timer? _updateTimer;
-  int? _lastSteps;
 
-  StepsNotifier(this._service) : super(const AsyncValue.loading()) {
+  DailyMetricsNotifier(this._service) : super(const AsyncValue.loading()) {
     _initialize();
   }
 
   Future<void> _initialize() async {
     try {
       await _service.initialize();
-      await _updateSteps();
-      // Start periodic updates every 30 seconds for background tracking
+      await _update();
       _updateTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-        _updateSteps();
+        _update();
       });
-    } catch (e) {
-      state = AsyncValue.error(e, StackTrace.current);
+    } catch (e, st) {
+      state = AsyncValue.error(e, st);
     }
   }
 
-  Future<void> _updateSteps() async {
+  Future<void> _update() async {
     try {
-      final steps = await _service.getTodaySteps();
-      // Always update state if value changed or if it's the first load
-      if (_lastSteps != steps || state.isLoading) {
-        _lastSteps = steps;
-        state = AsyncValue.data(steps);
-      }
-    } catch (e) {
-      // On error, keep last known value if available
-      if (state.hasValue) {
-        // Keep current value
-        return;
-      }
-      state = AsyncValue.error(e, StackTrace.current);
-      print('Error updating steps: $e');
+      final snapshot = await _service.getTodaySnapshot();
+      state = AsyncValue.data(snapshot);
+    } catch (e, st) {
+      if (state.hasValue) return;
+      state = AsyncValue.error(e, st);
     }
   }
 
-  /// Manually refresh steps
   Future<void> refresh() async {
     state = const AsyncValue.loading();
-    await _updateSteps();
+    await _update();
   }
 
   @override
@@ -93,22 +53,37 @@ class StepsNotifier extends StateNotifier<AsyncValue<int>> {
   }
 }
 
-/// Provider for step count with periodic background updates
-final stepsNotifierProvider = StateNotifierProvider<StepsNotifier, AsyncValue<int>>((ref) {
-  final service = ref.watch(healthTrackingServiceProvider);
-  return StepsNotifier(service);
+final dailyMetricsProvider =
+    StateNotifierProvider<DailyMetricsNotifier, AsyncValue<DailyMetricsSnapshot>>(
+  (ref) {
+    final service = ref.watch(healthTrackingServiceProvider);
+    return DailyMetricsNotifier(service);
+  },
+);
+
+/// Provider for today's step count (deprecated - use dailyMetricsProvider)
+final stepsNotifierProvider = Provider<AsyncValue<int>>((ref) {
+  return ref.watch(dailyMetricsProvider).whenData((s) => s.steps);
 });
 
-/// Provider for today's calories
+/// @deprecated Use [dailyMetricsProvider]
+final stepsProvider = StreamProvider<int>((ref) async* {
+  final service = ref.watch(healthTrackingServiceProvider);
+  await service.initialize();
+  yield await service.getTodaySteps();
+  await for (final _ in Stream.periodic(const Duration(seconds: 30))) {
+    yield await service.getTodaySteps();
+  }
+});
+
+/// @deprecated Use [dailyMetricsProvider]
 final caloriesProvider = FutureProvider<double>((ref) async {
-  final service = ref.watch(healthTrackingServiceProvider);
-  await service.initialize();
-  return await service.getTodayCalories();
+  final async = ref.watch(dailyMetricsProvider);
+  return async.value?.activeCalories ?? 0.0;
 });
 
-/// Provider for today's distance
+/// @deprecated Use [dailyMetricsProvider]
 final distanceProvider = FutureProvider<double>((ref) async {
-  final service = ref.watch(healthTrackingServiceProvider);
-  await service.initialize();
-  return await service.getTodayDistance();
+  final async = ref.watch(dailyMetricsProvider);
+  return async.value?.distanceKm ?? 0.0;
 });

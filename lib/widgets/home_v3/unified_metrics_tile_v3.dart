@@ -17,7 +17,12 @@ class UnifiedMetricViewModel {
   final double progress;
   final String mainValue;
   final String subValue;
+  final String? sourceNote;
   final List<double> weekly;
+  /// Numeric today value (for weekly day tap display).
+  final double todayValue;
+  /// Numeric goal (same unit as [todayValue] / weekly entries).
+  final double goalValue;
 
   const UnifiedMetricViewModel({
     required this.label,
@@ -28,7 +33,10 @@ class UnifiedMetricViewModel {
     required this.progress,
     required this.mainValue,
     required this.subValue,
+    this.sourceNote,
     required this.weekly,
+    required this.todayValue,
+    required this.goalValue,
   });
 }
 
@@ -74,6 +82,10 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
       _chartBarWidth(dayIndex, todayIndex) / 2;
 
   late final PageController _pageController;
+  int? _selectedWeekDayIndex;
+  int _lastFocusMetric = 0;
+
+  static const _dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
   @override
   void initState() {
@@ -134,6 +146,7 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
   }
 
   void _animateToLogicalMetric(int logicalIndex) {
+    setState(() => _selectedWeekDayIndex = null);
     final pos = _pageController.page ?? _pageController.initialPage.toDouble();
     final p = pos.round();
     final at = ((p % 4) + 4) % 4;
@@ -170,6 +183,13 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
           final focus = _focusMetricIndex(page);
           final m = widget.metrics[focus];
           final weekly = _normalizeSeven(m.weekly);
+          final focusDisplay = _displayForMetric(
+            m,
+            focus,
+            dayIndex: _selectedWeekDayIndex,
+          );
+          final chartHighlight =
+              _selectedWeekDayIndex ?? _todayWeekIndex();
           final tileGradient = _tileGradientForPage(page, isLight);
           final focusPalette = HomePremiumTheme.metricPalette(focus, isLight);
 
@@ -226,7 +246,16 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
                           padEnds: false,
                           clipBehavior: Clip.hardEdge,
                           physics: const BouncingScrollPhysics(),
-                          onPageChanged: _realignLoopIfNeeded,
+                          onPageChanged: (page) {
+                            final newFocus = _focusMetricIndex(page.toDouble());
+                            if (newFocus != _lastFocusMetric) {
+                              setState(() {
+                                _lastFocusMetric = newFocus;
+                                _selectedWeekDayIndex = null;
+                              });
+                            }
+                            _realignLoopIfNeeded(page);
+                          },
                           itemBuilder: (context, index) {
                             final logical = index % 4;
                             final item = widget.metrics[logical];
@@ -238,6 +267,14 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
                                 ? (item.selectedIcon ?? item.icon)
                                 : item.icon;
                             final ringSize = isSelected ? 92.0 : 72.0;
+                            final display = isSelected && logical == focus
+                                ? focusDisplay
+                                : (
+                                    mainValue: item.mainValue,
+                                    subValue: item.subValue,
+                                    progress: item.progress,
+                                    sourceNote: item.sourceNote,
+                                  );
 
                             return Opacity(
                               opacity: opacity,
@@ -287,7 +324,7 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
                                             SizedBox(
                                                 height: isSelected ? 4 : 3),
                                             Text(
-                                              item.mainValue,
+                                              display.mainValue,
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                               style: TextStyle(
@@ -303,7 +340,7 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
                                             SizedBox(
                                                 height: isSelected ? 3 : 2),
                                             Text(
-                                              item.subValue,
+                                              display.subValue,
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                               style: TextStyle(
@@ -314,6 +351,24 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
                                                     .secondaryText(isLight),
                                               ),
                                             ),
+                                            if (display.sourceNote != null &&
+                                                display.sourceNote!.isNotEmpty) ...[
+                                              SizedBox(
+                                                  height: isSelected ? 2 : 1),
+                                              Text(
+                                                display.sourceNote!,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  fontSize:
+                                                      isSelected ? 10 : 9,
+                                                  fontWeight: FontWeight.w500,
+                                                  color: HomePremiumTheme
+                                                      .secondaryText(isLight)
+                                                      .withValues(alpha: 0.75),
+                                                ),
+                                              ),
+                                            ],
                                           ],
                                         ),
                                       ),
@@ -327,8 +382,10 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
                                         child: MetricCenterWidget(
                                           metricIndex: logical,
                                           icon: displayIcon,
-                                          progress:
-                                              item.progress.clamp(0.0, 1.0),
+                                          progress: (isSelected && logical == focus
+                                                  ? display.progress
+                                                  : item.progress)
+                                              .clamp(0.0, 1.0),
                                           selected: isSelected,
                                         ),
                                       ),
@@ -349,8 +406,19 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
                     barColor: focusPalette.accent,
                     trackColor: HomePremiumTheme.weeklyTrackColor(isLight),
                     labelColor: HomePremiumTheme.secondaryText(isLight),
-                    highlightDayIndex: _todayWeekIndex(),
+                    highlightDayIndex: chartHighlight,
+                    selectedDayIndex: _selectedWeekDayIndex,
                     isLight: isLight,
+                    onDayTap: (dayIndex) {
+                      HapticFeedback.selectionClick();
+                      setState(() {
+                        if (_selectedWeekDayIndex == dayIndex) {
+                          _selectedWeekDayIndex = null;
+                        } else {
+                          _selectedWeekDayIndex = dayIndex;
+                        }
+                      });
+                    },
                   ),
                   const SizedBox(height: 8),
                   _MetricPageDots(
@@ -381,6 +449,94 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
   static int _todayWeekIndex() {
     final w = DateTime.now().weekday;
     return w - 1;
+  }
+
+  static String _formatMainValue(int metricIndex, double value) {
+    switch (metricIndex) {
+      case 0:
+        final steps = value.round();
+        return steps >= 1000
+            ? '${(steps / 1000).toStringAsFixed(1)}k'
+            : '$steps';
+      case 1:
+        return value.round().toString();
+      case 2:
+      case 3:
+        return value.toStringAsFixed(1);
+      default:
+        return value.toStringAsFixed(0);
+    }
+  }
+
+  static String _formatGoalFragment(int metricIndex, double goal) {
+    switch (metricIndex) {
+      case 0:
+        final g = goal.round();
+        return g >= 1000 ? '${(g / 1000).toStringAsFixed(1)}k' : '$g';
+      case 1:
+        return goal.round().toString();
+      case 2:
+      case 3:
+        return goal.toStringAsFixed(1);
+      default:
+        return goal.toStringAsFixed(0);
+    }
+  }
+
+  static String _subValueForDay(
+    UnifiedMetricViewModel item,
+    int metricIndex,
+    int dayIndex,
+    double dayValue,
+  ) {
+    final label = _dayLabels[dayIndex.clamp(0, 6)];
+    final goalFrag = _formatGoalFragment(metricIndex, item.goalValue);
+    switch (metricIndex) {
+      case 0:
+        return '$label · of $goalFrag steps';
+      case 1:
+        return '$label · $goalFrag kcal goal';
+      case 2:
+        return '$label · of $goalFrag L';
+      case 3:
+        return '$label · $goalFrag km goal';
+      default:
+        return label;
+    }
+  }
+
+  ({
+    String mainValue,
+    String subValue,
+    double progress,
+    String? sourceNote,
+  }) _displayForMetric(
+    UnifiedMetricViewModel item,
+    int metricIndex, {
+    int? dayIndex,
+  }) {
+    final today = _todayWeekIndex();
+    if (dayIndex == null) {
+      return (
+        mainValue: item.mainValue,
+        subValue: item.subValue,
+        progress: item.progress,
+        sourceNote: item.sourceNote,
+      );
+    }
+
+    final weekly = _normalizeSeven(item.weekly);
+    final value = weekly[dayIndex.clamp(0, 6)];
+    final progress = item.goalValue > 0
+        ? (value / item.goalValue).clamp(0.0, 1.0)
+        : 0.0;
+
+    return (
+      mainValue: _formatMainValue(metricIndex, value),
+      subValue: _subValueForDay(item, metricIndex, dayIndex, value),
+      progress: progress,
+      sourceNote: dayIndex == today ? item.sourceNote : null,
+    );
   }
 
   static List<double> _normalizeSeven(List<double> raw) {
@@ -437,7 +593,9 @@ class _WeeklyBarChart extends StatefulWidget {
   final Color trackColor;
   final Color labelColor;
   final int highlightDayIndex;
+  final int? selectedDayIndex;
   final bool isLight;
+  final ValueChanged<int>? onDayTap;
 
   const _WeeklyBarChart({
     super.key,
@@ -446,7 +604,9 @@ class _WeeklyBarChart extends StatefulWidget {
     required this.trackColor,
     required this.labelColor,
     required this.highlightDayIndex,
+    this.selectedDayIndex,
     required this.isLight,
+    this.onDayTap,
   });
 
   @override
@@ -509,8 +669,15 @@ class _WeeklyBarChartState extends State<_WeeklyBarChart>
                       minBar + (usable * (v / maxV)).clamp(0.0, usable);
                   final h = targetH * k;
                   final isToday = i == widget.highlightDayIndex;
+                  final isSelected = widget.selectedDayIndex == i;
+                  final barWidth = isSelected || isToday ? 7.0 : 6.0;
                   return Expanded(
-                    child: Padding(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: widget.onDayTap == null
+                          ? null
+                          : () => widget.onDayTap!(i),
+                      child: Padding(
                       padding: const EdgeInsets.symmetric(
                         horizontal: _UnifiedMetricsTileV3State._chartBarInset,
                       ),
@@ -521,7 +688,7 @@ class _WeeklyBarChartState extends State<_WeeklyBarChart>
                           clipBehavior: Clip.none,
                           children: [
                             Container(
-                              width: isToday ? 7 : 6,
+                              width: barWidth,
                               height: chartHeight,
                               decoration: BoxDecoration(
                                 color: widget.trackColor,
@@ -529,7 +696,7 @@ class _WeeklyBarChartState extends State<_WeeklyBarChart>
                               ),
                             ),
                             Container(
-                              width: isToday ? 7 : 6,
+                              width: barWidth,
                               height: h.clamp(minBar, chartHeight),
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
@@ -544,7 +711,7 @@ class _WeeklyBarChartState extends State<_WeeklyBarChart>
                                   top: Radius.circular(5),
                                   bottom: Radius.circular(3),
                                 ),
-                                boxShadow: isToday
+                                boxShadow: isSelected || isToday
                                     ? [
                                         BoxShadow(
                                           color: widget.barColor.withValues(
@@ -561,6 +728,7 @@ class _WeeklyBarChartState extends State<_WeeklyBarChart>
                         ),
                       ),
                     ),
+                    ),
                   );
                 }),
               ),
@@ -568,20 +736,29 @@ class _WeeklyBarChartState extends State<_WeeklyBarChart>
             const SizedBox(height: 6),
             Row(
               children: List.generate(7, (i) {
-                final isToday = i == widget.highlightDayIndex;
+                final isToday = i == widget.highlightDayIndex &&
+                    widget.selectedDayIndex == null;
+                final isSelected = widget.selectedDayIndex == i;
+                final emphasized = isToday || isSelected;
                 return Expanded(
-                  child: Text(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: widget.onDayTap == null
+                        ? null
+                        : () => widget.onDayTap!(i),
+                    child: Text(
                     labels[i],
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: isToday ? 11 : 10,
+                      fontSize: emphasized ? 11 : 10,
                       fontWeight:
-                          isToday ? FontWeight.w800 : FontWeight.w600,
+                          emphasized ? FontWeight.w800 : FontWeight.w600,
                       letterSpacing: 0.15,
-                      color: isToday
+                      color: emphasized
                           ? widget.barColor
                           : widget.labelColor.withValues(alpha: 0.82),
                     ),
+                  ),
                   ),
                 );
               }),

@@ -1,8 +1,12 @@
 import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../services/health_tracking_service.dart';
+
 import '../repositories/metrics_repository.dart';
+import '../repositories/profile_repository.dart';
+import '../services/health_tracking_service.dart';
 
 /// Provider for metrics sync service
 final metricsSyncServiceProvider = Provider<MetricsSyncService>((ref) {
@@ -67,11 +71,10 @@ class MetricsSyncService {
     try {
       print('MetricsSyncService: Syncing metrics to Supabase...');
       
+      // Ensure health service is initialized and height is set for distance estimation.
       final healthService = HealthTrackingService();
-      final metricsRepo = MetricsRepository();
-
-      // Ensure health service is initialized
       final initialized = await healthService.initialize();
+      await _applyProfileHeight(healthService);
       if (!initialized) {
         print('MetricsSyncService: WARNING - Health service failed to initialize');
         // Check permissions
@@ -87,30 +90,30 @@ class MetricsSyncService {
         print('MetricsSyncService: Sensor test results: $sensorTest');
       }
 
-      // Get current metrics from device sensors
-      print('MetricsSyncService: Fetching steps from sensor...');
-      final steps = await healthService.getTodaySteps();
-      
-      print('MetricsSyncService: Fetching calories from sensor...');
-      final calories = await healthService.getTodayCalories();
-      
-      print('MetricsSyncService: Fetching distance from sensor...');
-      final distance = await healthService.getTodayDistance();
+      // Get unified snapshot from the single active source.
+      if (kDebugMode) {
+        debugPrint('[Metrics] Sync via ${healthService.activeSourceLabel}');
+      }
 
-      print('MetricsSyncService: Fetching water from sensor...');
-      final waterFromHealth = await healthService.getTodayWater();
+      final snapshot = await healthService.getTodaySnapshot();
+      final steps = snapshot.steps;
+      final calories = snapshot.activeCalories;
+      final distance = snapshot.distanceKm;
+      final waterFromHealth = snapshot.waterLiters;
 
-      print('MetricsSyncService: Sensor data - Steps: $steps, Calories: $calories, Distance: $distance km, Water: $waterFromHealth L');
+      print(
+        'MetricsSyncService: ${healthService.activeSourceLabel} — '
+        'Steps: $steps, Calories: $calories (${snapshot.caloriesSource.name}), '
+        'Distance: $distance km (${snapshot.distanceSource.name}), Water: $waterFromHealth L',
+      );
 
-      // Warn if all sensors return 0 (possible permission or Health Connect issue)
       if (steps == 0 && calories == 0 && distance == 0 && waterFromHealth == 0) {
-        print('MetricsSyncService: WARNING - All sensors returned 0. Check: '
-            '1) Health Connect installed (Android 14+) or Google Fit; '
-            '2) App permissions granted in Settings; '
-            '3) Device has step counter / health data');
+        print('MetricsSyncService: WARNING - All metrics returned 0. '
+            'Active source: ${healthService.activeSourceLabel}');
       }
 
       // Merge water: use max(health, manual) to avoid overwriting manual logs with 0 from health
+      final metricsRepo = MetricsRepository();
       final existing = await metricsRepo.getTodayMetrics();
       final manualWater = (existing?['water_intake_liters'] as num?)?.toDouble() ?? 0.0;
       final waterToSave = waterFromHealth > manualWater ? waterFromHealth : manualWater;
@@ -129,6 +132,20 @@ class MetricsSyncService {
       print('MetricsSyncService: Stack trace: $stackTrace');
     } finally {
       _isSyncing = false;
+    }
+  }
+
+  /// Load user height from profile for step-based distance estimation.
+  Future<void> _applyProfileHeight(HealthTrackingService healthService) async {
+    try {
+      final profileRepo = ProfileRepository();
+      final profile = await profileRepo.fetchMyProfile();
+      final heightCm = (profile?['height_cm'] as num?)?.toDouble();
+      healthService.setUserHeightCm(heightCm);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[Metrics] Could not load profile height: $e');
+      }
     }
   }
 

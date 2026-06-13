@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -136,9 +138,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ),
                 const Divider(height: 1),
                 HubActionRow(
-                  icon: Icons.watch_outlined,
-                  title: 'Health Devices',
-                  trailing: const ComingSoonBadge(),
+                  icon: Icons.favorite_outline_rounded,
+                  title: 'Health Connect',
+                  subtitle: Platform.isIOS ? 'Apple Health' : 'Steps, calories & more',
+                  iconColor: AccountHubTheme.goalsGreen,
                   onTap: () => _push(context, const HealthDevicesPage()),
                 ),
                 const Divider(height: 1),

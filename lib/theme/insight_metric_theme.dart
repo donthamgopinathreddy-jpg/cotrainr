@@ -64,7 +64,7 @@ class InsightMetricTheme {
       case MetricType.calories:
         return const InsightMetricTheme(
           type: MetricType.calories,
-          title: 'Calories Insights',
+          title: 'Active Calories Insights',
           unit: 'kcal',
           cardGradient: LinearGradient(
             begin: Alignment.topLeft,

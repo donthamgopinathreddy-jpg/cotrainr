@@ -682,6 +682,21 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
                       ),
                     if (theme.type == MetricType.calories)
                       const SizedBox(height: 12),
+                    if (widget.args.sourceNote != null &&
+                        widget.args.sourceNote!.isNotEmpty &&
+                        (theme.type == MetricType.calories ||
+                            theme.type == MetricType.distance))
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: Text(
+                          widget.args.sourceNote!,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.white.withValues(alpha: 0.55),
+                          ),
+                        ),
+                      ),
                     if (_isLoadingExtended && _rangeIndex > 0)
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 24),

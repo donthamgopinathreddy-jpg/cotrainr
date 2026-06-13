@@ -5,6 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/design_tokens.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/home_v3/coaching_insight_builder.dart';
+import '../../widgets/home_v3/metrics_source_labels.dart';
+import '../../models/coaching_insight.dart';
+import '../../models/daily_metrics_snapshot.dart';
+import '../../repositories/meal_repository.dart';
 import '../../providers/profile_images_provider.dart';
 import '../../providers/health_tracking_provider.dart';
 import '../../widgets/home_v3/hero_header_v3.dart';
@@ -57,6 +62,8 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
   int _currentSteps = 0;
   double _currentCalories = 0.0;
   double _currentDistance = 0.0;
+  double _proteinToday = 0.0;
+  int _proteinGoal = 150;
   double _bmi = 0.0;
   String _bmiStatus = '';
   double? _heightCm;
@@ -88,6 +95,7 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
     _loadStreak();
     _loadGoals();
     _loadMetrics();
+    _loadCoachingData();
     
     // Initialize health tracking service for background step counting
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -174,6 +182,8 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
           _gender = gender;
           _age = age;
         });
+
+        ref.read(healthTrackingServiceProvider).setUserHeightCm(heightCm);
         
         // Update profile images provider if URLs exist
         if (avatarUrl != null && avatarUrl.isNotEmpty) {
@@ -242,6 +252,41 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
         _streakDays = streak;
       });
     }
+  }
+
+  Future<void> _loadCoachingData() async {
+    try {
+      final mealRepo = MealRepository();
+      final goals = await mealRepo.getNutritionGoals();
+      final dayMeals = await mealRepo.getDayMeals(DateTime.now());
+      if (!mounted) return;
+      setState(() {
+        _proteinToday = dayMeals.totalProtein;
+        _proteinGoal = goals.goalProtein;
+      });
+    } catch (e) {
+      print('HomePageV3: Error loading coaching data: $e');
+    }
+  }
+
+  List<CoachingInsight> _coachingInsights({
+    required int steps,
+    required int calories,
+    required double water,
+  }) {
+    return CoachingInsightBuilder.build(
+      steps: steps,
+      stepsGoal: _goalSteps,
+      calories: calories.toDouble(),
+      caloriesGoal: _goalCalories.toDouble(),
+      waterLiters: water,
+      waterGoalLiters: _goalWater,
+      proteinGrams: _proteinToday,
+      proteinGoalGrams: _proteinGoal.toDouble(),
+      stepsWeekly: _stepsWeeklyData,
+      weeklyWorkoutsGoal: 3,
+      streakDays: _streakDays,
+    );
   }
 
   Future<void> _loadMetrics() async {
@@ -356,22 +401,25 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isLight = Theme.of(context).brightness == Brightness.light;
-    // Watch step count from health tracking provider (updates every 30 seconds)
-    final stepsAsync = ref.watch(stepsNotifierProvider);
-    final providerSteps = stepsAsync.value ?? 0;
-    
-    // Watch calories and distance
-    final caloriesAsync = ref.watch(caloriesProvider);
-    final providerCalories = caloriesAsync.value ?? 0.0;
-    
-    final distanceAsync = ref.watch(distanceProvider);
-    final providerDistance = distanceAsync.value ?? 0.0;
-    
-    // Use provider values if available, otherwise use loaded values from Supabase
-    final currentSteps = providerSteps > 0 ? providerSteps : _currentSteps;
-    final currentCalories = providerCalories > 0 ? providerCalories.toInt() : _currentCalories.toInt();
-    final currentDistance = providerDistance > 0 ? providerDistance : _currentDistance;
-    
+    final metricsAsync = ref.watch(dailyMetricsProvider);
+    final liveMetrics = metricsAsync.valueOrNull;
+
+    // Prefer live Health Connect snapshot; fall back to Supabase cache while loading.
+    final currentSteps = liveMetrics?.steps ?? _currentSteps;
+    final currentCalories =
+        (liveMetrics?.activeCalories ?? _currentCalories).round();
+    final currentDistance =
+        liveMetrics?.distanceKm ?? _currentDistance;
+
+    final caloriesSourceNote = MetricsSourceLabels.caloriesNote(liveMetrics);
+    final distanceSourceNote = MetricsSourceLabels.distanceNote(liveMetrics);
+
+    final coachingInsights = _coachingInsights(
+      steps: currentSteps,
+      calories: currentCalories,
+      water: _currentWater,
+    );
+
     return FadeTransition(
       opacity: _fadeAnimation,
       child: Scaffold(
@@ -397,6 +445,7 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                 avatarUrl: ref.watch(profileImagesProvider).profileImagePath ??
                     _avatarUrl,
                 streakDays: _streakDays,
+                coachingInsights: coachingInsights,
                 onNotificationTap: () async {
                   await context.push('/notifications');
                   if (mounted) _loadNotificationsCount();
@@ -430,9 +479,11 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                           subValue:
                               'of ${_goalSteps >= 1000 ? '${(_goalSteps / 1000).toStringAsFixed(1)}k' : '$_goalSteps'} steps',
                           weekly: List<double>.from(_stepsWeeklyData),
+                          todayValue: currentSteps.toDouble(),
+                          goalValue: _goalSteps.toDouble(),
                         ),
                         UnifiedMetricViewModel(
-                          label: 'CALORIES',
+                          label: 'ACTIVE CALORIES',
                           icon: Icons.local_fire_department_outlined,
                           selectedIcon: Icons.local_fire_department,
                           ringGradient: AppColors.caloriesGradient,
@@ -443,7 +494,10 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                               : 0.0,
                           mainValue: '$currentCalories',
                           subValue: 'kcal · goal $_goalCalories',
+                          sourceNote: caloriesSourceNote,
                           weekly: List<double>.from(_caloriesWeeklyData),
+                          todayValue: currentCalories.toDouble(),
+                          goalValue: _goalCalories.toDouble(),
                         ),
                         UnifiedMetricViewModel(
                           label: 'WATER',
@@ -457,6 +511,8 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                           mainValue: _currentWater.toStringAsFixed(1),
                           subValue: 'of ${_goalWater.toStringAsFixed(1)} L',
                           weekly: List<double>.from(_waterWeeklyData),
+                          todayValue: _currentWater,
+                          goalValue: _goalWater,
                         ),
                         UnifiedMetricViewModel(
                           label: 'DISTANCE',
@@ -471,7 +527,10 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                           mainValue: currentDistance.toStringAsFixed(1),
                           subValue:
                               'km · goal ${_goalDistance.toStringAsFixed(1)}',
+                          sourceNote: distanceSourceNote,
                           weekly: List<double>.from(_distanceWeeklyData),
+                          todayValue: currentDistance,
+                          goalValue: _goalDistance,
                         ),
                       ],
                       onMetricTap: (i) {
@@ -493,6 +552,8 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                                 MetricType.calories,
                                 List<double>.from(_caloriesWeeklyData),
                                 goal: _goalCalories.toDouble(),
+                                sourceNote: liveMetrics?.caloriesSource
+                                    .insightsNote,
                               ),
                             );
                             break;
@@ -513,6 +574,8 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                                 MetricType.distance,
                                 List<double>.from(_distanceWeeklyData),
                                 goal: _goalDistance,
+                                sourceNote: liveMetrics?.distanceSource
+                                    .insightsNote,
                               ),
                             );
                             break;
@@ -628,11 +691,10 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
       _loadStreak(),
       _loadGoals(),
       _loadMetrics(),
+      _loadCoachingData(),
     ]);
     
     // Refresh health tracking data
-    ref.read(stepsNotifierProvider.notifier).refresh();
-    ref.invalidate(caloriesProvider);
-    ref.invalidate(distanceProvider);
+    ref.read(dailyMetricsProvider.notifier).refresh();
   }
 }

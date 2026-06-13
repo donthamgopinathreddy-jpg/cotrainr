@@ -17,6 +17,11 @@ import '../../services/streak_service.dart';
 import '../../services/metrics_sync_service.dart';
 import '../../widgets/home_v3/hero_header_v3.dart';
 import '../../widgets/home_v3/unified_metrics_tile_v3.dart';
+import '../../widgets/home_v3/coaching_insight_builder.dart';
+import '../../widgets/home_v3/metrics_source_labels.dart';
+import '../../models/coaching_insight.dart';
+import '../../models/daily_metrics_snapshot.dart';
+import '../../repositories/meal_repository.dart';
 import '../../widgets/home_v3/bmi_card_v3.dart';
 import '../../widgets/home_v3/quick_access_v3.dart';
 import '../../widgets/home_v3/home_nav_hint_cards.dart';
@@ -63,6 +68,8 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
   double _currentCalories = 0.0;
   double _currentWater = 0.0;
   double _currentDistance = 0.0;
+  double _proteinToday = 0.0;
+  int _proteinGoal = 150;
   double _bmi = 0;
   String _bmiStatus = '';
   double? _heightCm;
@@ -88,6 +95,7 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
     _loadStreak();
     _loadGoals();
     _loadData();
+    _loadCoachingData();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -116,6 +124,38 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
         _goalDistance = distance;
       });
     }
+  }
+
+  Future<void> _loadCoachingData() async {
+    try {
+      final mealRepo = MealRepository();
+      final goals = await mealRepo.getNutritionGoals();
+      final dayMeals = await mealRepo.getDayMeals(DateTime.now());
+      if (!mounted) return;
+      setState(() {
+        _proteinToday = dayMeals.totalProtein;
+        _proteinGoal = goals.goalProtein;
+      });
+    } catch (_) {}
+  }
+
+  List<CoachingInsight> _coachingInsights({
+    required int steps,
+    required int calories,
+    required double water,
+  }) {
+    return CoachingInsightBuilder.build(
+      steps: steps,
+      stepsGoal: _goalSteps,
+      calories: calories.toDouble(),
+      caloriesGoal: _goalCalories.toDouble(),
+      waterLiters: water,
+      waterGoalLiters: _goalWater,
+      proteinGrams: _proteinToday,
+      proteinGoalGrams: _proteinGoal.toDouble(),
+      stepsWeekly: _stepsWeeklyData,
+      streakDays: _streakDays,
+    );
   }
 
   Future<void> _loadData() async {
@@ -193,6 +233,9 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
             }
             _age = age;
           } catch (_) {}
+        }
+        if (_heightCm != null) {
+          ref.read(healthTrackingServiceProvider).setUserHeightCm(_heightCm);
         }
         if (_bmi <= 0 &&
             _heightCm != null &&
@@ -276,17 +319,27 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
       _loadNotificationsCount(),
       _loadStreak(),
       _loadGoals(),
+      _loadCoachingData(),
     ]);
-    ref.read(stepsNotifierProvider.notifier).refresh();
-    ref.invalidate(caloriesProvider);
-    ref.invalidate(distanceProvider);
+    ref.read(dailyMetricsProvider.notifier).refresh();
   }
 
   @override
   Widget build(BuildContext context) {
     final isLight = Theme.of(context).brightness == Brightness.light;
     final bg = isLight ? HomePremiumTheme.lightWarmBg : HomePremiumTheme.darkCharcoal;
-    final currentSteps = ref.watch(stepsNotifierProvider).value ?? _currentSteps;
+    final liveMetrics = ref.watch(dailyMetricsProvider).valueOrNull;
+    final currentSteps = liveMetrics?.steps ?? _currentSteps;
+    final currentCalories =
+        (liveMetrics?.activeCalories ?? _currentCalories).round();
+    final currentDistance = liveMetrics?.distanceKm ?? _currentDistance;
+    final caloriesSourceNote = MetricsSourceLabels.caloriesNote(liveMetrics);
+    final distanceSourceNote = MetricsSourceLabels.distanceNote(liveMetrics);
+    final coachingInsights = _coachingInsights(
+      steps: currentSteps,
+      calories: currentCalories,
+      water: _currentWater,
+    );
 
     return Scaffold(
       backgroundColor: bg,
@@ -309,6 +362,7 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
                     coverImageUrl: ref.watch(profileImagesProvider).coverImagePath,
                     avatarUrl: ref.watch(profileImagesProvider).profileImagePath,
                     streakDays: _streakDays,
+                    coachingInsights: coachingInsights,
                     onNotificationTap: () async {
                       await context.push('/notifications');
                       if (mounted) _loadNotificationsCount();
@@ -340,19 +394,24 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
                             subValue:
                                 'of ${_goalSteps >= 1000 ? '${(_goalSteps / 1000).toStringAsFixed(1)}k' : '$_goalSteps'} steps',
                             weekly: List<double>.from(_stepsWeeklyData),
+                            todayValue: currentSteps.toDouble(),
+                            goalValue: _goalSteps.toDouble(),
                           ),
                           UnifiedMetricViewModel(
-                            label: 'CALORIES',
+                            label: 'ACTIVE CALORIES',
                             icon: Icons.local_fire_department_outlined,
                             selectedIcon: Icons.local_fire_department,
                             ringGradient: AppColors.caloriesGradient,
                             barColor: const Color(0xFFFF6B6B),
                             progress: _goalCalories > 0
-                                ? (_currentCalories / _goalCalories).clamp(0.0, 1.0)
+                                ? (currentCalories / _goalCalories).clamp(0.0, 1.0)
                                 : 0.0,
-                            mainValue: _currentCalories.round().toString(),
+                            mainValue: '$currentCalories',
                             subValue: 'kcal · goal $_goalCalories',
+                            sourceNote: caloriesSourceNote,
                             weekly: List<double>.from(_caloriesWeeklyData),
+                            todayValue: currentCalories.toDouble(),
+                            goalValue: _goalCalories.toDouble(),
                           ),
                           UnifiedMetricViewModel(
                             label: 'WATER',
@@ -366,6 +425,8 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
                             mainValue: _currentWater.toStringAsFixed(1),
                             subValue: 'of ${_goalWater.toStringAsFixed(1)} L',
                             weekly: List<double>.from(_waterWeeklyData),
+                            todayValue: _currentWater,
+                            goalValue: _goalWater,
                           ),
                           UnifiedMetricViewModel(
                             label: 'DISTANCE',
@@ -374,12 +435,15 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
                             ringGradient: AppColors.distanceGradient,
                             barColor: AppColors.purple,
                             progress: _goalDistance > 0
-                                ? (_currentDistance / _goalDistance).clamp(0.0, 1.0)
+                                ? (currentDistance / _goalDistance).clamp(0.0, 1.0)
                                 : 0.0,
-                            mainValue: _currentDistance.toStringAsFixed(1),
+                            mainValue: currentDistance.toStringAsFixed(1),
                             subValue:
                                 'km · goal ${_goalDistance.toStringAsFixed(1)}',
+                            sourceNote: distanceSourceNote,
                             weekly: List<double>.from(_distanceWeeklyData),
+                            todayValue: currentDistance,
+                            goalValue: _goalDistance,
                           ),
                         ],
                         onMetricTap: (i) => _openInsight(context, i),
@@ -495,6 +559,7 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
   }
 
   void _openInsight(BuildContext context, int i) {
+    final liveMetrics = ref.read(dailyMetricsProvider).valueOrNull;
     switch (i) {
       case 0:
         context.push(
@@ -506,7 +571,8 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
         context.push(
           '/insights/calories',
           extra: InsightArgs(MetricType.calories, List<double>.from(_caloriesWeeklyData),
-              goal: _goalCalories.toDouble()),
+              goal: _goalCalories.toDouble(),
+              sourceNote: liveMetrics?.caloriesSource.insightsNote),
         );
       case 2:
         context.push(
@@ -518,7 +584,8 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
         context.push(
           '/insights/distance',
           extra: InsightArgs(MetricType.distance, List<double>.from(_distanceWeeklyData),
-              goal: _goalDistance),
+              goal: _goalDistance,
+              sourceNote: liveMetrics?.distanceSource.insightsNote),
         );
     }
   }

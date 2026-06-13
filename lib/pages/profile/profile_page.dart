@@ -371,10 +371,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                           ),
                         ),
                         _ProfileActionRow(
-                          label: 'Health Devices',
-                          icon: Icons.watch_outlined,
+                          label: Platform.isIOS ? 'Apple Health' : 'Health Connect',
+                          icon: Icons.favorite_outline_rounded,
+                          iconColor: AccountHubTheme.goalsGreen,
                           delayMs: 200,
-                          trailing: const ComingSoonBadge(),
                           onTap: () => Navigator.push(
                             context,
                             PageTransitions.slideRoute(

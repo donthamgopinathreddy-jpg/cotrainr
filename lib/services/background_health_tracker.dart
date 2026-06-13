@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/feature_flags.dart';
@@ -71,25 +72,20 @@ class BackgroundHealthTracker {
     try {
       print('BackgroundHealthTracker: Starting track cycle...');
 
-      // 1. Get health data from sensors
       final healthService = HealthTrackingService();
-      
-      // Ensure initialized
       final initialized = await healthService.initialize();
       if (!initialized) {
         print('BackgroundHealthTracker: Health service not initialized, skipping');
         return;
       }
 
-      // Read from sensors
-      print('BackgroundHealthTracker: Reading from sensors...');
-      final steps = await healthService.getTodaySteps();
-      final calories = await healthService.getTodayCalories();
-      final distance = await healthService.getTodayDistance();
+      if (kDebugMode) {
+        debugPrint(
+          '[Metrics] Background sync via ${healthService.activeSourceLabel}',
+        );
+      }
 
-      print('BackgroundHealthTracker: Sensor data - Steps: $steps, Calories: $calories, Distance: $distance km');
-
-      // 2. Sync to Supabase metrics_daily
+      // Single sync path — MetricsSyncService reads from the active source once.
       final metricsSyncService = _ref.read(metricsSyncServiceProvider);
       await metricsSyncService.syncNow();
 
