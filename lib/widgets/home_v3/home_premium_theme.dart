@@ -9,9 +9,9 @@ class HomePremiumTheme {
   // —— Base surfaces ——
   static const Color darkCharcoal = Color(0xFF14161C);
   static const Color darkCard = Color(0xFF1C1F26);
-  static const Color lightWarmBg = Color(0xFFF6F4EF);
-  static const Color lightCreamCard = Color(0xFFFAF8F4);
-  static const Color lightCharcoalText = Color(0xFF2A2D33);
+  static const Color lightWarmBg = Color(0xFFFFFFFF);
+  static const Color lightCreamCard = Color(0xFFF8F9FB);
+  static const Color lightCharcoalText = Color(0xFF1F2430);
 
   /// 0 steps, 1 calories, 2 water, 3 distance
   static MetricPalette metricPalette(int index, bool isLight) {
@@ -151,7 +151,7 @@ class HomePremiumTheme {
       isLight ? lightCharcoalText : const Color(0xFFF2F2F4);
 
   static Color secondaryText(bool isLight) =>
-      isLight ? const Color(0xFF6B7280) : const Color(0xFF9CA3AF);
+      isLight ? const Color(0xFF6F7683) : const Color(0xFF9CA3AF);
 }
 
 class MetricPalette {

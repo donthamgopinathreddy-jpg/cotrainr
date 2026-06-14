@@ -5,6 +5,8 @@ import 'package:image_picker/image_picker.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
 
+import '../../theme/text_styles.dart';
+
 class BecomeTrainerPage extends StatefulWidget {
   const BecomeTrainerPage({super.key});
 
@@ -206,15 +208,12 @@ class _BecomeTrainerPageState extends State<BecomeTrainerPage> {
 
     return Scaffold(
       backgroundColor: isLight
-          ? const Color(0xFFFCE8E8) // Light red
+          ? DesignTokens.lightPageBackground
           : const Color(0xFF1A0D0D), // Dark mode: red and black mix
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           'Become a Trainer',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-          ),
+          style: AppTextStyles.screenTitle(context),
         ),
         elevation: 0,
         backgroundColor: Colors.transparent,

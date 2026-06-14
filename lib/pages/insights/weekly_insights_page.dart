@@ -58,7 +58,7 @@ class WeeklyInsightsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final weeklyMetricsAsync = ref.watch(weeklyMetricsProvider);
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.bgOf(context),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),

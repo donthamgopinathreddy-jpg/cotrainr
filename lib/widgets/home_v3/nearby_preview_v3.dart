@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../data/nearby_fitness_places_data.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
+import '../../theme/text_styles.dart';
 import '../../widgets/common/shimmer_skeleton.dart';
 import 'home_premium_theme.dart';
 
@@ -159,12 +160,7 @@ class _NearbyPreviewV3State extends State<NearbyPreviewV3> {
                 children: [
                   Text(
                     'Nearby Fitness',
-                    style: GoogleFonts.montserrat(
-                      fontSize: DesignTokens.fontSizeSection,
-                      fontWeight: FontWeight.w600,
-                      color: cs.onSurface,
-                      letterSpacing: -0.5,
-                    ),
+                    style: AppTextStyles.sectionTitle(context, color: cs.onSurface),
                   ),
                   const SizedBox(height: 2),
                   Text(

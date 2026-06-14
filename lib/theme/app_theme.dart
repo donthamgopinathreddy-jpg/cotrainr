@@ -95,11 +95,11 @@ class AppTheme {
         centerTitle: false,
         backgroundColor: Colors.transparent,
         foregroundColor: DesignTokens.lightTextPrimary,
-        titleTextStyle: GoogleFonts.poppins(
-          fontSize: DesignTokens.fontSizeH2,
-          fontWeight: DesignTokens.fontWeightBold,
+        titleTextStyle: GoogleFonts.montserrat(
+          fontSize: 28,
+          fontWeight: FontWeight.w800,
           color: DesignTokens.lightTextPrimary,
-          letterSpacing: 0.5,
+          letterSpacing: 0.4,
         ),
         iconTheme: IconThemeData(
           color: DesignTokens.lightTextPrimary,

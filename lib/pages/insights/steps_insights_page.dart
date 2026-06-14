@@ -91,7 +91,7 @@ class _StepsInsightsPageState extends State<StepsInsightsPage> {
   Widget build(BuildContext context) {
     final progress = (8234 / _goal).clamp(0.0, 1.0);
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.bgOf(context),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),

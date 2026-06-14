@@ -6,7 +6,9 @@ import 'package:flutter/services.dart';
 import '../../models/metric_insight_types.dart';
 import '../../repositories/metrics_repository.dart';
 import '../../services/user_goals_service.dart';
+import '../../theme/design_tokens.dart';
 import '../../theme/insight_metric_theme.dart';
+import '../../theme/text_styles.dart';
 import '../../widgets/insights/insight_premium_widgets.dart';
 
 export '../../models/metric_insight_types.dart';
@@ -582,19 +584,24 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
             ? _selectedIndex! - breakdownOffset
             : _todayIndexInDates(breakdownDates));
 
+    final pageBg = InsightMetricTheme.pageBgOf(context);
+    final isLight = Theme.of(context).brightness == Brightness.light;
+
     return Scaffold(
-      backgroundColor: InsightMetricTheme.pageBg,
+      backgroundColor: pageBg,
       body: SafeArea(
         child: CustomScrollView(
           slivers: [
             SliverAppBar(
               pinned: true,
               backgroundColor: Colors.transparent,
-              flexibleSpace: ClipRect(
+              flexibleSpace: isLight
+                  ? ColoredBox(color: pageBg)
+                  : ClipRect(
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                   child: Container(
-                    color: InsightMetricTheme.pageBg.withValues(alpha: 0.92),
+                    color: pageBg.withValues(alpha: 0.92),
                   ),
                 ),
               ),
@@ -607,18 +614,14 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
                   children: [
                     Text(
                       theme.title,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
+                      style: AppTextStyles.screenTitle(context),
                     ),
                     Text(
                       _rangeLabels[_rangeIndex],
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
-                        color: Colors.white.withValues(alpha: 0.5),
+                        color: DesignTokens.textSecondaryOf(context),
                       ),
                     ),
                   ],
@@ -693,7 +696,7 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
-                            color: Colors.white.withValues(alpha: 0.55),
+                            color: DesignTokens.textSecondaryOf(context),
                           ),
                         ),
                       ),

@@ -12,6 +12,9 @@ import '../../repositories/provider_locations_repository.dart';
 import 'center_detail_page.dart';
 import '../profile/public_profile_readonly_page.dart';
 
+const _discoverGradient = DesignTokens.discoverGradient;
+const _discoverAccent = DesignTokens.discoverAccent;
+
 /// Location state for discover page
 enum DiscoverLocationState {
   granted,
@@ -53,14 +56,6 @@ class _DiscoverPageState extends State<DiscoverPage>
   final List<DiscoverItem> _centers = [];
 
   final ProviderLocationsRepository _repo = ProviderLocationsRepository();
-
-  static const _discoverGradient = LinearGradient(
-    colors: [Color(0xFF3ED598), Color(0xFF4DA3FF)],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-  );
-
-  static const _discoverAccent = Color(0xFF3ED598);
 
   @override
   void initState() {
@@ -342,7 +337,7 @@ class _DiscoverPageState extends State<DiscoverPage>
             HapticFeedback.mediumImpact();
             await _loadRealData();
           },
-          color: DesignTokens.accentGreen,
+          color: _discoverAccent,
           child: CustomScrollView(
             controller: _scrollController,
             physics: const AlwaysScrollableScrollPhysics(
@@ -666,7 +661,7 @@ class _DiscoverLoadingHeaderState extends State<_DiscoverLoadingHeader>
             height: 18,
             child: CircularProgressIndicator(
               strokeWidth: 2,
-              color: const Color(0xFF3ED598),
+              color: _discoverAccent,
             ),
           ),
           const SizedBox(width: 10),
@@ -689,12 +684,8 @@ class _DiscoverHeaderRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final discoverGradient = const LinearGradient(
-      colors: [Color(0xFF3ED598), Color(0xFF4DA3FF)],
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-    );
-    
+    const discoverGradient = _discoverGradient;
+
     return SizedBox(
       height: 56,
       child: Row(
@@ -821,10 +812,13 @@ class _DiscoverSearchBarState extends State<_DiscoverSearchBar> {
             fontWeight: FontWeight.w400,
             color: colorScheme.onSurface.withOpacity(0.4),
           ),
-          prefixIcon: Icon(
-            Icons.search_rounded,
-            size: 22,
-            color: colorScheme.onSurface.withOpacity(0.5),
+          prefixIcon: ShaderMask(
+            shaderCallback: (rect) => _discoverGradient.createShader(rect),
+            child: const Icon(
+              Icons.search_rounded,
+              size: 22,
+              color: Colors.white,
+            ),
           ),
           suffixIcon: GestureDetector(
             onTap: widget.onFilterTap,
@@ -832,13 +826,23 @@ class _DiscoverSearchBarState extends State<_DiscoverSearchBar> {
               margin: const EdgeInsets.all(6),
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
+                gradient: LinearGradient(
+                  colors: [
+                    DesignTokens.discoverViolet.withValues(alpha: 0.18),
+                    DesignTokens.discoverVioletDeep.withValues(alpha: 0.14),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
                 shape: BoxShape.circle,
               ),
-              child: Icon(
-                Icons.tune_rounded,
-                size: 18,
-                color: colorScheme.onSurface.withOpacity(0.7),
+              child: ShaderMask(
+                shaderCallback: (rect) => _discoverGradient.createShader(rect),
+                child: const Icon(
+                  Icons.tune_rounded,
+                  size: 18,
+                  color: Colors.white,
+                ),
               ),
             ),
           ),

@@ -5,6 +5,36 @@ import 'design_tokens.dart';
 /// Text Styles Helper
 /// Ensures all text uses Poppins font consistently
 class AppTextStyles {
+  // Discover-style headings (Montserrat)
+  static TextStyle discoverPageTitle(BuildContext context, {Color? color}) {
+    return GoogleFonts.montserrat(
+      fontSize: 30,
+      fontWeight: FontWeight.w900,
+      letterSpacing: 1.2,
+      color: color ?? DesignTokens.textPrimaryOf(context),
+    );
+  }
+
+  /// Section headings — matches Nearby Fitness / Discover sections.
+  static TextStyle sectionTitle(BuildContext context, {Color? color}) {
+    return GoogleFonts.montserrat(
+      fontSize: DesignTokens.fontSizeSection,
+      fontWeight: FontWeight.w600,
+      letterSpacing: -0.5,
+      color: color ?? DesignTokens.textPrimaryOf(context),
+    );
+  }
+
+  /// Inline screen headers (Messages, Meal Tracker, Weekly Insights).
+  static TextStyle screenTitle(BuildContext context, {Color? color}) {
+    return GoogleFonts.montserrat(
+      fontSize: DesignTokens.fontSizeH3,
+      fontWeight: FontWeight.w800,
+      letterSpacing: 0.2,
+      color: color ?? DesignTokens.textPrimaryOf(context),
+    );
+  }
+
   // Headings
   static TextStyle h1(BuildContext context) {
     return GoogleFonts.poppins(

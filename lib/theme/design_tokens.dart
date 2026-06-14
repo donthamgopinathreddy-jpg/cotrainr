@@ -15,11 +15,19 @@ class DesignTokens {
   static const Color darkTextTertiary = Color(0xFF6B7280);
 
   // ========== LIGHT THEME COLORS ==========
-  static const Color lightBackground = Color(0xFFF6F4EF); // Warm off-white
-  static const Color lightSurface = Color(0xFFFAF8F4); // Cream card
-  static const Color lightSurfaceElevated = Color(0xFFFFFFFF);
-  static const Color lightTextPrimary = Color(0xFF2A2D33); // Charcoal
-  static const Color lightTextSecondary = Color(0xFF6B7280);
+  static const Color lightScaffoldBackground = Color(0xFFFFFFFF);
+  static const Color lightPageBackground = Color(0xFFFFFFFF);
+  static const Color lightCardBackground = Color(0xFFFFFFFF);
+  static const Color lightMutedCardBackground = Color(0xFFF8F9FB);
+  static const Color lightBorder = Color(0xFFE8EAF0);
+
+  /// Page / scaffold background (alias for [lightPageBackground]).
+  static const Color lightBackground = lightPageBackground;
+  /// Default card / input surface in light mode.
+  static const Color lightSurface = lightMutedCardBackground;
+  static const Color lightSurfaceElevated = lightCardBackground;
+  static const Color lightTextPrimary = Color(0xFF1F2430);
+  static const Color lightTextSecondary = Color(0xFF6F7683);
   static const Color lightTextTertiary = Color(0xFF9CA3AF);
 
   // ========== ACCENT COLORS (Theme-agnostic) ==========
@@ -49,7 +57,7 @@ class DesignTokens {
 
   // Static border colors for theme-agnostic use
   static Color get borderColorDark => Colors.white.withValues(alpha: 0.10);
-  static Color get borderColorLight => Colors.black.withValues(alpha: 0.08);
+  static Color get borderColorLight => lightBorder;
 
   // Static shadow for backward compatibility - removed
   static List<BoxShadow> get cardShadow => [];
@@ -102,7 +110,7 @@ class DesignTokens {
   static Color borderColorOf(BuildContext context) {
     return Theme.of(context).brightness == Brightness.dark
         ? Colors.white.withValues(alpha: 0.10)
-        : Colors.black.withValues(alpha: 0.08);
+        : lightBorder;
   }
 
   static List<BoxShadow> cardShadowOf(BuildContext context) {
@@ -179,6 +187,16 @@ class DesignTokens {
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
+
+  // Discover gradient (Violet) - Discover tab + page accents
+  static const Color discoverViolet = Color(0xFF9333EA);
+  static const Color discoverVioletDeep = Color(0xFF6D28D9);
+  static const LinearGradient discoverGradient = LinearGradient(
+    colors: [Color(0xFFA855F7), Color(0xFF7C3AED)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+  static const Color discoverAccent = discoverViolet;
 
   // Profile gradient (Red to Pink) - used in Profile navigation
   static const LinearGradient profileGradient = LinearGradient(

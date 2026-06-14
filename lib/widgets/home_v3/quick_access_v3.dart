@@ -8,6 +8,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
+import '../../theme/text_styles.dart';
 import 'home_premium_theme.dart';
 import '../common/pressable_card.dart';
 
@@ -296,11 +297,9 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
             const SizedBox(width: 8),
             Text(
               'Quick Actions',
-              style: GoogleFonts.montserrat(
-                fontSize: DesignTokens.fontSizeSection,
-                fontWeight: FontWeight.w500,
+              style: AppTextStyles.sectionTitle(
+                context,
                 color: HomePremiumTheme.primaryText(isLight),
-                letterSpacing: -0.5,
               ),
             ),
           ],

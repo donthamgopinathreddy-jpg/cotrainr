@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../widgets/home_v3/bmi_card_v3.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
+import '../../theme/text_styles.dart';
 
 /// Args passed from Home BMI tile via go_router state.extra
 class BmiDetailsArgs {
@@ -141,9 +142,8 @@ class _BmiDetailsScreenState extends State<BmiDetailsScreen>
             ),
             title: Text(
               'BMI Details',
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
+              style: AppTextStyles.screenTitle(
+                context,
                 color: HomePremiumTheme.primaryText(isLight),
               ),
             ),

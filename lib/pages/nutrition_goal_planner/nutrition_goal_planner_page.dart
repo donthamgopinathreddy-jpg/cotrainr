@@ -7,6 +7,7 @@ import '../../services/nutrition_goal_calculator.dart';
 import '../../services/nutrition_planner_local_storage.dart';
 import '../../widgets/common/pressable_card.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
+import '../../theme/text_styles.dart';
 import '../../widgets/nutrition_goal_planner/food_sources_section.dart';
 
 class NutritionGoalPlannerPage extends StatefulWidget {
@@ -374,10 +375,7 @@ class _NutritionGoalPlannerPageState extends State<NutritionGoalPlannerPage>
       appBar: AppBar(
         title: Text(
           'Nutrition Goals',
-          style: GoogleFonts.montserrat(
-            fontWeight: FontWeight.w600,
-            fontSize: 17,
-          ),
+          style: AppTextStyles.screenTitle(context),
         ),
         centerTitle: true,
         elevation: 0,

@@ -6,8 +6,9 @@ import 'package:flutter/material.dart';
 /// supporting light/dark mode.
 class MealTrackerTokens {
   // Light mode
-  static const Color lightBackground = Color(0xFFECFDF5); // light green wash
+  static const Color lightBackground = Color(0xFFFFFFFF);
   static const Color lightCard = Color(0xFFFFFFFF);
+  static const Color lightMutedSurface = Color(0xFFF8F9FB);
 
   // Dark mode
   static const Color darkBackground = Color(0xFF0B0F0D); // deep black green
@@ -33,8 +34,48 @@ class MealTrackerTokens {
     ],
   );
 
-  // Macro colors (color-blind safer trio)
-  static const Color macroProtein = Color(0xFF22C55E); // green
+  static const Color accentMint = Color(0xFF86EFAC);
+
+  /// Soft green wash — matches home [UnifiedMetricsTileV3] metric cards.
+  static LinearGradient intakeTileGradient(bool isLight) {
+    if (isLight) {
+      return LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          Color.lerp(lightMutedSurface, accent, 0.52)!,
+          Color.lerp(lightMutedSurface, accentMint, 0.38)!,
+          Color.lerp(lightMutedSurface, accentMint, 0.18)!,
+        ],
+        stops: const [0.0, 0.40, 1.0],
+      );
+    }
+    return LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [
+        Color.lerp(darkCard, accent, 0.36)!,
+        Color.lerp(darkCard, accent2, 0.24)!,
+        Color.lerp(darkCard, accent2, 0.10)!,
+      ],
+      stops: const [0.0, 0.45, 1.0],
+    );
+  }
+
+  /// Muted macro bar fills on the intake hero (same green family).
+  static Color macroBarFill(int index) {
+    switch (index) {
+      case 0:
+        return accent.withValues(alpha: 0.72);
+      case 1:
+        return accent.withValues(alpha: 0.58);
+      default:
+        return accent2.withValues(alpha: 0.65);
+    }
+  }
+
+  // Macro colors (meal tiles / pills)
+  static const Color macroProtein = Color(0xFF22C55E);
   static const Color macroCarbs = Color(0xFF14B8A6); // teal
   static const Color macroFats = Color(0xFFFBBF24); // amber/yellow
 
@@ -57,13 +98,13 @@ class MealTrackerTokens {
   static Color textPrimaryOf(BuildContext context) {
     return Theme.of(context).brightness == Brightness.dark
         ? const Color(0xFFEFFFF5)
-        : const Color(0xFF0B1B12);
+        : const Color(0xFF1F2430);
   }
 
   static Color textSecondaryOf(BuildContext context) {
     return Theme.of(context).brightness == Brightness.dark
         ? const Color(0xFFBFE8D1).withValues(alpha: 0.75)
-        : const Color(0xFF2E5A42).withValues(alpha: 0.75);
+        : const Color(0xFF6F7683);
   }
 
   static List<BoxShadow> cardShadowOf(BuildContext context) {

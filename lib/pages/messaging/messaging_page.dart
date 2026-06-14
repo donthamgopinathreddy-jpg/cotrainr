@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/design_tokens.dart';
+import '../../widgets/common/app_tab_page_header.dart';
 import '../../repositories/messages_repository.dart';
 import 'chat_screen.dart';
 
@@ -222,53 +223,19 @@ class _MessagingPageState extends State<MessagingPage> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final lightBlueBg = isDark
+    final pageBg = isDark
         ? Color.lerp(cs.surface, AppColors.blue, 0.15)!
-        : Color.lerp(cs.surface, AppColors.blue, 0.08)!;
+        : DesignTokens.lightPageBackground;
 
     return Scaffold(
-      backgroundColor: lightBlueBg,
+      backgroundColor: pageBg,
       body: SafeArea(
         child: Column(
           children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: () => context.pop(),
-                    icon: ShaderMask(
-                      shaderCallback: (bounds) => const LinearGradient(
-                        colors: [AppColors.blue, AppColors.cyan],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ).createShader(bounds),
-                      child: const Icon(
-                        Icons.arrow_back_ios_new_rounded,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  ShaderMask(
-                    shaderCallback: (bounds) => const LinearGradient(
-                      colors: [AppColors.blue, AppColors.cyan],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ).createShader(bounds),
-                    child: const Text(
-                      'Messages',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+            AppTabPageHeader(
+              icon: Icons.chat_bubble_outline_rounded,
+              title: 'Messages',
+              gradient: AppTabPageHeader.messagesGradient,
             ),
             // Search bar
             Padding(
@@ -303,14 +270,15 @@ class _MessagingPageState extends State<MessagingPage> {
                           },
                         )
                       : null,
-                  filled: false,
+                  filled: true,
+                  fillColor: DesignTokens.lightMutedCardBackground,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(22),
-                    borderSide: BorderSide(color: AppColors.blue.withOpacity(0.3)),
+                    borderSide: const BorderSide(color: DesignTokens.lightBorder),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(22),
-                    borderSide: BorderSide(color: AppColors.blue.withOpacity(0.3)),
+                    borderSide: const BorderSide(color: DesignTokens.lightBorder),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(22),

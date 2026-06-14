@@ -2,12 +2,19 @@ import 'package:flutter/material.dart';
 
 import '../models/metric_insight_types.dart';
 import '../widgets/home_v3/home_premium_theme.dart';
+import 'design_tokens.dart';
 
 /// Premium muted palette for metric insight screens (matches Home dashboard).
 class InsightMetricTheme {
   static const graphCardBg = Color(0xFF171B26);
   static const surfaceCard = Color(0xFF1C1F26);
   static const pageBg = HomePremiumTheme.darkCharcoal;
+
+  static Color pageBgOf(BuildContext context) {
+    return Theme.of(context).brightness == Brightness.dark
+        ? pageBg
+        : DesignTokens.lightPageBackground;
+  }
 
   final MetricType type;
   final String title;

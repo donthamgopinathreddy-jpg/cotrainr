@@ -9,7 +9,7 @@ class DistanceInsightsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     const data = [3.8, 4.2, 4.0, 4.5, 4.6, 4.1, 4.4];
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.bgOf(context),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),

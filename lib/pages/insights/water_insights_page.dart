@@ -9,7 +9,7 @@ class WaterInsightsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     const data = [1.2, 1.5, 1.8, 1.6, 1.4, 1.7, 1.5];
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.bgOf(context),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),

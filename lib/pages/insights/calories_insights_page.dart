@@ -9,7 +9,7 @@ class CaloriesInsightsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     const data = [1800, 2000, 1900, 2100, 1700, 1950, 1850];
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.bgOf(context),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),

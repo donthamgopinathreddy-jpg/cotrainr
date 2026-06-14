@@ -11,6 +11,7 @@ import '../../services/nutrition_planner_local_storage.dart';
 import '../../services/storage_service.dart';
 import '../../repositories/profile_repository.dart';
 import '../../theme/account_hub_theme.dart';
+import '../../theme/text_styles.dart';
 import '../../widgets/common/pressable_card.dart';
 import '../../widgets/profile/account_hub_widgets.dart';
 
@@ -619,11 +620,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
         ),
         title: Text(
           'Edit Profile',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: colorScheme.onBackground,
-          ),
+          style: AppTextStyles.screenTitle(context),
         ),
         actions: [
           TextButton(

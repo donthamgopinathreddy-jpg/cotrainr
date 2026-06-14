@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'weekly_insights_page.dart';
 import '../../theme/meal_tracker_tokens.dart';
+import '../../widgets/common/app_tab_page_header.dart';
+import '../../widgets/home_v3/home_premium_theme.dart';
 import '../../repositories/meal_repository.dart';
 import '../../repositories/food_catalog_repository.dart';
 
@@ -228,39 +230,28 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
 
   LinearGradient get _primaryGradient => MealTrackerTokens.primaryGradient;
 
-  LinearGradient _mealGradientFor(String mealType) {
-    // Distinct colors per meal (still modern + consistent).
+  Color _mealIconColorFor(String mealType) {
     switch (mealType) {
       case 'Breakfast':
-        return const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFF59E0B), Color(0xFFFDE68A)], // amber -> light amber
-        );
+        return const Color(0xFFF59E0B);
       case 'Lunch':
-        return const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF14B8A6), Color(0xFF99F6E4)], // teal -> mint
-        );
+        return const Color(0xFF14B8A6);
       case 'Dinner':
-        return const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF8B5CF6), Color(0xFFC4B5FD)], // violet -> lavender
-        );
+        return const Color(0xFF8B5CF6);
       case 'Snacks':
-        return const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFFB7185), Color(0xFFFDA4AF)], // rose -> light rose
-        );
+        return const Color(0xFFFB7185);
       default:
-        // Custom meals: default to primary green gradient.
-        return _primaryGradient;
+        return MealTrackerTokens.accent;
     }
   }
 
+  void _goToPreviousDay() {
+    _selectDate(_selectedDate.subtract(const Duration(days: 1)));
+  }
+
+  void _goToNextDay() {
+    _selectDate(_selectedDate.add(const Duration(days: 1)));
+  }
 
   DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
@@ -269,16 +260,13 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
     return _dateOnly(d).subtract(Duration(days: d.weekday - DateTime.monday));
   }
 
-  List<DateTime> _weekDays() {
-    return List.generate(7, (i) => _weekStart.add(Duration(days: i)));
-  }
-
   void _selectDate(DateTime date) {
     HapticFeedback.selectionClick();
     setState(() {
       _selectedDate = _dateOnly(date);
       _weekStart = _startOfWeek(_selectedDate);
     });
+    _ringController.forward(from: 0);
     _loadDayData();
   }
 
@@ -634,22 +622,21 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
                 SliverPersistentHeader(
                   pinned: true,
                   delegate: _MealTrackerHeaderDelegate(
-                    onCalendar: _openCalendar,
                     title: 'Meal Tracker',
                     textPrimary: _getTextPrimary(context),
                     bgColor: pageBg,
                   ),
                 ),
-                // Day Strip
                 SliverPersistentHeader(
                   pinned: true,
-                  delegate: _DayStripDelegate(
-                    days: _weekDays(),
+                  delegate: _DayNavigatorDelegate(
                     selectedDate: _selectedDate,
-                    onDaySelected: _selectDate,
-                    primaryGradient: _primaryGradient,
+                    onPrevious: _goToPreviousDay,
+                    onNext: _goToNextDay,
+                    onDateTap: _openCalendar,
                     surface: _getSurface(context),
                     textPrimary: _getTextPrimary(context),
+                    textSecondary: _getTextSecondary(context),
                   ),
                 ),
                 // Daily Summary
@@ -722,7 +709,7 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
                             protein: mealProtein,
                             carbs: mealCarbs,
                             fats: mealFats,
-                            gradient: _mealGradientFor(mealType),
+                            iconColor: _mealIconColorFor(mealType),
                             surface: _getSurface(context),
                             textPrimary: _getTextPrimary(context),
                             textSecondary: _getTextSecondary(context),
@@ -846,13 +833,11 @@ class FoodItem {
 }
 
 class _MealTrackerHeaderDelegate extends SliverPersistentHeaderDelegate {
-  final VoidCallback onCalendar;
   final String title;
   final Color textPrimary;
   final Color bgColor;
 
   _MealTrackerHeaderDelegate({
-    required this.onCalendar,
     required this.title,
     required this.textPrimary,
     required this.bgColor,
@@ -866,7 +851,6 @@ class _MealTrackerHeaderDelegate extends SliverPersistentHeaderDelegate {
         : (shrinkOffset / denom).clamp(0.0, 1.0);
     // No glass/blur: just become slightly elevated on scroll.
     final bgAlpha = _lerpDouble(1.0, 1.0, t);
-    final slideUp = _lerpDouble(6.0, 0.0, t);
 
     return ClipRect(
       child: Stack(
@@ -893,43 +877,12 @@ class _MealTrackerHeaderDelegate extends SliverPersistentHeaderDelegate {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: SizedBox(
-              height: maxExtent,
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: () => Navigator.maybePop(context),
-                    icon: Icon(Icons.arrow_back_rounded, color: textPrimary),
-                  ),
-                  Expanded(
-                    child: Center(
-                      child: Transform.translate(
-                        offset: Offset(0, -slideUp),
-                        child: Opacity(
-                          opacity: (0.45 + (1 - t) * 0.55).clamp(0.0, 1.0),
-                          child: Text(
-                            title,
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w900,
-                              color: textPrimary,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: onCalendar,
-                    icon: const Icon(
-                      Icons.calendar_month_rounded,
-                      color: MealTrackerTokens.accent,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                ],
-              ),
+            padding: const EdgeInsets.only(right: 4),
+            child: AppTabPageHeader(
+              icon: Icons.restaurant_rounded,
+              title: title,
+              gradient: AppTabPageHeader.mealsGradient,
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
             ),
           ),
         ],
@@ -953,129 +906,129 @@ class _MealTrackerHeaderDelegate extends SliverPersistentHeaderDelegate {
   }
 }
 
-// Day Strip Delegate
-class _DayStripDelegate extends SliverPersistentHeaderDelegate {
-  final List<DateTime> days;
+// Centered day navigator — arrows + tappable date opens calendar.
+class _DayNavigatorDelegate extends SliverPersistentHeaderDelegate {
   final DateTime selectedDate;
-  final ValueChanged<DateTime> onDaySelected;
-  final LinearGradient primaryGradient;
+  final VoidCallback onPrevious;
+  final VoidCallback onNext;
+  final VoidCallback onDateTap;
   final Color surface;
   final Color textPrimary;
+  final Color textSecondary;
 
-  _DayStripDelegate({
-    required this.days,
+  _DayNavigatorDelegate({
     required this.selectedDate,
-    required this.onDaySelected,
-    required this.primaryGradient,
+    required this.onPrevious,
+    required this.onNext,
+    required this.onDateTap,
     required this.surface,
     required this.textPrimary,
+    required this.textSecondary,
   });
 
   @override
   Widget build(
       BuildContext context, double shrinkOffset, bool overlapsContent) {
-    // IMPORTANT: force the header child to fill the sliver extent.
-    // Otherwise the child may measure slightly smaller and cause:
-    // "layoutExtent exceeds paintExtent" for pinned persistent headers.
+    final weekday = _weekdayName(selectedDate.weekday);
+    final dateLine = _formatDateLine(selectedDate);
+    final isToday = _isToday(selectedDate);
+
     return SizedBox.expand(
       child: Container(
         color: surface,
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: List.generate(days.length, (index) {
-              final day = days[index];
-              final isSelected = day.year == selectedDate.year &&
-                  day.month == selectedDate.month &&
-                  day.day == selectedDate.day;
-              final now = DateTime.now();
-              final isToday = day.year == now.year &&
-                  day.month == now.month &&
-                  day.day == now.day;
-
-              return Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: GestureDetector(
-                  onTap: () => onDaySelected(day),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      gradient: isSelected ? primaryGradient : null,
-                      color: isSelected ? null : surface,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: isSelected
-                          ? [
-                              BoxShadow(
-                                color: MealTrackerTokens.accent
-                                    .withValues(alpha: 0.18),
-                                blurRadius: 8,
-                                offset: const Offset(0, 4),
-                              ),
-                            ]
-                          : null,
-                    ),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        child: Row(
+          children: [
+            IconButton(
+              onPressed: onPrevious,
+              icon: Icon(Icons.chevron_left_rounded, color: textPrimary),
+            ),
+            Expanded(
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: onDateTap,
+                  borderRadius: BorderRadius.circular(16),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
                     child: Column(
-                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
-                          _getDayName(day.weekday),
+                          weekday,
                           style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: isSelected
-                                ? Colors.white
-                                : textPrimary.withOpacity(0.6),
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: textPrimary,
                           ),
                         ),
                         const SizedBox(height: 2),
-                        Text(
-                          '${day.day}',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w900,
-                            color: isSelected
-                                ? Colors.white
-                                : isToday
-                                    ? textPrimary
-                                    : textPrimary.withOpacity(0.7),
-                          ),
-                        ),
-                        const SizedBox(height: 1),
-                        Text(
-                          _getMonthShort(day.month),
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w700,
-                            color: isSelected
-                                ? Colors.white.withValues(alpha: 0.90)
-                                : textPrimary.withValues(alpha: 0.55),
-                          ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              dateLine,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: textSecondary,
+                              ),
+                            ),
+                            if (isToday) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: MealTrackerTokens.accent
+                                      .withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: const Text(
+                                  'Today',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    color: MealTrackerTokens.accent,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ],
                     ),
                   ),
                 ),
-              );
-            }),
-          ),
+              ),
+            ),
+            IconButton(
+              onPressed: onNext,
+              icon: Icon(Icons.chevron_right_rounded, color: textPrimary),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  String _getDayName(int weekday) {
-    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  String _weekdayName(int weekday) {
+    const days = [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
+    ];
     return days[weekday - 1];
   }
 
-  String _getMonthShort(int month) {
-    const m = [
+  String _formatDateLine(DateTime d) {
+    const months = [
       'Jan',
       'Feb',
       'Mar',
@@ -1089,18 +1042,18 @@ class _DayStripDelegate extends SliverPersistentHeaderDelegate {
       'Nov',
       'Dec',
     ];
-    return m[month - 1];
+    return '${months[d.month - 1]} ${d.day}, ${d.year}';
   }
 
   @override
-  double get maxExtent => 92;
+  double get maxExtent => 72;
 
   @override
-  double get minExtent => 92;
+  double get minExtent => 72;
 
   @override
-  bool shouldRebuild(covariant _DayStripDelegate oldDelegate) {
-    return oldDelegate.selectedDate != selectedDate || oldDelegate.days != days;
+  bool shouldRebuild(covariant _DayNavigatorDelegate oldDelegate) {
+    return oldDelegate.selectedDate != selectedDate;
   }
 }
 
@@ -1148,190 +1101,190 @@ class _DailySummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
     final intakeLabel = _isToday(selectedDate) ? 'Today\'s Intake' : 'Intake';
-    final pProgress = goalProtein > 0 ? (protein / goalProtein).clamp(0.0, 1.0) : 0.0;
-    final cProgress = goalCarbs > 0 ? (carbs / goalCarbs).clamp(0.0, 1.0) : 0.0;
-    final fProgress = goalFats > 0 ? (fats / goalFats).clamp(0.0, 1.0) : 0.0;
+    final calorieProgress =
+        goalCalories > 0 ? (calories / goalCalories).clamp(0.0, 1.0) : 0.0;
+    final pProgress =
+        goalProtein > 0 ? (protein / goalProtein).clamp(0.0, 1.0) : 0.0;
+    final cProgress =
+        goalCarbs > 0 ? (carbs / goalCarbs).clamp(0.0, 1.0) : 0.0;
+    final fiberProgress =
+        goalFiber > 0 ? (fiber / goalFiber).clamp(0.0, 1.0) : 0.0;
+    final barTrack = isLight
+        ? Colors.white.withValues(alpha: 0.55)
+        : Colors.white.withValues(alpha: 0.10);
 
     return GestureDetector(
       onTap: onInsightsTap,
       child: Container(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: surface,
-          borderRadius: BorderRadius.circular(MealTrackerTokens.radiusCard),
-          boxShadow: MealTrackerTokens.cardShadowOf(context),
-          border: Border.all(color: textPrimary.withValues(alpha: 0.08)),
+          gradient: MealTrackerTokens.intakeTileGradient(isLight),
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: HomePremiumTheme.softCardShadow(isLight),
         ),
-        child: Stack(
+        child: Column(
           children: [
-            Column(
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Top row: Today's intake + Rings
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
                         children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  intakeLabel,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                    color: MealTrackerTokens.accent2,
-                                  ),
-                                ),
+                          Expanded(
+                            child: Text(
+                              intakeLabel,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.3,
+                                color: textSecondary,
                               ),
-                              _PressScale(
-                                onTap: onEditGoals,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 10, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    color: MealTrackerTokens.accent
-                                        .withValues(alpha: 0.10),
-                                    borderRadius: BorderRadius.circular(999),
-                                    border: Border.all(
-                                      color: MealTrackerTokens.accent
-                                          .withValues(alpha: 0.18),
+                            ),
+                          ),
+                          _PressScale(
+                            onTap: onEditGoals,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: isLight
+                                    ? Colors.white.withValues(alpha: 0.45)
+                                    : Colors.white.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.edit_outlined,
+                                      size: 12, color: textSecondary),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Goals',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w600,
+                                      color: textSecondary,
                                     ),
                                   ),
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.edit_rounded,
-                                          size: 14,
-                                          color: MealTrackerTokens.accent2),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        'Goals',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w900,
-                                          color: MealTrackerTokens.accent2,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
+                                ],
                               ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              _AnimatedIntText(
-                                value: calories,
-                                style: const TextStyle(
-                                  fontSize: 36,
-                                  fontWeight: FontWeight.w900,
-                                  color: MealTrackerTokens.accent, // green
-                                ),
-                                duration: const Duration(milliseconds: 450),
-                              ),
-                              const SizedBox(width: 8),
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 6),
-                                child: Text(
-                                  '/$goalCalories',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w800,
-                                    color: MealTrackerTokens.accent2,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          // Macro chips
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              _MacroChip(
-                                label: 'P',
-                                value: '${protein}g',
-                                goal: goalProtein,
-                                gradient: primaryGradient,
-                                surface: surface,
-                                textPrimary: MealTrackerTokens.accent2,
-                                dotColor: MealTrackerTokens.macroProtein,
-                              ),
-                              _MacroChip(
-                                label: 'C',
-                                value: '${carbs}g',
-                                goal: goalCarbs,
-                                gradient: primaryGradient,
-                                surface: surface,
-                                textPrimary: MealTrackerTokens.accent2,
-                                dotColor: MealTrackerTokens.macroCarbs,
-                              ),
-                              _MacroChip(
-                                label: 'F',
-                                value: '${fats}g',
-                                goal: goalFats,
-                                gradient: primaryGradient,
-                                surface: surface,
-                                textPrimary: MealTrackerTokens.accent2,
-                                dotColor: MealTrackerTokens.macroFats,
-                              ),
-                            ],
+                            ),
                           ),
                         ],
                       ),
-                    ),
-                    const SizedBox(width: 16),
-                    _TripleRingProgress(
-                      proteinProgress: pProgress,
-                      carbsProgress: cProgress,
-                      fatsProgress: fProgress,
-                      textPrimary: MealTrackerTokens.accent2,
-                      textSecondary: MealTrackerTokens.accent2.withValues(alpha: 0.70),
-                      animation: ringAnimation,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                // Weekly Insights Button
-                GestureDetector(
-                  onTap: onInsightsTap,
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    decoration: BoxDecoration(
-                      color: MealTrackerTokens.accent.withValues(alpha: 0.10),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: MealTrackerTokens.accent.withValues(alpha: 0.18),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.show_chart_rounded,
-                          size: 18,
-                          color: MealTrackerTokens.accent2,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Weekly Insights',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
-                            color: MealTrackerTokens.accent2,
+                      const SizedBox(height: 4),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          _AnimatedIntText(
+                            value: calories,
+                            style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w800,
+                              color: textPrimary,
+                            ),
+                            duration: const Duration(milliseconds: 450),
                           ),
-                        ),
-                      ],
-                    ),
+                          const SizedBox(width: 6),
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Text(
+                              '/ $goalCalories kcal',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: textSecondary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      _MacroFillBar(
+                        label: 'Protein',
+                        value: protein,
+                        goal: goalProtein,
+                        unit: 'g',
+                        progress: pProgress,
+                        color: MealTrackerTokens.macroBarFill(0),
+                        trackColor: barTrack,
+                        textPrimary: textSecondary,
+                        textSecondary: textSecondary,
+                        animation: ringAnimation,
+                      ),
+                      const SizedBox(height: 8),
+                      _MacroFillBar(
+                        label: 'Carbs',
+                        value: carbs,
+                        goal: goalCarbs,
+                        unit: 'g',
+                        progress: cProgress,
+                        color: MealTrackerTokens.macroBarFill(1),
+                        trackColor: barTrack,
+                        textPrimary: textSecondary,
+                        textSecondary: textSecondary,
+                        animation: ringAnimation,
+                      ),
+                      const SizedBox(height: 8),
+                      _MacroFillBar(
+                        label: 'Fiber',
+                        value: fiber,
+                        goal: goalFiber,
+                        unit: 'g',
+                        progress: fiberProgress,
+                        color: MealTrackerTokens.macroBarFill(2),
+                        trackColor: barTrack,
+                        textPrimary: textSecondary,
+                        textSecondary: textSecondary,
+                        animation: ringAnimation,
+                      ),
+                    ],
                   ),
                 ),
+                const SizedBox(width: 12),
+                _CalorieRingProgress(
+                  progress: calorieProgress,
+                  calories: calories,
+                  goalCalories: goalCalories,
+                  animation: ringAnimation,
+                  textPrimary: textPrimary,
+                  textSecondary: textSecondary,
+                  ringColor: MealTrackerTokens.accent,
+                ),
               ],
+            ),
+            const SizedBox(height: 12),
+            GestureDetector(
+              onTap: onInsightsTap,
+              behavior: HitTestBehavior.opaque,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.show_chart_rounded,
+                    size: 14,
+                    color: textSecondary,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Weekly Insights',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: textSecondary,
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 16,
+                    color: textSecondary.withValues(alpha: 0.7),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -1343,6 +1296,166 @@ class _DailySummaryCard extends StatelessWidget {
 bool _isToday(DateTime d) {
   final n = DateTime.now();
   return d.year == n.year && d.month == n.month && d.day == n.day;
+}
+
+class _MacroFillBar extends StatelessWidget {
+  final String label;
+  final int value;
+  final int goal;
+  final String unit;
+  final double progress;
+  final Color color;
+  final Color trackColor;
+  final Color textPrimary;
+  final Color textSecondary;
+  final Animation<double> animation;
+
+  const _MacroFillBar({
+    required this.label,
+    required this.value,
+    required this.goal,
+    required this.unit,
+    required this.progress,
+    required this.color,
+    required this.trackColor,
+    required this.textPrimary,
+    required this.textSecondary,
+    required this.animation,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: textPrimary,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              '$value$unit / $goal$unit',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w500,
+                color: textSecondary,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        AnimatedBuilder(
+          animation: animation,
+          builder: (context, _) {
+            final fill = (progress * animation.value).clamp(0.0, 1.0);
+            return ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: SizedBox(
+                height: 6,
+                width: double.infinity,
+                child: Stack(
+                  alignment: Alignment.centerLeft,
+                  children: [
+                    Container(color: trackColor),
+                    FractionallySizedBox(
+                      widthFactor: fill,
+                      alignment: Alignment.centerLeft,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: color,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _CalorieRingProgress extends StatelessWidget {
+  final double progress;
+  final int calories;
+  final int goalCalories;
+  final Animation<double> animation;
+  final Color textPrimary;
+  final Color textSecondary;
+  final Color ringColor;
+
+  const _CalorieRingProgress({
+    required this.progress,
+    required this.calories,
+    required this.goalCalories,
+    required this.animation,
+    required this.textPrimary,
+    required this.textSecondary,
+    required this.ringColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 96,
+      height: 96,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          AnimatedBuilder(
+            animation: animation,
+            builder: (context, _) {
+              return CustomPaint(
+                size: const Size(96, 96),
+                painter: _RingPainter(
+                  progress: progress * animation.value,
+                  strokeWidth: 7,
+                  startAngle: -pi / 2,
+                  color: ringColor,
+                  trackColor: Colors.white.withValues(alpha: 0.45),
+                ),
+              );
+            },
+          ),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedBuilder(
+                animation: animation,
+                builder: (context, _) {
+                  return Text(
+                    '${(progress * 100 * animation.value).round()}%',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: textPrimary,
+                    ),
+                  );
+                },
+              ),
+              Text(
+                'kcal',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _TripleRingProgress extends StatelessWidget {
@@ -1452,12 +1565,14 @@ class _RingPainter extends CustomPainter {
   final double strokeWidth;
   final double startAngle;
   final Color color;
+  final Color? trackColor;
 
   _RingPainter({
     required this.progress,
     required this.strokeWidth,
     required this.startAngle,
     required this.color,
+    this.trackColor,
   });
 
   @override
@@ -1468,7 +1583,7 @@ class _RingPainter extends CustomPainter {
     final bgPaint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = strokeWidth
-      ..color = const Color(0xFFE5E7EB) // light gray
+      ..color = trackColor ?? const Color(0xFFE5E7EB)
       ..strokeCap = StrokeCap.round;
     canvas.drawCircle(center, radius, bgPaint);
 
@@ -1493,7 +1608,8 @@ class _RingPainter extends CustomPainter {
     return oldDelegate.progress != progress ||
         oldDelegate.strokeWidth != strokeWidth ||
         oldDelegate.startAngle != startAngle ||
-        oldDelegate.color != color;
+        oldDelegate.color != color ||
+        oldDelegate.trackColor != trackColor;
   }
 }
 
@@ -1617,7 +1733,7 @@ class _MealTile extends StatelessWidget {
   final double protein;
   final double carbs;
   final double fats;
-  final LinearGradient gradient;
+  final Color iconColor;
   final Color surface;
   final Color textPrimary;
   final Color textSecondary;
@@ -1634,7 +1750,7 @@ class _MealTile extends StatelessWidget {
     required this.protein,
     required this.carbs,
     required this.fats,
-    required this.gradient,
+    required this.iconColor,
     required this.surface,
     required this.textPrimary,
     required this.textSecondary,
@@ -1660,27 +1776,22 @@ class _MealTile extends StatelessWidget {
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(MealTrackerTokens.radiusCard),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Top accent strip (same green gradient)
-              Container(height: 6, decoration: BoxDecoration(gradient: gradient)),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
-                child: Column(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+            child: Column(
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          width: 54,
-                          height: 54,
-                          decoration: BoxDecoration(
-                            gradient: gradient,
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                          child: Icon(icon, color: Colors.white, size: 26),
-                        ),
+                    Container(
+                      width: 54,
+                      height: 54,
+                      decoration: BoxDecoration(
+                        color: iconColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Icon(icon, color: iconColor, size: 26),
+                    ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
@@ -1797,16 +1908,16 @@ class _MealTile extends StatelessWidget {
                               onAddFood();
                             },
                             child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              padding: const EdgeInsets.symmetric(vertical: 13),
                               decoration: BoxDecoration(
-                                gradient: gradient,
-                                borderRadius: BorderRadius.circular(18),
+                                gradient: MealTrackerTokens.primaryGradient,
+                                borderRadius: BorderRadius.circular(16),
                                 boxShadow: [
                                   BoxShadow(
                                     color: MealTrackerTokens.accent
-                                        .withValues(alpha: 0.18),
-                                    blurRadius: 18,
-                                    offset: const Offset(0, 10),
+                                        .withValues(alpha: 0.22),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 4),
                                   ),
                                 ],
                               ),
@@ -1814,13 +1925,13 @@ class _MealTile extends StatelessWidget {
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Icon(Icons.add_rounded,
-                                      color: Colors.white, size: 20),
-                                  SizedBox(width: 8),
+                                      color: Colors.white, size: 18),
+                                  SizedBox(width: 6),
                                   Text(
                                     'Add Food',
                                     style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w900,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
                                       color: Colors.white,
                                     ),
                                   ),
@@ -1839,19 +1950,22 @@ class _MealTile extends StatelessWidget {
                             width: 58,
                             height: 58,
                             decoration: BoxDecoration(
-                              gradient: gradient,
+                              color: MealTrackerTokens.accent
+                                  .withValues(alpha: 0.10),
                               borderRadius: BorderRadius.circular(18),
+                              border: Border.all(
+                                color: MealTrackerTokens.accent
+                                    .withValues(alpha: 0.22),
+                              ),
                             ),
                             child: const Icon(Icons.camera_alt_rounded,
-                                color: Colors.white),
+                                color: MealTrackerTokens.accent),
                           ),
                         ),
                       ],
                     ),
-                  ],
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../widgets/home_v3/home_premium_theme.dart';
+import 'design_tokens.dart';
 
 /// Shared visual tokens for Profile / Settings account hub pages.
 abstract final class AccountHubTheme {
@@ -17,7 +18,7 @@ abstract final class AccountHubTheme {
 
   static Color pageBg(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return isDark ? HomePremiumTheme.darkCharcoal : const Color(0xFFF3F4F6);
+    return isDark ? HomePremiumTheme.darkCharcoal : DesignTokens.lightPageBackground;
   }
 
   static Color cardBg(BuildContext context) =>

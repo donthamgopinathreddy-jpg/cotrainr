@@ -59,11 +59,7 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
         activeIcon: isProvider ? Icons.person_add : Icons.explore,
         label: isProvider ? 'My Clients' : 'Discover',
         route: isProvider ? '/home/clients' : '/home/discover',
-        gradient: const LinearGradient(
-          colors: [Color(0xFF3ED598), Color(0xFF4DA3FF)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        gradient: DesignTokens.discoverGradient,
       ),
       NavigationItem(
         icon: Icons.chat_bubble_outline_rounded,

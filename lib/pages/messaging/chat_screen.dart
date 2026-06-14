@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:io';
 import '../../theme/app_colors.dart';
+import '../../theme/design_tokens.dart';
 import '../../repositories/messages_repository.dart';
 import '../../services/storage_service.dart';
 import '../../services/messaging_policy_service.dart';
@@ -625,12 +626,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final lightBlueBg = isDark
+    final pageBg = isDark
         ? Color.lerp(Colors.black, AppColors.blue, 0.2)!
-        : Color.lerp(cs.surface, AppColors.blue, 0.08)!;
+        : DesignTokens.lightPageBackground;
 
     return Scaffold(
-      backgroundColor: lightBlueBg,
+      backgroundColor: pageBg,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,

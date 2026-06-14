@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../theme/meal_tracker_tokens.dart';
+import '../../theme/text_styles.dart';
 import '../../repositories/meal_repository.dart';
 import 'dart:math' as math;
 
@@ -301,9 +302,8 @@ class _WeeklyInsightsPageState extends State<WeeklyInsightsPage>
                         children: [
                           Text(
                             'Weekly Insights',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w900,
+                            style: AppTextStyles.screenTitle(
+                              context,
                               color: textPrimary,
                             ),
                           ),

@@ -3,10 +3,10 @@ import 'package:flutter/services.dart';
 
 import '../../../utils/launch_utils.dart';
 
+import '../../../theme/design_tokens.dart';
+
 Color _settingsBg(BuildContext context) {
-  final cs = Theme.of(context).colorScheme;
-  final isDark = Theme.of(context).brightness == Brightness.dark;
-  return isDark ? cs.surface : const Color(0xFFFFF3E0); // light orange
+  return DesignTokens.backgroundOf(context);
 }
 
 class HelpCenterPage extends StatelessWidget {
