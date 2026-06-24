@@ -10,6 +10,9 @@ import '../../theme/design_tokens.dart';
 import '../../theme/insight_metric_theme.dart';
 import '../../theme/text_styles.dart';
 import '../../widgets/insights/insight_premium_widgets.dart';
+import '../../widgets/insights/metric_goal_picker_sheet.dart';
+import '../../widgets/insights/water_reminder_picker_sheet.dart';
+import '../../services/water_reminder_service.dart';
 
 export '../../models/metric_insight_types.dart';
 
@@ -35,6 +38,7 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
   bool _isLoadingExtended = false;
   double? _currentGoal;
   double? _previousPeriodTotal;
+  String _waterReminderStatus = 'Reminder: Off';
   final MetricsRepository _metricsRepo = MetricsRepository();
 
   static const _rangeDays = [7, 30, 90];
@@ -46,7 +50,14 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
     final now = DateTime.now();
     _weekDates = _datesForDays(7, now);
     _loadGoal();
+    _loadWaterReminderStatus();
     _loadPreviousPeriodTotal(7);
+  }
+
+  Future<void> _loadWaterReminderStatus() async {
+    if (widget.args.t != MetricType.water) return;
+    final label = await WaterReminderService.instance.statusLabel();
+    if (mounted) setState(() => _waterReminderStatus = label);
   }
 
   List<DateTime> _datesForDays(int days, DateTime now) {
@@ -262,273 +273,42 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
   }
 
   Future<void> _showGoalPicker(BuildContext context, InsightMetricTheme theme) async {
-    final goal = _currentGoal ?? widget.args.goal ?? 0.0;
-    final goalsService = UserGoalsService();
-
-    final List<double> commonGoals;
-    final String unit;
-    final String hintText;
-
-    switch (widget.args.t) {
-      case MetricType.steps:
-        commonGoals = [5000, 7500, 10000, 12000, 15000];
-        unit = 'steps';
-        hintText = 'Enter custom steps';
-        break;
-      case MetricType.water:
-        commonGoals = [1.5, 2.0, 2.5, 3.0, 3.5];
-        unit = 'L';
-        hintText = 'Enter custom liters';
-        break;
-      case MetricType.calories:
-        commonGoals = [1500, 1800, 2000, 2200, 2500];
-        unit = 'calories';
-        hintText = 'Enter custom calories';
-        break;
-      case MetricType.distance:
-        commonGoals = [3.0, 5.0, 7.0, 10.0, 12.0];
-        unit = 'km';
-        hintText = 'Enter custom kilometers';
-        break;
+    final saved = await MetricGoalPickerSheet.show(
+      context,
+      metricType: widget.args.t,
+      theme: theme,
+      initialGoal: _currentGoal ?? widget.args.goal ?? 0.0,
+    );
+    if (saved == true && mounted) {
+      await _loadGoal();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Goal updated')),
+        );
+      }
     }
-
-    final customGoalController = TextEditingController(
-      text: !commonGoals.contains(goal)
-          ? (widget.args.t == MetricType.steps ||
-                  widget.args.t == MetricType.calories
-              ? goal.toInt().toString()
-              : goal.toStringAsFixed(1))
-          : '',
-    );
-
-    if (!context.mounted) return;
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) {
-          double? selectedGoal = goal;
-          var isCustom = !commonGoals.contains(goal);
-
-          return Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom,
-            ),
-            child: Container(
-              decoration: BoxDecoration(
-                color: InsightMetricTheme.surfaceCard,
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(24)),
-              ),
-              padding: const EdgeInsets.all(24),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Set Daily ${theme.title.replaceAll(' Insights', '')} Goal',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    ...commonGoals.map((g) => ListTile(
-                          title: Text(
-                            widget.args.t == MetricType.steps ||
-                                    widget.args.t == MetricType.calories
-                                ? '${g.toInt()} $unit'
-                                : '${g.toStringAsFixed(1)} $unit',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
-                          ),
-                          trailing: !isCustom && selectedGoal == g
-                              ? Icon(Icons.check_rounded, color: theme.accent)
-                              : null,
-                          onTap: () {
-                            setModalState(() {
-                              selectedGoal = g;
-                              isCustom = false;
-                              customGoalController.clear();
-                            });
-                          },
-                        )),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Custom',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white.withValues(alpha: 0.55),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: customGoalController,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: hintText,
-                        hintStyle: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.4),
-                        ),
-                        suffixIcon: customGoalController.text.isNotEmpty
-                            ? IconButton(
-                                icon: Icon(
-                                  Icons.check_rounded,
-                                  color: isCustom && selectedGoal != null
-                                      ? theme.accent
-                                      : Colors.white.withValues(alpha: 0.4),
-                                ),
-                                onPressed: () {
-                                  final value =
-                                      double.tryParse(customGoalController.text);
-                                  if (value != null && value > 0) {
-                                    setModalState(() {
-                                      selectedGoal = value;
-                                      isCustom = true;
-                                    });
-                                  }
-                                },
-                              )
-                            : null,
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(
-                            color: Colors.white.withValues(alpha: 0.12),
-                          ),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(color: theme.accent, width: 2),
-                        ),
-                      ),
-                      onChanged: (value) {
-                        setModalState(() {
-                          if (value.isEmpty) {
-                            isCustom = false;
-                          } else {
-                            final parsed = double.tryParse(value);
-                            if (parsed != null && parsed > 0) {
-                              selectedGoal = parsed;
-                              isCustom = true;
-                            }
-                          }
-                        });
-                      },
-                    ),
-                    const SizedBox(height: 24),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () {
-                              customGoalController.dispose();
-                              Navigator.pop(context);
-                            },
-                            style: OutlinedButton.styleFrom(
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 14),
-                              side: BorderSide(
-                                color: Colors.white.withValues(alpha: 0.15),
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: const Text(
-                              'Cancel',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: selectedGoal == null
-                                ? null
-                                : () async {
-                                    final finalGoal = selectedGoal!;
-                                    customGoalController.dispose();
-                                    Navigator.pop(context);
-                                    var success = false;
-                                    switch (widget.args.t) {
-                                      case MetricType.steps:
-                                        success = await goalsService
-                                            .setStepsGoal(finalGoal.toInt());
-                                        break;
-                                      case MetricType.water:
-                                        success = await goalsService
-                                            .setWaterGoal(finalGoal);
-                                        break;
-                                      case MetricType.calories:
-                                        success = await goalsService
-                                            .setCaloriesGoal(finalGoal.toInt());
-                                        break;
-                                      case MetricType.distance:
-                                        success = await goalsService
-                                            .setDistanceGoal(finalGoal);
-                                        break;
-                                    }
-                                    if (context.mounted) {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            success
-                                                ? 'Goal updated'
-                                                : 'Failed to save goal',
-                                          ),
-                                        ),
-                                      );
-                                      await _loadGoal();
-                                    }
-                                  },
-                            style: ElevatedButton.styleFrom(
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 14),
-                              backgroundColor: theme.accent,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: const Text(
-                              'Save',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
   }
 
+  Future<void> _showWaterReminderPicker(
+    BuildContext context,
+    InsightMetricTheme theme,
+  ) async {
+    final current = await WaterReminderService.instance.getIntervalHours();
+    if (!mounted) return;
+    final saved = await WaterReminderPickerSheet.show(
+      context,
+      theme: theme,
+      initialHours: current > 0 ? current : 2,
+    );
+    if (saved == true && mounted) {
+      await _loadWaterReminderStatus();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Water reminder updated')),
+        );
+      }
+    }
+  }
   ({List<double> data, List<DateTime> dates}) _activeRange() {
     switch (_rangeIndex) {
       case 1:
@@ -670,6 +450,14 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
                         comparisonLabel: comparisonLabel,
                       ),
                     ),
+                    if (theme.type == MetricType.water) ...[
+                      const SizedBox(height: 10),
+                      _WaterReminderRow(
+                        theme: theme,
+                        statusLabel: _waterReminderStatus,
+                        onTap: () => _showWaterReminderPicker(context, theme),
+                      ),
+                    ],
                     const SizedBox(height: 12),
                     InsightRangePills(
                       selectedIndex: _rangeIndex,
@@ -775,25 +563,38 @@ class _CaloriesModeToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final inactive = DesignTokens.textSecondaryOf(context);
+    final activeText = DesignTokens.textPrimaryOf(context);
+
     return InsightPremiumCard(
       radius: 22,
-      color: InsightMetricTheme.surfaceCard,
+      color: InsightMetricTheme.surfaceCardOf(context),
       padding: const EdgeInsets.all(6),
       child: Row(
         children: [
           Expanded(
-            child: _chip('Consumed', isConsumed, () => onChanged(true)),
+            child: _chip('Consumed', isConsumed, () => onChanged(true),
+                isLight, inactive, activeText),
           ),
           const SizedBox(width: 6),
           Expanded(
-            child: _chip('Burned', !isConsumed, () => onChanged(false)),
+            child: _chip('Burned', !isConsumed, () => onChanged(false),
+                isLight, inactive, activeText),
           ),
         ],
       ),
     );
   }
 
-  Widget _chip(String label, bool active, VoidCallback onTap) {
+  Widget _chip(
+    String label,
+    bool active,
+    VoidCallback onTap,
+    bool isLight,
+    Color inactive,
+    Color activeText,
+  ) {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -813,12 +614,74 @@ class _CaloriesModeToggle extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
-              color: active
-                  ? Colors.white
-                  : Colors.white.withValues(alpha: 0.45),
+              color: active ? activeText : inactive,
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _WaterReminderRow extends StatelessWidget {
+  final InsightMetricTheme theme;
+  final String statusLabel;
+  final VoidCallback onTap;
+
+  const _WaterReminderRow({
+    required this.theme,
+    required this.statusLabel,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = DesignTokens.textSecondaryOf(context);
+
+    return InsightPremiumCard(
+      radius: 18,
+      color: InsightMetricTheme.surfaceCardOf(context),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        children: [
+          Icon(Icons.notifications_active_outlined,
+              size: 20, color: theme.accent),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Remind every 2 hours',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: DesignTokens.textPrimaryOf(context),
+                  ),
+                ),
+                Text(
+                  statusLabel,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: muted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: onTap,
+            child: Text(
+              'Set',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: theme.accent,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

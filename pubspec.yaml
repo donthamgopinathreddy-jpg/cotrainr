@@ -63,6 +63,7 @@ dependencies:
   package_info_plus: ^8.0.0
   font_awesome_flutter: ^10.7.0
   shared_preferences: ^2.2.2
+  timezone: ^0.10.0
   path: ^1.9.0
 
 dev_dependencies:

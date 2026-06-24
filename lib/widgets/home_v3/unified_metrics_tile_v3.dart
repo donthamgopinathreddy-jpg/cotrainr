@@ -273,6 +273,10 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
                                     mainValue: item.mainValue,
                                     subValue: item.subValue,
                                     progress: item.progress,
+                                    progressPercent: item.goalValue > 0
+                                        ? (item.todayValue / item.goalValue) *
+                                            100
+                                        : 0.0,
                                     sourceNote: item.sourceNote,
                                   );
 
@@ -382,10 +386,14 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
                                         child: MetricCenterWidget(
                                           metricIndex: logical,
                                           icon: displayIcon,
-                                          progress: (isSelected && logical == focus
-                                                  ? display.progress
-                                                  : item.progress)
-                                              .clamp(0.0, 1.0),
+                                          progressPercent: isSelected &&
+                                                  logical == focus
+                                              ? focusDisplay.progressPercent
+                                              : (item.goalValue > 0
+                                                  ? (item.todayValue /
+                                                          item.goalValue) *
+                                                      100
+                                                  : 0.0),
                                           selected: isSelected,
                                         ),
                                       ),
@@ -509,6 +517,7 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
     String mainValue,
     String subValue,
     double progress,
+    double progressPercent,
     String? sourceNote,
   }) _displayForMetric(
     UnifiedMetricViewModel item,
@@ -517,10 +526,14 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
   }) {
     final today = _todayWeekIndex();
     if (dayIndex == null) {
+      final pct = item.goalValue > 0
+          ? (item.todayValue / item.goalValue) * 100
+          : 0.0;
       return (
         mainValue: item.mainValue,
         subValue: item.subValue,
         progress: item.progress,
+        progressPercent: pct,
         sourceNote: item.sourceNote,
       );
     }
@@ -530,11 +543,15 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
     final progress = item.goalValue > 0
         ? (value / item.goalValue).clamp(0.0, 1.0)
         : 0.0;
+    final progressPercent = item.goalValue > 0
+        ? (value / item.goalValue) * 100
+        : 0.0;
 
     return (
       mainValue: _formatMainValue(metricIndex, value),
       subValue: _subValueForDay(item, metricIndex, dayIndex, value),
       progress: progress,
+      progressPercent: progressPercent,
       sourceNote: dayIndex == today ? item.sourceNote : null,
     );
   }

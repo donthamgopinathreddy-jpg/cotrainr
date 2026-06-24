@@ -1,11 +1,15 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Service to manage user goals (steps, water, calories, distance)
+/// Service to manage user goals (steps, water, calories, distance).
 class UserGoalsService {
   static final UserGoalsService _instance = UserGoalsService._internal();
   factory UserGoalsService() => _instance;
   UserGoalsService._internal();
+
+  /// Bumped after any goal is saved — home/insights can listen and refresh.
+  static final ValueNotifier<int> revision = ValueNotifier(0);
 
   SupabaseClient get _supabase => Supabase.instance.client;
   static const String _prefsKeySteps = 'user_goal_steps';
@@ -13,21 +17,23 @@ class UserGoalsService {
   static const String _prefsKeyCalories = 'user_goal_calories';
   static const String _prefsKeyDistance = 'user_goal_distance';
 
+  void _notifyChanged() {
+    revision.value++;
+  }
+
   /// Calculate water goal based on weight (in liters)
-  /// Formula: weight_kg * 0.033 liters per kg
-  /// This is a standard recommendation for daily water intake
   static double calculateWaterGoal(double weightKg) {
-    // Standard formula: 30-35ml per kg of body weight
-    // We use 33ml per kg (0.033 liters per kg)
     final calculated = weightKg * 0.033;
-    // Round to nearest 0.25L for practical purposes
     return (calculated * 4).round() / 4.0;
   }
 
-  /// Get steps goal (default: 10000)
   Future<int> getStepsGoal() async {
     try {
-      // First try to get from Supabase user metadata
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.containsKey(_prefsKeySteps)) {
+        return prefs.getInt(_prefsKeySteps)!;
+      }
+
       final user = _supabase.auth.currentUser;
       if (user != null && user.userMetadata != null) {
         final goal = user.userMetadata?['goal_steps'];
@@ -35,20 +41,20 @@ class UserGoalsService {
           return (goal as num).toInt();
         }
       }
-
-      // Fallback to local storage
-      final prefs = await SharedPreferences.getInstance();
-      return prefs.getInt(_prefsKeySteps) ?? 10000;
+      return 10000;
     } catch (e) {
-      print('Error getting steps goal: $e');
+      debugPrint('Error getting steps goal: $e');
       return 10000;
     }
   }
 
-  /// Get water goal (default: 2.5L)
   Future<double> getWaterGoal() async {
     try {
-      // First try to get from Supabase user metadata
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.containsKey(_prefsKeyWater)) {
+        return prefs.getDouble(_prefsKeyWater)!;
+      }
+
       final user = _supabase.auth.currentUser;
       if (user != null && user.userMetadata != null) {
         final goal = user.userMetadata?['goal_water'];
@@ -56,19 +62,20 @@ class UserGoalsService {
           return (goal as num).toDouble();
         }
       }
-
-      // Fallback to local storage
-      final prefs = await SharedPreferences.getInstance();
-      return prefs.getDouble(_prefsKeyWater) ?? 2.5;
+      return 2.5;
     } catch (e) {
-      print('Error getting water goal: $e');
+      debugPrint('Error getting water goal: $e');
       return 2.5;
     }
   }
 
-  /// Get calories goal (default: 2000)
   Future<int> getCaloriesGoal() async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.containsKey(_prefsKeyCalories)) {
+        return prefs.getInt(_prefsKeyCalories)!;
+      }
+
       final user = _supabase.auth.currentUser;
       if (user != null && user.userMetadata != null) {
         final goal = user.userMetadata?['goal_calories'];
@@ -76,18 +83,20 @@ class UserGoalsService {
           return (goal as num).toInt();
         }
       }
-
-      final prefs = await SharedPreferences.getInstance();
-      return prefs.getInt(_prefsKeyCalories) ?? 2000;
+      return 2000;
     } catch (e) {
-      print('Error getting calories goal: $e');
+      debugPrint('Error getting calories goal: $e');
       return 2000;
     }
   }
 
-  /// Get distance goal (default: 5.0 km)
   Future<double> getDistanceGoal() async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.containsKey(_prefsKeyDistance)) {
+        return prefs.getDouble(_prefsKeyDistance)!;
+      }
+
       final user = _supabase.auth.currentUser;
       if (user != null && user.userMetadata != null) {
         final goal = user.userMetadata?['goal_distance'];
@@ -95,19 +104,18 @@ class UserGoalsService {
           return (goal as num).toDouble();
         }
       }
-
-      final prefs = await SharedPreferences.getInstance();
-      return prefs.getDouble(_prefsKeyDistance) ?? 5.0;
+      return 5.0;
     } catch (e) {
-      print('Error getting distance goal: $e');
+      debugPrint('Error getting distance goal: $e');
       return 5.0;
     }
   }
 
-  /// Set steps goal
   Future<bool> setStepsGoal(int goal) async {
     try {
-      // Save to Supabase user metadata
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_prefsKeySteps, goal);
+
       final user = _supabase.auth.currentUser;
       if (user != null) {
         await _supabase.auth.updateUser(
@@ -119,28 +127,27 @@ class UserGoalsService {
           ),
         );
       }
-
-      // Also save to local storage as backup
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt(_prefsKeySteps, goal);
+      _notifyChanged();
       return true;
     } catch (e) {
-      print('Error setting steps goal: $e');
-      // Fallback to local storage
+      debugPrint('Error setting steps goal: $e');
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setInt(_prefsKeySteps, goal);
+        _notifyChanged();
         return true;
       } catch (e2) {
-        print('Error saving to local storage: $e2');
+        debugPrint('Error saving steps goal locally: $e2');
         return false;
       }
     }
   }
 
-  /// Set water goal
   Future<bool> setWaterGoal(double goal) async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_prefsKeyWater, goal);
+
       final user = _supabase.auth.currentUser;
       if (user != null) {
         await _supabase.auth.updateUser(
@@ -152,26 +159,27 @@ class UserGoalsService {
           ),
         );
       }
-
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setDouble(_prefsKeyWater, goal);
+      _notifyChanged();
       return true;
     } catch (e) {
-      print('Error setting water goal: $e');
+      debugPrint('Error setting water goal: $e');
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setDouble(_prefsKeyWater, goal);
+        _notifyChanged();
         return true;
       } catch (e2) {
-        print('Error saving to local storage: $e2');
+        debugPrint('Error saving water goal locally: $e2');
         return false;
       }
     }
   }
 
-  /// Set calories goal
   Future<bool> setCaloriesGoal(int goal) async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_prefsKeyCalories, goal);
+
       final user = _supabase.auth.currentUser;
       if (user != null) {
         await _supabase.auth.updateUser(
@@ -183,26 +191,27 @@ class UserGoalsService {
           ),
         );
       }
-
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt(_prefsKeyCalories, goal);
+      _notifyChanged();
       return true;
     } catch (e) {
-      print('Error setting calories goal: $e');
+      debugPrint('Error setting calories goal: $e');
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setInt(_prefsKeyCalories, goal);
+        _notifyChanged();
         return true;
       } catch (e2) {
-        print('Error saving to local storage: $e2');
+        debugPrint('Error saving calories goal locally: $e2');
         return false;
       }
     }
   }
 
-  /// Set distance goal
   Future<bool> setDistanceGoal(double goal) async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_prefsKeyDistance, goal);
+
       final user = _supabase.auth.currentUser;
       if (user != null) {
         await _supabase.auth.updateUser(
@@ -214,24 +223,22 @@ class UserGoalsService {
           ),
         );
       }
-
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setDouble(_prefsKeyDistance, goal);
+      _notifyChanged();
       return true;
     } catch (e) {
-      print('Error setting distance goal: $e');
+      debugPrint('Error setting distance goal: $e');
       try {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setDouble(_prefsKeyDistance, goal);
+        _notifyChanged();
         return true;
       } catch (e2) {
-        print('Error saving to local storage: $e2');
+        debugPrint('Error saving distance goal locally: $e2');
         return false;
       }
     }
   }
 
-  /// Initialize goals during signup (calculate water goal from weight)
   Future<bool> initializeGoals({
     required double weightKg,
     int? stepsGoal,
@@ -240,8 +247,13 @@ class UserGoalsService {
     double? distanceGoal,
   }) async {
     try {
-      // Calculate water goal if not provided
       final calculatedWaterGoal = waterGoal ?? calculateWaterGoal(weightKg);
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_prefsKeySteps, stepsGoal ?? 10000);
+      await prefs.setDouble(_prefsKeyWater, calculatedWaterGoal);
+      await prefs.setInt(_prefsKeyCalories, caloriesGoal ?? 2000);
+      await prefs.setDouble(_prefsKeyDistance, distanceGoal ?? 5.0);
 
       final user = _supabase.auth.currentUser;
       if (user != null) {
@@ -257,17 +269,10 @@ class UserGoalsService {
           ),
         );
       }
-
-      // Also save to local storage
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt(_prefsKeySteps, stepsGoal ?? 10000);
-      await prefs.setDouble(_prefsKeyWater, calculatedWaterGoal);
-      await prefs.setInt(_prefsKeyCalories, caloriesGoal ?? 2000);
-      await prefs.setDouble(_prefsKeyDistance, distanceGoal ?? 5.0);
-
+      _notifyChanged();
       return true;
     } catch (e) {
-      print('Error initializing goals: $e');
+      debugPrint('Error initializing goals: $e');
       return false;
     }
   }

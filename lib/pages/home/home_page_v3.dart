@@ -89,6 +89,8 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
     );
     _fadeController.forward();
     
+    UserGoalsService.revision.addListener(_onGoalsRevisionChanged);
+    
     // Load profile data first
     _loadProfileData();
     _loadNotificationsCount();
@@ -349,8 +351,13 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
     }
   }
 
+  void _onGoalsRevisionChanged() {
+    _loadGoals();
+  }
+
   @override
   void dispose() {
+    UserGoalsService.revision.removeListener(_onGoalsRevisionChanged);
     _scrollController.dispose();
     _fadeController.dispose();
     super.dispose();
@@ -533,10 +540,10 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                           goalValue: _goalDistance,
                         ),
                       ],
-                      onMetricTap: (i) {
+                      onMetricTap: (i) async {
                         switch (i) {
                           case 0:
-                            context.push(
+                            await context.push(
                               '/insights/steps',
                               extra: InsightArgs(
                                 MetricType.steps,
@@ -546,7 +553,7 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                             );
                             break;
                           case 1:
-                            context.push(
+                            await context.push(
                               '/insights/calories',
                               extra: InsightArgs(
                                 MetricType.calories,
@@ -558,7 +565,7 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                             );
                             break;
                           case 2:
-                            context.push(
+                            await context.push(
                               '/insights/water',
                               extra: InsightArgs(
                                 MetricType.water,
@@ -568,7 +575,7 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                             );
                             break;
                           case 3:
-                            context.push(
+                            await context.push(
                               '/insights/distance',
                               extra: InsightArgs(
                                 MetricType.distance,
@@ -580,6 +587,7 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                             );
                             break;
                         }
+                        if (mounted) await _loadGoals();
                       },
                       onAddWater: () async {
                         const waterToAdd = 0.25;

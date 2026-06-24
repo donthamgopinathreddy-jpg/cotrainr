@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_colors.dart';
 import '../../repositories/metrics_repository.dart';
 import '../../services/user_goals_service.dart';
+import '../../widgets/home_v3/metric_center_widget.dart';
 
 /// Provider for weekly metrics
 final weeklyMetricsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
@@ -43,10 +44,10 @@ final weeklyMetricsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
     'waterGoal': weeklyWaterGoal,
     'caloriesGoal': weeklyCaloriesGoal,
     'distanceGoal': weeklyDistanceGoal,
-    'stepsProgress': weeklyStepsGoal > 0 ? (totalSteps / weeklyStepsGoal).clamp(0.0, 1.0) : 0.0,
-    'caloriesProgress': weeklyCaloriesGoal > 0 ? (totalCalories / weeklyCaloriesGoal).clamp(0.0, 1.0) : 0.0,
-    'waterProgress': weeklyWaterGoal > 0 ? (totalWater / weeklyWaterGoal).clamp(0.0, 1.0) : 0.0,
-    'distanceProgress': weeklyDistanceGoal > 0 ? (totalDistance / weeklyDistanceGoal).clamp(0.0, 1.0) : 0.0,
+    'stepsProgress': weeklyStepsGoal > 0 ? totalSteps / weeklyStepsGoal : 0.0,
+    'caloriesProgress': weeklyCaloriesGoal > 0 ? totalCalories / weeklyCaloriesGoal : 0.0,
+    'waterProgress': weeklyWaterGoal > 0 ? totalWater / weeklyWaterGoal : 0.0,
+    'distanceProgress': weeklyDistanceGoal > 0 ? totalDistance / weeklyDistanceGoal : 0.0,
     'dailyMetrics': weeklyMetrics,
   };
 });
@@ -118,31 +119,31 @@ class WeeklyInsightsPage extends ConsumerWidget {
                         physics: const NeverScrollableScrollPhysics(),
                         children: [
                           _MetricRingCard(
+                            metricIndex: 0,
                             title: 'Steps',
                             value: _formatSteps(steps),
                             icon: Icons.directions_walk_outlined,
-                            gradient: AppColors.stepsGradient,
                             progress: stepsProgress,
                           ),
                           _MetricRingCard(
+                            metricIndex: 1,
                             title: 'Calories',
                             value: _formatCalories(calories),
                             icon: Icons.local_fire_department_outlined,
-                            gradient: AppColors.caloriesGradient,
                             progress: caloriesProgress,
                           ),
                           _MetricRingCard(
+                            metricIndex: 2,
                             title: 'Water',
                             value: _formatWater(water),
                             icon: Icons.water_drop_outlined,
-                            gradient: AppColors.waterGradient,
                             progress: waterProgress,
                           ),
                           _MetricRingCard(
+                            metricIndex: 3,
                             title: 'Distance',
                             value: _formatDistance(distance),
                             icon: Icons.location_on_outlined,
-                            gradient: AppColors.distanceGradient,
                             progress: distanceProgress,
                           ),
                         ],
@@ -189,22 +190,24 @@ class WeeklyInsightsPage extends ConsumerWidget {
 }
 
 class _MetricRingCard extends StatelessWidget {
+  final int metricIndex;
   final String title;
   final String value;
   final IconData icon;
-  final LinearGradient gradient;
   final double progress;
 
   const _MetricRingCard({
+    required this.metricIndex,
     required this.title,
     required this.value,
     required this.icon,
-    required this.gradient,
     required this.progress,
   });
 
   @override
   Widget build(BuildContext context) {
+    final progressPercent = progress * 100;
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -215,16 +218,6 @@ class _MetricRingCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              gradient: gradient,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: Colors.white, size: 18),
-          ),
-          const SizedBox(height: 8),
           Text(
             title,
             style: const TextStyle(
@@ -243,53 +236,16 @@ class _MetricRingCard extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          _AnimatedRing(
-            progress: progress,
-            gradient: gradient,
+          Center(
+            child: MetricCenterWidget(
+              metricIndex: metricIndex,
+              icon: icon,
+              progressPercent: progressPercent,
+              selected: false,
+            ),
           ),
         ],
       ),
-    );
-  }
-}
-
-class _AnimatedRing extends StatelessWidget {
-  final double progress;
-  final LinearGradient gradient;
-
-  const _AnimatedRing({required this.progress, required this.gradient});
-
-  @override
-  Widget build(BuildContext context) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.0, end: progress),
-      duration: const Duration(milliseconds: 600),
-      curve: Curves.easeOutCubic,
-      builder: (context, value, _) {
-        return SizedBox(
-          width: 56,
-          height: 56,
-          child: Stack(
-            children: [
-              CircularProgressIndicator(
-                value: 1,
-                strokeWidth: 7,
-                valueColor:
-                    AlwaysStoppedAnimation<Color>(Colors.white.withOpacity(0.08)),
-              ),
-              ShaderMask(
-                shaderCallback: (rect) => gradient.createShader(rect),
-                child: CircularProgressIndicator(
-                  value: value.clamp(0.0, 1.0),
-                  strokeWidth: 7,
-                  valueColor:
-                      const AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 }

@@ -16,6 +16,61 @@ class InsightMetricTheme {
         : DesignTokens.lightPageBackground;
   }
 
+  static bool isLight(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.light;
+
+  static Color surfaceCardOf(BuildContext context) {
+    return isLight(context)
+        ? DesignTokens.lightMutedCardBackground
+        : surfaceCard;
+  }
+
+  static Color graphCardBgOf(BuildContext context) {
+    return isLight(context)
+        ? DesignTokens.lightCardBackground
+        : graphCardBg;
+  }
+
+  static List<BoxShadow> cardShadowOf(BuildContext context) {
+    if (isLight(context)) {
+      return [
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.04),
+          blurRadius: 12,
+          offset: const Offset(0, 4),
+        ),
+      ];
+    }
+    return cardShadow();
+  }
+
+  static Color borderColorOf(BuildContext context) {
+    return isLight(context)
+        ? DesignTokens.lightBorder
+        : Colors.white.withValues(alpha: 0.06);
+  }
+
+  /// Hero card gradient — soft tint in light mode, rich gradient in dark.
+  LinearGradient heroGradientOf(BuildContext context) {
+    if (isLight(context)) {
+      return LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          accent.withValues(alpha: 0.18),
+          DesignTokens.lightCardBackground,
+        ],
+      );
+    }
+    return cardGradient;
+  }
+
+  static Color heroTitleColor(BuildContext context) =>
+      DesignTokens.textPrimaryOf(context);
+
+  static Color heroSubtitleColor(BuildContext context) =>
+      DesignTokens.textSecondaryOf(context);
+
   final MetricType type;
   final String title;
   final String unit;

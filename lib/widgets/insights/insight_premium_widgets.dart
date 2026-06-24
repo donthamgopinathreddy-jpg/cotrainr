@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../models/metric_insight_types.dart';
+import '../../theme/design_tokens.dart';
 import '../../theme/insight_metric_theme.dart';
+import '../home_v3/metric_center_widget.dart';
 
 // ─── Formatting helpers ───────────────────────────────────────────────────
 
@@ -53,6 +55,19 @@ IconData metricInsightIcon(MetricType type) {
   }
 }
 
+int metricInsightIndex(MetricType type) {
+  switch (type) {
+    case MetricType.steps:
+      return 0;
+    case MetricType.calories:
+      return 1;
+    case MetricType.water:
+      return 2;
+    case MetricType.distance:
+      return 3;
+  }
+}
+
 String weekdayLetter(int weekday) {
   const names = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
   return names[(weekday - 1).clamp(0, 6)];
@@ -81,10 +96,12 @@ class InsightPremiumCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         gradient: gradient,
-        color: gradient == null ? (color ?? InsightMetricTheme.surfaceCard) : null,
+        color: gradient == null
+            ? (color ?? InsightMetricTheme.surfaceCardOf(context))
+            : null,
         borderRadius: BorderRadius.circular(radius),
-        boxShadow: InsightMetricTheme.cardShadow(),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+        boxShadow: InsightMetricTheme.cardShadowOf(context),
+        border: Border.all(color: InsightMetricTheme.borderColorOf(context)),
       ),
       padding: padding,
       child: child,
@@ -92,112 +109,31 @@ class InsightPremiumCard extends StatelessWidget {
   }
 }
 
-// ─── Progress ring (Home-style, 700ms) ──────────────────────────────────────
+// ─── Progress ring (shared with home metric tile) ───────────────────────────
 
-class InsightProgressRing extends StatefulWidget {
-  final double progress;
-  final InsightMetricTheme theme;
+class InsightProgressRing extends StatelessWidget {
+  final double progressPercent;
+  final MetricType type;
   final IconData icon;
   final double size;
+  final bool selected;
 
   const InsightProgressRing({
     super.key,
-    required this.progress,
-    required this.theme,
+    required this.progressPercent,
+    required this.type,
     required this.icon,
     this.size = 72,
+    this.selected = false,
   });
 
   @override
-  State<InsightProgressRing> createState() => _InsightProgressRingState();
-}
-
-class _InsightProgressRingState extends State<InsightProgressRing>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _ctrl;
-  late Animation<double> _anim;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 700),
-    );
-    _anim = Tween<double>(
-      begin: 0,
-      end: widget.progress.clamp(0.0, 1.0),
-    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
-    _ctrl.forward();
-  }
-
-  @override
-  void didUpdateWidget(covariant InsightProgressRing oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.progress != widget.progress) {
-      _anim = Tween<double>(
-        begin: _anim.value,
-        end: widget.progress.clamp(0.0, 1.0),
-      ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
-      _ctrl.forward(from: 0);
-    }
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _anim,
-      builder: (context, _) {
-        return Container(
-          width: widget.size,
-          height: widget.size,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: widget.theme.accent.withValues(alpha: 0.22),
-                blurRadius: 14,
-                spreadRadius: 0,
-              ),
-            ],
-          ),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              SizedBox(
-                width: widget.size,
-                height: widget.size,
-                child: CircularProgressIndicator(
-                  value: 1,
-                  strokeWidth: 6,
-                  color: Colors.white.withValues(alpha: 0.08),
-                ),
-              ),
-              SizedBox(
-                width: widget.size,
-                height: widget.size,
-                child: ShaderMask(
-                  shaderCallback: (r) =>
-                      widget.theme.ringGradient.createShader(r),
-                  child: CircularProgressIndicator(
-                    value: _anim.value,
-                    strokeWidth: 6,
-                    strokeCap: StrokeCap.round,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-              Icon(widget.icon, color: widget.theme.accent, size: 22),
-            ],
-          ),
-        );
-      },
+    return MetricCenterWidget(
+      metricIndex: metricInsightIndex(type),
+      icon: icon,
+      progressPercent: progressPercent,
+      selected: selected,
     );
   }
 }
@@ -222,12 +158,13 @@ class InsightHeroCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ringProgress = goal != null && goal! > 0
-        ? (displayValue / goal!).clamp(0.0, 1.0)
-        : 0.0;
+    final progressPercent =
+        goal != null && goal! > 0 ? (displayValue / goal!) * 100 : 0.0;
+    final titleColor = InsightMetricTheme.heroTitleColor(context);
+    final muted = InsightMetricTheme.heroSubtitleColor(context);
 
     return InsightPremiumCard(
-      gradient: theme.cardGradient,
+      gradient: theme.heroGradientOf(context),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -240,7 +177,7 @@ class InsightHeroCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: Colors.white.withValues(alpha: 0.65),
+                    color: muted,
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -251,10 +188,10 @@ class InsightHeroCard extends StatelessWidget {
                   builder: (context, v, _) {
                     return Text(
                       insightValueWithUnit(theme.type, v),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 30,
                         fontWeight: FontWeight.w800,
-                        color: Colors.white,
+                        color: titleColor,
                         height: 1.05,
                         letterSpacing: -0.5,
                       ),
@@ -269,7 +206,7 @@ class InsightHeroCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: Colors.white.withValues(alpha: 0.82),
+                    color: titleColor.withValues(alpha: 0.82),
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -287,7 +224,7 @@ class InsightHeroCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: Colors.white.withValues(alpha: 0.55),
+                    color: muted,
                   ),
                 ),
               ],
@@ -295,8 +232,8 @@ class InsightHeroCard extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           InsightProgressRing(
-            progress: ringProgress,
-            theme: theme,
+            progressPercent: progressPercent,
+            type: theme.type,
             icon: metricInsightIcon(theme.type),
           ),
         ],
@@ -322,12 +259,16 @@ class InsightRangePills extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const labels = ['7D', '30D', '90D'];
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final inactive = DesignTokens.textSecondaryOf(context);
+    final activeText = isLight ? DesignTokens.lightTextPrimary : Colors.white;
+
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: InsightMetricTheme.surfaceCard,
+        color: InsightMetricTheme.surfaceCardOf(context),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+        border: Border.all(color: InsightMetricTheme.borderColorOf(context)),
       ),
       child: Row(
         children: List.generate(labels.length, (i) {
@@ -363,9 +304,7 @@ class InsightRangePills extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
-                      color: selected
-                          ? Colors.white
-                          : Colors.white.withValues(alpha: 0.45),
+                      color: selected ? activeText : inactive,
                     ),
                   ),
                 ),
@@ -402,11 +341,12 @@ class InsightGraphCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
     return Hero(
       tag: theme.heroTag,
       child: InsightPremiumCard(
         radius: 24,
-        color: InsightMetricTheme.graphCardBg,
+        color: InsightMetricTheme.graphCardBgOf(context),
         padding: const EdgeInsets.fromLTRB(12, 16, 16, 12),
         child: SizedBox(
           height: 210,
@@ -416,7 +356,7 @@ class InsightGraphCard extends StatelessWidget {
             curve: Curves.easeOutCubic,
             builder: (context, progress, _) {
               return LineChart(
-                _chartData(progress),
+                _chartData(progress, isLight),
                 duration: Duration.zero,
               );
             },
@@ -426,7 +366,7 @@ class InsightGraphCard extends StatelessWidget {
     );
   }
 
-  LineChartData _chartData(double animProgress) {
+  LineChartData _chartData(double animProgress, bool isLight) {
     final spots = <FlSpot>[];
     for (var i = 0; i < data.length; i++) {
       final y = data[i] * animProgress;
@@ -438,6 +378,15 @@ class InsightGraphCard extends StatelessWidget {
         ? '${(yMax / 1000).toStringAsFixed(1)}k'
         : yMax.toStringAsFixed(yMax < 10 ? 1 : 0);
     final highlight = selectedIndex ?? currentDayIndex;
+    final gridColor = isLight
+        ? Colors.black.withValues(alpha: 0.06)
+        : Colors.white.withValues(alpha: 0.06);
+    final axisMuted = isLight
+        ? DesignTokens.lightTextSecondary
+        : Colors.white.withValues(alpha: 0.4);
+    final tooltipBg = isLight
+        ? DesignTokens.lightTextPrimary
+        : const Color(0xFF232836);
 
     return LineChartData(
       minX: 0,
@@ -464,7 +413,7 @@ class InsightGraphCard extends StatelessWidget {
           );
         }).toList(),
         touchTooltipData: LineTouchTooltipData(
-          tooltipBgColor: const Color(0xFF232836),
+          tooltipBgColor: tooltipBg,
           getTooltipItems: (touched) => touched.map((spot) {
             final idx = spot.x.toInt().clamp(0, dates.length - 1);
             final d = dates[idx];
@@ -484,7 +433,7 @@ class InsightGraphCard extends StatelessWidget {
         drawVerticalLine: false,
         horizontalInterval: yMax / 4,
         getDrawingHorizontalLine: (_) => FlLine(
-          color: Colors.white.withValues(alpha: 0.06),
+          color: gridColor,
           strokeWidth: 1,
         ),
       ),
@@ -501,7 +450,7 @@ class InsightGraphCard extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 9,
                   fontWeight: FontWeight.w600,
-                  color: Colors.white.withValues(alpha: 0.4),
+                  color: axisMuted,
                 ),
               );
             },
@@ -526,7 +475,7 @@ class InsightGraphCard extends StatelessWidget {
                     fontWeight: isToday ? FontWeight.w800 : FontWeight.w500,
                     color: isToday
                         ? theme.accent
-                        : Colors.white.withValues(alpha: 0.4),
+                        : axisMuted,
                   ),
                 ),
               );
@@ -635,10 +584,15 @@ class _InsightDailyBreakdownState extends State<InsightDailyBreakdown>
     final max = widget.weekData.isEmpty
         ? 1.0
         : widget.weekData.reduce(math.max).clamp(0.001, double.infinity);
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final inactiveBar = isLight
+        ? DesignTokens.lightBorder
+        : Colors.white.withValues(alpha: 0.12);
+    final labelInactive = DesignTokens.textSecondaryOf(context);
 
     return InsightPremiumCard(
       radius: 22,
-      color: InsightMetricTheme.surfaceCard,
+      color: InsightMetricTheme.surfaceCardOf(context),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -658,7 +612,7 @@ class _InsightDailyBreakdownState extends State<InsightDailyBreakdown>
                       fontWeight: FontWeight.w700,
                       color: highlighted
                           ? widget.theme.accent
-                          : Colors.white.withValues(alpha: 0.45),
+                          : labelInactive,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -676,7 +630,7 @@ class _InsightDailyBreakdownState extends State<InsightDailyBreakdown>
                                 ? widget.theme.accent.withValues(
                                     alpha: highlighted ? 1.0 : 0.55,
                                   )
-                                : Colors.white.withValues(alpha: 0.12),
+                                : inactiveBar,
                             borderRadius: BorderRadius.circular(6),
                             boxShadow: highlighted && active
                                 ? [
@@ -793,6 +747,9 @@ class _StatTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final titleColor = DesignTokens.textPrimaryOf(context);
+    final muted = DesignTokens.textSecondaryOf(context);
+
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
       duration: Duration(milliseconds: 320 + delayMs),
@@ -808,7 +765,7 @@ class _StatTile extends StatelessWidget {
       },
       child: InsightPremiumCard(
         radius: 20,
-        color: InsightMetricTheme.surfaceCard,
+        color: InsightMetricTheme.surfaceCardOf(context),
         padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -824,16 +781,16 @@ class _StatTile extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
-                color: Colors.white.withValues(alpha: 0.5),
+                color: muted,
               ),
             ),
             const SizedBox(height: 4),
             RichText(
               text: TextSpan(
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w800,
-                  color: Colors.white,
+                  color: titleColor,
                 ),
                 children: [
                   TextSpan(text: value),
@@ -843,7 +800,7 @@ class _StatTile extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
-                        color: Colors.white.withValues(alpha: 0.55),
+                        color: muted,
                       ),
                     ),
                 ],
@@ -870,6 +827,9 @@ class InsightAiSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final titleColor = DesignTokens.textPrimaryOf(context);
+    final bodyColor = DesignTokens.textSecondaryOf(context);
+
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
       duration: const Duration(milliseconds: 420),
@@ -890,7 +850,7 @@ class InsightAiSummaryCard extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [
             theme.accent.withValues(alpha: 0.12),
-            InsightMetricTheme.surfaceCard,
+            InsightMetricTheme.surfaceCardOf(context),
           ],
         ),
         child: Column(
@@ -901,12 +861,12 @@ class InsightAiSummaryCard extends StatelessWidget {
                 Icon(Icons.auto_awesome_rounded,
                     size: 16, color: theme.accent),
                 const SizedBox(width: 8),
-                const Text(
+                Text(
                   'Weekly Insight',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
-                    color: Colors.white,
+                    color: titleColor,
                   ),
                 ),
               ],
@@ -918,7 +878,7 @@ class InsightAiSummaryCard extends StatelessWidget {
                 fontSize: 13,
                 height: 1.45,
                 fontWeight: FontWeight.w500,
-                color: Colors.white.withValues(alpha: 0.78),
+                color: bodyColor,
               ),
             ),
           ],
@@ -937,8 +897,11 @@ class InsightEmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final titleColor = DesignTokens.textPrimaryOf(context);
+    final muted = DesignTokens.textSecondaryOf(context);
+
     return InsightPremiumCard(
-      gradient: theme.cardGradient,
+      gradient: theme.heroGradientOf(context),
       child: SizedBox(
         width: double.infinity,
         height: 180,
@@ -948,15 +911,15 @@ class InsightEmptyState extends StatelessWidget {
             Icon(
               metricInsightIcon(theme.type),
               size: 36,
-              color: Colors.white.withValues(alpha: 0.7),
+              color: theme.accent.withValues(alpha: 0.85),
             ),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               'No data yet',
               style: TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.w700,
-                color: Colors.white,
+                color: titleColor,
               ),
             ),
             const SizedBox(height: 6),
@@ -965,7 +928,7 @@ class InsightEmptyState extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 13,
-                color: Colors.white.withValues(alpha: 0.65),
+                color: muted,
               ),
             ),
           ],
