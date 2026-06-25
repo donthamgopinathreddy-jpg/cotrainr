@@ -22,6 +22,7 @@ import '../../widgets/home_v3/nearby_preview_v3.dart';
 import '../insights/insights_detail_page.dart';
 import '../../services/streak_service.dart';
 import '../../services/user_goals_service.dart';
+import '../../services/water_intake_service.dart';
 import '../../repositories/profile_repository.dart';
 import '../../repositories/notifications_repository.dart';
 import '../../services/metrics_sync_service.dart';
@@ -90,6 +91,7 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
     _fadeController.forward();
     
     UserGoalsService.revision.addListener(_onGoalsRevisionChanged);
+    WaterIntakeService.revision.addListener(_onWaterIntakeRevision);
     
     // Load profile data first
     _loadProfileData();
@@ -355,9 +357,14 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
     _loadGoals();
   }
 
+  void _onWaterIntakeRevision() {
+    _loadMetrics();
+  }
+
   @override
   void dispose() {
     UserGoalsService.revision.removeListener(_onGoalsRevisionChanged);
+    WaterIntakeService.revision.removeListener(_onWaterIntakeRevision);
     _scrollController.dispose();
     _fadeController.dispose();
     super.dispose();
@@ -592,23 +599,23 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                       onAddWater: () async {
                         const waterToAdd = 0.25;
                         final oldWater = _currentWater;
-                        final newWater = (_currentWater + waterToAdd)
-                            .clamp(0.0, _goalWater);
-                        setState(() => _currentWater = newWater);
-                        try {
-                          final metricsRepo = MetricsRepository();
-                          await metricsRepo.updateTodayMetrics(
-                            waterIntakeLiters: newWater,
-                          );
-                          ref
-                              .read(questProgressSyncServiceProvider)
-                              .onWaterUpdated(newWater);
-                        } catch (e) {
-                          print('HomePageV3: Error saving water intake: $e');
-                          if (mounted) {
-                            setState(() => _currentWater = oldWater);
-                          }
+                        setState(
+                          () => _currentWater = (_currentWater + waterToAdd)
+                              .clamp(0.0, _goalWater),
+                        );
+                        final newWater =
+                            await WaterIntakeService.instance.addWater(
+                          waterToAdd,
+                        );
+                        if (!mounted) return;
+                        if (newWater == null) {
+                          setState(() => _currentWater = oldWater);
+                          return;
                         }
+                        setState(() => _currentWater = newWater);
+                        ref
+                            .read(questProgressSyncServiceProvider)
+                            .onWaterUpdated(newWater);
                       },
                     ),
                   ),

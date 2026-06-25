@@ -1,24 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../services/water_reminder_service.dart';
 import '../../theme/design_tokens.dart';
 import '../../theme/insight_metric_theme.dart';
 
-/// Bottom sheet for water reminder interval selection.
+/// Bottom sheet for drinking reminder interval selection.
 class WaterReminderPickerSheet extends StatefulWidget {
   final InsightMetricTheme theme;
-  final double initialHours;
+  final int initialMinutes;
 
   const WaterReminderPickerSheet({
     super.key,
     required this.theme,
-    required this.initialHours,
+    required this.initialMinutes,
   });
 
   static Future<bool?> show(
     BuildContext context, {
     required InsightMetricTheme theme,
-    required double initialHours,
+    required int initialMinutes,
   }) {
     return showModalBottomSheet<bool>(
       context: context,
@@ -26,7 +27,7 @@ class WaterReminderPickerSheet extends StatefulWidget {
       isScrollControlled: true,
       builder: (context) => WaterReminderPickerSheet(
         theme: theme,
-        initialHours: initialHours,
+        initialMinutes: initialMinutes,
       ),
     );
   }
@@ -37,35 +38,57 @@ class WaterReminderPickerSheet extends StatefulWidget {
 }
 
 class _WaterReminderPickerSheetState extends State<WaterReminderPickerSheet> {
-  late double _selectedHours;
-  final _customController = TextEditingController();
+  late int _selectedMinutes;
   bool _isCustom = false;
-
-  static const _options = <double>[0, 1, 2, 3];
+  final _hoursController = TextEditingController();
+  final _minutesController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _selectedHours = widget.initialHours;
-    _isCustom = !_options.contains(widget.initialHours) && widget.initialHours > 0;
+    _selectedMinutes = widget.initialMinutes;
+    _isCustom = widget.initialMinutes > 0 &&
+        !WaterReminderService.isPreset(widget.initialMinutes);
     if (_isCustom) {
-      _customController.text = widget.initialHours.toString();
+      final total = widget.initialMinutes;
+      _hoursController.text = '${total ~/ 60}';
+      final mins = total % 60;
+      if (mins > 0) _minutesController.text = '$mins';
     }
   }
 
   @override
   void dispose() {
-    _customController.dispose();
+    _hoursController.dispose();
+    _minutesController.dispose();
     super.dispose();
   }
 
-  String _label(double hours) {
-    return WaterReminderService.instance.labelFor(hours);
+  int? get _customMinutes {
+    final hours = int.tryParse(_hoursController.text.trim()) ?? 0;
+    final mins = int.tryParse(_minutesController.text.trim()) ?? 0;
+    if (hours <= 0 && mins <= 0) return null;
+    return hours * 60 + mins;
+  }
+
+  int? get _effectiveMinutes {
+    if (_isCustom) return _customMinutes;
+    return _selectedMinutes;
+  }
+
+  bool get _canSave {
+    final minutes = _effectiveMinutes;
+    if (minutes == null) return _selectedMinutes == 0 && !_isCustom;
+    if (minutes == 0) return true;
+    return minutes >= 30;
   }
 
   Future<void> _save() async {
-    final service = WaterReminderService.instance;
-    final success = await service.setIntervalHours(_selectedHours);
+    final minutes = _effectiveMinutes ?? 0;
+    if (minutes > 0 && minutes < 30) return;
+
+    final success =
+        await WaterReminderService.instance.setIntervalMinutes(minutes);
     if (!mounted) return;
     if (success) {
       Navigator.pop(context, true);
@@ -80,6 +103,31 @@ class _WaterReminderPickerSheetState extends State<WaterReminderPickerSheet> {
     }
   }
 
+  void _selectPreset(int minutes) {
+    HapticFeedback.selectionClick();
+    setState(() {
+      _selectedMinutes = minutes;
+      _isCustom = false;
+      _hoursController.clear();
+      _minutesController.clear();
+    });
+  }
+
+  void _selectCustom() {
+    HapticFeedback.selectionClick();
+    setState(() {
+      _isCustom = true;
+      if (_hoursController.text.isEmpty && _minutesController.text.isEmpty) {
+        if (_selectedMinutes > 0 &&
+            !WaterReminderService.isPreset(_selectedMinutes)) {
+          _hoursController.text = '${_selectedMinutes ~/ 60}';
+          final mins = _selectedMinutes % 60;
+          if (mins > 0) _minutesController.text = '$mins';
+        }
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final isLight = Theme.of(context).brightness == Brightness.light;
@@ -91,6 +139,7 @@ class _WaterReminderPickerSheetState extends State<WaterReminderPickerSheet> {
     final borderColor = isLight
         ? DesignTokens.lightBorder
         : Colors.white.withValues(alpha: 0.12);
+    final pillBg = InsightMetricTheme.surfaceCardOf(context);
 
     return Padding(
       padding: EdgeInsets.only(
@@ -108,7 +157,7 @@ class _WaterReminderPickerSheetState extends State<WaterReminderPickerSheet> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Water reminder',
+                'Drinking reminder',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
@@ -117,81 +166,116 @@ class _WaterReminderPickerSheetState extends State<WaterReminderPickerSheet> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Get a local reminder to log your water intake.',
+                'Choose how often Cotrainr should remind you to drink water.',
                 style: TextStyle(
                   fontSize: 13,
                   color: subtitleColor,
                 ),
               ),
               const SizedBox(height: 16),
-              ..._options.map(
-                (h) => ListTile(
-                  title: Text(
-                    _label(h),
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: titleColor,
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final minutes in WaterReminderService.presetMinutes)
+                    _ReminderPill(
+                      label: WaterReminderService.pillLabel(minutes),
+                      selected: !_isCustom && _selectedMinutes == minutes,
+                      accent: widget.theme.accent,
+                      unselectedBg: pillBg,
+                      titleColor: titleColor,
+                      borderColor: borderColor,
+                      onTap: () => _selectPreset(minutes),
+                    ),
+                  _ReminderPill(
+                    label: 'Custom',
+                    selected: _isCustom,
+                    accent: widget.theme.accent,
+                    unselectedBg: pillBg,
+                    titleColor: titleColor,
+                    borderColor: borderColor,
+                    onTap: _selectCustom,
+                  ),
+                ],
+              ),
+              if (_isCustom) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _hoursController,
+                        autofocus: true,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: titleColor,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: 'hours',
+                          hintStyle: TextStyle(color: subtitleColor),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: borderColor),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                              color: widget.theme.accent,
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextField(
+                        controller: _minutesController,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: titleColor,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: 'minutes',
+                          hintStyle: TextStyle(color: subtitleColor),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: borderColor),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                              color: widget.theme.accent,
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ),
+                  ],
+                ),
+                if (_customMinutes != null &&
+                    _customMinutes! > 0 &&
+                    _customMinutes! < 30)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      'Minimum interval is 30 minutes.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: subtitleColor,
+                      ),
                     ),
                   ),
-                  trailing: !_isCustom && _selectedHours == h
-                      ? Icon(Icons.check_rounded, color: widget.theme.accent)
-                      : null,
-                  onTap: () {
-                    setState(() {
-                      _selectedHours = h;
-                      _isCustom = false;
-                      _customController.clear();
-                    });
-                  },
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Custom (hours)',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: subtitleColor,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _customController,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: titleColor,
-                ),
-                decoration: InputDecoration(
-                  hintText: 'e.g. 2.5',
-                  hintStyle: TextStyle(color: subtitleColor),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: borderColor),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide:
-                        BorderSide(color: widget.theme.accent, width: 2),
-                  ),
-                ),
-                onChanged: (value) {
-                  setState(() {
-                    if (value.isEmpty) {
-                      _isCustom = false;
-                      return;
-                    }
-                    final parsed = double.tryParse(value);
-                    if (parsed != null && parsed > 0) {
-                      _selectedHours = parsed;
-                      _isCustom = true;
-                    }
-                  });
-                },
-              ),
+              ],
               const SizedBox(height: 24),
               Row(
                 children: [
@@ -218,11 +302,15 @@ class _WaterReminderPickerSheetState extends State<WaterReminderPickerSheet> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: _save,
+                      onPressed: _canSave ? _save : null,
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         backgroundColor: widget.theme.accent,
                         foregroundColor: Colors.white,
+                        disabledBackgroundColor:
+                            widget.theme.accent.withValues(alpha: 0.35),
+                        disabledForegroundColor:
+                            Colors.white.withValues(alpha: 0.7),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -239,6 +327,51 @@ class _WaterReminderPickerSheetState extends State<WaterReminderPickerSheet> {
                 ],
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReminderPill extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final Color accent;
+  final Color unselectedBg;
+  final Color titleColor;
+  final Color borderColor;
+  final VoidCallback onTap;
+
+  const _ReminderPill({
+    required this.label,
+    required this.selected,
+    required this.accent,
+    required this.unselectedBg,
+    required this.titleColor,
+    required this.borderColor,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? accent : unselectedBg,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: selected ? accent : borderColor),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: selected ? Colors.white : titleColor,
           ),
         ),
       ),

@@ -73,6 +73,52 @@ String weekdayLetter(int weekday) {
   return names[(weekday - 1).clamp(0, 6)];
 }
 
+String formatInsightDayLabel(DateTime date) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final d = DateTime(date.year, date.month, date.day);
+  if (d == today) return 'Today';
+  if (d == today.subtract(const Duration(days: 1))) return 'Yesterday';
+  const weekdays = [
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
+  ];
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  return '${weekdays[d.weekday - 1]}, ${months[d.month - 1]} ${d.day}';
+}
+
+String insightDayComparisonLabel(int index, List<double> data) {
+  if (index <= 0 || data.isEmpty || index >= data.length) {
+    return 'No previous day to compare';
+  }
+  final prev = data[index - 1];
+  final curr = data[index];
+  if (prev <= 0.001 && curr <= 0.001) return 'No activity on either day';
+  if (prev <= 0.001) return 'Up from zero yesterday';
+  final pct = (((curr - prev) / prev) * 100).round();
+  if (pct == 0) return 'Same as previous day';
+  final sign = pct > 0 ? '+' : '';
+  return '$sign$pct% vs previous day';
+}
+
 // ─── Premium card shell ─────────────────────────────────────────────────────
 
 class InsightPremiumCard extends StatelessWidget {
@@ -146,6 +192,7 @@ class InsightHeroCard extends StatelessWidget {
   final double? goal;
   final double completionPct;
   final String comparisonLabel;
+  final String dayLabel;
 
   const InsightHeroCard({
     super.key,
@@ -154,6 +201,7 @@ class InsightHeroCard extends StatelessWidget {
     required this.goal,
     required this.completionPct,
     required this.comparisonLabel,
+    this.dayLabel = 'Today',
   });
 
   @override
@@ -173,7 +221,7 @@ class InsightHeroCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Today',
+                  dayLabel,
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -540,20 +588,22 @@ class InsightGraphCard extends StatelessWidget {
   }
 }
 
-// ─── Daily breakdown bars ───────────────────────────────────────────────────
+// ─── Daily breakdown bars (scrollable, tappable) ────────────────────────────
 
 class InsightDailyBreakdown extends StatefulWidget {
   final InsightMetricTheme theme;
-  final List<double> weekData;
-  final List<DateTime> weekDates;
-  final int highlightIndex;
+  final List<double> data;
+  final List<DateTime> dates;
+  final int selectedIndex;
+  final ValueChanged<int> onDaySelected;
 
   const InsightDailyBreakdown({
     super.key,
     required this.theme,
-    required this.weekData,
-    required this.weekDates,
-    required this.highlightIndex,
+    required this.data,
+    required this.dates,
+    required this.selectedIndex,
+    required this.onDaySelected,
   });
 
   @override
@@ -562,7 +612,11 @@ class InsightDailyBreakdown extends StatefulWidget {
 
 class _InsightDailyBreakdownState extends State<InsightDailyBreakdown>
     with SingleTickerProviderStateMixin {
+  static const _itemWidth = 44.0;
+
   late AnimationController _ctrl;
+  final ScrollController _scrollController = ScrollController();
+  double _viewportWidth = 0;
 
   @override
   void initState() {
@@ -571,19 +625,48 @@ class _InsightDailyBreakdownState extends State<InsightDailyBreakdown>
       vsync: this,
       duration: const Duration(milliseconds: 450),
     )..forward();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToSelected());
+  }
+
+  @override
+  void didUpdateWidget(covariant InsightDailyBreakdown oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedIndex != widget.selectedIndex ||
+        oldWidget.dates.length != widget.dates.length) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToSelected());
+    }
   }
 
   @override
   void dispose() {
     _ctrl.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _scrollToSelected() {
+    if (!_scrollController.hasClients || widget.dates.isEmpty) return;
+    final index = widget.selectedIndex.clamp(0, widget.dates.length - 1);
+    final centerOffset =
+        (index * _itemWidth) - ((_viewportWidth - _itemWidth) / 2);
+    final max = _scrollController.position.maxScrollExtent;
+    _scrollController.animateTo(
+      centerOffset.clamp(0.0, max),
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final max = widget.weekData.isEmpty
+    final values = widget.data;
+    final dates = widget.dates;
+    final count = dates.length;
+    if (count == 0) return const SizedBox.shrink();
+
+    final max = values.isEmpty
         ? 1.0
-        : widget.weekData.reduce(math.max).clamp(0.001, double.infinity);
+        : values.reduce(math.max).clamp(0.001, double.infinity);
     final isLight = Theme.of(context).brightness == Brightness.light;
     final inactiveBar = isLight
         ? DesignTokens.lightBorder
@@ -593,66 +676,130 @@ class _InsightDailyBreakdownState extends State<InsightDailyBreakdown>
     return InsightPremiumCard(
       radius: 22,
       color: InsightMetricTheme.surfaceCardOf(context),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: List.generate(widget.weekDates.length.clamp(0, 7), (i) {
-          final frac = (widget.weekData.length > i ? widget.weekData[i] : 0) / max;
-          final active = widget.weekData.length > i && widget.weekData[i] > 0;
-          final highlighted = i == widget.highlightIndex;
-          return Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2),
-              child: Column(
-                children: [
-                  Text(
-                    weekdayLetter(widget.weekDates[i].weekday),
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: highlighted
-                          ? widget.theme.accent
-                          : labelInactive,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  AnimatedBuilder(
-                    animation: _ctrl,
-                    builder: (context, _) {
-                      final h = 48 * frac * _ctrl.value;
-                      return Align(
-                        alignment: Alignment.bottomCenter,
-                        child: Container(
-                          width: 10,
-                          height: h.clamp(4, 48),
-                          decoration: BoxDecoration(
-                            color: active
-                                ? widget.theme.accent.withValues(
-                                    alpha: highlighted ? 1.0 : 0.55,
-                                  )
-                                : inactiveBar,
-                            borderRadius: BorderRadius.circular(6),
-                            boxShadow: highlighted && active
-                                ? [
-                                    BoxShadow(
-                                      color: widget.theme.accent
-                                          .withValues(alpha: 0.35),
-                                      blurRadius: 6,
-                                    ),
-                                  ]
-                                : null,
+      padding: const EdgeInsets.fromLTRB(8, 14, 8, 14),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          _viewportWidth = constraints.maxWidth;
+          return SizedBox(
+            height: 88,
+            child: ListView.builder(
+              controller: _scrollController,
+              scrollDirection: Axis.horizontal,
+              itemCount: count,
+              itemBuilder: (context, i) {
+                final value = values.length > i ? values[i] : 0.0;
+                final frac = value / max;
+                final active = value > 0;
+                final highlighted = i == widget.selectedIndex;
+                final date = dates[i];
+                final showMonth =
+                    i == 0 || date.day == 1 || date.month != dates[i - 1].month;
+
+                return GestureDetector(
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    widget.onDaySelected(i);
+                  },
+                  behavior: HitTestBehavior.opaque,
+                  child: SizedBox(
+                    width: _itemWidth,
+                    child: Column(
+                      children: [
+                        if (showMonth)
+                          Text(
+                            _monthLabel(date.month),
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w600,
+                              color: highlighted
+                                  ? widget.theme.accent
+                                  : labelInactive.withValues(alpha: 0.8),
+                            ),
+                          )
+                        else
+                          const SizedBox(height: 12),
+                        Text(
+                          weekdayLetter(date.weekday),
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: highlighted
+                                ? widget.theme.accent
+                                : labelInactive,
                           ),
                         ),
-                      );
-                    },
+                        Text(
+                          '${date.day}',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: highlighted
+                                ? widget.theme.accent.withValues(alpha: 0.9)
+                                : labelInactive.withValues(alpha: 0.85),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Expanded(
+                          child: AnimatedBuilder(
+                            animation: _ctrl,
+                            builder: (context, _) {
+                              final h = 40 * frac * _ctrl.value;
+                              return Align(
+                                alignment: Alignment.bottomCenter,
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  width: highlighted ? 12 : 10,
+                                  height: h.clamp(4, 40),
+                                  decoration: BoxDecoration(
+                                    color: active
+                                        ? widget.theme.accent.withValues(
+                                            alpha: highlighted ? 1.0 : 0.5,
+                                          )
+                                        : inactiveBar,
+                                    borderRadius: BorderRadius.circular(6),
+                                    boxShadow: highlighted && active
+                                        ? [
+                                            BoxShadow(
+                                              color: widget.theme.accent
+                                                  .withValues(alpha: 0.35),
+                                              blurRadius: 6,
+                                            ),
+                                          ]
+                                        : null,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ],
-              ),
+                );
+              },
             ),
           );
-        }),
+        },
       ),
     );
+  }
+
+  String _monthLabel(int month) {
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return months[(month - 1).clamp(0, 11)];
   }
 }
 

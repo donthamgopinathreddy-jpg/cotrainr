@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -13,6 +14,7 @@ import '../../widgets/insights/insight_premium_widgets.dart';
 import '../../widgets/insights/metric_goal_picker_sheet.dart';
 import '../../widgets/insights/water_reminder_picker_sheet.dart';
 import '../../services/water_reminder_service.dart';
+import '../../services/water_intake_service.dart';
 
 export '../../models/metric_insight_types.dart';
 
@@ -39,6 +41,7 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
   double? _currentGoal;
   double? _previousPeriodTotal;
   String _waterReminderStatus = 'Reminder: Off';
+  late List<double> _weekWaterData;
   final MetricsRepository _metricsRepo = MetricsRepository();
 
   static const _rangeDays = [7, 30, 90];
@@ -49,9 +52,44 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
     super.initState();
     final now = DateTime.now();
     _weekDates = _datesForDays(7, now);
+    _weekWaterData = List<double>.from(widget.args.w);
     _loadGoal();
     _loadWaterReminderStatus();
     _loadPreviousPeriodTotal(7);
+    if (widget.args.t == MetricType.water) {
+      WaterIntakeService.revision.addListener(_onWaterIntakeRevision);
+    }
+  }
+
+  void _onWaterIntakeRevision() {
+    if (widget.args.t == MetricType.water) {
+      _reloadWaterWeekData();
+    }
+  }
+
+  Future<void> _reloadWaterWeekData() async {
+    try {
+      final rows = await _metricsRepo.getWeeklyMetrics();
+      final map = <String, double>{};
+      for (final row in rows) {
+        final dateStr = row['date'] as String?;
+        if (dateStr == null) continue;
+        map[dateStr] =
+            (row['water_intake_liters'] as num?)?.toDouble() ?? 0.0;
+      }
+      final data = _weekDates
+          .map((d) => map[d.toIso8601String().split('T')[0]] ?? 0.0)
+          .toList();
+      if (mounted) setState(() => _weekWaterData = data);
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    if (widget.args.t == MetricType.water) {
+      WaterIntakeService.revision.removeListener(_onWaterIntakeRevision);
+    }
+    super.dispose();
   }
 
   Future<void> _loadWaterReminderStatus() async {
@@ -293,12 +331,12 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
     BuildContext context,
     InsightMetricTheme theme,
   ) async {
-    final current = await WaterReminderService.instance.getIntervalHours();
+    final current = await WaterReminderService.instance.getIntervalMinutes();
     if (!mounted) return;
     final saved = await WaterReminderPickerSheet.show(
       context,
       theme: theme,
-      initialHours: current > 0 ? current : 2,
+      initialMinutes: current > 0 ? current : 120,
     );
     if (saved == true && mounted) {
       await _loadWaterReminderStatus();
@@ -322,7 +360,10 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
           dates: _quarterDates ?? _datesForDays(90, DateTime.now()),
         );
       default:
-        return (data: widget.args.w, dates: _weekDates);
+        return (
+          data: widget.args.t == MetricType.water ? _weekWaterData : widget.args.w,
+          dates: _weekDates,
+        );
     }
   }
 
@@ -339,30 +380,20 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
     final peak = data.isEmpty ? 0.0 : data.reduce((a, b) => a > b ? a : b);
     final hasData = _hasMeaningfulData(data);
     final todayIndex = _todayIndexInDates(dates);
-    final weekTodayIndex = _todayIndexInDates(_weekDates);
-    final todayValue = widget.args.w.isEmpty
+    final selectedIndex = _selectedIndex ?? todayIndex;
+    final selectedDate = dates[selectedIndex.clamp(0, dates.length - 1)];
+    final selectedValue = data.isEmpty
         ? 0.0
-        : widget.args.w[weekTodayIndex.clamp(0, widget.args.w.length - 1)];
-    final todayCompletion = goal != null && goal > 0
-        ? (todayValue / goal * 100).clamp(0.0, 999.0)
+        : data[selectedIndex.clamp(0, data.length - 1)];
+    final selectedCompletion = goal != null && goal > 0
+        ? (selectedValue / goal * 100).clamp(0.0, 999.0)
         : 0.0;
+    final selectedDayLabel = formatInsightDayLabel(selectedDate);
+    final selectedComparison =
+        insightDayComparisonLabel(selectedIndex, data);
     final goalCompletion = _goalCompletionPct(data, goal);
     final comparisonLabel = _comparisonLabel(total, data);
     final aiBody = _aiInsightBody(theme, data, goal, comparisonLabel);
-
-    final breakdownCount = 7;
-    final breakdownDates = dates.length >= breakdownCount
-        ? dates.sublist(dates.length - breakdownCount)
-        : dates;
-    final breakdownData = data.length >= breakdownCount
-        ? data.sublist(data.length - breakdownCount)
-        : data;
-    final breakdownOffset = dates.length - breakdownCount;
-    final breakdownHighlight = breakdownDates.isEmpty
-        ? 0
-        : (_selectedIndex != null && _selectedIndex! >= breakdownOffset
-            ? _selectedIndex! - breakdownOffset
-            : _todayIndexInDates(breakdownDates));
 
     final pageBg = InsightMetricTheme.pageBgOf(context);
     final isLight = Theme.of(context).brightness == Brightness.light;
@@ -444,10 +475,11 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
                       },
                       child: InsightHeroCard(
                         theme: theme,
-                        displayValue: todayValue,
+                        displayValue: selectedValue,
                         goal: goal,
-                        completionPct: todayCompletion,
-                        comparisonLabel: comparisonLabel,
+                        completionPct: selectedCompletion,
+                        comparisonLabel: selectedComparison,
+                        dayLabel: selectedDayLabel,
                       ),
                     ),
                     if (theme.type == MetricType.water) ...[
@@ -457,6 +489,30 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
                         statusLabel: _waterReminderStatus,
                         onTap: () => _showWaterReminderPicker(context, theme),
                       ),
+                      if (kDebugMode) ...[
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              final ok = await WaterReminderService.instance
+                                  .showTestNotification();
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    ok
+                                        ? 'Test water notification sent'
+                                        : 'Notification permission denied',
+                                  ),
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.bug_report_outlined, size: 18),
+                            label: const Text('Send test water notification'),
+                          ),
+                        ),
+                      ],
                     ],
                     const SizedBox(height: 12),
                     InsightRangePills(
@@ -509,6 +565,7 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
                         currentDayIndex: todayIndex,
                         selectedIndex: _selectedIndex,
                         onTouchIndex: (index) {
+                          if (index == null) return;
                           if (_selectedIndex != index) {
                             HapticFeedback.lightImpact();
                             setState(() => _selectedIndex = index);
@@ -516,14 +573,53 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
                         },
                       ),
                       const SizedBox(height: 12),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 2),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                selectedDayLabel,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  color: DesignTokens.textPrimaryOf(context),
+                                ),
+                              ),
+                            ),
+                            Text(
+                              insightValueWithUnit(theme.type, selectedValue),
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                                color: theme.accent,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              goal != null && goal > 0
+                                  ? '${selectedCompletion.round()}%'
+                                  : '—',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: DesignTokens.textSecondaryOf(context),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
                       InsightDailyBreakdown(
                         theme: theme,
-                        weekData: breakdownData,
-                        weekDates: breakdownDates,
-                        highlightIndex: breakdownHighlight.clamp(
-                          0,
-                          breakdownDates.length - 1,
-                        ),
+                        data: data,
+                        dates: dates,
+                        selectedIndex: selectedIndex.clamp(0, dates.length - 1),
+                        onDaySelected: (index) {
+                          if (_selectedIndex != index) {
+                            setState(() => _selectedIndex = index);
+                          }
+                        },
                       ),
                       const SizedBox(height: 12),
                       InsightStatsGrid(
@@ -652,7 +748,7 @@ class _WaterReminderRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Remind every 2 hours',
+                  'Drinking reminder',
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,

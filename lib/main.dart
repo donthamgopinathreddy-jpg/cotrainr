@@ -7,6 +7,7 @@ import 'theme/app_theme.dart';
 import 'theme/theme_mode_provider.dart';
 import 'services/health_tracking_service.dart';
 import 'services/background_health_tracker.dart';
+import 'services/water_reminder_service.dart';
 import 'widgets/quest/quest_sync_initializer.dart';
 
 void main() async {
@@ -27,6 +28,9 @@ void main() async {
       print('Health tracking service initialization failed');
     }
   });
+
+  await WaterReminderService.instance.ensureInitialized();
+  await WaterReminderService.instance.rescheduleIfEnabled();
 
   runApp(const ProviderScope(child: MyApp()));
 }

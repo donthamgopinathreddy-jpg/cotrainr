@@ -1,150 +1,271 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:timezone/data/latest.dart' as tz_data;
-import 'package:timezone/timezone.dart' as tz;
 
-/// Local water intake reminders (SharedPreferences + flutter_local_notifications).
+import 'water_notification_handler.dart';
+import 'water_notification_platform.dart';
+
+/// Local water intake reminders via [flutter_local_notifications].
+///
+/// Interval is stored in SharedPreferences only (no Supabase).
 class WaterReminderService {
   WaterReminderService._();
+
   static final WaterReminderService instance = WaterReminderService._();
 
-  static const _prefsKey = 'water_reminder_interval_hours';
+  static const _prefsKeyMinutes = 'water_reminder_interval_minutes';
+  static const _legacyPrefsKeyHours = 'water_reminder_interval_hours';
+
   static const _channelId = 'water_reminders';
   static const _channelName = 'Water Reminders';
-  static const _notificationIdBase = 9100;
-  static const _scheduledSlots = 24;
+
+  static const _title = 'Time to drink water 💧';
+  static const _body = 'Tap a preset to add water.';
+
+  static const _reminderNotificationId = 9100;
+  static const _testNotificationId = 9099;
+
+  static const presetMinutes = <int>[0, 30, 60, 120, 180];
 
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
+
   bool _initialized = false;
 
   Future<void> ensureInitialized() async {
     if (_initialized) return;
 
-    tz_data.initializeTimeZones();
+    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const darwinInit = DarwinInitializationSettings(
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+    );
+    const initSettings = InitializationSettings(
+      android: androidInit,
+      iOS: darwinInit,
+      macOS: darwinInit,
+    );
 
-    const android = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const ios = DarwinInitializationSettings();
     await _plugin.initialize(
-      const InitializationSettings(android: android, iOS: ios),
+      initSettings,
+      onDidReceiveNotificationResponse:
+          WaterNotificationHandler.onForegroundResponse,
+      onDidReceiveBackgroundNotificationResponse:
+          waterNotificationBackgroundResponse,
     );
 
     if (Platform.isAndroid) {
-      await _plugin
-          .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>()
-          ?.createNotificationChannel(
-            const AndroidNotificationChannel(
-              _channelId,
-              _channelName,
-              description: 'Reminders to log water intake',
-              importance: Importance.high,
-            ),
-          );
+      final android = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      await android?.createNotificationChannel(
+        const AndroidNotificationChannel(
+          _channelId,
+          _channelName,
+          description: 'Periodic reminders to log water intake',
+          importance: Importance.high,
+        ),
+      );
     }
+
     _initialized = true;
   }
 
-  Future<double> getIntervalHours() async {
+  NotificationDetails _notificationDetails() {
+    if (Platform.isAndroid) {
+      // Android uses native pill layout via [WaterNotificationPlatform].
+      return const NotificationDetails();
+    }
+    return NotificationDetails(
+      android: AndroidNotificationDetails(
+        _channelId,
+        _channelName,
+        channelDescription: 'Periodic reminders to log water intake',
+        importance: Importance.high,
+        priority: Priority.high,
+        actions: WaterNotificationActions.androidActions,
+      ),
+      iOS: const DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      ),
+    );
+  }
+
+  Future<int> getIntervalMinutes() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getDouble(_prefsKey) ?? 0;
+    if (prefs.containsKey(_prefsKeyMinutes)) {
+      return prefs.getInt(_prefsKeyMinutes) ?? 0;
+    }
+
+    final legacyHours = prefs.getDouble(_legacyPrefsKeyHours);
+    if (legacyHours != null && legacyHours > 0) {
+      final minutes = (legacyHours * 60).round();
+      await prefs.setInt(_prefsKeyMinutes, minutes);
+      await prefs.remove(_legacyPrefsKeyHours);
+      return minutes;
+    }
+    return 0;
+  }
+
+  @Deprecated('Use getIntervalMinutes')
+  Future<double> getIntervalHours() async {
+    final minutes = await getIntervalMinutes();
+    return minutes / 60.0;
   }
 
   Future<bool> isEnabled() async {
-    final hours = await getIntervalHours();
-    return hours > 0;
-  }
-
-  String labelFor(double hours) {
-    if (hours <= 0) return 'Off';
-    if (hours == 1) return 'Every 1 hour';
-    if (hours == 2) return 'Every 2 hours';
-    if (hours == 3) return 'Every 3 hours';
-    if (hours == hours.roundToDouble()) {
-      return 'Every ${hours.toInt()} hours';
-    }
-    return 'Every ${hours.toStringAsFixed(1)} hours';
+    final minutes = await getIntervalMinutes();
+    return minutes > 0;
   }
 
   Future<String> statusLabel() async {
-    final hours = await getIntervalHours();
-    if (hours <= 0) return 'Reminder: Off';
-    return 'Reminder: ${labelFor(hours)}';
+    final minutes = await getIntervalMinutes();
+    if (minutes <= 0) return 'Reminder: Off';
+    return 'Reminder: ${intervalLabel(minutes)}';
   }
 
+  static String intervalLabel(int minutes) {
+    if (minutes <= 0) return 'Off';
+    if (minutes < 60) return 'Every $minutes min';
+    if (minutes % 60 == 0) {
+      final hours = minutes ~/ 60;
+      if (hours == 1) return 'Every 1 hour';
+      return 'Every $hours hours';
+    }
+    final hours = minutes / 60;
+    return 'Every ${hours.toStringAsFixed(1)} hours';
+  }
+
+  static String pillLabel(int minutes) {
+    if (minutes <= 0) return 'Off';
+    if (minutes == 30) return '30 min';
+    if (minutes == 60) return '1 hr';
+    if (minutes == 120) return '2 hr';
+    if (minutes == 180) return '3 hr';
+    return '${minutes}m';
+  }
+
+  static bool isPreset(int minutes) => presetMinutes.contains(minutes);
+
   Future<bool> requestPermissionIfNeeded() async {
+    if (!Platform.isAndroid && !Platform.isIOS) return true;
+
     if (Platform.isAndroid) {
-      final status = await Permission.notification.request();
-      return status.isGranted;
+      final android = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      final pluginGranted = await android?.requestNotificationsPermission();
+      if (pluginGranted == true) return true;
+
+      final status = await Permission.notification.status;
+      if (status.isGranted) return true;
+      final result = await Permission.notification.request();
+      return result.isGranted;
     }
-    if (Platform.isIOS) {
-      final ios = _plugin.resolvePlatformSpecificImplementation<
-          IOSFlutterLocalNotificationsPlugin>();
-      final granted = await ios?.requestPermissions(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
-      return granted ?? false;
-    }
-    return true;
+
+    final ios = _plugin.resolvePlatformSpecificImplementation<
+        IOSFlutterLocalNotificationsPlugin>();
+    final granted = await ios?.requestPermissions(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+    return granted ?? false;
   }
 
   Future<void> cancelAll() async {
     await ensureInitialized();
-    for (var i = 0; i < _scheduledSlots; i++) {
-      await _plugin.cancel(_notificationIdBase + i);
+    if (Platform.isAndroid) {
+      await WaterNotificationPlatform.cancelAll();
     }
+    await _plugin.cancel(_reminderNotificationId);
   }
 
-  Future<bool> setIntervalHours(double hours) async {
+  Future<bool> setIntervalMinutes(int minutes) async {
     await ensureInitialized();
     await cancelAll();
 
     final prefs = await SharedPreferences.getInstance();
-    if (hours <= 0) {
-      await prefs.setDouble(_prefsKey, 0);
+    if (minutes <= 0) {
+      await prefs.remove(_prefsKeyMinutes);
       return true;
     }
 
-    final granted = await requestPermissionIfNeeded();
-    if (!granted) return false;
+    if (!await requestPermissionIfNeeded()) {
+      return false;
+    }
 
-    await prefs.setDouble(_prefsKey, hours);
-    await _schedule(hours);
+    await prefs.setInt(_prefsKeyMinutes, minutes);
+    await _scheduleRepeating(minutes);
     return true;
   }
 
-  Future<void> _schedule(double hours) async {
-    final interval = Duration(minutes: (hours * 60).round());
-    final now = tz.TZDateTime.now(tz.local);
+  Future<bool> setIntervalHours(double hours) =>
+      setIntervalMinutes((hours * 60).round());
 
-    const details = NotificationDetails(
-      android: AndroidNotificationDetails(
-        _channelId,
-        _channelName,
-        channelDescription: 'Reminders to log water intake',
-        importance: Importance.high,
-        priority: Priority.high,
-      ),
-      iOS: DarwinNotificationDetails(),
+  Future<void> disable() => setIntervalMinutes(0);
+
+  Future<void> rescheduleIfEnabled() async {
+    final minutes = await getIntervalMinutes();
+    if (minutes <= 0) return;
+
+    await ensureInitialized();
+    await cancelAll();
+
+    if (!await requestPermissionIfNeeded()) return;
+    await _scheduleRepeating(minutes);
+  }
+
+  Future<bool> showTestNotification() async {
+    await ensureInitialized();
+
+    if (!await requestPermissionIfNeeded()) {
+      return false;
+    }
+
+    if (Platform.isAndroid) {
+      await WaterNotificationPlatform.show(
+        notificationId: _testNotificationId,
+        title: _title,
+        body: _body,
+      );
+      return true;
+    }
+
+    await _plugin.show(
+      _testNotificationId,
+      _title,
+      _body,
+      _notificationDetails(),
     );
+    return true;
+  }
 
-    for (var i = 0; i < _scheduledSlots; i++) {
-      final when = now.add(interval * (i + 1));
-      await _plugin.zonedSchedule(
-        _notificationIdBase + i,
-        'Time to drink water 💧',
-        'Log your water intake in Cotrainr.',
-        when,
-        details,
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
+  Future<void> _scheduleRepeating(int minutes) async {
+    if (Platform.isAndroid) {
+      await WaterNotificationPlatform.scheduleRepeating(minutes);
+      return;
+    }
+
+    final interval = Duration(minutes: minutes.clamp(30, 24 * 60));
+
+    if (kDebugMode) {
+      debugPrint(
+        'WaterReminderService: scheduling every ${interval.inMinutes} minutes',
       );
     }
+
+    await _plugin.periodicallyShowWithDuration(
+      _reminderNotificationId,
+      _title,
+      _body,
+      interval,
+      _notificationDetails(),
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    );
   }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../models/metric_insight_types.dart';
 import '../../services/user_goals_service.dart';
@@ -44,39 +45,18 @@ class _MetricGoalPickerSheetState extends State<MetricGoalPickerSheet> {
   late double? _selectedGoal;
   late bool _isCustom;
   late final TextEditingController _customController;
-  late final List<double> _commonGoals;
-  late final String _unit;
-  late final String _hintText;
+  late final _GoalPickerConfig _config;
 
   @override
   void initState() {
     super.initState();
-    _selectedGoal = widget.initialGoal;
-    switch (widget.metricType) {
-      case MetricType.steps:
-        _commonGoals = [5000, 7500, 10000, 12000, 15000];
-        _unit = 'steps';
-        _hintText = 'Enter custom steps';
-        break;
-      case MetricType.water:
-        _commonGoals = [1.5, 2.0, 2.5, 3.0, 3.5];
-        _unit = 'L';
-        _hintText = 'Enter custom liters';
-        break;
-      case MetricType.calories:
-        _commonGoals = [1500, 1800, 2000, 2200, 2500];
-        _unit = 'calories';
-        _hintText = 'Enter custom calories';
-        break;
-      case MetricType.distance:
-        _commonGoals = [3.0, 5.0, 7.0, 10.0, 12.0];
-        _unit = 'km';
-        _hintText = 'Enter custom kilometers';
-        break;
-    }
-    _isCustom = !_matchesCommon(widget.initialGoal);
+    _config = _GoalPickerConfig.forMetric(widget.metricType);
+    _isCustom = !_config.matchesPreset(widget.initialGoal);
+    _selectedGoal = widget.initialGoal > 0 ? widget.initialGoal : null;
     _customController = TextEditingController(
-      text: _isCustom ? _formatGoal(widget.initialGoal) : '',
+      text: _isCustom && widget.initialGoal > 0
+          ? _config.formatCustomValue(widget.initialGoal)
+          : '',
     );
   }
 
@@ -86,28 +66,24 @@ class _MetricGoalPickerSheetState extends State<MetricGoalPickerSheet> {
     super.dispose();
   }
 
-  bool _matchesCommon(double value) {
-    return _commonGoals.any((g) => (g - value).abs() < 0.05);
+  double? get _effectiveGoal {
+    if (_isCustom) {
+      final text = _customController.text.trim();
+      if (text.isEmpty) return null;
+      return double.tryParse(text);
+    }
+    return _selectedGoal;
   }
 
-  String _formatGoal(double g) {
-    if (widget.metricType == MetricType.steps ||
-        widget.metricType == MetricType.calories) {
-      return g.toInt().toString();
-    }
-    return g.toStringAsFixed(1);
-  }
-
-  String _formatOption(double g) {
-    if (widget.metricType == MetricType.steps ||
-        widget.metricType == MetricType.calories) {
-      return '${g.toInt()} $_unit';
-    }
-    return '${g.toStringAsFixed(1)} $_unit';
+  bool get _canSave {
+    final goal = _effectiveGoal;
+    if (goal == null || goal <= 0) return false;
+    if (!_config.allowDecimals && goal != goal.roundToDouble()) return false;
+    return true;
   }
 
   Future<void> _save() async {
-    final goal = _selectedGoal;
+    final goal = _effectiveGoal;
     if (goal == null || goal <= 0) return;
 
     final goalsService = UserGoalsService();
@@ -128,6 +104,25 @@ class _MetricGoalPickerSheetState extends State<MetricGoalPickerSheet> {
     }
   }
 
+  void _selectPreset(double value) {
+    HapticFeedback.selectionClick();
+    setState(() {
+      _selectedGoal = value;
+      _isCustom = false;
+      _customController.clear();
+    });
+  }
+
+  void _selectCustom() {
+    HapticFeedback.selectionClick();
+    setState(() {
+      _isCustom = true;
+      if (_customController.text.isEmpty && _selectedGoal != null) {
+        _customController.text = _config.formatCustomValue(_selectedGoal!);
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final isLight = Theme.of(context).brightness == Brightness.light;
@@ -139,6 +134,7 @@ class _MetricGoalPickerSheetState extends State<MetricGoalPickerSheet> {
     final borderColor = isLight
         ? DesignTokens.lightBorder
         : Colors.white.withValues(alpha: 0.12);
+    final pillBg = InsightMetricTheme.surfaceCardOf(context);
 
     return Padding(
       padding: EdgeInsets.only(
@@ -156,7 +152,7 @@ class _MetricGoalPickerSheetState extends State<MetricGoalPickerSheet> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Set Daily ${widget.theme.title.replaceAll(' Insights', '')} Goal',
+                _config.title,
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
@@ -164,74 +160,67 @@ class _MetricGoalPickerSheetState extends State<MetricGoalPickerSheet> {
                 ),
               ),
               const SizedBox(height: 16),
-              ..._commonGoals.map(
-                (g) => ListTile(
-                  title: Text(
-                    _formatOption(g),
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: titleColor,
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  ..._config.presets.map((value) {
+                    final selected = !_isCustom && _selectedGoal == value;
+                    return _GoalPickerPill(
+                      label: _config.formatPreset(value),
+                      selected: selected,
+                      accent: widget.theme.accent,
+                      selectedTextColor: Colors.white,
+                      unselectedBg: pillBg,
+                      unselectedTextColor: titleColor,
+                      borderColor: borderColor,
+                      onTap: () => _selectPreset(value),
+                    );
+                  }),
+                  _GoalPickerPill(
+                    label: 'Custom',
+                    selected: _isCustom,
+                    accent: widget.theme.accent,
+                    selectedTextColor: Colors.white,
+                    unselectedBg: pillBg,
+                    unselectedTextColor: titleColor,
+                    borderColor: borderColor,
+                    onTap: _selectCustom,
+                  ),
+                ],
+              ),
+              if (_isCustom) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _customController,
+                  autofocus: true,
+                  keyboardType: _config.allowDecimals
+                      ? const TextInputType.numberWithOptions(decimal: true)
+                      : TextInputType.number,
+                  inputFormatters: _config.allowDecimals
+                      ? null
+                      : [FilteringTextInputFormatter.digitsOnly],
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: titleColor,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: _config.customPlaceholder,
+                    hintStyle: TextStyle(color: subtitleColor),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: borderColor),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                          BorderSide(color: widget.theme.accent, width: 2),
                     ),
                   ),
-                  trailing: !_isCustom && _selectedGoal == g
-                      ? Icon(Icons.check_rounded, color: widget.theme.accent)
-                      : null,
-                  onTap: () {
-                    setState(() {
-                      _selectedGoal = g;
-                      _isCustom = false;
-                      _customController.clear();
-                    });
-                  },
+                  onChanged: (_) => setState(() {}),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Custom',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: subtitleColor,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _customController,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: titleColor,
-                ),
-                decoration: InputDecoration(
-                  hintText: _hintText,
-                  hintStyle: TextStyle(color: subtitleColor),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: borderColor),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide:
-                        BorderSide(color: widget.theme.accent, width: 2),
-                  ),
-                ),
-                onChanged: (value) {
-                  setState(() {
-                    if (value.isEmpty) {
-                      _isCustom = false;
-                      return;
-                    }
-                    final parsed = double.tryParse(value);
-                    if (parsed != null && parsed > 0) {
-                      _selectedGoal = parsed;
-                      _isCustom = true;
-                    }
-                  });
-                },
-              ),
+              ],
               const SizedBox(height: 24),
               Row(
                 children: [
@@ -258,11 +247,15 @@ class _MetricGoalPickerSheetState extends State<MetricGoalPickerSheet> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: _selectedGoal == null ? null : _save,
+                      onPressed: _canSave ? _save : null,
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         backgroundColor: widget.theme.accent,
                         foregroundColor: Colors.white,
+                        disabledBackgroundColor:
+                            widget.theme.accent.withValues(alpha: 0.35),
+                        disabledForegroundColor:
+                            Colors.white.withValues(alpha: 0.7),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -283,5 +276,151 @@ class _MetricGoalPickerSheetState extends State<MetricGoalPickerSheet> {
         ),
       ),
     );
+  }
+}
+
+class _GoalPickerPill extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final Color accent;
+  final Color selectedTextColor;
+  final Color unselectedBg;
+  final Color unselectedTextColor;
+  final Color borderColor;
+  final VoidCallback onTap;
+
+  const _GoalPickerPill({
+    required this.label,
+    required this.selected,
+    required this.accent,
+    required this.selectedTextColor,
+    required this.unselectedBg,
+    required this.unselectedTextColor,
+    required this.borderColor,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? accent : unselectedBg,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: selected ? accent : borderColor,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: selected ? selectedTextColor : unselectedTextColor,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GoalPickerConfig {
+  final String title;
+  final List<double> presets;
+  final String customPlaceholder;
+  final bool allowDecimals;
+
+  const _GoalPickerConfig({
+    required this.title,
+    required this.presets,
+    required this.customPlaceholder,
+    required this.allowDecimals,
+  });
+
+  static _GoalPickerConfig forMetric(MetricType type) {
+    switch (type) {
+      case MetricType.steps:
+        return const _GoalPickerConfig(
+          title: 'Set daily steps goal',
+          presets: [5000, 7500, 10000, 12000, 15000, 20000],
+          customPlaceholder: 'steps',
+          allowDecimals: false,
+        );
+      case MetricType.water:
+        return const _GoalPickerConfig(
+          title: 'Set daily water goal',
+          presets: [1.5, 2.0, 2.5, 3.0, 3.5, 4.0],
+          customPlaceholder: 'liters',
+          allowDecimals: true,
+        );
+      case MetricType.distance:
+        return const _GoalPickerConfig(
+          title: 'Set daily distance goal',
+          presets: [3.0, 5.0, 7.0, 10.0, 12.0, 15.0],
+          customPlaceholder: 'km',
+          allowDecimals: true,
+        );
+      case MetricType.calories:
+        return const _GoalPickerConfig(
+          title: 'Set daily active calories goal',
+          presets: [300, 500, 750, 1000, 1500, 2000],
+          customPlaceholder: 'kcal',
+          allowDecimals: false,
+        );
+    }
+  }
+
+  bool matchesPreset(double value) {
+    if (value <= 0) return false;
+    return presets.any((g) => (g - value).abs() < 0.05);
+  }
+
+  String formatPreset(double value) {
+    switch (title) {
+      case 'Set daily steps goal':
+        return _formatSteps(value);
+      case 'Set daily water goal':
+        return _formatLiters(value);
+      case 'Set daily distance goal':
+        return _formatKm(value);
+      case 'Set daily active calories goal':
+        return '${value.toInt()} kcal';
+      default:
+        return value.toString();
+    }
+  }
+
+  String formatCustomValue(double value) {
+    if (!allowDecimals) return value.toInt().toString();
+    if (value == value.roundToDouble()) return value.toInt().toString();
+    return value.toStringAsFixed(1);
+  }
+
+  static String _formatSteps(double value) {
+    if (value >= 1000) {
+      final k = value / 1000;
+      if (k == k.roundToDouble()) return '${k.toInt()}k';
+      if (k == 7.5) return '7.5k';
+      return '${k}k';
+    }
+    return value.toInt().toString();
+  }
+
+  static String _formatLiters(double value) {
+    if (value == value.roundToDouble()) {
+      return '${value.toInt()} L';
+    }
+    return '${value.toStringAsFixed(1)} L';
+  }
+
+  static String _formatKm(double value) {
+    if (value == value.roundToDouble()) {
+      return '${value.toInt()} km';
+    }
+    return '${value.toStringAsFixed(1)} km';
   }
 }
