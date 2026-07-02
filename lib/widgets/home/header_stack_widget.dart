@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../theme/design_tokens.dart';
+
 class HeaderStackWidget extends StatelessWidget {
   final String? coverImageUrl;
   final String? avatarUrl;
@@ -25,7 +27,7 @@ class HeaderStackWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final surfaceColor = isDark
-        ? const Color(0xFF0B1220)
+        ? DesignTokens.darkBackground
         : const Color(0xFFF6F7FB);
 
     return Container(

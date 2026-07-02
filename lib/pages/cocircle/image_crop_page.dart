@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:crop_your_image/crop_your_image.dart';
 import 'package:image/image.dart' as img;
 
+import '../../theme/design_tokens.dart';
+
 class ImageCropPage extends StatefulWidget {
   final File imageFile;
 
@@ -86,7 +88,7 @@ class _ImageCropPageState extends State<ImageCropPage> {
         builder: (context) {
           final isDark = Theme.of(context).brightness == Brightness.dark;
           final backgroundColor = isDark
-              ? const Color(0xFF1A2335) // Dark blue-black mix
+              ? DesignTokens.darkBackground
               : const Color(0xFFE3F2FD); // Very light blue
           return Container(
             color: backgroundColor,

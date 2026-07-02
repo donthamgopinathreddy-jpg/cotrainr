@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/design_tokens.dart';
 import '../../services/notification_service.dart';
 import '../../services/meeting_storage_service.dart';
 import '../../repositories/notifications_repository.dart';
@@ -260,13 +261,17 @@ class _NotificationPageState extends State<NotificationPage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final pageBg =
+        isLight ? DesignTokens.lightBackground : DesignTokens.darkBackground;
+    final titleColor = DesignTokens.textPrimaryOf(context);
     final unreadCount = _notifications.where((n) => n.hasUnread).length;
     final totalCount = _notifications.length + _deletedNotifications.length;
 
     return Scaffold(
-      backgroundColor: cs.surface,
+      backgroundColor: pageBg,
       appBar: AppBar(
-        backgroundColor: cs.surface,
+        backgroundColor: pageBg,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: Padding(
@@ -291,18 +296,29 @@ class _NotificationPageState extends State<NotificationPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            ShaderMask(
-              shaderCallback: (bounds) => AppColors.stepsGradient.createShader(bounds),
-              child: const Text(
-                'Notifications',
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w800,
-                  height: 1.2,
-                  color: Colors.white,
-                  letterSpacing: -0.5,
+            Row(
+              children: [
+                ShaderMask(
+                  shaderCallback: (bounds) =>
+                      AppColors.stepsGradient.createShader(bounds),
+                  child: const Icon(
+                    Icons.notifications_rounded,
+                    color: Colors.white,
+                    size: 24,
+                  ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                Text(
+                  'Notifications',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                    height: 1.2,
+                    color: titleColor,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+              ],
             ),
             if (unreadCount > 0) ...[
               const SizedBox(height: 4),
@@ -311,7 +327,7 @@ class _NotificationPageState extends State<NotificationPage> {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w500,
-                  color: cs.onSurfaceVariant.withValues(alpha: 0.8),
+                  color: DesignTokens.textSecondaryOf(context),
                   height: 1.2,
                 ),
               ),
@@ -438,7 +454,6 @@ class _NotificationPageState extends State<NotificationPage> {
   }
 
   Widget _buildEmptyState(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -449,13 +464,13 @@ class _NotificationPageState extends State<NotificationPage> {
               width: 80,
               height: 80,
               decoration: BoxDecoration(
-                color: cs.surfaceContainerHighest,
+                color: DesignTokens.surfaceOf(context),
                 shape: BoxShape.circle,
               ),
               child: Icon(
                 Icons.notifications_none_rounded,
                 size: 40,
-                color: cs.onSurfaceVariant.withValues(alpha: 0.6),
+                color: DesignTokens.textSecondaryOf(context),
               ),
             ),
             const SizedBox(height: 24),
@@ -464,7 +479,7 @@ class _NotificationPageState extends State<NotificationPage> {
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w700,
-                color: cs.onSurface,
+                color: DesignTokens.textPrimaryOf(context),
               ),
             ),
             const SizedBox(height: 8),
@@ -473,7 +488,7 @@ class _NotificationPageState extends State<NotificationPage> {
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w400,
-                color: cs.onSurfaceVariant,
+                color: DesignTokens.textSecondaryOf(context),
               ),
               textAlign: TextAlign.center,
             ),

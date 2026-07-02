@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../theme/design_tokens.dart';
+import '../../widgets/home_v3/home_premium_theme.dart';
 import '../trainer/create_client_page.dart';
 
 class NutritionistMyClientsPage extends StatefulWidget {
@@ -93,8 +94,9 @@ class _NutritionistMyClientsPageState extends State<NutritionistMyClientsPage>
 
   @override
   Widget build(BuildContext context) {
-    final textPrimary = DesignTokens.textPrimaryOf(context);
-    final textSecondary = DesignTokens.textSecondaryOf(context);
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final textPrimary = HomePremiumTheme.primaryText(isLight);
+    final textSecondary = HomePremiumTheme.secondaryText(isLight);
     final surfaceColor = DesignTokens.surfaceOf(context);
     final borderColor = DesignTokens.borderColorOf(context);
 
@@ -123,20 +125,13 @@ class _NutritionistMyClientsPageState extends State<NutritionistMyClientsPage>
                       ),
                     ),
                     const SizedBox(width: 12),
-                    ShaderMask(
-                      shaderCallback: (rect) => const LinearGradient(
-                        colors: [Color(0xFF3ED598), Color(0xFF4DA3FF)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ).createShader(rect),
-                      child: Text(
-                        'MY CLIENTS',
-                        style: GoogleFonts.montserrat(
-                          fontSize: 30,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.2,
-                          color: Colors.white,
-                        ),
+                    Text(
+                      'MY CLIENTS',
+                      style: GoogleFonts.montserrat(
+                        fontSize: 30,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.2,
+                        color: textPrimary,
                       ),
                     ),
                     const Spacer(),

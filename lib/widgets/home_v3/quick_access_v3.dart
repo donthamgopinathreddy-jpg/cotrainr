@@ -1,18 +1,22 @@
-import 'dart:math' as math;
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../theme/app_colors.dart';
-import '../../theme/design_tokens.dart';
-import '../../theme/text_styles.dart';
-import 'home_premium_theme.dart';
-import '../common/pressable_card.dart';
 
-/// Quick actions — stacked deck carousel with layered depth and infinite loop.
+import '../../theme/app_colors.dart';
+import '../../theme/text_styles.dart';
+import '../common/pressable_card.dart';
+import 'home_premium_theme.dart';
+
+const _exploreHeaderGradient = LinearGradient(
+  colors: [AppColors.blue, AppColors.cyan],
+  begin: Alignment.topCenter,
+  end: Alignment.bottomCenter,
+);
+
+/// Premium "Explore" hub — asymmetrical 6-in-1 bento layout.
 class QuickAccessV3 extends ConsumerStatefulWidget {
   const QuickAccessV3({super.key});
 
@@ -21,46 +25,10 @@ class QuickAccessV3 extends ConsumerStatefulWidget {
 }
 
 class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
-  static const int _kLoopLength = 40000;
-  static const int _kInitialPage = 20000;
-
-  static const double _cardRadius = 24;
-  static const double _activeCardHeight = 136;
-  static const Duration _snapDuration = Duration(milliseconds: 300);
-
-  late final PageController _pageController;
-  int _lastSnappedPage = _kInitialPage;
-  double? _lastPageValue;
-  int _swipeDirection = 1;
-
-  @override
-  void initState() {
-    super.initState();
-    _pageController = PageController(initialPage: _kInitialPage);
-    _pageController.addListener(_onPageScroll);
-  }
-
-  void _onPageScroll() {
-    if (_pageController.hasClients) {
-      final p = _pageController.page!;
-      if (_lastPageValue != null) {
-        if (p > _lastPageValue! + 0.0001) {
-          _swipeDirection = 1;
-        } else if (p < _lastPageValue! - 0.0001) {
-          _swipeDirection = -1;
-        }
-      }
-      _lastPageValue = p;
-    }
-    if (mounted) setState(() {});
-  }
-
-  @override
-  void dispose() {
-    _pageController.removeListener(_onPageScroll);
-    _pageController.dispose();
-    super.dispose();
-  }
+  static const double _containerRadius = 30;
+  static const double _tileRadius = 26;
+  static const double _tileGap = 11;
+  static const double _parentPadding = 17;
 
   String get _role =>
       Supabase.instance.client.auth.currentUser?.userMetadata?['role']
@@ -68,109 +36,66 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
           .toLowerCase() ??
       'client';
 
-  static int _mod(int value, int length) {
-    if (length == 0) return 0;
-    return ((value % length) + length) % length;
-  }
-
-  static LinearGradient _cardGradient(
-    ColorScheme cs,
-    bool isLight,
-    LinearGradient source,
-  ) {
-    final blend = isLight ? 0.48 : 0.4;
-    final surface = isLight ? HomePremiumTheme.lightCreamCard : HomePremiumTheme.darkCard;
-    return LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [
-        Color.lerp(surface, source.colors.first, blend)!,
-        Color.lerp(surface, source.colors.last, blend)!,
-      ],
-    );
-  }
-
-  List<_QuickTileData> _itemsForRole(String userRole) {
-    final exclude = <String>[];
+  Map<String, _ExploreTileData> _tilesForRole(String userRole) {
     final isTrainer = userRole == 'trainer';
     final isNutritionist = userRole == 'nutritionist';
-    if (isTrainer || isNutritionist) {
-      exclude.addAll([
-        'BECOME A TRAINER',
-        'SUBSCRIPTION',
-        'AI PLANNER',
-        'Coach Notes',
-      ]);
-    }
-    return [
-      if (isTrainer)
-        _QuickTileData(
-          title: 'Client Notes',
-          icon: Icons.edit_note_rounded,
-          accent: const Color(0xFFE53935),
-          gradient: const LinearGradient(
-            colors: [Color(0xFFE53935), Color(0xFFFF8A80)],
-          ),
-          description: 'Capture session notes and progress for each client.',
-        ),
-      if (!isTrainer && !isNutritionist)
-        _QuickTileData(
-          title: 'Coach Notes',
-          icon: Icons.note_rounded,
-          accent: const Color(0xFFE53935),
-          gradient: const LinearGradient(
-            colors: [Color(0xFFE53935), Color(0xFFFF8A80)],
-          ),
-          description: 'Review guidance and notes from your coach.',
-        ),
-      _QuickTileData(
-        title: 'Video Sessions',
-        icon: Icons.videocam_rounded,
-        accent: const Color(0xFF7C6AE6),
-        gradient: const LinearGradient(
-          colors: [Color(0xFF7C6AE6), Color(0xFFB4A7FF)],
-        ),
-        description: 'Join or schedule live coaching sessions.',
-      ),
-      _QuickTileData(
+    final excludeTrainerOnly = isTrainer || isNutritionist;
+
+    final tiles = <String, _ExploreTileData>{
+      'Nutrition Goals': _ExploreTileData(
         title: 'Nutrition Goals',
+        subtitle: 'Calculate macros and improve daily.',
         icon: Icons.track_changes_rounded,
         accent: const Color(0xFF2EBD85),
-        gradient: const LinearGradient(
-          colors: [Color(0xFF2EBD85), Color(0xFF65E6B3)],
-        ),
-        description:
-            'Calculate calories, protein, carbs and fats based on your goal.',
+        ctaLabel: 'Go to goals',
       ),
-      if (!exclude.contains('AI PLANNER'))
-        _QuickTileData(
-          title: 'AI Planner',
-          icon: Icons.auto_awesome_rounded,
-          accent: const Color(0xFFFF9500),
-          gradient: const LinearGradient(
-            colors: [Color(0xFFFF9500), Color(0xFFFFD54F)],
-          ),
-          description: 'Build smart workout plans tailored to your goals.',
-        ),
-      if (!exclude.contains('BECOME A TRAINER'))
-        _QuickTileData(
-          title: 'Become a Trainer',
-          icon: Icons.school_rounded,
-          accent: AppColors.becomeTrainerAccent,
-          gradient: AppColors.becomeTrainerGradient,
-          description: 'Apply to coach clients and grow your practice.',
-        ),
-      if (!exclude.contains('SUBSCRIPTION'))
-        _QuickTileData(
-          title: 'Subscription',
-          icon: Icons.card_membership_rounded,
-          accent: const Color(0xFFE91E8C),
-          gradient: const LinearGradient(
-            colors: [Color(0xFFE91E8C), Color(0xFFFF6BB5)],
-          ),
-          description: 'Manage your plan and unlock premium features.',
-        ),
-    ];
+      'Video Sessions': _ExploreTileData(
+        title: 'Video Sessions',
+        subtitle: 'Join live sessions with your trainer.',
+        icon: Icons.videocam_rounded,
+        accent: const Color(0xFF8B7CF6),
+      ),
+    };
+
+    if (isTrainer) {
+      tiles['Client Notes'] = _ExploreTileData(
+        title: 'Client Notes',
+        subtitle: 'View trainer feedback & notes.',
+        icon: Icons.edit_note_rounded,
+        accent: const Color(0xFFFF6B6B),
+      );
+    } else if (!isNutritionist) {
+      tiles['Coach Notes'] = _ExploreTileData(
+        title: 'Coach Notes',
+        subtitle: 'View trainer feedback & notes.',
+        icon: Icons.note_rounded,
+        accent: const Color(0xFFFF6B6B),
+      );
+    }
+
+    if (!excludeTrainerOnly) {
+      tiles['AI Planner'] = _ExploreTileData(
+        title: 'AI Planner',
+        subtitle: 'Get a smart workout plan customized for you.',
+        icon: Icons.auto_awesome_rounded,
+        accent: const Color(0xFFFFB020),
+        showWaveDecoration: true,
+      );
+      tiles['Subscription'] = _ExploreTileData(
+        title: 'Subscription',
+        subtitle: 'Manage your plan and benefits.',
+        icon: Icons.workspace_premium_rounded,
+        accent: const Color(0xFFE91E8C),
+      );
+      tiles['Become a Trainer'] = _ExploreTileData(
+        title: 'Become a Trainer',
+        subtitle: 'Share your knowledge and grow with us.',
+        icon: Icons.school_rounded,
+        accent: AppColors.becomeTrainerAccent,
+      );
+    }
+
+    return tiles;
   }
 
   VoidCallback? _routeFor(BuildContext context, String title) {
@@ -192,556 +117,332 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
     }
   }
 
-  void _realignLoopIfNeeded(int page) {
-    const margin = 800;
-    if (page >= margin && page < _kLoopLength - margin) return;
-    final items = _itemsForRole(_role);
-    if (items.isEmpty) return;
+  @override
+  Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final tiles = _tilesForRole(_role);
+    if (tiles.isEmpty) return const SizedBox.shrink();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_pageController.hasClients) return;
-      final n = items.length;
-      final logical = _mod(page, n);
-      final mid = _kLoopLength ~/ 2;
-      final aligned = mid - (mid % n) + logical;
-      _pageController.jumpToPage(aligned);
-      _lastSnappedPage = aligned;
-    });
-  }
-
-  void _goToLogical(int logicalIndex) {
-    if (!_pageController.hasClients) return;
-    final items = _itemsForRole(_role);
-    final n = items.length;
-    if (n == 0) return;
-
-    final pos = _pageController.page ?? _kInitialPage.toDouble();
-    final p = pos.round();
-    final at = _mod(p, n);
-    final target = p - at + logicalIndex;
-    _pageController.animateToPage(
-      target,
-      duration: _snapDuration,
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 420),
       curve: Curves.easeOutCubic,
+      builder: (context, t, child) {
+        return Opacity(
+          opacity: t,
+          child: Transform.translate(
+            offset: Offset(0, 14 * (1 - t)),
+            child: child,
+          ),
+        );
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _ExploreSectionHeader(isLight: isLight),
+          const SizedBox(height: 14),
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(_containerRadius),
+              boxShadow: isLight
+                  ? HomePremiumTheme.softCardShadow(true)
+                  : const <BoxShadow>[],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(_containerRadius),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(
+                  sigmaX: isLight ? 2 : 14,
+                  sigmaY: isLight ? 2 : 14,
+                ),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(_containerRadius),
+                    color: isLight
+                        ? HomePremiumTheme.lightCreamCard.withValues(alpha: 0.97)
+                        : const Color(0xFF0A0A0A).withValues(alpha: 0.96),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(_parentPadding),
+                    child: _ExploreBentoGrid(
+                      tiles: tiles,
+                      isLight: isLight,
+                      role: _role,
+                      onTileTap: (tile) =>
+                          _routeFor(context, tile.title)?.call(),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
+}
 
-  void _onPageSnapped(int page) {
-    final items = _itemsForRole(_role);
-    if (items.isEmpty) return;
-    final n = items.length;
-    final logical = _mod(page, n);
-    final lastLogical = _mod(_lastSnappedPage, n);
-    if (logical != lastLogical) {
-      HapticFeedback.lightImpact();
-    }
-    _lastSnappedPage = page;
-    _realignLoopIfNeeded(page);
-    setState(() {});
-  }
+class _ExploreSectionHeader extends StatelessWidget {
+  final bool isLight;
 
-  double _logicalPageFraction(List<_QuickTileData> items) {
-    if (items.isEmpty) return 0;
-    final n = items.length;
-    final page = _pageController.hasClients
-        ? (_pageController.page ?? _kInitialPage.toDouble())
-        : _kInitialPage.toDouble();
-    final mod = page % n;
-    return mod < 0 ? mod + n : mod;
-  }
-
-  int _logicalIndex(List<_QuickTileData> items) {
-    if (items.isEmpty) return 0;
-    return _mod(_logicalPageFraction(items).round(), items.length);
-  }
-
-  /// Room for stacked layers without bottom clip/overflow.
-  double get _deckHeight => _activeCardHeight + 20 + 6;
+  const _ExploreSectionHeader({required this.isLight});
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isLight = Theme.of(context).brightness == Brightness.light;
-    final items = _itemsForRole(_role);
+    final titleColor = HomePremiumTheme.primaryText(isLight);
+    final headerGradient = isLight
+        ? const LinearGradient(
+            colors: [Color(0xFF3BA8D4), Color(0xFF4DA3FF)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          )
+        : _exploreHeaderGradient;
 
-    if (items.isEmpty) return const SizedBox.shrink();
-
-    final pageFraction = _logicalPageFraction(items);
-    final activeIndex = _logicalIndex(items);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
+    return Row(
       children: [
-        Row(
-          children: [
-            ShaderMask(
-              shaderCallback: (b) => const LinearGradient(
-                colors: [AppColors.blue, AppColors.purple],
-              ).createShader(b),
-              child: const Icon(Icons.bolt_rounded, size: 22, color: Colors.white),
-            ),
-            const SizedBox(width: 8),
-            Container(
-              width: 4,
-              height: 18,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [AppColors.purple, AppColors.blue],
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                ),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              'Quick Actions',
-              style: AppTextStyles.sectionTitle(
-                context,
-                color: HomePremiumTheme.primaryText(isLight),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          height: _deckHeight,
-          child: items.length == 1
-              ? _DeckCard(
-                  item: items[0],
-                  isLight: isLight,
-                  colorScheme: cs,
-                  isActive: true,
-                  onTap: () {
-                    HapticFeedback.lightImpact();
-                    _routeFor(context, items[0].title)?.call();
-                  },
-                )
-              : ClipRect(
-                  child: Stack(
-                    clipBehavior: Clip.hardEdge,
-                    children: [
-                      AnimatedBuilder(
-                        animation: _pageController,
-                        builder: (context, _) {
-                          final page = _pageController.hasClients
-                              ? (_pageController.page ?? _kInitialPage.toDouble())
-                              : _kInitialPage.toDouble();
-                          return _StackedDeck(
-                            page: page,
-                            swipeDirection: _swipeDirection,
-                            items: items,
-                            isLight: isLight,
-                            colorScheme: cs,
-                            cardHeight: _activeCardHeight,
-                            onActiveTap: (item) {
-                              HapticFeedback.lightImpact();
-                              _routeFor(context, item.title)?.call();
-                            },
-                          );
-                        },
-                      ),
-                      PageView.builder(
-                        controller: _pageController,
-                        physics: const BouncingScrollPhysics(
-                          parent: PageScrollPhysics(),
-                        ),
-                        itemCount: _kLoopLength,
-                        onPageChanged: _onPageSnapped,
-                        itemBuilder: (context, index) {
-                          final logical = _mod(index, items.length);
-                          return GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () {
-                              final current = _logicalIndex(items);
-                              if (current == logical) {
-                                HapticFeedback.lightImpact();
-                                _routeFor(context, items[logical].title)?.call();
-                              } else {
-                                _goToLogical(logical);
-                              }
-                            },
-                            child: const SizedBox.expand(),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-        ),
-        if (items.length > 1) ...[
-          const SizedBox(height: 10),
-          _AnimatedDotIndicator(
-            count: items.length,
-            pageFraction: pageFraction,
-            activeIndex: activeIndex,
-            accent: items[activeIndex].accent,
-            isLight: isLight,
-            onDotTap: _goToLogical,
+        ShaderMask(
+          shaderCallback: (bounds) => headerGradient.createShader(bounds),
+          child: const Icon(
+            Icons.bolt_rounded,
+            size: 22,
+            color: Colors.white,
           ),
-        ],
+        ),
+        const SizedBox(width: 8),
+        Container(
+          width: 4,
+          height: 18,
+          decoration: BoxDecoration(
+            gradient: headerGradient,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          'Explore',
+          style: AppTextStyles.sectionTitle(context, color: titleColor),
+        ),
       ],
     );
   }
 }
 
-class _StackLayerStyle {
-  final double scale;
-  final double opacity;
-  final double offsetY;
-  final double elevation;
-
-  const _StackLayerStyle({
-    required this.scale,
-    required this.opacity,
-    required this.offsetY,
-    required this.elevation,
-  });
-
-  static const rest0 = _StackLayerStyle(
-    scale: 1.0,
-    opacity: 1.0,
-    offsetY: 0,
-    elevation: 12,
-  );
-  static const rest1 = _StackLayerStyle(
-    scale: 0.94,
-    opacity: 0.8,
-    offsetY: 12,
-    elevation: 6,
-  );
-  static const rest2 = _StackLayerStyle(
-    scale: 0.88,
-    opacity: 0.6,
-    offsetY: 24,
-    elevation: 2,
-  );
-
-  _StackLayerStyle lerp(_StackLayerStyle other, double t) {
-    final clamped = t.clamp(0.0, 1.0);
-    return _StackLayerStyle(
-      scale: scale + (other.scale - scale) * clamped,
-      opacity: opacity + (other.opacity - opacity) * clamped,
-      offsetY: offsetY + (other.offsetY - offsetY) * clamped,
-      elevation: elevation + (other.elevation - elevation) * clamped,
-    );
-  }
-}
-
-class _StackedDeck extends StatelessWidget {
-  final double page;
-  final int swipeDirection;
-  final List<_QuickTileData> items;
+class _ExploreBentoGrid extends StatelessWidget {
+  final Map<String, _ExploreTileData> tiles;
   final bool isLight;
-  final ColorScheme colorScheme;
-  final double cardHeight;
-  final ValueChanged<_QuickTileData> onActiveTap;
+  final String role;
+  final ValueChanged<_ExploreTileData> onTileTap;
 
-  const _StackedDeck({
-    required this.page,
-    required this.swipeDirection,
-    required this.items,
+  const _ExploreBentoGrid({
+    required this.tiles,
     required this.isLight,
-    required this.colorScheme,
-    required this.cardHeight,
-    required this.onActiveTap,
+    required this.role,
+    required this.onTileTap,
   });
 
-  int _mod(int value) => _QuickAccessV3State._mod(value, items.length);
+  static const _gap = _QuickAccessV3State._tileGap;
+  static const _leftFlex = 3;
+  static const _rightFlex = 2;
 
-  double get _logicalPage {
-    final n = items.length;
-    final mod = page % n;
-    return mod < 0 ? mod + n : mod;
-  }
+  _ExploreTileData? _get(String key) => tiles[key];
 
   @override
   Widget build(BuildContext context) {
-    final n = items.length;
-    final lp = _logicalPage;
-    final base = lp.floor();
-    final frac = lp - base;
-    final width = MediaQuery.sizeOf(context).width;
+    final isTrainer = role == 'trainer';
+    final isNutritionist = role == 'nutritionist';
+    final isClient = !isTrainer && !isNutritionist;
 
-    // At rest — show a stable three-layer stack.
-    if (frac < 0.002 || frac > 0.998) {
-      final focus = frac > 0.998 ? _mod(base + 1) : _mod(base);
-      return _restStack(context, focus, width);
-    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        final topH = (w * 0.42).clamp(130.0, 152.0);
+        final aiH = (w * 0.18).clamp(56.0, 64.0);
+        final botH = (w * 0.17).clamp(54.0, 62.0);
 
-    final forward = swipeDirection >= 0;
-    final raw = forward ? frac : 1 - frac;
-    final slide = Curves.easeOutCubic.transform(raw);
-
-    final outgoing = forward ? _mod(base) : _mod(base + 1);
-    final incoming = forward ? _mod(base + 1) : _mod(base);
-    final deepest = forward ? _mod(base + 2) : _mod(base - 1);
-
-    final layers = <Widget>[];
-
-    if (n > 2) {
-      layers.add(
-        _positionedCard(
-          item: items[deepest],
-          style: _StackLayerStyle.rest2.lerp(_StackLayerStyle.rest1, slide),
-          isActive: false,
-          width: width,
-        ),
-      );
-    }
-
-    layers.add(
-      _positionedCard(
-        item: items[incoming],
-        style: _StackLayerStyle.rest1.lerp(_StackLayerStyle.rest0, slide),
-        isActive: slide > 0.18,
-        width: width,
-        onTap: slide > 0.55 ? () => onActiveTap(items[incoming]) : null,
-      ),
-    );
-
-    layers.add(
-      _positionedCard(
-        item: items[outgoing],
-        style: _StackLayerStyle.rest0,
-        isActive: slide < 0.35,
-        width: width,
-        slideX: (forward ? -1 : 1) * slide * width * 0.42,
-        opacityOverride: (1 - slide).clamp(0.0, 1.0),
-        scaleOverride: 1 - slide * 0.045,
-        onTap: slide < 0.25 ? () => onActiveTap(items[outgoing]) : null,
-      ),
-    );
-
-    return Stack(
-      clipBehavior: Clip.hardEdge,
-      alignment: Alignment.topCenter,
-      children: layers,
+        if (isNutritionist) {
+          return _buildNutritionistLayout(topH);
+        }
+        if (isTrainer) {
+          return _buildTrainerLayout(topH);
+        }
+        if (isClient) {
+          return _buildClientLayout(topH, aiH, botH);
+        }
+        return const SizedBox.shrink();
+      },
     );
   }
 
-  Widget _restStack(BuildContext context, int focusIndex, double width) {
-    final layers = <Widget>[];
+  Widget _buildClientLayout(double topH, double aiH, double botH) {
+    final nutrition = _get('Nutrition Goals')!;
+    final coach = _get('Coach Notes')!;
+    final video = _get('Video Sessions')!;
+    final ai = _get('AI Planner')!;
+    final become = _get('Become a Trainer')!;
+    final subscription = _get('Subscription')!;
 
-    if (items.length > 2) {
-      layers.add(
-        _positionedCard(
-          item: items[_mod(focusIndex + 2)],
-          style: _StackLayerStyle.rest2,
-          isActive: false,
-          width: width,
-        ),
-      );
-    }
-
-    if (items.length > 1) {
-      layers.add(
-        _positionedCard(
-          item: items[_mod(focusIndex + 1)],
-          style: _StackLayerStyle.rest1,
-          isActive: false,
-          width: width,
-        ),
-      );
-    }
-
-    layers.add(
-      _positionedCard(
-        item: items[focusIndex],
-        style: _StackLayerStyle.rest0,
-        isActive: true,
-        width: width,
-        onTap: () => onActiveTap(items[focusIndex]),
-      ),
-    );
-
-    return Stack(
-      clipBehavior: Clip.hardEdge,
-      alignment: Alignment.topCenter,
-      children: layers,
-    );
-  }
-
-  Widget _positionedCard({
-    required _QuickTileData item,
-    required _StackLayerStyle style,
-    required bool isActive,
-    required double width,
-    double slideX = 0,
-    double? opacityOverride,
-    double? scaleOverride,
-    VoidCallback? onTap,
-  }) {
-    final opacity = opacityOverride ?? style.opacity;
-    final scale = scaleOverride ?? style.scale;
-
-    return Positioned(
-      top: style.offsetY,
-      left: 0,
-      right: 0,
-      child: Transform.translate(
-        offset: Offset(slideX, 0),
-        child: Transform.scale(
-          scale: scale,
-          alignment: Alignment.topCenter,
-          child: Opacity(
-            opacity: opacity.clamp(0.0, 1.0),
-            child: _DeckCard(
-              item: item,
-              isLight: isLight,
-              colorScheme: colorScheme,
-              isActive: isActive,
-              elevation: style.elevation,
-              height: cardHeight,
-              onTap: onTap,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _DeckCard extends StatelessWidget {
-  final _QuickTileData item;
-  final bool isLight;
-  final ColorScheme colorScheme;
-  final bool isActive;
-  final double elevation;
-  final double height;
-  final VoidCallback? onTap;
-
-  const _DeckCard({
-    required this.item,
-    required this.isLight,
-    required this.colorScheme,
-    required this.isActive,
-    this.elevation = 12,
-    this.height = 136,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final fill = _QuickAccessV3State._cardGradient(
-      colorScheme,
-      isLight,
-      item.gradient,
-    );
-    final accent = item.accent;
-
-    return PressableCard(
-      onTap: onTap,
-      borderRadius: _QuickAccessV3State._cardRadius,
-      enableHaptic: onTap != null,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: fill,
-          borderRadius: BorderRadius.circular(_QuickAccessV3State._cardRadius),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: isLight ? 0.07 : 0.28),
-              blurRadius: elevation,
-              offset: Offset(0, elevation / 3),
-            ),
-          ],
-        ),
-        child: SizedBox(
-          height: height,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 14, 18, 12),
-            child: isActive ? _activeContent(accent) : _compactContent(accent),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _activeContent(Color accent) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
+        SizedBox(
+          height: topH,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: isLight ? 0.2 : 0.26),
-                  borderRadius: BorderRadius.circular(11),
-                ),
-                child: Icon(item.icon, color: accent, size: 20),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                item.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: HomePremiumTheme.primaryText(isLight),
-                  letterSpacing: -0.3,
-                  height: 1.15,
+              Expanded(
+                flex: _leftFlex,
+                child: _BentoTile(
+                  item: nutrition,
+                  size: _BentoTileSize.featured,
+                  isLight: isLight,
+                  onTap: () => onTileTap(nutrition),
                 ),
               ),
-              const SizedBox(height: 3),
-              Text(
-                item.description,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  height: 1.25,
-                  color: HomePremiumTheme.secondaryText(isLight),
+              const SizedBox(width: _gap),
+              Expanded(
+                flex: _rightFlex,
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: _BentoTile(
+                        item: coach,
+                        size: _BentoTileSize.medium,
+                        isLight: isLight,
+                        onTap: () => onTileTap(coach),
+                      ),
+                    ),
+                    const SizedBox(height: _gap),
+                    Expanded(
+                      child: _BentoTile(
+                        item: video,
+                        size: _BentoTileSize.medium,
+                        isLight: isLight,
+                        onTap: () => onTileTap(video),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
         ),
-        const SizedBox(width: 10),
-        Padding(
-          padding: const EdgeInsets.only(top: 2),
-          child: Icon(
-            item.icon,
-            size: 40,
-            color: accent.withValues(alpha: isLight ? 0.32 : 0.42),
+        const SizedBox(height: _gap),
+        SizedBox(
+          height: aiH,
+          width: double.infinity,
+          child: _BentoTile(
+            item: ai,
+            size: _BentoTileSize.fullWidth,
+            isLight: isLight,
+            onTap: () => onTileTap(ai),
+          ),
+        ),
+        const SizedBox(height: _gap),
+        SizedBox(
+          height: botH,
+          child: Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: _BentoTile(
+                  item: become,
+                  size: _BentoTileSize.bottom,
+                  isLight: isLight,
+                  onTap: () => onTileTap(become),
+                ),
+              ),
+              const SizedBox(width: _gap),
+              Expanded(
+                flex: 3,
+                child: _BentoTile(
+                  item: subscription,
+                  size: _BentoTileSize.bottomWide,
+                  isLight: isLight,
+                  onTap: () => onTileTap(subscription),
+                ),
+              ),
+            ],
           ),
         ),
       ],
     );
   }
 
-  Widget _compactContent(Color accent) {
-    return Align(
-      alignment: Alignment.centerLeft,
+  Widget _buildTrainerLayout(double topH) {
+    final nutrition = _get('Nutrition Goals')!;
+    final notes = _get('Client Notes')!;
+    final video = _get('Video Sessions')!;
+
+    return SizedBox(
+      height: topH,
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: isLight ? 0.2 : 0.26),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(item.icon, color: accent, size: 17),
-          ),
-          const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              item.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: HomePremiumTheme.primaryText(isLight),
-              ),
+            flex: _leftFlex,
+            child: _BentoTile(
+              item: nutrition,
+              size: _BentoTileSize.featured,
+              isLight: isLight,
+              onTap: () => onTileTap(nutrition),
+            ),
+          ),
+          const SizedBox(width: _gap),
+          Expanded(
+            flex: _rightFlex,
+            child: Column(
+              children: [
+                Expanded(
+                  child: _BentoTile(
+                    item: notes,
+                    size: _BentoTileSize.medium,
+                    isLight: isLight,
+                    onTap: () => onTileTap(notes),
+                  ),
+                ),
+                const SizedBox(height: _gap),
+                Expanded(
+                  child: _BentoTile(
+                    item: video,
+                    size: _BentoTileSize.medium,
+                    isLight: isLight,
+                    onTap: () => onTileTap(video),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNutritionistLayout(double topH) {
+    final nutrition = _get('Nutrition Goals')!;
+    final video = _get('Video Sessions')!;
+
+    return SizedBox(
+      height: topH,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            flex: _leftFlex,
+            child: _BentoTile(
+              item: nutrition,
+              size: _BentoTileSize.featured,
+              isLight: isLight,
+              onTap: () => onTileTap(nutrition),
+            ),
+          ),
+          const SizedBox(width: _gap),
+          Expanded(
+            flex: _rightFlex,
+            child: _BentoTile(
+              item: video,
+              size: _BentoTileSize.featuredCompact,
+              isLight: isLight,
+              onTap: () => onTileTap(video),
             ),
           ),
         ],
@@ -750,84 +451,510 @@ class _DeckCard extends StatelessWidget {
   }
 }
 
-class _AnimatedDotIndicator extends StatelessWidget {
-  final int count;
-  final double pageFraction;
-  final int activeIndex;
-  final Color accent;
+enum _BentoTileSize {
+  featured,
+  featuredCompact,
+  medium,
+  fullWidth,
+  bottom,
+  bottomWide,
+}
+
+class _BentoTile extends StatelessWidget {
+  final _ExploreTileData item;
+  final _BentoTileSize size;
   final bool isLight;
-  final ValueChanged<int> onDotTap;
+  final VoidCallback? onTap;
 
-  const _AnimatedDotIndicator({
-    required this.count,
-    required this.pageFraction,
-    required this.activeIndex,
-    required this.accent,
+  const _BentoTile({
+    required this.item,
+    required this.size,
     required this.isLight,
-    required this.onDotTap,
+    this.onTap,
   });
-
-  double _focusForDot(int index) {
-    final delta = (pageFraction - index).abs();
-    final wrapped = math.min(delta, count - delta);
-    return (1 - wrapped).clamp(0.0, 1.0);
-  }
 
   @override
   Widget build(BuildContext context) {
-    final muted = HomePremiumTheme.secondaryText(isLight).withValues(alpha: 0.28);
-
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(count, (i) {
-        final focus = _focusForDot(i);
-        final width = 6 + focus * 12;
-        final height = 6.0;
-        final color = Color.lerp(muted, accent, focus)!;
-
-        return GestureDetector(
-          onTap: () {
-            HapticFeedback.selectionClick();
-            onDotTap(i);
-          },
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 280),
-            curve: Curves.easeOutCubic,
-            margin: const EdgeInsets.symmetric(horizontal: 4),
-            width: width,
-            height: height,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(999),
-              color: color,
-              boxShadow: focus > 0.6
-                  ? [
-                      BoxShadow(
-                        color: accent.withValues(alpha: 0.35),
-                        blurRadius: 6,
-                        offset: const Offset(0, 1),
+    return PressableCard(
+      onTap: onTap,
+      borderRadius: _QuickAccessV3State._tileRadius,
+      pressScale: 0.97,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(_QuickAccessV3State._tileRadius),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            _SoftTileSurface(isLight: isLight, item: item),
+            Positioned(
+              right: 4,
+              bottom: 2,
+              child: IgnorePointer(
+                child: Icon(
+                  item.icon,
+                  size: _watermarkSizeForTile(),
+                  color: item.accentFor(isLight).withValues(
+                        alpha: isLight ? 0.10 : 0.08,
                       ),
-                    ]
-                  : null,
+                ),
+              ),
+            ),
+            Padding(
+              padding: _paddingForSize(),
+              child: _contentForSize(isLight),
+            ),
+            if (item.showWaveDecoration)
+              Positioned(
+                right: 0,
+                top: 0,
+                bottom: 0,
+                width: 64,
+                child: IgnorePointer(
+                  child: _AiWaveDecoration(
+                    color: item.accentFor(isLight),
+                    isLight: isLight,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  EdgeInsets _paddingForSize() {
+    return switch (size) {
+      _BentoTileSize.featured => const EdgeInsets.fromLTRB(13, 12, 12, 11),
+      _BentoTileSize.featuredCompact => const EdgeInsets.all(12),
+      _BentoTileSize.medium => const EdgeInsets.symmetric(
+          horizontal: 9,
+          vertical: 8,
+        ),
+      _BentoTileSize.fullWidth => const EdgeInsets.symmetric(
+          horizontal: 13,
+          vertical: 8,
+        ),
+      _BentoTileSize.bottom => const EdgeInsets.symmetric(
+          horizontal: 9,
+          vertical: 8,
+        ),
+      _BentoTileSize.bottomWide => const EdgeInsets.symmetric(
+          horizontal: 11,
+          vertical: 8,
+        ),
+    };
+  }
+
+  double _watermarkSizeForTile() {
+    return switch (size) {
+      _BentoTileSize.featured => 52,
+      _BentoTileSize.featuredCompact => 48,
+      _BentoTileSize.medium => 36,
+      _BentoTileSize.fullWidth => 40,
+      _BentoTileSize.bottom => 34,
+      _BentoTileSize.bottomWide => 38,
+    };
+  }
+
+  Widget _contentForSize(bool isLight) {
+    return switch (size) {
+      _BentoTileSize.featured => _featuredContent(isLight),
+      _BentoTileSize.featuredCompact => _featuredCompactContent(isLight),
+      _BentoTileSize.medium => _mediumContent(isLight),
+      _BentoTileSize.fullWidth => _fullWidthContent(isLight),
+      _BentoTileSize.bottom => _bottomContent(isLight, showSubtitle: false),
+      _BentoTileSize.bottomWide => _bottomContent(isLight, showSubtitle: true),
+    };
+  }
+
+  Widget _iconBadge(bool isLight, {double iconSize = 20, double box = 36}) {
+    final accent = item.accentFor(isLight);
+    final radius = box * 0.32;
+    return Container(
+      width: box,
+      height: box,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(radius),
+        color: accent.withValues(alpha: isLight ? 0.14 : 0.16),
+        boxShadow: [
+          BoxShadow(
+            color: accent.withValues(alpha: isLight ? 0.12 : 0.08),
+            blurRadius: isLight ? 8 : 6,
+            spreadRadius: -1,
+          ),
+        ],
+      ),
+      child: Icon(item.icon, color: accent, size: iconSize),
+    );
+  }
+
+  Widget _titleText(
+    bool isLight, {
+    double fontSize = 12,
+    int maxLines = 2,
+  }) {
+    return Text(
+      item.title,
+      maxLines: maxLines,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        fontSize: fontSize,
+        fontWeight: FontWeight.w700,
+        height: 1.12,
+        letterSpacing: -0.2,
+        color: HomePremiumTheme.primaryText(isLight),
+      ),
+    );
+  }
+
+  Widget _subtitleText(bool isLight, {int maxLines = 2, double fontSize = 10}) {
+    return Text(
+      item.subtitle,
+      maxLines: maxLines,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        fontSize: fontSize,
+        fontWeight: FontWeight.w500,
+        height: 1.2,
+        color: HomePremiumTheme.secondaryText(isLight),
+      ),
+    );
+  }
+
+  Widget _ctaChip(bool isLight) {
+    final accent = item.accentFor(isLight);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: isLight ? 0.16 : 0.20),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            item.ctaLabel!,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: accent,
             ),
           ),
+          Icon(
+            Icons.arrow_forward_rounded,
+            size: 12,
+            color: accent,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _featuredContent(bool isLight) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final h = constraints.maxHeight;
+        final showCta = item.ctaLabel != null && h >= 138;
+        final showSubtitle = h >= 108;
+        final subtitleLines = h >= 128 ? 2 : 1;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _iconBadge(isLight, box: h >= 140 ? 40 : 36, iconSize: 20),
+            Expanded(
+              child: Align(
+                alignment: Alignment.bottomLeft,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _titleText(isLight, fontSize: 13, maxLines: 2),
+                    if (showSubtitle) ...[
+                      const SizedBox(height: 3),
+                      _subtitleText(
+                        isLight,
+                        maxLines: subtitleLines,
+                        fontSize: 9.5,
+                      ),
+                    ],
+                    if (showCta) ...[
+                      const SizedBox(height: 7),
+                      _ctaChip(isLight),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
         );
-      }),
+      },
+    );
+  }
+
+  Widget _featuredCompactContent(bool isLight) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final showSubtitle = constraints.maxHeight >= 100;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _iconBadge(isLight, box: 36, iconSize: 19),
+            Expanded(
+              child: Align(
+                alignment: Alignment.bottomLeft,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _titleText(isLight, fontSize: 13, maxLines: 2),
+                    if (showSubtitle) ...[
+                      const SizedBox(height: 3),
+                      _subtitleText(isLight, maxLines: 2, fontSize: 9.5),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _mediumContent(bool isLight) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final showSubtitle = constraints.maxHeight >= 62;
+        return Row(
+          children: [
+            _iconBadge(isLight, box: 30, iconSize: 16),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _titleText(isLight, fontSize: 10.5, maxLines: 2),
+                  if (showSubtitle) ...[
+                    const SizedBox(height: 2),
+                    _subtitleText(isLight, maxLines: 1, fontSize: 8.5),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _fullWidthContent(bool isLight) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final subtitleLines = constraints.maxHeight >= 60 ? 2 : 1;
+        return Row(
+          children: [
+            _iconBadge(isLight, box: 34, iconSize: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _titleText(isLight, fontSize: 12, maxLines: 1),
+                  const SizedBox(height: 2),
+                  _subtitleText(
+                    isLight,
+                    maxLines: subtitleLines,
+                    fontSize: 9.5,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 40),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _bottomContent(bool isLight, {required bool showSubtitle}) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final canShowSubtitle =
+            showSubtitle && constraints.maxHeight >= 56;
+        return Row(
+          children: [
+            _iconBadge(isLight, box: 30, iconSize: 16),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _titleText(
+                    isLight,
+                    fontSize: 10.5,
+                    maxLines: canShowSubtitle ? 2 : 1,
+                  ),
+                  if (canShowSubtitle) ...[
+                    const SizedBox(height: 2),
+                    _subtitleText(isLight, maxLines: 1, fontSize: 8.5),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
 
-class _QuickTileData {
+/// Soft gradient tile surface with subtle inner depth — no borders.
+class _SoftTileSurface extends StatelessWidget {
+  final bool isLight;
+  final _ExploreTileData item;
+
+  const _SoftTileSurface({required this.isLight, required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = item.accentFor(isLight);
+    final base = isLight
+        ? HomePremiumTheme.lightWarmBg
+        : const Color(0xFF0A0A0A);
+    final tintStart = Color.lerp(
+      isLight ? HomePremiumTheme.lightCreamCard : base,
+      accent,
+      isLight ? 0.20 : 0.07,
+    )!;
+    final tintEnd = Color.lerp(
+      isLight ? HomePremiumTheme.lightWarmBg : base,
+      accent,
+      isLight ? 0.10 : 0.11,
+    )!;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(_QuickAccessV3State._tileRadius),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [tintStart, tintEnd],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: isLight
+                ? const Color(0xFF2A2D33).withValues(alpha: 0.05)
+                : Colors.black.withValues(alpha: 0.22),
+            blurRadius: isLight ? 12 : 10,
+            offset: Offset(0, isLight ? 4 : 3),
+          ),
+        ],
+      ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(_QuickAccessV3State._tileRadius),
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Colors.white.withValues(alpha: isLight ? 0.65 : 0.05),
+              Colors.transparent,
+              isLight
+                  ? const Color(0xFF2A2D33).withValues(alpha: 0.04)
+                  : Colors.black.withValues(alpha: 0.14),
+            ],
+            stops: const [0.0, 0.45, 1.0],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AiWaveDecoration extends StatelessWidget {
+  final Color color;
+  final bool isLight;
+
+  const _AiWaveDecoration({required this.color, required this.isLight});
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _WavePainter(
+        color: color.withValues(alpha: isLight ? 0.16 : 0.12),
+      ),
+    );
+  }
+}
+
+class _WavePainter extends CustomPainter {
+  final Color color;
+
+  _WavePainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+
+    for (var i = 0; i < 3; i++) {
+      final path = Path();
+      final yOffset = size.height * (0.2 + i * 0.28);
+      path.moveTo(0, yOffset);
+      final waveW = size.width / 2.5;
+      for (var x = 0.0; x <= size.width; x += waveW) {
+        path.quadraticBezierTo(
+          x + waveW * 0.5,
+          yOffset + (i.isEven ? 5 : -5),
+          x + waveW,
+          yOffset,
+        );
+      }
+      canvas.drawPath(path, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _WavePainter oldDelegate) =>
+      oldDelegate.color != color;
+}
+
+class _ExploreTileData {
   final String title;
-  final String description;
+  final String subtitle;
   final IconData icon;
   final Color accent;
-  final LinearGradient gradient;
+  final String? ctaLabel;
+  final bool showWaveDecoration;
 
-  const _QuickTileData({
+  const _ExploreTileData({
     required this.title,
+    required this.subtitle,
     required this.icon,
     required this.accent,
-    required this.gradient,
-    required this.description,
+    this.ctaLabel,
+    this.showWaveDecoration = false,
   });
+
+  /// Slightly deeper accents in light mode for contrast on cream tiles.
+  Color accentFor(bool isLight) {
+    if (!isLight) return accent;
+    return switch (title) {
+      'Nutrition Goals' => const Color(0xFF1FA876),
+      'Coach Notes' || 'Client Notes' => const Color(0xFFE85555),
+      'Video Sessions' => const Color(0xFF6D5CE6),
+      'AI Planner' => const Color(0xFFE89A10),
+      'Become a Trainer' => const Color(0xFF3A96C4),
+      'Subscription' => const Color(0xFFD4187A),
+      _ => Color.lerp(accent, HomePremiumTheme.lightCharcoalText, 0.10)!,
+    };
+  }
 }

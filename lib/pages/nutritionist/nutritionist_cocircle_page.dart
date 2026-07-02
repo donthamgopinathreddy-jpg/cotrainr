@@ -343,7 +343,7 @@ class _NutritionistCocirclePageState extends State<NutritionistCocirclePage>
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final backgroundColor = isDark
-        ? const Color(0xFF1A2335) // Dark blue-black mix
+        ? DesignTokens.darkBackground
         : const Color(0xFFE3F2FD); // Very light blue
 
     return Container(

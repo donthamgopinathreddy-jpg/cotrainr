@@ -6,28 +6,29 @@ import 'package:flutter/material.dart';
 /// Production-ready design system with full light/dark theme support
 class DesignTokens {
   // ========== DARK THEME COLORS ==========
-  // Pure dark black/grey - no color blend
-  static const Color darkBackground = Color(0xFF14161C); // Deep charcoal
-  static const Color darkSurface = Color(0xFF1C1F26);
-  static const Color darkSurfaceElevated = Color(0xFF252932);
-  static const Color darkTextPrimary = Color(0xFFF2F2F4); // Soft white
-  static const Color darkTextSecondary = Color(0xFF9CA3AF); // Muted gray
+  static const Color darkBackground = Color(0xFF000000);
+  static const Color darkSurface = Color(0xFF0A0A0A);
+  static const Color darkSurfaceElevated = Color(0xFF111111);
+  /// Bottom navigation bar — slightly lifted grey-black on pure-black pages.
+  static const Color darkNavSurface = Color(0xFF171A20);
+  static const Color darkTextPrimary = Color(0xFFFFFFFF);
+  static const Color darkTextSecondary = Color(0xFFA1A1AA);
   static const Color darkTextTertiary = Color(0xFF6B7280);
 
   // ========== LIGHT THEME COLORS ==========
   static const Color lightScaffoldBackground = Color(0xFFFFFFFF);
   static const Color lightPageBackground = Color(0xFFFFFFFF);
-  static const Color lightCardBackground = Color(0xFFFFFFFF);
+  static const Color lightCardBackground = Color(0xFFFAFAFA);
   static const Color lightMutedCardBackground = Color(0xFFF8F9FB);
-  static const Color lightBorder = Color(0xFFE8EAF0);
+  static const Color lightBorder = Color(0xFFECECEC);
 
   /// Page / scaffold background (alias for [lightPageBackground]).
   static const Color lightBackground = lightPageBackground;
   /// Default card / input surface in light mode.
-  static const Color lightSurface = lightMutedCardBackground;
-  static const Color lightSurfaceElevated = lightCardBackground;
-  static const Color lightTextPrimary = Color(0xFF1F2430);
-  static const Color lightTextSecondary = Color(0xFF6F7683);
+  static const Color lightSurface = lightCardBackground;
+  static const Color lightSurfaceElevated = Color(0xFFFFFFFF);
+  static const Color lightTextPrimary = Color(0xFF111111);
+  static const Color lightTextSecondary = Color(0xFF6B7280);
   static const Color lightTextTertiary = Color(0xFF9CA3AF);
 
   // ========== ACCENT COLORS (Theme-agnostic) ==========
@@ -109,7 +110,7 @@ class DesignTokens {
 
   static Color borderColorOf(BuildContext context) {
     return Theme.of(context).brightness == Brightness.dark
-        ? Colors.white.withValues(alpha: 0.10)
+        ? Colors.white.withValues(alpha: 0.06)
         : lightBorder;
   }
 
@@ -188,15 +189,22 @@ class DesignTokens {
     end: Alignment.bottomRight,
   );
 
-  // Discover gradient (Violet) - Discover tab + page accents
-  static const Color discoverViolet = Color(0xFF9333EA);
-  static const Color discoverVioletDeep = Color(0xFF6D28D9);
+  // Discover accents — warm orange filter pills (no purple)
+  static const Color discoverOrange = Color(0xFFFF9F1A);
+  static const Color discoverOrangeDeep = Color(0xFFFFB703);
   static const LinearGradient discoverGradient = LinearGradient(
-    colors: [Color(0xFFA855F7), Color(0xFF7C3AED)],
+    colors: [discoverOrange, discoverOrangeDeep],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
-  static const Color discoverAccent = discoverViolet;
+  static const Color discoverAccent = discoverOrange;
+
+  /// Page header icon gradient for Discover tab.
+  static const LinearGradient discoverHeaderIconGradient = LinearGradient(
+    colors: [accentOrange, accentAmber],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
 
   // Profile gradient (Red to Pink) - used in Profile navigation
   static const LinearGradient profileGradient = LinearGradient(

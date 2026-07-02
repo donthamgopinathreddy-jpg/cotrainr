@@ -127,7 +127,7 @@ class _TrainerMyClientsPageState extends State<TrainerMyClientsPage>
     final isLight = Theme.of(context).brightness == Brightness.light;
     final textPrimary = HomePremiumTheme.primaryText(isLight);
     final textSecondary = HomePremiumTheme.secondaryText(isLight);
-    final bg = isLight ? HomePremiumTheme.lightWarmBg : HomePremiumTheme.darkCharcoal;
+    final bg = isLight ? HomePremiumTheme.lightWarmBg : DesignTokens.darkBackground;
     final cardColor = isLight ? HomePremiumTheme.lightCreamCard : HomePremiumTheme.darkCard;
 
     return Scaffold(

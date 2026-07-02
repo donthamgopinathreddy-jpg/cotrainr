@@ -9,6 +9,7 @@ import '../../repositories/profile_repository.dart';
 import '../../repositories/posts_repository.dart';
 import '../../repositories/follow_repository.dart';
 import '../../repositories/messages_repository.dart';
+import '../../theme/design_tokens.dart';
 
 class UserProfilePage extends StatefulWidget {
   final bool isOwnProfile;
@@ -329,7 +330,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final backgroundColor = isDark
-        ? const Color(0xFF1A2335) // Dark blue-black mix
+        ? DesignTokens.darkBackground
         : const Color(0xFFE3F2FD); // Very light blue
 
     return Scaffold(

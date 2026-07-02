@@ -6,8 +6,8 @@ import 'design_tokens.dart';
 
 /// Premium muted palette for metric insight screens (matches Home dashboard).
 class InsightMetricTheme {
-  static const graphCardBg = Color(0xFF171B26);
-  static const surfaceCard = Color(0xFF1C1F26);
+  static const graphCardBg = Color(0xFF0A0A0A);
+  static const surfaceCard = Color(0xFF0A0A0A);
   static const pageBg = HomePremiumTheme.darkCharcoal;
 
   static Color pageBgOf(BuildContext context) {

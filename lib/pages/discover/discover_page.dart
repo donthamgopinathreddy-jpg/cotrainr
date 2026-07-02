@@ -684,7 +684,7 @@ class _DiscoverHeaderRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const discoverGradient = _discoverGradient;
+    final titleColor = DesignTokens.textPrimaryOf(context);
 
     return SizedBox(
       height: 56,
@@ -701,8 +701,9 @@ class _DiscoverHeaderRow extends StatelessWidget {
               );
             },
             child: ShaderMask(
-              shaderCallback: (rect) => discoverGradient.createShader(rect),
-              child: Icon(
+              shaderCallback: (rect) =>
+                  DesignTokens.discoverHeaderIconGradient.createShader(rect),
+              child: const Icon(
                 Icons.explore_outlined,
                 size: 26,
                 color: Colors.white,
@@ -723,16 +724,13 @@ class _DiscoverHeaderRow extends StatelessWidget {
                 ),
               );
             },
-            child: ShaderMask(
-              shaderCallback: (rect) => discoverGradient.createShader(rect),
-              child: Text(
-                'DISCOVER',
-                style: GoogleFonts.montserrat(
-                  fontSize: 30,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.2,
-                  color: Colors.white,
-                ),
+            child: Text(
+              'DISCOVER',
+              style: GoogleFonts.montserrat(
+                fontSize: 30,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.2,
+                color: titleColor,
               ),
             ),
           ),
@@ -774,24 +772,28 @@ class _DiscoverSearchBarState extends State<_DiscoverSearchBar> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final barColor = isDark ? DesignTokens.darkSurface : Colors.white;
 
     return Container(
       height: 52,
       decoration: BoxDecoration(
-        color: colorScheme.surface,
+        color: barColor,
         borderRadius: BorderRadius.circular(26),
-        boxShadow: [
-          BoxShadow(
-            color: isDark
-                ? Colors.black.withOpacity(0.4)
-                : Colors.black.withOpacity(0.15),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-            spreadRadius: 0,
-          ),
-        ],
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.06)
+              : DesignTokens.lightBorder,
+        ),
+        boxShadow: isDark
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.06),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(26),
@@ -810,15 +812,12 @@ class _DiscoverSearchBarState extends State<_DiscoverSearchBar> {
           hintStyle: TextStyle(
             fontSize: 15,
             fontWeight: FontWeight.w400,
-            color: colorScheme.onSurface.withOpacity(0.4),
+            color: DesignTokens.textSecondaryOf(context),
           ),
-          prefixIcon: ShaderMask(
-            shaderCallback: (rect) => _discoverGradient.createShader(rect),
-            child: const Icon(
-              Icons.search_rounded,
-              size: 22,
-              color: Colors.white,
-            ),
+          prefixIcon: Icon(
+            Icons.search_rounded,
+            size: 22,
+            color: DesignTokens.textSecondaryOf(context),
           ),
           suffixIcon: GestureDetector(
             onTap: widget.onFilterTap,
@@ -828,8 +827,8 @@ class _DiscoverSearchBarState extends State<_DiscoverSearchBar> {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    DesignTokens.discoverViolet.withValues(alpha: 0.18),
-                    DesignTokens.discoverVioletDeep.withValues(alpha: 0.14),
+                    DesignTokens.discoverOrange.withValues(alpha: 0.18),
+                    DesignTokens.discoverOrangeDeep.withValues(alpha: 0.14),
                   ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
@@ -876,18 +875,27 @@ class _DiscoverSegmentTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final unselectedTextColor = DesignTokens.textSecondaryOf(context);
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final tabWidth = constraints.maxWidth / tabs.length;
         final pillWidth = tabWidth - 8;
         
-        return SizedBox(
+        return Container(
           height: 44,
+          decoration: BoxDecoration(
+            color: isDark ? DesignTokens.darkSurface : Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.06)
+                  : DesignTokens.lightBorder,
+            ),
+          ),
           child: Stack(
             children: [
-              // Sliding pill background
               AnimatedPositioned(
                 duration: const Duration(milliseconds: 300),
                 curve: Curves.easeOutCubic,
@@ -902,7 +910,6 @@ class _DiscoverSegmentTabs extends StatelessWidget {
                   ),
                 ),
               ),
-              // Tabs
               Row(
                 children: List.generate(tabs.length, (index) {
                   final isSelected = index == selectedIndex;
@@ -919,7 +926,7 @@ class _DiscoverSegmentTabs extends StatelessWidget {
                               fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
                               color: isSelected
                                   ? Colors.white
-                                  : colorScheme.onSurface.withOpacity(0.85),
+                                  : unselectedTextColor,
                             ),
                           ),
                         ),

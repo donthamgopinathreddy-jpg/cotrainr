@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/design_tokens.dart';
 import '../../providers/profile_images_provider.dart';
 import '../../providers/health_tracking_provider.dart';
 import '../../providers/quest_provider.dart';
@@ -327,7 +328,7 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
   @override
   Widget build(BuildContext context) {
     final isLight = Theme.of(context).brightness == Brightness.light;
-    final bg = isLight ? HomePremiumTheme.lightWarmBg : HomePremiumTheme.darkCharcoal;
+    final bg = isLight ? HomePremiumTheme.lightWarmBg : DesignTokens.darkBackground;
     final liveMetrics = ref.watch(dailyMetricsProvider).valueOrNull;
     final currentSteps = liveMetrics?.steps ?? _currentSteps;
     final currentCalories =

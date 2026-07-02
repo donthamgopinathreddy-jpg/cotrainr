@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../widgets/common/modern_input_box.dart';
 import '../../services/storage_service.dart';
 import '../../repositories/profile_repository.dart';
+import '../../theme/design_tokens.dart';
 
 class CocircleCreatePostPage extends StatefulWidget {
   const CocircleCreatePostPage({super.key});
@@ -296,7 +297,7 @@ class _CocircleCreatePostPageState extends State<CocircleCreatePostPage> {
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final backgroundColor = isDark
-        ? const Color(0xFF1A2335) // Dark blue-black mix
+        ? DesignTokens.darkBackground
         : const Color(0xFFE3F2FD); // Very light blue
 
     return Scaffold(

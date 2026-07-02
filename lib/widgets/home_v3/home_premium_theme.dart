@@ -7,8 +7,8 @@ class HomePremiumTheme {
   HomePremiumTheme._();
 
   // —— Base surfaces ——
-  static const Color darkCharcoal = Color(0xFF14161C);
-  static const Color darkCard = Color(0xFF1C1F26);
+  static const Color darkCharcoal = Color(0xFF000000);
+  static const Color darkCard = Color(0xFF0A0A0A);
   static const Color lightWarmBg = Color(0xFFFFFFFF);
   static const Color lightCreamCard = Color(0xFFF8F9FB);
   static const Color lightCharcoalText = Color(0xFF1F2430);

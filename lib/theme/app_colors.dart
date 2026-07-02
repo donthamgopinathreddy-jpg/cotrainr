@@ -4,9 +4,9 @@ import 'design_tokens.dart';
 
 class AppColors {
   // Base (dark-theme defaults; use *Of(context) for theme-aware)
-  static const Color bg = Color(0xFF0B1220);
-  static const Color surface = Color(0xFF121A2B);
-  static const Color surfaceSoft = Color(0xFF1A2335);
+  static const Color bg = Color(0xFF000000);
+  static const Color surface = Color(0xFF0A0A0A);
+  static const Color surfaceSoft = Color(0xFF111111);
   static const Color textPrimary = Color(0xFFFFFFFF);
   static const Color textSecondary = Color(0xB3FFFFFF);
   static const Color textTertiary = Color(0x80FFFFFF);

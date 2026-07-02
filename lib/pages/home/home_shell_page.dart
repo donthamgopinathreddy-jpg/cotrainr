@@ -203,11 +203,10 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     final isLight = Theme.of(context).brightness == Brightness.light;
 
     return Scaffold(
-      backgroundColor: isLight ? Colors.white : colorScheme.surface,
+      backgroundColor: DesignTokens.backgroundOf(context),
       body: Stack(
         clipBehavior: Clip.none,
         children: [
@@ -232,7 +231,7 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
             bottom: MediaQuery.paddingOf(context).bottom + 8,
             child: Container(
               decoration: BoxDecoration(
-                color: isLight ? Colors.white : colorScheme.surface,
+                color: isLight ? Colors.white : DesignTokens.darkNavSurface,
                 borderRadius: BorderRadius.circular(_navBarRadius),
                 boxShadow: [
                   BoxShadow(
@@ -325,14 +324,11 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
     final isLight = Theme.of(context).brightness == Brightness.light;
     final item = _navigationItems[index];
     final isActive = _currentIndex == index;
-    final homeAmber = const LinearGradient(
-      colors: [DesignTokens.accentOrange, DesignTokens.accentAmber],
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-    );
-    final activeGradient =
-        isActive && index == 0 ? homeAmber : item.gradient;
-    final accent = activeGradient.colors.first;
+    final selectedColor =
+        isLight ? DesignTokens.lightTextPrimary : DesignTokens.darkTextPrimary;
+    final unselectedColor = isLight
+        ? DesignTokens.lightTextSecondary
+        : colorScheme.onSurface.withValues(alpha: 0.5);
 
     final badge = index == 2 ? ref.watch(unreadMessagesCountProvider) : null;
     final showUnreadDot = badge != null && badge.maybeWhen(data: (c) => c > 0, orElse: () => false);
@@ -355,11 +351,7 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
             children: [
               Icon(
                 isActive ? item.activeIcon : item.icon,
-                color: isActive
-                    ? accent
-                    : (isLight
-                        ? const Color(0xFF6B7280)
-                        : colorScheme.onSurface.withValues(alpha: 0.5)),
+                color: isActive ? selectedColor : unselectedColor,
                 size: 28,
               ),
               if (showUnreadDot)
@@ -385,7 +377,7 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
             width: double.infinity,
             margin: const EdgeInsets.symmetric(horizontal: 4),
             decoration: BoxDecoration(
-              color: isActive ? accent : null,
+              color: isActive ? selectedColor : null,
               borderRadius: BorderRadius.circular(2),
             ),
           ),

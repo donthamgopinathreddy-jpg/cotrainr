@@ -287,12 +287,6 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
                               softWrap: true,
                               overflow: TextOverflow.ellipsis,
                             ),
-                            if (widget.coachingInsights.isNotEmpty) ...[
-                              const SizedBox(height: 6),
-                              CoachingInsightCarousel(
-                                insights: widget.coachingInsights,
-                              ),
-                            ],
                           ],
                         ),
                       ),
@@ -351,6 +345,15 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
             ),
           ),
         ),
+        if (widget.coachingInsights.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: CoachingInsightCarousel(
+              insights: widget.coachingInsights,
+            ),
+          ),
+        ],
         const SizedBox(height: 18),
       ],
     );

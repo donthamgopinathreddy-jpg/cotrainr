@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../theme/design_tokens.dart';
+
 class AppVersionPage extends StatefulWidget {
   const AppVersionPage({super.key});
 
@@ -45,7 +47,7 @@ class _AppVersionPageState extends State<AppVersionPage> {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final backgroundColor = isDark
-        ? const Color(0xFF1A2335)
+        ? DesignTokens.darkBackground
         : const Color(0xFFE3F2FD);
 
     return Scaffold(

@@ -222,10 +222,9 @@ class _MessagingPageState extends State<MessagingPage> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final pageBg = isDark
-        ? Color.lerp(cs.surface, AppColors.blue, 0.15)!
-        : DesignTokens.lightPageBackground;
+    final pageBg = DesignTokens.backgroundOf(context);
+    final searchFill = DesignTokens.surfaceOf(context);
+    final searchBorder = DesignTokens.borderColorOf(context);
 
     return Scaffold(
       backgroundColor: pageBg,
@@ -271,14 +270,14 @@ class _MessagingPageState extends State<MessagingPage> {
                         )
                       : null,
                   filled: true,
-                  fillColor: DesignTokens.lightMutedCardBackground,
+                  fillColor: searchFill,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(22),
-                    borderSide: const BorderSide(color: DesignTokens.lightBorder),
+                    borderSide: BorderSide(color: searchBorder),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(22),
-                    borderSide: const BorderSide(color: DesignTokens.lightBorder),
+                    borderSide: BorderSide(color: searchBorder),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(22),

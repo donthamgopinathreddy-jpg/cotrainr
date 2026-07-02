@@ -10,9 +10,9 @@ class MealTrackerTokens {
   static const Color lightCard = Color(0xFFFFFFFF);
   static const Color lightMutedSurface = Color(0xFFF8F9FB);
 
-  // Dark mode
-  static const Color darkBackground = Color(0xFF0B0F0D); // deep black green
-  static const Color darkCard = Color(0xFF121816);
+  // Dark mode — neutral pure-black page shell.
+  static const Color darkBackground = Color(0xFF000000);
+  static const Color darkCard = Color(0xFF0A0A0A);
 
   // Accent
   static const Color accent = Color(0xFF22C55E);
@@ -97,14 +97,14 @@ class MealTrackerTokens {
 
   static Color textPrimaryOf(BuildContext context) {
     return Theme.of(context).brightness == Brightness.dark
-        ? const Color(0xFFEFFFF5)
-        : const Color(0xFF1F2430);
+        ? const Color(0xFFFFFFFF)
+        : const Color(0xFF111111);
   }
 
   static Color textSecondaryOf(BuildContext context) {
     return Theme.of(context).brightness == Brightness.dark
-        ? const Color(0xFFBFE8D1).withValues(alpha: 0.75)
-        : const Color(0xFF6F7683);
+        ? const Color(0xFFA1A1AA)
+        : const Color(0xFF6B7280);
   }
 
   static List<BoxShadow> cardShadowOf(BuildContext context) {

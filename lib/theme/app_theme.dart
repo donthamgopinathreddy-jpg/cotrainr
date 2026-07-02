@@ -19,10 +19,10 @@ class AppTheme {
       
       // Color Scheme
       colorScheme: ColorScheme.fromSeed(
-        seedColor: DesignTokens.accentOrange,
+        seedColor: const Color(0xFF111111),
         brightness: Brightness.light,
-        primary: DesignTokens.accentOrange,
-        secondary: DesignTokens.accentAmber,
+        primary: DesignTokens.lightTextPrimary,
+        secondary: DesignTokens.lightTextSecondary,
         surface: DesignTokens.lightSurface,
         background: DesignTokens.lightBackground,
         error: DesignTokens.accentRed,
@@ -191,10 +191,10 @@ class AppTheme {
       
       // Color Scheme
       colorScheme: ColorScheme.fromSeed(
-        seedColor: DesignTokens.accentOrange,
+        seedColor: DesignTokens.darkSurface,
         brightness: Brightness.dark,
-        primary: DesignTokens.accentOrange,
-        secondary: DesignTokens.accentAmber,
+        primary: DesignTokens.darkTextPrimary,
+        secondary: DesignTokens.darkTextSecondary,
         surface: DesignTokens.darkSurface,
         background: DesignTokens.darkBackground,
         error: DesignTokens.accentRed,
