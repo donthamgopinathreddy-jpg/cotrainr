@@ -94,12 +94,20 @@ class _HealthDevicesPageState extends ConsumerState<HealthDevicesPage>
 
       await _healthService.reinitializeMetricsSource();
 
-      if (granted) {
+      final refreshed = await _healthService.getHealthConnectSettingsInfo();
+      if (!mounted) return;
+
+      if (refreshed.isConnected) {
         await ref.read(metricsSyncServiceProvider).syncNow();
         if (!mounted) return;
         showHubSnackBar(
           context,
-          '${info?.platformLabel ?? 'Health Connect'} connected successfully',
+          '${refreshed.platformLabel} connected successfully',
+        );
+      } else if (granted || refreshed.hasCorePermissions) {
+        showHubSnackBar(
+          context,
+          'Permissions updated — enable any missing types in Health Connect',
         );
       } else if (mounted) {
         showHubSnackBar(
@@ -129,8 +137,11 @@ class _HealthDevicesPageState extends ConsumerState<HealthDevicesPage>
   Color _statusColor(BuildContext context) {
     final info = _info;
     if (info == null) return Colors.grey;
-    if (info.isActiveSource && info.permissionsGranted) {
+    if (info.isConnected) {
       return AccountHubTheme.goalsGreen;
+    }
+    if (info.hasCorePermissions || info.hasAnyPermission) {
+      return AccountHubTheme.subscriptionAmber;
     }
     if (info.isAvailable) return AccountHubTheme.subscriptionAmber;
     return AccountHubTheme.dangerRed;
@@ -141,6 +152,9 @@ class _HealthDevicesPageState extends ConsumerState<HealthDevicesPage>
     final bg = AccountHubTheme.pageBg(context);
     final info = _info;
     final title = info?.platformLabel ?? HealthTrackingService.platformHealthLabel();
+    final filledBtnStyle = FilledButtonTheme.of(context).style;
+    final filledBtnFg = filledBtnStyle?.foregroundColor?.resolve(const {}) ??
+        Theme.of(context).colorScheme.onPrimary;
 
     return Scaffold(
       backgroundColor: bg,
@@ -232,12 +246,12 @@ class _HealthDevicesPageState extends ConsumerState<HealthDevicesPage>
                   child: FilledButton.icon(
                     onPressed: _busy ? null : _connect,
                     icon: _busy
-                        ? const SizedBox(
+                        ? SizedBox(
                             width: 18,
                             height: 18,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              color: Colors.white,
+                              color: filledBtnFg,
                             ),
                           )
                         : const Icon(Icons.link_rounded),
@@ -287,7 +301,7 @@ class _HealthDevicesPageState extends ConsumerState<HealthDevicesPage>
 
   String _connectButtonLabel(HealthConnectSettingsInfo? info, String title) {
     if (info == null) return 'Connect $title';
-    if (info.isActiveSource && info.permissionsGranted) {
+    if (info.isConnected) {
       return 'Manage Health Connect permissions';
     }
     if (!info.isAvailable && Platform.isAndroid) {
@@ -299,14 +313,17 @@ class _HealthDevicesPageState extends ConsumerState<HealthDevicesPage>
   String _statusDescription(HealthConnectSettingsInfo? info) {
     if (info == null) return '';
     final label = info.platformLabel;
-    if (info.isActiveSource && info.permissionsGranted) {
+    if (info.isConnected) {
       return 'Your home metrics, goals, and insights sync from $label.';
     }
     if (!info.isAvailable && Platform.isAndroid) {
       return 'Install Health Connect from the Play Store to sync fitness data.';
     }
-    if (info.permissionsGranted) {
-      return 'Permissions granted — tap below to refresh the connection.';
+    if (info.hasCorePermissions) {
+      return 'Permissions granted — finishing connection to $label.';
+    }
+    if (info.hasAnyPermission) {
+      return 'Some permissions are enabled. Turn on Steps, Calories, Distance, and Water for full sync.';
     }
     return 'Connect $label so steps, calories, distance, and water stay accurate.';
   }

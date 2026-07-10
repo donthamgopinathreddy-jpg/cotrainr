@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -16,7 +14,7 @@ const _exploreHeaderGradient = LinearGradient(
   end: Alignment.bottomCenter,
 );
 
-/// Premium "Explore" hub — asymmetrical 6-in-1 bento layout.
+/// Explore hub — bento grid aligned with home metric/BMI tile styling.
 class QuickAccessV3 extends ConsumerStatefulWidget {
   const QuickAccessV3({super.key});
 
@@ -25,10 +23,8 @@ class QuickAccessV3 extends ConsumerStatefulWidget {
 }
 
 class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
-  static const double _containerRadius = 30;
-  static const double _tileRadius = 26;
-  static const double _tileGap = 11;
-  static const double _parentPadding = 17;
+  static const double _tileRadius = 28;
+  static const double _tileGap = 10;
 
   String get _role =>
       Supabase.instance.client.auth.currentUser?.userMetadata?['role']
@@ -42,52 +38,44 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
     final excludeTrainerOnly = isTrainer || isNutritionist;
 
     final tiles = <String, _ExploreTileData>{
-      'Nutrition Goals': _ExploreTileData(
+      'Nutrition Goals': const _ExploreTileData(
         title: 'Nutrition Goals',
-        subtitle: 'Calculate macros and improve daily.',
+        subtitle: 'Calculate macros and hit your daily targets.',
         icon: Icons.track_changes_rounded,
-        accent: const Color(0xFF2EBD85),
-        ctaLabel: 'Go to goals',
+        accent: Color(0xFF2EBD85),
       ),
-      'Video Sessions': _ExploreTileData(
+      'Video Sessions': const _ExploreTileData(
         title: 'Video Sessions',
         subtitle: 'Join live sessions with your trainer.',
         icon: Icons.videocam_rounded,
-        accent: const Color(0xFF8B7CF6),
+        accent: Color(0xFF8B7CF6),
       ),
     };
 
     if (isTrainer) {
-      tiles['Client Notes'] = _ExploreTileData(
+      tiles['Client Notes'] = const _ExploreTileData(
         title: 'Client Notes',
-        subtitle: 'View trainer feedback & notes.',
+        subtitle: 'Review feedback and session notes.',
         icon: Icons.edit_note_rounded,
-        accent: const Color(0xFFFF6B6B),
+        accent: Color(0xFFFF6B6B),
       );
     } else if (!isNutritionist) {
-      tiles['Coach Notes'] = _ExploreTileData(
+      tiles['Coach Notes'] = const _ExploreTileData(
         title: 'Coach Notes',
-        subtitle: 'View trainer feedback & notes.',
+        subtitle: 'View trainer feedback and notes.',
         icon: Icons.note_rounded,
-        accent: const Color(0xFFFF6B6B),
+        accent: Color(0xFFFF6B6B),
       );
     }
 
     if (!excludeTrainerOnly) {
-      tiles['AI Planner'] = _ExploreTileData(
-        title: 'AI Planner',
-        subtitle: 'Get a smart workout plan customized for you.',
-        icon: Icons.auto_awesome_rounded,
-        accent: const Color(0xFFFFB020),
-        showWaveDecoration: true,
-      );
-      tiles['Subscription'] = _ExploreTileData(
+      tiles['Subscription'] = const _ExploreTileData(
         title: 'Subscription',
-        subtitle: 'Manage your plan and benefits.',
+        subtitle: 'Manage your plan and member benefits.',
         icon: Icons.workspace_premium_rounded,
-        accent: const Color(0xFFE91E8C),
+        accent: Color(0xFFE91E8C),
       );
-      tiles['Become a Trainer'] = _ExploreTileData(
+      tiles['Become a Trainer'] = const _ExploreTileData(
         title: 'Become a Trainer',
         subtitle: 'Share your knowledge and grow with us.',
         icon: Icons.school_rounded,
@@ -100,8 +88,6 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
 
   VoidCallback? _routeFor(BuildContext context, String title) {
     switch (title) {
-      case 'AI Planner':
-        return () => context.push('/ai-planner');
       case 'Become a Trainer':
         return () => context.push('/trainer/become');
       case 'Coach Notes':
@@ -112,6 +98,8 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
         return () => context.push('/video');
       case 'Nutrition Goals':
         return () => context.push('/nutrition-goals');
+      case 'Subscription':
+        return () => context.push('/subscription');
       default:
         return null;
     }
@@ -141,40 +129,11 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
         children: [
           _ExploreSectionHeader(isLight: isLight),
           const SizedBox(height: 14),
-          Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(_containerRadius),
-              boxShadow: isLight
-                  ? HomePremiumTheme.softCardShadow(true)
-                  : const <BoxShadow>[],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(_containerRadius),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(
-                  sigmaX: isLight ? 2 : 14,
-                  sigmaY: isLight ? 2 : 14,
-                ),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(_containerRadius),
-                    color: isLight
-                        ? HomePremiumTheme.lightCreamCard.withValues(alpha: 0.97)
-                        : const Color(0xFF0A0A0A).withValues(alpha: 0.96),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(_parentPadding),
-                    child: _ExploreBentoGrid(
-                      tiles: tiles,
-                      isLight: isLight,
-                      role: _role,
-                      onTileTap: (tile) =>
-                          _routeFor(context, tile.title)?.call(),
-                    ),
-                  ),
-                ),
-              ),
-            ),
+          _ExploreBentoGrid(
+            tiles: tiles,
+            isLight: isLight,
+            role: _role,
+            onTileTap: (tile) => _routeFor(context, tile.title)?.call(),
           ),
         ],
       ),
@@ -241,8 +200,6 @@ class _ExploreBentoGrid extends StatelessWidget {
   });
 
   static const _gap = _QuickAccessV3State._tileGap;
-  static const _leftFlex = 3;
-  static const _rightFlex = 2;
 
   _ExploreTileData? _get(String key) => tiles[key];
 
@@ -255,194 +212,100 @@ class _ExploreBentoGrid extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final w = constraints.maxWidth;
-        final topH = (w * 0.42).clamp(130.0, 152.0);
-        final aiH = (w * 0.18).clamp(56.0, 64.0);
-        final botH = (w * 0.17).clamp(54.0, 62.0);
+        final pairH = (w * 0.48).clamp(148.0, 172.0);
+        final bannerH = (w * 0.30).clamp(104.0, 124.0);
 
         if (isNutritionist) {
-          return _buildNutritionistLayout(topH);
+          return _buildPairRow(
+            pairH,
+            _get('Nutrition Goals')!,
+            _get('Video Sessions')!,
+          );
         }
         if (isTrainer) {
-          return _buildTrainerLayout(topH);
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildPairRow(
+                pairH,
+                _get('Nutrition Goals')!,
+                _get('Client Notes')!,
+              ),
+              const SizedBox(height: _gap),
+              SizedBox(
+                height: bannerH,
+                width: double.infinity,
+                child: _ExploreTile(
+                  item: _get('Video Sessions')!,
+                  layout: _ExploreTileLayout.banner,
+                  isLight: isLight,
+                  onTap: () => onTileTap(_get('Video Sessions')!),
+                ),
+              ),
+            ],
+          );
         }
         if (isClient) {
-          return _buildClientLayout(topH, aiH, botH);
+          return _buildClientLayout(pairH, bannerH);
         }
         return const SizedBox.shrink();
       },
     );
   }
 
-  Widget _buildClientLayout(double topH, double aiH, double botH) {
+  Widget _buildClientLayout(double pairH, double bannerH) {
     final nutrition = _get('Nutrition Goals')!;
     final coach = _get('Coach Notes')!;
     final video = _get('Video Sessions')!;
-    final ai = _get('AI Planner')!;
     final become = _get('Become a Trainer')!;
     final subscription = _get('Subscription')!;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        SizedBox(
-          height: topH,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                flex: _leftFlex,
-                child: _BentoTile(
-                  item: nutrition,
-                  size: _BentoTileSize.featured,
-                  isLight: isLight,
-                  onTap: () => onTileTap(nutrition),
-                ),
-              ),
-              const SizedBox(width: _gap),
-              Expanded(
-                flex: _rightFlex,
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: _BentoTile(
-                        item: coach,
-                        size: _BentoTileSize.medium,
-                        isLight: isLight,
-                        onTap: () => onTileTap(coach),
-                      ),
-                    ),
-                    const SizedBox(height: _gap),
-                    Expanded(
-                      child: _BentoTile(
-                        item: video,
-                        size: _BentoTileSize.medium,
-                        isLight: isLight,
-                        onTap: () => onTileTap(video),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+        _buildPairRow(pairH, nutrition, coach),
         const SizedBox(height: _gap),
         SizedBox(
-          height: aiH,
+          height: bannerH,
           width: double.infinity,
-          child: _BentoTile(
-            item: ai,
-            size: _BentoTileSize.fullWidth,
+          child: _ExploreTile(
+            item: video,
+            layout: _ExploreTileLayout.banner,
             isLight: isLight,
-            onTap: () => onTileTap(ai),
+            onTap: () => onTileTap(video),
           ),
         ),
         const SizedBox(height: _gap),
-        SizedBox(
-          height: botH,
-          child: Row(
-            children: [
-              Expanded(
-                flex: 2,
-                child: _BentoTile(
-                  item: become,
-                  size: _BentoTileSize.bottom,
-                  isLight: isLight,
-                  onTap: () => onTileTap(become),
-                ),
-              ),
-              const SizedBox(width: _gap),
-              Expanded(
-                flex: 3,
-                child: _BentoTile(
-                  item: subscription,
-                  size: _BentoTileSize.bottomWide,
-                  isLight: isLight,
-                  onTap: () => onTileTap(subscription),
-                ),
-              ),
-            ],
-          ),
-        ),
+        _buildPairRow(pairH, become, subscription),
       ],
     );
   }
 
-  Widget _buildTrainerLayout(double topH) {
-    final nutrition = _get('Nutrition Goals')!;
-    final notes = _get('Client Notes')!;
-    final video = _get('Video Sessions')!;
-
+  Widget _buildPairRow(
+    double height,
+    _ExploreTileData left,
+    _ExploreTileData right,
+  ) {
     return SizedBox(
-      height: topH,
+      height: height,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
-            flex: _leftFlex,
-            child: _BentoTile(
-              item: nutrition,
-              size: _BentoTileSize.featured,
+            child: _ExploreTile(
+              item: left,
+              layout: _ExploreTileLayout.half,
               isLight: isLight,
-              onTap: () => onTileTap(nutrition),
+              onTap: () => onTileTap(left),
             ),
           ),
           const SizedBox(width: _gap),
           Expanded(
-            flex: _rightFlex,
-            child: Column(
-              children: [
-                Expanded(
-                  child: _BentoTile(
-                    item: notes,
-                    size: _BentoTileSize.medium,
-                    isLight: isLight,
-                    onTap: () => onTileTap(notes),
-                  ),
-                ),
-                const SizedBox(height: _gap),
-                Expanded(
-                  child: _BentoTile(
-                    item: video,
-                    size: _BentoTileSize.medium,
-                    isLight: isLight,
-                    onTap: () => onTileTap(video),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNutritionistLayout(double topH) {
-    final nutrition = _get('Nutrition Goals')!;
-    final video = _get('Video Sessions')!;
-
-    return SizedBox(
-      height: topH,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(
-            flex: _leftFlex,
-            child: _BentoTile(
-              item: nutrition,
-              size: _BentoTileSize.featured,
+            child: _ExploreTile(
+              item: right,
+              layout: _ExploreTileLayout.half,
               isLight: isLight,
-              onTap: () => onTileTap(nutrition),
-            ),
-          ),
-          const SizedBox(width: _gap),
-          Expanded(
-            flex: _rightFlex,
-            child: _BentoTile(
-              item: video,
-              size: _BentoTileSize.featuredCompact,
-              isLight: isLight,
-              onTap: () => onTileTap(video),
+              onTap: () => onTileTap(right),
             ),
           ),
         ],
@@ -451,425 +314,90 @@ class _ExploreBentoGrid extends StatelessWidget {
   }
 }
 
-enum _BentoTileSize {
-  featured,
-  featuredCompact,
-  medium,
-  fullWidth,
-  bottom,
-  bottomWide,
-}
+enum _ExploreTileLayout { half, banner }
 
-class _BentoTile extends StatelessWidget {
+class _ExploreTile extends StatelessWidget {
   final _ExploreTileData item;
-  final _BentoTileSize size;
+  final _ExploreTileLayout layout;
   final bool isLight;
   final VoidCallback? onTap;
 
-  const _BentoTile({
+  const _ExploreTile({
     required this.item,
-    required this.size,
+    required this.layout,
     required this.isLight,
     this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final isBanner = layout == _ExploreTileLayout.banner;
+    final accent = item.accentFor(isLight);
+    final titleColor = HomePremiumTheme.primaryText(isLight);
+    final subtitleColor = HomePremiumTheme.secondaryText(isLight);
+
     return PressableCard(
       onTap: onTap,
       borderRadius: _QuickAccessV3State._tileRadius,
       pressScale: 0.97,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(_QuickAccessV3State._tileRadius),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            _SoftTileSurface(isLight: isLight, item: item),
-            Positioned(
-              right: 4,
-              bottom: 2,
-              child: IgnorePointer(
-                child: Icon(
-                  item.icon,
-                  size: _watermarkSizeForTile(),
-                  color: item.accentFor(isLight).withValues(
-                        alpha: isLight ? 0.10 : 0.08,
-                      ),
-                ),
-              ),
-            ),
-            Padding(
-              padding: _paddingForSize(),
-              child: _contentForSize(isLight),
-            ),
-            if (item.showWaveDecoration)
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: HomePremiumTheme.bmiTileGradient(isLight, accent),
+          ),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
               Positioned(
-                right: 0,
-                top: 0,
-                bottom: 0,
-                width: 64,
+                top: isBanner ? 6 : 10,
+                right: isBanner ? 4 : 6,
                 child: IgnorePointer(
-                  child: _AiWaveDecoration(
-                    color: item.accentFor(isLight),
-                    isLight: isLight,
+                  child: _TileWatermark(
+                    icon: item.icon,
+                    accent: accent,
+                    size: isBanner ? 72 : 60,
                   ),
                 ),
               ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  EdgeInsets _paddingForSize() {
-    return switch (size) {
-      _BentoTileSize.featured => const EdgeInsets.fromLTRB(13, 12, 12, 11),
-      _BentoTileSize.featuredCompact => const EdgeInsets.all(12),
-      _BentoTileSize.medium => const EdgeInsets.symmetric(
-          horizontal: 9,
-          vertical: 8,
-        ),
-      _BentoTileSize.fullWidth => const EdgeInsets.symmetric(
-          horizontal: 13,
-          vertical: 8,
-        ),
-      _BentoTileSize.bottom => const EdgeInsets.symmetric(
-          horizontal: 9,
-          vertical: 8,
-        ),
-      _BentoTileSize.bottomWide => const EdgeInsets.symmetric(
-          horizontal: 11,
-          vertical: 8,
-        ),
-    };
-  }
-
-  double _watermarkSizeForTile() {
-    return switch (size) {
-      _BentoTileSize.featured => 52,
-      _BentoTileSize.featuredCompact => 48,
-      _BentoTileSize.medium => 36,
-      _BentoTileSize.fullWidth => 40,
-      _BentoTileSize.bottom => 34,
-      _BentoTileSize.bottomWide => 38,
-    };
-  }
-
-  Widget _contentForSize(bool isLight) {
-    return switch (size) {
-      _BentoTileSize.featured => _featuredContent(isLight),
-      _BentoTileSize.featuredCompact => _featuredCompactContent(isLight),
-      _BentoTileSize.medium => _mediumContent(isLight),
-      _BentoTileSize.fullWidth => _fullWidthContent(isLight),
-      _BentoTileSize.bottom => _bottomContent(isLight, showSubtitle: false),
-      _BentoTileSize.bottomWide => _bottomContent(isLight, showSubtitle: true),
-    };
-  }
-
-  Widget _iconBadge(bool isLight, {double iconSize = 20, double box = 36}) {
-    final accent = item.accentFor(isLight);
-    final radius = box * 0.32;
-    return Container(
-      width: box,
-      height: box,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(radius),
-        color: accent.withValues(alpha: isLight ? 0.14 : 0.16),
-        boxShadow: [
-          BoxShadow(
-            color: accent.withValues(alpha: isLight ? 0.12 : 0.08),
-            blurRadius: isLight ? 8 : 6,
-            spreadRadius: -1,
-          ),
-        ],
-      ),
-      child: Icon(item.icon, color: accent, size: iconSize),
-    );
-  }
-
-  Widget _titleText(
-    bool isLight, {
-    double fontSize = 12,
-    int maxLines = 2,
-  }) {
-    return Text(
-      item.title,
-      maxLines: maxLines,
-      overflow: TextOverflow.ellipsis,
-      style: TextStyle(
-        fontSize: fontSize,
-        fontWeight: FontWeight.w700,
-        height: 1.12,
-        letterSpacing: -0.2,
-        color: HomePremiumTheme.primaryText(isLight),
-      ),
-    );
-  }
-
-  Widget _subtitleText(bool isLight, {int maxLines = 2, double fontSize = 10}) {
-    return Text(
-      item.subtitle,
-      maxLines: maxLines,
-      overflow: TextOverflow.ellipsis,
-      style: TextStyle(
-        fontSize: fontSize,
-        fontWeight: FontWeight.w500,
-        height: 1.2,
-        color: HomePremiumTheme.secondaryText(isLight),
-      ),
-    );
-  }
-
-  Widget _ctaChip(bool isLight) {
-    final accent = item.accentFor(isLight);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: accent.withValues(alpha: isLight ? 0.16 : 0.20),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            item.ctaLabel!,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              color: accent,
-            ),
-          ),
-          Icon(
-            Icons.arrow_forward_rounded,
-            size: 12,
-            color: accent,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _featuredContent(bool isLight) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final h = constraints.maxHeight;
-        final showCta = item.ctaLabel != null && h >= 138;
-        final showSubtitle = h >= 108;
-        final subtitleLines = h >= 128 ? 2 : 1;
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _iconBadge(isLight, box: h >= 140 ? 40 : 36, iconSize: 20),
-            Expanded(
-              child: Align(
-                alignment: Alignment.bottomLeft,
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                  isBanner ? 18 : 16,
+                  isBanner ? 14 : 16,
+                  isBanner ? 80 : 68,
+                  isBanner ? 14 : 16,
+                ),
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _titleText(isLight, fontSize: 13, maxLines: 2),
-                    if (showSubtitle) ...[
-                      const SizedBox(height: 3),
-                      _subtitleText(
-                        isLight,
-                        maxLines: subtitleLines,
-                        fontSize: 9.5,
+                    Text(
+                      item.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: isBanner ? 12 : 11,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.2,
+                        color: subtitleColor,
                       ),
-                    ],
-                    if (showCta) ...[
-                      const SizedBox(height: 7),
-                      _ctaChip(isLight),
-                    ],
+                    ),
+                    const Spacer(),
+                    Text(
+                      item.subtitle,
+                      maxLines: isBanner ? 2 : 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: isBanner ? 15 : 14,
+                        fontWeight: FontWeight.w700,
+                        height: 1.22,
+                        letterSpacing: -0.2,
+                        color: titleColor,
+                      ),
+                    ),
                   ],
                 ),
               ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _featuredCompactContent(bool isLight) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final showSubtitle = constraints.maxHeight >= 100;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _iconBadge(isLight, box: 36, iconSize: 19),
-            Expanded(
-              child: Align(
-                alignment: Alignment.bottomLeft,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _titleText(isLight, fontSize: 13, maxLines: 2),
-                    if (showSubtitle) ...[
-                      const SizedBox(height: 3),
-                      _subtitleText(isLight, maxLines: 2, fontSize: 9.5),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _mediumContent(bool isLight) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final showSubtitle = constraints.maxHeight >= 62;
-        return Row(
-          children: [
-            _iconBadge(isLight, box: 30, iconSize: 16),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _titleText(isLight, fontSize: 10.5, maxLines: 2),
-                  if (showSubtitle) ...[
-                    const SizedBox(height: 2),
-                    _subtitleText(isLight, maxLines: 1, fontSize: 8.5),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _fullWidthContent(bool isLight) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final subtitleLines = constraints.maxHeight >= 60 ? 2 : 1;
-        return Row(
-          children: [
-            _iconBadge(isLight, box: 34, iconSize: 18),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _titleText(isLight, fontSize: 12, maxLines: 1),
-                  const SizedBox(height: 2),
-                  _subtitleText(
-                    isLight,
-                    maxLines: subtitleLines,
-                    fontSize: 9.5,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 40),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _bottomContent(bool isLight, {required bool showSubtitle}) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final canShowSubtitle =
-            showSubtitle && constraints.maxHeight >= 56;
-        return Row(
-          children: [
-            _iconBadge(isLight, box: 30, iconSize: 16),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _titleText(
-                    isLight,
-                    fontSize: 10.5,
-                    maxLines: canShowSubtitle ? 2 : 1,
-                  ),
-                  if (canShowSubtitle) ...[
-                    const SizedBox(height: 2),
-                    _subtitleText(isLight, maxLines: 1, fontSize: 8.5),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-/// Soft gradient tile surface with subtle inner depth — no borders.
-class _SoftTileSurface extends StatelessWidget {
-  final bool isLight;
-  final _ExploreTileData item;
-
-  const _SoftTileSurface({required this.isLight, required this.item});
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = item.accentFor(isLight);
-    final base = isLight
-        ? HomePremiumTheme.lightWarmBg
-        : const Color(0xFF0A0A0A);
-    final tintStart = Color.lerp(
-      isLight ? HomePremiumTheme.lightCreamCard : base,
-      accent,
-      isLight ? 0.20 : 0.07,
-    )!;
-    final tintEnd = Color.lerp(
-      isLight ? HomePremiumTheme.lightWarmBg : base,
-      accent,
-      isLight ? 0.10 : 0.11,
-    )!;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(_QuickAccessV3State._tileRadius),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [tintStart, tintEnd],
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: isLight
-                ? const Color(0xFF2A2D33).withValues(alpha: 0.05)
-                : Colors.black.withValues(alpha: 0.22),
-            blurRadius: isLight ? 12 : 10,
-            offset: Offset(0, isLight ? 4 : 3),
-          ),
-        ],
-      ),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(_QuickAccessV3State._tileRadius),
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.white.withValues(alpha: isLight ? 0.65 : 0.05),
-              Colors.transparent,
-              isLight
-                  ? const Color(0xFF2A2D33).withValues(alpha: 0.04)
-                  : Colors.black.withValues(alpha: 0.14),
             ],
-            stops: const [0.0, 0.45, 1.0],
           ),
         ),
       ),
@@ -877,54 +405,26 @@ class _SoftTileSurface extends StatelessWidget {
   }
 }
 
-class _AiWaveDecoration extends StatelessWidget {
-  final Color color;
-  final bool isLight;
+/// Soft watermark icon — top-right decorative accent like Samsung Health tiles.
+class _TileWatermark extends StatelessWidget {
+  final IconData icon;
+  final Color accent;
+  final double size;
 
-  const _AiWaveDecoration({required this.color, required this.isLight});
+  const _TileWatermark({
+    required this.icon,
+    required this.accent,
+    required this.size,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _WavePainter(
-        color: color.withValues(alpha: isLight ? 0.16 : 0.12),
-      ),
+    return Icon(
+      icon,
+      size: size,
+      color: accent.withValues(alpha: 0.12),
     );
   }
-}
-
-class _WavePainter extends CustomPainter {
-  final Color color;
-
-  _WavePainter({required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
-
-    for (var i = 0; i < 3; i++) {
-      final path = Path();
-      final yOffset = size.height * (0.2 + i * 0.28);
-      path.moveTo(0, yOffset);
-      final waveW = size.width / 2.5;
-      for (var x = 0.0; x <= size.width; x += waveW) {
-        path.quadraticBezierTo(
-          x + waveW * 0.5,
-          yOffset + (i.isEven ? 5 : -5),
-          x + waveW,
-          yOffset,
-        );
-      }
-      canvas.drawPath(path, paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _WavePainter oldDelegate) =>
-      oldDelegate.color != color;
 }
 
 class _ExploreTileData {
@@ -932,26 +432,20 @@ class _ExploreTileData {
   final String subtitle;
   final IconData icon;
   final Color accent;
-  final String? ctaLabel;
-  final bool showWaveDecoration;
 
   const _ExploreTileData({
     required this.title,
     required this.subtitle,
     required this.icon,
     required this.accent,
-    this.ctaLabel,
-    this.showWaveDecoration = false,
   });
 
-  /// Slightly deeper accents in light mode for contrast on cream tiles.
   Color accentFor(bool isLight) {
     if (!isLight) return accent;
     return switch (title) {
       'Nutrition Goals' => const Color(0xFF1FA876),
       'Coach Notes' || 'Client Notes' => const Color(0xFFE85555),
       'Video Sessions' => const Color(0xFF6D5CE6),
-      'AI Planner' => const Color(0xFFE89A10),
       'Become a Trainer' => const Color(0xFF3A96C4),
       'Subscription' => const Color(0xFFD4187A),
       _ => Color.lerp(accent, HomePremiumTheme.lightCharcoalText, 0.10)!,

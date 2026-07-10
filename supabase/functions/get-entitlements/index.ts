@@ -73,9 +73,9 @@ serve(async (req) => {
     }
 
     const limits: Record<string, PlanLimits> = {
-      free: { requests: 3, nutritionist_allowed: false },
-      basic: { requests: 15, nutritionist_requests: 3, nutritionist_allowed: true },
-      premium: { requests: 30, nutritionist_requests: 30, nutritionist_allowed: true },
+      free: { requests: 5, nutritionist_allowed: false },
+      basic: { requests: 999999, nutritionist_requests: 0, nutritionist_allowed: false },
+      premium: { requests: 999999, nutritionist_requests: 999999, nutritionist_allowed: true },
     }
 
     const planLimits = limits[plan] || limits.free

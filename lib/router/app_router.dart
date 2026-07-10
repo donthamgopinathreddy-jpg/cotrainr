@@ -23,6 +23,7 @@ import '../../pages/trainer/verification_submission_page.dart';
 import '../../pages/nutritionist/nutritionist_dashboard_page.dart';
 import '../../pages/nutritionist/nutritionist_client_detail_page.dart';
 import '../../pages/refer/refer_friend_page.dart';
+import '../../pages/subscription/subscription_page.dart';
 import '../../pages/video_sessions/video_sessions_page_v2.dart';
 import '../../pages/video_sessions/session_detail_page.dart';
 import '../../pages/meal_tracker/meal_tracker_page_v2.dart';
@@ -281,6 +282,14 @@ final GoRouter appRouter = GoRouter(
       name: 'nutritionistDashboard',
       pageBuilder: (context, state) => _fadeSlidePage(
         child: const NutritionistDashboardPage(),
+        state: state,
+      ),
+    ),
+    GoRoute(
+      path: '/subscription',
+      name: 'subscription',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const SubscriptionPage(),
         state: state,
       ),
     ),

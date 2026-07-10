@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ url: data.signedUrl }),
+      JSON.stringify({ signedUrl: data.signedUrl }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (e) {

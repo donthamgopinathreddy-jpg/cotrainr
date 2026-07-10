@@ -36,18 +36,18 @@ class MealTrackerTokens {
 
   static const Color accentMint = Color(0xFF86EFAC);
 
-  /// Soft green wash — matches home [UnifiedMetricsTileV3] metric cards.
+  /// Daily intake hero — rich green in light mode, soft green wash in dark.
   static LinearGradient intakeTileGradient(bool isLight) {
     if (isLight) {
-      return LinearGradient(
+      return const LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: [
-          Color.lerp(lightMutedSurface, accent, 0.52)!,
-          Color.lerp(lightMutedSurface, accentMint, 0.38)!,
-          Color.lerp(lightMutedSurface, accentMint, 0.18)!,
+          Color(0xFF22C55E),
+          Color(0xFF16A34A),
+          Color(0xFF15803D),
         ],
-        stops: const [0.0, 0.40, 1.0],
+        stops: [0.0, 0.52, 1.0],
       );
     }
     return LinearGradient(

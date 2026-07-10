@@ -432,6 +432,41 @@ class _PulsingRoleBadgeState extends State<PulsingRoleBadge>
   }
 }
 
+class VerifiedProviderBadge extends StatelessWidget {
+  const VerifiedProviderBadge({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: AccountHubTheme.goalsGreen.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: AccountHubTheme.goalsGreen.withValues(alpha: 0.35),
+        ),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.verified_rounded,
+              size: 14, color: AccountHubTheme.goalsGreen),
+          SizedBox(width: 6),
+          Text(
+            'VERIFIED',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: AccountHubTheme.goalsGreen,
+              letterSpacing: 0.4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 Future<bool> showHubConfirmDialog(
   BuildContext context, {
   required String title,

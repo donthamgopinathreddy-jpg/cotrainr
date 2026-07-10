@@ -9,6 +9,8 @@ import '../../theme/design_tokens.dart';
 import '../../models/discover_filters.dart';
 import '../../widgets/discover/discover_filter_sheet.dart';
 import '../../repositories/provider_locations_repository.dart';
+import '../../models/subscription_plans.dart';
+import '../../repositories/subscriptions_repository.dart';
 import 'center_detail_page.dart';
 import '../profile/public_profile_readonly_page.dart';
 
@@ -227,6 +229,16 @@ class _DiscoverPageState extends State<DiscoverPage>
       // Sort by distance
       _trainers.sort((a, b) => a.distance.compareTo(b.distance));
       _nutritionists.sort((a, b) => a.distance.compareTo(b.distance));
+
+      final sub = await SubscriptionsRepository().fetchMine();
+      final plan = sub?.plan ?? SubscriptionPlans.free;
+      final cap = SubscriptionPlans.discoverResultCap(plan);
+      if (cap != null) {
+        if (_trainers.length > cap) {
+          _trainers.removeRange(cap, _trainers.length);
+        }
+        _nutritionists.clear();
+      }
 
       if (!mounted) return;
       setState(() {
@@ -458,6 +470,9 @@ class _DiscoverPageState extends State<DiscoverPage>
                                     builder: (context) => PublicProfileReadonlyPage(
                                       userId: item.id,
                                       titleFallback: item.name,
+                                      providerType: _selectedTabIndex == 0
+                                          ? 'trainer'
+                                          : 'nutritionist',
                                     ),
                                   ),
                                 );
@@ -943,6 +958,11 @@ class _DiscoverSegmentTabs extends StatelessWidget {
   }
 }
 
+String _formatDiscoverRating(DiscoverItem item) {
+  if (item.reviews <= 0) return 'New';
+  return '⭐ ${item.rating.toStringAsFixed(1)} (${item.reviews})';
+}
+
 class _DiscoverResultCard extends StatefulWidget {
   final DiscoverItem item;
   final Color accentColor;
@@ -1127,42 +1147,18 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.star_rounded,
-                        size: 14,
-                        color: widget.accentColor,
-                      ),
-                      const SizedBox(width: 3),
-                      Text(
-                        '${widget.item.rating.toStringAsFixed(1)}',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: colorScheme.onSurface,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Container(
-                        width: 3,
-                        height: 3,
-                        decoration: BoxDecoration(
-                          color: colorScheme.onSurface.withOpacity(0.4),
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      if (widget.item.experienceYears > 0) ...[
-                        const SizedBox(width: 6),
-                        Container(
-                          width: 3,
-                          height: 3,
-                          decoration: BoxDecoration(
-                            color: colorScheme.onSurface.withOpacity(0.4),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
+                  Text(
+                    _formatDiscoverRating(widget.item),
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: colorScheme.onSurface.withOpacity(0.85),
+                    ),
+                  ),
+                  if (widget.item.experienceYears > 0) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
                         Icon(
                           Icons.work_outline_rounded,
                           size: 12,
@@ -1178,16 +1174,11 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                           ),
                         ),
                       ],
-                      const SizedBox(width: 6),
-                      Container(
-                        width: 3,
-                        height: 3,
-                        decoration: BoxDecoration(
-                          color: colorScheme.onSurface.withOpacity(0.4),
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
+                    ),
+                  ],
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
                       Icon(
                         Icons.location_on_rounded,
                         size: 12,
@@ -1365,32 +1356,17 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                 ),
               ),
               const SizedBox(height: 8),
+              Text(
+                _formatDiscoverRating(widget.item),
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: colorScheme.onSurface.withOpacity(0.85),
+                ),
+              ),
+              const SizedBox(height: 6),
               Row(
                 children: [
-                  Icon(
-                    Icons.star_rounded,
-                    size: 14,
-                    color: widget.accentColor,
-                  ),
-                  const SizedBox(width: 3),
-                  Text(
-                    '${widget.item.rating.toStringAsFixed(1)}',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: colorScheme.onSurface,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Container(
-                    width: 3,
-                    height: 3,
-                    decoration: BoxDecoration(
-                      color: colorScheme.onSurface.withOpacity(0.4),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
                   Icon(
                     Icons.location_on_rounded,
                     size: 12,

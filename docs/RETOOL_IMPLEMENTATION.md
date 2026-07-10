@@ -71,17 +71,16 @@ Screen: trainer_verification
 | Name | Type | Trigger | Config |
 |------|------|---------|--------|
 | listTrainerPending | Supabase RPC | Page load, Manual, After approveVerification/rejectVerification | RPC: `list_pending_verifications`, Params: `{ "p_provider_type": "trainer" }` |
-| getCertSignedUrl | REST | When `verificationDrawer.selectedRow` changes | POST `get-verification-signed-url`, Body: `{ "path": {{ verificationDrawer.selectedRow.certificate_path }}, "expiresIn": 900 }` |
-| getGovIdSignedUrl | REST | When `verificationDrawer.selectedRow` changes | POST `get-verification-signed-url`, Body: `{ "path": {{ verificationDrawer.selectedRow.gov_id_path }}, "expiresIn": 900 }` |
-| approveVerification | Supabase RPC | approveBtn click | RPC: `approve_verification_v2`, Params: `{ "p_submission_id": {{ verificationDrawer.selectedRow.id }}, "p_actor_id": {{ adminUserId }} }` |
-| rejectVerification | Supabase RPC | rejectBtn click | RPC: `reject_verification_v2`, Params: `{ "p_submission_id": {{ verificationDrawer.selectedRow.id }}, "p_notes": {{ rejectionNotes.value }}, "p_actor_id": {{ adminUserId }} }` |
+| getCertificateSignedUrl | REST (Edge Functions resource) | Table row click event (with `getGovIdSignedUrl`) | POST `/get-verification-signed-url`, Body: `{ "path": "{{ selectedSubmission.value.certificate_path }}" }` |
+| getGovIdSignedUrl | REST (Edge Functions resource) | Table row click event (with `getCertificateSignedUrl`) | POST `/get-verification-signed-url`, Body: `{ "path": "{{ selectedSubmission.value.gov_id_path }}" }` |
+| approveVerification | Supabase RPC | approveBtn click | RPC: `approve_verification_v2`, Params: `{ "p_submission_id": "{{ selectedSubmission.value.id }}", "p_actor_id": "{{ adminUserId.value }}" }` |
+| rejectVerification | Supabase RPC | rejectBtn click | RPC: `reject_verification_v2`, Params: `{ "p_submission_id": "{{ selectedSubmission.value.id }}", "p_notes": "{{ rejectionNotes.value }}", "p_actor_id": "{{ adminUserId.value }}" }` |
 
 ### Triggers
 
 | Event | Action |
 |-------|--------|
-| Table row click | Set `verificationDrawer.selectedRow` = row, open drawer |
-| Drawer opens | Run getCertSignedUrl, getGovIdSignedUrl (both use selectedRow) |
+| Table row click | `selectedSubmission.setValue(row)` → `getCertificateSignedUrl.trigger()` → `getGovIdSignedUrl.trigger()` → `verificationDrawer.open()` |
 | approveVerification success | Run listTrainerPending, listAuditLog (refresh audit), close drawer, show success toast |
 | rejectVerification success | Run listTrainerPending, listAuditLog (refresh audit), close drawer, show success toast |
 
@@ -92,14 +91,12 @@ Screen: trainer_verification
 | Component | Binding |
 |-----------|---------|
 | Table data | `{{ listTrainerPending.data }}` |
-| certImage src | `{{ getCertSignedUrl.data?.url }}` |
-| certImage visible | `{{ getCertSignedUrl.data?.url }}` |
-| certLoading visible | `{{ getCertSignedUrl.isLoading \|\| !getCertSignedUrl.data?.url }}` |
-| govIdImage src | `{{ getGovIdSignedUrl.data?.url }}` |
-| govIdImage visible | `{{ getGovIdSignedUrl.data?.url }}` |
-| govIdLoading visible | `{{ getGovIdSignedUrl.isLoading \|\| !getGovIdSignedUrl.data?.url }}` |
-| approveBtn disabled | `{{ !getCertSignedUrl.data?.url \|\| !getGovIdSignedUrl.data?.url \|\| getCertSignedUrl.isLoading \|\| getGovIdSignedUrl.isLoading }}` |
-| rejectBtn disabled | `{{ !rejectionNotes.value \|\| rejectionNotes.value.trim() === '' }}` (or require notes in modal) |
+| certImage src | `{{ getCertificateSignedUrl.data.signedUrl }}` |
+| govIdImage src | `{{ getGovIdSignedUrl.data.signedUrl }}` |
+| certErrorText visible | `{{ getCertificateSignedUrl.error && !getCertificateSignedUrl.isFetching }}` — static friendly message only |
+| govIdErrorText visible | `{{ getGovIdSignedUrl.error && !getGovIdSignedUrl.isFetching }}` — static friendly message only |
+| approveBtn disabled | `{{ getCertificateSignedUrl.isFetching \|\| getGovIdSignedUrl.isFetching \|\| getCertificateSignedUrl.error \|\| getGovIdSignedUrl.error \|\| !getCertificateSignedUrl.data?.signedUrl \|\| !getGovIdSignedUrl.data?.signedUrl }}` |
+| rejectBtn disabled | `{{ !rejectionNotes.value \|\| rejectionNotes.value.trim() === '' }}` |
 
 **Note:** Reject can open a modal for notes, then call rejectVerification. Approve must stay disabled until both images load. **Server-side:** approve_verification_v2 RPC blocks approval if certificate_path or gov_id_path is NULL/empty.
 
@@ -340,11 +337,11 @@ The following RPCs must exist for **Supabase REST-only** mode. Add to migration 
 
 **URL:** `POST https://<project>.supabase.co/functions/v1/get-verification-signed-url`
 
-**Body:** `{ "path": "<certificate_path or gov_id_path>", "expiresIn": 900 }`
+**Body:** `{ "path": "<certificate_path or gov_id_path>" }`
 
-**Response:** `{ "url": "<signed_url>" }`
+**Response:** `{ "signedUrl": "<signed_url>" }`
 
-**Retool:** Create REST resource pointing to Edge Function base URL. Two queries (getCertSignedUrl, getGovIdSignedUrl) POST with different path values.
+**Retool:** Use the existing Edge Functions REST resource. Two queries (`getCertificateSignedUrl`, `getGovIdSignedUrl`) POST to `/get-verification-signed-url`. See `docs/RETOOL_VERIFICATION_DOCUMENT_PREVIEW.md` for the full review workflow.
 
 ---
 

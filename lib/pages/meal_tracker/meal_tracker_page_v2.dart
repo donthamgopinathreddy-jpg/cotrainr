@@ -485,7 +485,7 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
           } else {
             try {
               await _mealRepo.deleteFoodItem(food.id!);
-              if (!mounted) return;
+              if (!mounted) return false;
               setState(() {
                 _meals[mealType]!.remove(food);
                 _recomputeTotals();
@@ -496,12 +496,13 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
                   SnackBar(content: Text('Failed to delete: $e')),
                 );
               }
-              return;
+              return false;
             }
           }
           _ringController.reset();
           _ringController.forward();
           HapticFeedback.mediumImpact();
+          return true;
         },
         onFoodUpdated: (oldFood, updated) async {
           if (oldFood.id == null) {
@@ -512,11 +513,27 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
             });
           } else {
             try {
-              await _mealRepo.updateFoodItemAmount(oldFood.id!, updated.amount);
-              if (!mounted) return;
+              await _mealRepo.updateFoodItem(
+                mealItemId: oldFood.id!,
+                quantity: updated.amount,
+                foodName: updated.name != oldFood.name ? updated.name : null,
+                unit: updated.unit != oldFood.unit ? updated.unit : null,
+                calories: updated.calories != oldFood.calories
+                    ? updated.calories
+                    : null,
+                protein: updated.protein != oldFood.protein
+                    ? updated.protein
+                    : null,
+                carbs: updated.carbs != oldFood.carbs ? updated.carbs : null,
+                fats: updated.fats != oldFood.fats ? updated.fats : null,
+                fiber: updated.fiber != oldFood.fiber ? updated.fiber : null,
+              );
+              if (!mounted) return false;
               setState(() {
                 final idx = _meals[mealType]!.indexOf(oldFood);
-                if (idx >= 0) _meals[mealType]![idx] = updated.copyWith(id: oldFood.id);
+                if (idx >= 0) {
+                  _meals[mealType]![idx] = updated.copyWith(id: oldFood.id);
+                }
                 _recomputeTotals();
               });
             } catch (e) {
@@ -525,12 +542,13 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
                   SnackBar(content: Text('Failed to update: $e')),
                 );
               }
-              return;
+              return false;
             }
           }
           _ringController.reset();
           _ringController.forward();
           HapticFeedback.selectionClick();
+          return true;
         },
         onAddFood: () => _openAddFood(mealType: mealType),
       ),
@@ -1112,8 +1130,12 @@ class _DailySummaryCard extends StatelessWidget {
     final fiberProgress =
         goalFiber > 0 ? (fiber / goalFiber).clamp(0.0, 1.0) : 0.0;
     final barTrack = isLight
-        ? Colors.white.withValues(alpha: 0.55)
+        ? Colors.white.withValues(alpha: 0.28)
         : Colors.white.withValues(alpha: 0.10);
+    final onGreenPrimary = isLight ? Colors.white : textPrimary;
+    final onGreenSecondary = isLight
+        ? Colors.white.withValues(alpha: 0.88)
+        : textSecondary;
 
     return GestureDetector(
       onTap: onInsightsTap,
@@ -1142,7 +1164,7 @@ class _DailySummaryCard extends StatelessWidget {
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
                                 letterSpacing: 0.3,
-                                color: textSecondary,
+                                color: onGreenSecondary,
                               ),
                             ),
                           ),
@@ -1153,21 +1175,21 @@ class _DailySummaryCard extends StatelessWidget {
                                   horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
                                 color: isLight
-                                    ? Colors.white.withValues(alpha: 0.45)
+                                    ? Colors.white.withValues(alpha: 0.22)
                                     : Colors.white.withValues(alpha: 0.08),
                                 borderRadius: BorderRadius.circular(999),
                               ),
                               child: Row(
                                 children: [
                                   Icon(Icons.edit_outlined,
-                                      size: 12, color: textSecondary),
+                                      size: 12, color: onGreenSecondary),
                                   const SizedBox(width: 4),
                                   Text(
                                     'Goals',
                                     style: TextStyle(
                                       fontSize: 10,
                                       fontWeight: FontWeight.w600,
-                                      color: textSecondary,
+                                      color: onGreenSecondary,
                                     ),
                                   ),
                                 ],
@@ -1185,7 +1207,7 @@ class _DailySummaryCard extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 28,
                               fontWeight: FontWeight.w800,
-                              color: textPrimary,
+                              color: onGreenPrimary,
                             ),
                             duration: const Duration(milliseconds: 450),
                           ),
@@ -1197,7 +1219,7 @@ class _DailySummaryCard extends StatelessWidget {
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
-                                color: textSecondary,
+                                color: onGreenSecondary,
                               ),
                             ),
                           ),
@@ -1210,10 +1232,12 @@ class _DailySummaryCard extends StatelessWidget {
                         goal: goalProtein,
                         unit: 'g',
                         progress: pProgress,
-                        color: MealTrackerTokens.macroBarFill(0),
+                        color: isLight
+                            ? Colors.white.withValues(alpha: 0.92)
+                            : MealTrackerTokens.macroBarFill(0),
                         trackColor: barTrack,
-                        textPrimary: textSecondary,
-                        textSecondary: textSecondary,
+                        textPrimary: onGreenSecondary,
+                        textSecondary: onGreenSecondary,
                         animation: ringAnimation,
                       ),
                       const SizedBox(height: 8),
@@ -1223,10 +1247,12 @@ class _DailySummaryCard extends StatelessWidget {
                         goal: goalCarbs,
                         unit: 'g',
                         progress: cProgress,
-                        color: MealTrackerTokens.macroBarFill(1),
+                        color: isLight
+                            ? Colors.white.withValues(alpha: 0.78)
+                            : MealTrackerTokens.macroBarFill(1),
                         trackColor: barTrack,
-                        textPrimary: textSecondary,
-                        textSecondary: textSecondary,
+                        textPrimary: onGreenSecondary,
+                        textSecondary: onGreenSecondary,
                         animation: ringAnimation,
                       ),
                       const SizedBox(height: 8),
@@ -1236,10 +1262,12 @@ class _DailySummaryCard extends StatelessWidget {
                         goal: goalFiber,
                         unit: 'g',
                         progress: fiberProgress,
-                        color: MealTrackerTokens.macroBarFill(2),
+                        color: isLight
+                            ? Colors.white.withValues(alpha: 0.65)
+                            : MealTrackerTokens.macroBarFill(2),
                         trackColor: barTrack,
-                        textPrimary: textSecondary,
-                        textSecondary: textSecondary,
+                        textPrimary: onGreenSecondary,
+                        textSecondary: onGreenSecondary,
                         animation: ringAnimation,
                       ),
                     ],
@@ -1251,9 +1279,12 @@ class _DailySummaryCard extends StatelessWidget {
                   calories: calories,
                   goalCalories: goalCalories,
                   animation: ringAnimation,
-                  textPrimary: textPrimary,
-                  textSecondary: textSecondary,
-                  ringColor: MealTrackerTokens.accent,
+                  textPrimary: onGreenPrimary,
+                  textSecondary: onGreenSecondary,
+                  ringColor: isLight ? Colors.white : MealTrackerTokens.accent,
+                  trackColor: isLight
+                      ? Colors.white.withValues(alpha: 0.28)
+                      : Colors.white.withValues(alpha: 0.45),
                 ),
               ],
             ),
@@ -1267,7 +1298,7 @@ class _DailySummaryCard extends StatelessWidget {
                   Icon(
                     Icons.show_chart_rounded,
                     size: 14,
-                    color: textSecondary,
+                    color: onGreenSecondary,
                   ),
                   const SizedBox(width: 6),
                   Text(
@@ -1275,13 +1306,13 @@ class _DailySummaryCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: textSecondary,
+                      color: onGreenSecondary,
                     ),
                   ),
                   Icon(
                     Icons.chevron_right_rounded,
                     size: 16,
-                    color: textSecondary.withValues(alpha: 0.7),
+                    color: onGreenSecondary.withValues(alpha: 0.7),
                   ),
                 ],
               ),
@@ -1392,6 +1423,7 @@ class _CalorieRingProgress extends StatelessWidget {
   final Color textPrimary;
   final Color textSecondary;
   final Color ringColor;
+  final Color trackColor;
 
   const _CalorieRingProgress({
     required this.progress,
@@ -1401,6 +1433,7 @@ class _CalorieRingProgress extends StatelessWidget {
     required this.textPrimary,
     required this.textSecondary,
     required this.ringColor,
+    this.trackColor = const Color(0x73FFFFFF),
   });
 
   @override
@@ -1421,7 +1454,7 @@ class _CalorieRingProgress extends StatelessWidget {
                   strokeWidth: 7,
                   startAngle: -pi / 2,
                   color: ringColor,
-                  trackColor: Colors.white.withValues(alpha: 0.45),
+                  trackColor: trackColor,
                 ),
               );
             },
@@ -2222,7 +2255,7 @@ class _EditGoalsSheet extends StatelessWidget {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Tip: long‑press a food in a meal to edit its amount.',
+                        'Tip: open a meal to edit or delete logged foods.',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
@@ -3296,11 +3329,12 @@ class _MacroStat extends StatelessWidget {
 }
 
 // Meal Detail Sheet
-class _MealDetailSheet extends StatelessWidget {
+class _MealDetailSheet extends StatefulWidget {
   final String mealType;
   final List<FoodItem> foods;
-  final Function(FoodItem) onFoodDeleted;
-  final void Function(FoodItem oldFood, FoodItem updatedFood) onFoodUpdated;
+  final Future<bool> Function(FoodItem) onFoodDeleted;
+  final Future<bool> Function(FoodItem oldFood, FoodItem updatedFood)
+      onFoodUpdated;
   final VoidCallback onAddFood;
 
   const _MealDetailSheet({
@@ -3312,17 +3346,51 @@ class _MealDetailSheet extends StatelessWidget {
   });
 
   @override
+  State<_MealDetailSheet> createState() => _MealDetailSheetState();
+}
+
+class _MealDetailSheetState extends State<_MealDetailSheet> {
+  late List<FoodItem> _foods;
+
+  @override
+  void initState() {
+    super.initState();
+    _foods = List<FoodItem>.from(widget.foods);
+  }
+
+  Future<bool> _deleteFood(FoodItem food) async {
+    final ok = await widget.onFoodDeleted(food);
+    if (!mounted || !ok) return false;
+    setState(() => _foods.remove(food));
+    return true;
+  }
+
+  Future<void> _handleUpdate(FoodItem oldFood, FoodItem updated) async {
+    final ok = await widget.onFoodUpdated(oldFood, updated);
+    if (!mounted || !ok) return;
+    setState(() {
+      final idx = _foods.indexOf(oldFood);
+      if (idx >= 0) {
+        _foods[idx] = updated.copyWith(id: oldFood.id);
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final surface = MealTrackerTokens.cardBgOf(context);
     final textPrimary = MealTrackerTokens.textPrimaryOf(context);
     final textSecondary = MealTrackerTokens.textSecondaryOf(context);
 
-    final totalCalories = foods.fold(0, (sum, f) => sum + f.totalCalories);
-    final totalProtein = foods.fold(0.0, (sum, f) => sum + f.totalProtein);
-    final totalCarbs = foods.fold(0.0, (sum, f) => sum + f.totalCarbs);
-    final totalFats = foods.fold(0.0, (sum, f) => sum + f.totalFats);
+    final totalCalories = _foods.fold(0, (sum, f) => sum + f.totalCalories);
+    final totalProtein = _foods.fold(0.0, (sum, f) => sum + f.totalProtein);
+    final totalCarbs = _foods.fold(0.0, (sum, f) => sum + f.totalCarbs);
+    final totalFats = _foods.fold(0.0, (sum, f) => sum + f.totalFats);
 
     return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.72,
+      ),
       decoration: BoxDecoration(
         color: surface,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
@@ -3354,7 +3422,7 @@ class _MealDetailSheet extends StatelessWidget {
               child: Row(
                 children: [
                   Text(
-                    mealType,
+                    widget.mealType,
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w900,
@@ -3387,7 +3455,7 @@ class _MealDetailSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            if (foods.isEmpty)
+            if (_foods.isEmpty)
               Padding(
                 padding: const EdgeInsets.all(40),
                 child: Column(
@@ -3409,15 +3477,37 @@ class _MealDetailSheet extends StatelessWidget {
                   ],
                 ),
               )
-            else
-              ...foods.map((food) => _FoodListItem(
-                    food: food,
-                    onDelete: () => onFoodDeleted(food),
-                    onUpdate: (updated) => onFoodUpdated(food, updated),
-                    surface: surface,
-                    textPrimary: textPrimary,
-                    textSecondary: textSecondary,
-                  )),
+            else ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  'Tap edit to change serving • Swipe left or tap delete to remove',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: textSecondary,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: _foods
+                      .map(
+                        (food) => _FoodListItem(
+                          food: food,
+                          onDelete: () => _deleteFood(food),
+                          onUpdate: (updated) => _handleUpdate(food, updated),
+                          surface: surface,
+                          textPrimary: textPrimary,
+                          textSecondary: textSecondary,
+                        ),
+                      )
+                      .toList(),
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -3427,7 +3517,7 @@ class _MealDetailSheet extends StatelessWidget {
                     child: GestureDetector(
                       onTap: () {
                         HapticFeedback.lightImpact();
-                        onAddFood();
+                        widget.onAddFood();
                       },
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 14),
@@ -3521,7 +3611,7 @@ class _MacroPill extends StatelessWidget {
 // Food List Item
 class _FoodListItem extends StatelessWidget {
   final FoodItem food;
-  final VoidCallback onDelete;
+  final Future<bool> Function() onDelete;
   final ValueChanged<FoodItem> onUpdate;
   final Color surface;
   final Color textPrimary;
@@ -3536,49 +3626,166 @@ class _FoodListItem extends StatelessWidget {
     required this.textSecondary,
   });
 
-  Future<void> _editAmount(BuildContext context) async {
+  Future<bool> _confirmDelete(BuildContext context) async {
+    HapticFeedback.lightImpact();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove food?'),
+        content: Text('Remove "${food.name}" from this meal?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'Remove',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
+  }
+
+  Future<void> _editFood(BuildContext context) async {
     HapticFeedback.lightImpact();
     final isGramBased = food.baseGrams != null;
     final controller = TextEditingController(
-      text: isGramBased ? food.amount.round().toString() : food.amount.toStringAsFixed(2),
+      text: isGramBased
+          ? food.amount.round().toString()
+          : food.amount.toStringAsFixed(2),
     );
-    final result = await showDialog<double>(
+
+    final result = await showModalBottomSheet<FoodItem>(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text(isGramBased ? 'Edit grams' : 'Edit quantity'),
-          content: TextField(
-            controller: controller,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(
-              hintText: isGramBased ? 'e.g. 175' : 'e.g. 1.5',
-              suffixText: isGramBased ? 'g' : '×',
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () {
-                final v = double.tryParse(controller.text.trim().replaceAll(',', '.'));
-                if (v == null) {
-                  Navigator.pop(context);
-                  return;
-                }
-                Navigator.pop(context, v);
-              },
-              child: const Text('Save'),
-            ),
-          ],
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final draftAmount = double.tryParse(
+                  controller.text.trim().replaceAll(',', '.'),
+                ) ??
+                food.amount;
+            final preview = food.copyWith(amount: draftAmount < 0 ? 0 : draftAmount);
+
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+              ),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: MealTrackerTokens.cardBgOf(sheetContext),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(24),
+                  ),
+                ),
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: textSecondary.withValues(alpha: 0.35),
+                          borderRadius: BorderRadius.circular(99),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Edit food',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      food.name,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: controller,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      onChanged: (_) => setSheetState(() {}),
+                      decoration: InputDecoration(
+                        labelText: isGramBased ? 'Grams' : 'Servings',
+                        suffixText: isGramBased ? 'g' : '×',
+                        filled: true,
+                        fillColor: surface,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      '${preview.totalCalories} kcal • P ${preview.totalProtein.toStringAsFixed(1)}g • C ${preview.totalCarbs.toStringAsFixed(1)}g • F ${preview.totalFats.toStringAsFixed(1)}g',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.pop(sheetContext),
+                            child: const Text('Cancel'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: MealTrackerTokens.accent,
+                            ),
+                            onPressed: () {
+                              final v = double.tryParse(
+                                controller.text.trim().replaceAll(',', '.'),
+                              );
+                              if (v == null) return;
+                              Navigator.pop(
+                                sheetContext,
+                                food.copyWith(amount: v < 0 ? 0 : v),
+                              );
+                            },
+                            child: const Text('Save'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         );
       },
     );
+
     if (result == null) return;
-    final clamped = result < 0 ? 0.0 : result;
     HapticFeedback.selectionClick();
-    onUpdate(food.copyWith(amount: clamped));
+    onUpdate(result);
   }
 
   @override
@@ -3586,6 +3793,12 @@ class _FoodListItem extends StatelessWidget {
     return Dismissible(
       key: Key(food.id ?? '${food.name}_${food.amount}_${food.totalCalories}'),
       direction: DismissDirection.endToStart,
+      confirmDismiss: (_) async {
+        final confirmed = await _confirmDelete(context);
+        if (!confirmed) return false;
+        return await onDelete();
+      },
+      onDismissed: (_) {},
       background: Container(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         decoration: BoxDecoration(
@@ -3596,88 +3809,113 @@ class _FoodListItem extends StatelessWidget {
         padding: const EdgeInsets.only(right: 20),
         child: const Icon(Icons.delete_rounded, color: Colors.red),
       ),
-      onDismissed: (_) => onDelete(),
-      child: GestureDetector(
-        onLongPress: () => _editAmount(context),
-          child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: surface,
-            borderRadius: BorderRadius.circular(16),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+        decoration: BoxDecoration(
+          color: surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: textPrimary.withValues(alpha: 0.06),
           ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      food.name,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                        color: textPrimary,
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    food.name,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    food.baseGrams != null
+                        ? '${food.amount.round()} g • ${food.unit}'
+                        : '${food.amount.toStringAsFixed(2)}× ${food.unit}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      _MiniMacroPill(
+                        'P',
+                        food.totalProtein,
+                        MealTrackerTokens.macroProtein,
+                        textSecondary,
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      food.baseGrams != null
-                          ? '${food.amount.round()} g • ${food.unit}'
-                          : '${food.amount.toStringAsFixed(2)}× ${food.unit}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: textSecondary,
+                      const SizedBox(width: 6),
+                      _MiniMacroPill(
+                        'C',
+                        food.totalCarbs,
+                        MealTrackerTokens.macroCarbs,
+                        textSecondary,
                       ),
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        _MiniMacroPill(
-                          'P',
-                          food.totalProtein,
-                          MealTrackerTokens.macroProtein,
-                          textSecondary,
-                        ),
-                        const SizedBox(width: 6),
-                        _MiniMacroPill(
-                          'C',
-                          food.totalCarbs,
-                          MealTrackerTokens.macroCarbs,
-                          textSecondary,
-                        ),
-                        const SizedBox(width: 6),
-                        _MiniMacroPill(
-                          'F',
-                          food.totalFats,
-                          MealTrackerTokens.macroFats,
-                          textSecondary,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+                      const SizedBox(width: 6),
+                      _MiniMacroPill(
+                        'F',
+                        food.totalFats,
+                        MealTrackerTokens.macroFats,
+                        textSecondary,
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              Text(
-                '${food.totalCalories}',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                  color: textPrimary,
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '${food.totalCalories}',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: textPrimary,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                'kcal',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: textSecondary,
+                Text(
+                  'kcal',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: textSecondary,
+                  ),
                 ),
+              ],
+            ),
+            IconButton(
+              tooltip: 'Edit',
+              onPressed: () => _editFood(context),
+              icon: Icon(
+                Icons.edit_outlined,
+                size: 20,
+                color: MealTrackerTokens.accent,
               ),
-            ],
-          ),
+            ),
+            IconButton(
+              tooltip: 'Delete',
+              onPressed: () async {
+                if (await _confirmDelete(context)) {
+                  await onDelete();
+                }
+              },
+              icon: Icon(
+                Icons.delete_outline_rounded,
+                size: 20,
+                color: Colors.red.withValues(alpha: 0.85),
+              ),
+            ),
+          ],
         ),
       ),
     );

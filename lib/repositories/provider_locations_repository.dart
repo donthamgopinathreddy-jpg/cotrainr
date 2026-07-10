@@ -13,11 +13,9 @@ class ProviderLocationsRepository {
   /// Get current user ID
   String? get _currentUserId => _supabase.auth.currentUser?.id;
 
-  /// GeoJSON point for PostGIS geography (lng, lat per RFC 7946).
-  static Map<String, dynamic> _toGeoJsonPoint(double lat, double lng) => {
-        'type': 'Point',
-        'coordinates': [lng, lat],
-      };
+  /// WKT for PostGIS geography (lng, lat; SRID 4326).
+  static String _toGeoWkt(double lat, double lng) =>
+      'SRID=4326;POINT($lng $lat)';
 
   /// Ensures a `providers` row exists. Location inserts FK to providers(user_id).
   Future<void> _ensureProviderRecord() async {
@@ -35,12 +33,23 @@ class ProviderLocationsRepository {
 
     String? role;
     try {
-      final profile = await _supabase.rpc('get_my_profile');
-      final list = (profile as List).cast<Map<String, dynamic>>();
-      if (list.isNotEmpty) {
-        role = list.first['role']?.toString().toLowerCase();
-      }
+      final profile = await _supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', userId)
+          .maybeSingle();
+      role = profile?['role']?.toString().toLowerCase();
     } catch (_) {}
+
+    if (role == null || role.isEmpty) {
+      try {
+        final profile = await _supabase.rpc('get_my_profile');
+        final list = (profile as List).cast<Map<String, dynamic>>();
+        if (list.isNotEmpty) {
+          role = list.first['role']?.toString().toLowerCase();
+        }
+      } catch (_) {}
+    }
 
     final providerType = switch (role) {
       'nutritionist' => 'nutritionist',
@@ -99,7 +108,7 @@ class ProviderLocationsRepository {
     try {
       final json = locationWithProvider.toJson();
 
-      json['geo'] = _toGeoJsonPoint(
+      json['geo'] = _toGeoWkt(
         location.latitude,
         location.longitude,
       );

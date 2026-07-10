@@ -393,10 +393,44 @@ class MealRepository {
 
   /// Update food item amount (quantity).
   Future<void> updateFoodItemAmount(String mealItemId, double quantity) async {
-    await _supabase
-        .from('meal_items')
-        .update({'quantity': quantity})
-        .eq('id', mealItemId);
+    await updateFoodItem(mealItemId: mealItemId, quantity: quantity);
+  }
+
+  /// Update a logged food item (serving, name, or per-unit macros).
+  Future<void> updateFoodItem({
+    required String mealItemId,
+    double? quantity,
+    String? foodName,
+    String? unit,
+    int? calories,
+    double? protein,
+    double? carbs,
+    double? fats,
+    double? fiber,
+  }) async {
+    final updates = <String, dynamic>{};
+    if (foodName != null) updates['food_name'] = foodName;
+    if (calories != null) updates['calories'] = calories;
+    if (protein != null) updates['protein'] = protein;
+    if (carbs != null) updates['carbs'] = carbs;
+    if (fats != null) updates['fat'] = fats;
+    if (fiber != null) updates['fiber'] = fiber;
+
+    if (quantity != null) {
+      if (unit != null) {
+        final normalized = normalizeUnitForStorage(unit, quantity);
+        updates['unit'] = normalized.unit;
+        updates['quantity'] = normalized.quantity;
+      } else {
+        updates['quantity'] = quantity;
+      }
+    } else if (unit != null) {
+      updates['unit'] = unit;
+    }
+
+    if (updates.isEmpty) return;
+
+    await _supabase.from('meal_items').update(updates).eq('id', mealItemId);
   }
 
   /// Delete food item.

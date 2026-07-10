@@ -456,7 +456,6 @@ class _ServiceLocationsPageState extends ConsumerState<ServiceLocationsPage> {
                   padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
                   child: _SectionHeader(
                     title: 'Your Locations',
-                    count: locations.length,
                     icon: Icons.place_rounded,
                   ),
                 ),
@@ -678,36 +677,6 @@ class _ServiceLocationsPageState extends ConsumerState<ServiceLocationsPage> {
                   ],
                 ),
               ),
-            _FormSection(
-              label: 'Location type',
-              icon: Icons.category_outlined,
-              child: DropdownButtonFormField<LocationType>(
-                // ignore: deprecated_member_use - value required for controlled dropdown
-                value: _selectedType,
-                decoration: _inputDecoration(context, 'Select type').copyWith(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                ),
-                items: LocationType.values.map((type) => DropdownMenuItem(
-                  value: type,
-                  child: Row(
-                    children: [
-                      Icon(type.icon, size: 20, color: AppColors.purple),
-                      const SizedBox(width: 12),
-                      Text(type.displayName),
-                    ],
-                  ),
-                )).toList(),
-                onChanged: (type) {
-                  if (type != null) {
-                    setState(() {
-                      _selectedType = type;
-                      if (type == LocationType.home) _isPublicExact = false;
-                    });
-                  }
-                },
-              ),
-            ),
-            const SizedBox(height: 24),
             _FormSection(
               label: 'Pick on map',
               subtitle: 'Search, tap the map, or use your current location — display name auto-fills',
@@ -1178,12 +1147,10 @@ class _ServiceLocationsPageState extends ConsumerState<ServiceLocationsPage> {
 
 class _SectionHeader extends StatelessWidget {
   final String title;
-  final int? count;
   final IconData icon;
 
   const _SectionHeader({
     required this.title,
-    this.count,
     required this.icon,
   });
 
@@ -1225,33 +1192,6 @@ class _SectionHeader extends StatelessWidget {
             ),
           ),
         ),
-        if (count != null)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  AppColors.purple.withValues(alpha: 0.2),
-                  AppColors.blue.withValues(alpha: 0.1),
-                ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(
-                color: AppColors.purple.withValues(alpha: 0.35),
-                width: 1,
-              ),
-            ),
-            child: Text(
-              '$count',
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-                color: AppColors.purple,
-              ),
-            ),
-          ),
       ],
     );
   }
@@ -1551,7 +1491,7 @@ class _LocationCardState extends State<_LocationCard> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '${widget.location.locationType.displayName} • ${widget.location.radiusKm.toStringAsFixed(0)} km radius',
+                          '${widget.location.radiusKm.toStringAsFixed(0)} km service radius',
                           style: GoogleFonts.poppins(
                             fontSize: 13,
                             color: DesignTokens.textSecondaryOf(context),

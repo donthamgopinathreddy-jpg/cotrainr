@@ -22,10 +22,26 @@ class HealthConnectSettingsInfo {
 
   String get statusLabel {
     if (!isAvailable) return 'Not installed';
-    if (isActiveSource && permissionsGranted) return 'Connected';
-    if (permissionsGranted) return 'Permissions granted';
+    if (isConnected) return 'Connected';
+    if (hasCorePermissions) return 'Permissions granted';
+    if (hasAnyPermission) return 'Partial access';
     return 'Not connected';
   }
+
+  /// Health Connect is actively syncing core metrics.
+  bool get isConnected => isAvailable && isActiveSource && hasCorePermissions;
+
+  /// Steps plus at least one calories type, distance, and water.
+  bool get hasCorePermissions {
+    final steps = typePermissions['Steps'] ?? false;
+    final calories = (typePermissions['Active calories'] ?? false) ||
+        (typePermissions['Total calories'] ?? false);
+    final distance = typePermissions['Distance'] ?? false;
+    final water = typePermissions['Water'] ?? false;
+    return steps && calories && distance && water;
+  }
+
+  bool get hasAnyPermission => typePermissions.values.any((granted) => granted);
 
   bool get needsInstall =>
       sdkStatus == HealthConnectSdkStatus.sdkUnavailableProviderUpdateRequired ||

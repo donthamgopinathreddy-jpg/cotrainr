@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
-import '../../theme/design_tokens.dart';
+import '../../theme/account_hub_theme.dart';
+import '../../widgets/profile/account_hub_widgets.dart';
 
 class AppVersionPage extends StatefulWidget {
   const AppVersionPage({super.key});
@@ -15,12 +16,6 @@ class _AppVersionPageState extends State<AppVersionPage> {
   String _buildNumber = '1';
   bool _isLoading = true;
 
-  static const _cocircleGradient = LinearGradient(
-    colors: [Color(0xFF4DA3FF), Color(0xFF8B5CF6)],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-  );
-
   @override
   void initState() {
     super.initState();
@@ -30,175 +25,187 @@ class _AppVersionPageState extends State<AppVersionPage> {
   Future<void> _loadAppInfo() async {
     try {
       final packageInfo = await PackageInfo.fromPlatform();
+      if (!mounted) return;
       setState(() {
         _version = packageInfo.version;
         _buildNumber = packageInfo.buildNumber;
         _isLoading = false;
       });
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final backgroundColor = isDark
-        ? DesignTokens.darkBackground
-        : const Color(0xFFE3F2FD);
+    final bg = AccountHubTheme.pageBg(context);
+    final isLight = Theme.of(context).brightness == Brightness.light;
 
     return Scaffold(
-      backgroundColor: backgroundColor,
+      backgroundColor: bg,
       appBar: AppBar(
-        backgroundColor: backgroundColor,
+        backgroundColor: bg,
         elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: colorScheme.onSurface),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: ShaderMask(
-          shaderCallback: (bounds) => _cocircleGradient.createShader(bounds),
-          child: const Text(
-            'App Version',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-            ),
-          ),
-        ),
+        title: const Text('App Version'),
       ),
-      body: SafeArea(
-        child: Center(
-          child: _isLoading
-              ? CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    _cocircleGradient.colors.first,
-                  ),
-                )
-              : Container(
-                  margin: const EdgeInsets.all(24),
-                  padding: const EdgeInsets.all(32),
-                  decoration: BoxDecoration(
-                    color: colorScheme.surface,
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+        children: [
+          _HeroCard(isLight: isLight, isLoading: _isLoading, version: _version),
+          const SizedBox(height: 12),
+          HubSectionCard(
+            title: 'Build details',
+            animationDelayMs: 40,
+            child: _isLoading
+                ? const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24),
+                    child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                  )
+                : Column(
                     children: [
-                      Container(
-                        width: 80,
-                        height: 80,
-                        decoration: BoxDecoration(
-                          gradient: _cocircleGradient,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.fitness_center,
-                          color: Colors.white,
-                          size: 40,
-                        ),
+                      _InfoRow(label: 'Version', value: _version),
+                      Divider(
+                        height: 1,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withValues(alpha: 0.08),
                       ),
-                      const SizedBox(height: 24),
-                      Text(
-                        'Cotrainr',
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w800,
-                          color: colorScheme.onSurface,
-                        ),
+                      _InfoRow(label: 'Build', value: _buildNumber),
+                      Divider(
+                        height: 1,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withValues(alpha: 0.08),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Version $_version',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: colorScheme.onSurface.withValues(alpha: 0.7),
-                        ),
+                      const _InfoRow(label: 'Environment', value: 'Production'),
+                      Divider(
+                        height: 1,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withValues(alpha: 0.08),
                       ),
-                      const SizedBox(height: 32),
-                      _buildInfoRow(
-                        context,
-                        label: 'Environment',
-                        value: 'Production',
-                      ),
-                      const SizedBox(height: 16),
-                      _buildInfoRow(
-                        context,
-                        label: 'Build',
-                        value: _buildNumber,
-                      ),
-                      const SizedBox(height: 16),
-                      _buildInfoRow(
-                        context,
-                        label: 'Release Channel',
-                        value: 'Stable',
-                      ),
-                      const SizedBox(height: 32),
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.email_outlined,
-                              size: 16,
-                              color: colorScheme.onSurface.withValues(alpha: 0.6),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Emails are sent from noreply@cotrainr.com',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: colorScheme.onSurface.withValues(alpha: 0.6),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      const _InfoRow(label: 'Release channel', value: 'Stable'),
                     ],
                   ),
+          ),
+          const SizedBox(height: 12),
+          HubSectionCard(
+            title: 'Support',
+            animationDelayMs: 80,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.mail_outline_rounded,
+                  size: AccountHubTheme.iconSize,
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.55),
                 ),
-        ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Emails are sent from noreply@cotrainr.com',
+                    style: AccountHubTheme.rowSubtitle(context).copyWith(height: 1.4),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
+}
 
-  Widget _buildInfoRow(
-    BuildContext context, {
-    required String label,
-    required String value,
-  }) {
-    final colorScheme = Theme.of(context).colorScheme;
+class _HeroCard extends StatelessWidget {
+  final bool isLight;
+  final bool isLoading;
+  final String version;
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 15,
-            color: colorScheme.onSurface.withValues(alpha: 0.6),
+  const _HeroCard({
+    required this.isLight,
+    required this.isLoading,
+    required this.version,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return HubSectionCard(
+      child: Column(
+        children: [
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: AccountHubTheme.messagesBlue.withValues(alpha: isLight ? 0.12 : 0.2),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Icon(
+              Icons.fitness_center_rounded,
+              color: AccountHubTheme.messagesBlue,
+              size: 34,
+            ),
           ),
-        ),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            color: colorScheme.onSurface,
+          const SizedBox(height: 16),
+          Text(
+            'Cotrainr',
+            style: AccountHubTheme.rowTitle(context).copyWith(
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.4,
+            ),
           ),
-        ),
-      ],
+          const SizedBox(height: 6),
+          Text(
+            isLoading ? 'Loading version…' : 'Version $version',
+            style: AccountHubTheme.rowSubtitle(context),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Your fitness companion',
+            style: TextStyle(
+              fontSize: 13,
+              color: cs.onSurface.withValues(alpha: 0.45),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _InfoRow({
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(label, style: AccountHubTheme.rowSubtitle(context)),
+          ),
+          Text(
+            value,
+            style: AccountHubTheme.rowTitle(context).copyWith(fontSize: 14),
+          ),
+        ],
+      ),
     );
   }
 }

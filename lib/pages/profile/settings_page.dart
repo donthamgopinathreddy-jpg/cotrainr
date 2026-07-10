@@ -11,6 +11,7 @@ import '../../utils/page_transitions.dart';
 import '../../widgets/common/logout_confirmation_sheet.dart';
 import '../../widgets/profile/account_hub_widgets.dart';
 import '../help/app_version_page.dart';
+import '../subscription/subscription_page.dart';
 import 'edit_profile_page.dart';
 import 'goals_preferences_page.dart';
 import 'settings/change_password_page.dart';
@@ -165,13 +166,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   title: 'Notifications',
                   onTap: () => _push(context, const NotificationsPage()),
                 ),
-                const Divider(height: 1),
-                HubActionRow(
-                  icon: Icons.language_outlined,
-                  title: 'Language',
-                  trailing: const ComingSoonBadge(),
-                  onTap: () => showHubSnackBar(context, 'Language settings coming soon'),
-                ),
               ],
             ),
           ),
@@ -185,8 +179,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   icon: Icons.star_outline_rounded,
                   title: 'Manage Plan',
                   iconColor: AccountHubTheme.subscriptionAmber,
-                  trailing: const ComingSoonBadge(),
-                  onTap: () => showHubSnackBar(context, 'Subscription management coming soon'),
+                  onTap: () => _push(context, const SubscriptionPage()),
                 ),
                 const Divider(height: 1),
                 HubActionRow(

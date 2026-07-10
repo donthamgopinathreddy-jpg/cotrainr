@@ -20,6 +20,9 @@ class SignupWizardPage extends StatefulWidget {
 
 class _SignupWizardPageState extends State<SignupWizardPage>
     with TickerProviderStateMixin {
+  static const _totalSteps = 6;
+  static const _lastStepIndex = _totalSteps - 1;
+
   final _page = PageController();
   int _step = 0;
 
@@ -40,21 +43,22 @@ class _SignupWizardPageState extends State<SignupWizardPage>
   final _phone = TextEditingController();
   String _phoneCountryCode = '+91';
 
-  // Step 3
+  // Step 3 — date of birth + gender
   DateTime _dob = DateTime(2002, 1, 1);
   String _gender = 'Male';
 
-  // Step 4
+  // Step 4 — height
   bool _heightInCm = true;
   double _heightCm = 170;
   int _feet = 5;
   int _inch = 7;
 
+  // Step 5 — weight
   bool _weightInKg = true;
   double _weightKg = 70;
   double _weightLbs = 154;
 
-  // Step 5
+  // Step 6 — goals, role, provider specialties
   final List<String> _goals = [
     'Weight Loss',
     'Muscle Gain',
@@ -69,6 +73,30 @@ class _SignupWizardPageState extends State<SignupWizardPage>
   ];
   final Set<String> _selectedGoals = {'Weight Loss'};
   String _role = 'Client';
+  final Set<String> _selectedSpecializations = {};
+  final _customSpecialty = TextEditingController();
+
+  static const _trainerSpecialties = [
+    'Gym',
+    'Boxing',
+    'Yoga',
+    'Pilates',
+    'Zumba',
+    'Calisthenics',
+    'Strength',
+    'HIIT',
+    'Cardio',
+  ];
+
+  static const _nutritionistSpecialties = [
+    'Weight Loss',
+    'Sports Nutrition',
+    'Clinical',
+    'Plant-Based',
+    'Lifestyle',
+    'Meal Planning',
+    'Diabetes Care',
+  ];
 
   bool _isSubmitting = false;
   bool _referralApplied = false; // Guard: prevent double apply_referral_code
@@ -113,6 +141,7 @@ class _SignupWizardPageState extends State<SignupWizardPage>
     _first.dispose();
     _last.dispose();
     _phone.dispose();
+    _customSpecialty.dispose();
     _fadeController.dispose();
     _stepTransitionController.dispose();
     super.dispose();
@@ -289,12 +318,52 @@ class _SignupWizardPageState extends State<SignupWizardPage>
     }
   }
 
+  bool _validateFinalStep() {
+    if (_selectedGoals.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select at least one fitness goal')),
+      );
+      return false;
+    }
+
+    if (_role == 'Trainer' || _role == 'Nutritionist') {
+      if (_selectedSpecializations.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              _role == 'Trainer'
+                  ? 'Select or add at least one training specialty'
+                  : 'Select or add at least one nutrition specialty',
+            ),
+          ),
+        );
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  void _addCustomSpecialty() {
+    final value = _customSpecialty.text.trim();
+    if (value.isEmpty) return;
+    HapticFeedback.selectionClick();
+    setState(() {
+      _selectedSpecializations.add(value);
+      _customSpecialty.clear();
+    });
+  }
+
   void _next() {
     if (_step == 0 && !_validateStep1()) {
       return;
     }
 
-    if (_step < 4) {
+    if (_step == _lastStepIndex && !_validateFinalStep()) {
+      return;
+    }
+
+    if (_step < _lastStepIndex) {
       _stepTransitionController.reset();
       setState(() => _step++);
       _page.nextPage(
@@ -335,23 +404,30 @@ class _SignupWizardPageState extends State<SignupWizardPage>
       if (username.isEmpty) {
         throw Exception('Username is required');
       }
+
+      final signUpData = <String, dynamic>{
+        'username': username,
+        'full_name': '${_first.text.trim()} ${_last.text.trim()}'.trim(),
+        'first_name': _first.text.trim(),
+        'last_name': _last.text.trim(),
+        'phone': '${_phoneCountryCode}${_phone.text.trim()}',
+        'dob': _dob.toIso8601String(),
+        'gender': _gender,
+        'height_cm': heightCm,
+        'weight_kg': weightKg,
+        'bmi': _bmi,
+        'goals': _selectedGoals.toList(),
+        'role': _role.toLowerCase(),
+      };
+
+      if (_role == 'Trainer' || _role == 'Nutritionist') {
+        signUpData['specialization'] = _selectedSpecializations.toList();
+      }
+
       final response = await supabase.auth.signUp(
         email: _email.text.trim(),
         password: _pass.text,
-        data: {
-          'username': username,
-          'full_name': '${_first.text.trim()} ${_last.text.trim()}'.trim(),
-          'first_name': _first.text.trim(),
-          'last_name': _last.text.trim(),
-          'phone': '${_phoneCountryCode}${_phone.text.trim()}',
-          'dob': _dob.toIso8601String(),
-          'gender': _gender,
-          'height_cm': heightCm,
-          'weight_kg': weightKg,
-          'bmi': _bmi,
-          'goals': _selectedGoals.toList(),
-          'role': _role.toLowerCase(),
-        },
+        data: signUpData,
       );
 
       if (!mounted) return;
@@ -434,6 +510,18 @@ class _SignupWizardPageState extends State<SignupWizardPage>
             // Non-fatal: migration/trigger may already have set correct role
           }
 
+          if (_role == 'Trainer' || _role == 'Nutritionist') {
+            try {
+              await supabase.from('providers').upsert({
+                'user_id': response.user!.id,
+                'provider_type': _role.toLowerCase(),
+                'specialization': _selectedSpecializations.toList(),
+              });
+            } catch (_) {
+              // Non-fatal: handle_new_user trigger may have created the row
+            }
+          }
+
           final role = _role.toLowerCase();
           if (!mounted) return;
 
@@ -484,9 +572,11 @@ class _SignupWizardPageState extends State<SignupWizardPage>
       case 2:
         return 'About You';
       case 3:
-        return 'Body Metrics';
+        return 'Height';
       case 4:
-        return 'Preferences';
+        return 'Weight';
+      case 5:
+        return 'Your Role';
       default:
         return 'Create Account';
     }
@@ -499,11 +589,13 @@ class _SignupWizardPageState extends State<SignupWizardPage>
       case 1:
         return 'Tell us about yourself';
       case 2:
-        return 'Age and gender';
+        return 'Your age and gender';
       case 3:
-        return 'Height and weight';
+        return 'Enter or scroll your height';
       case 4:
-        return 'Goals and role';
+        return 'Enter or scroll your weight';
+      case 5:
+        return 'Choose how you\'ll use Cotrainr';
       default:
         return '';
     }
@@ -517,6 +609,8 @@ class _SignupWizardPageState extends State<SignupWizardPage>
     final textPrimary = DesignTokens.textPrimaryOf(context);
     final textSecondary = DesignTokens.textSecondaryOf(context);
 
+    final isMetricStep = _step == 3 || _step == 4;
+
     return Scaffold(
       backgroundColor: bgColor,
       body: SafeArea(
@@ -524,9 +618,8 @@ class _SignupWizardPageState extends State<SignupWizardPage>
           opacity: _fadeController,
           child: Column(
             children: [
-              // Header Section
               Container(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                padding: EdgeInsets.fromLTRB(16, 12, 16, isMetricStep ? 8 : 16),
                 child: Column(
                   children: [
                     Row(
@@ -539,40 +632,69 @@ class _SignupWizardPageState extends State<SignupWizardPage>
                             size: 20,
                           ),
                         ),
-                        const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _getStepTitle(_step),
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: textPrimary,
-                              height: 1.1,
-                              letterSpacing: -0.5,
+                        if (!isMetricStep) ...[
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _getStepTitle(_step),
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: textPrimary,
+                                    height: 1.1,
+                                    letterSpacing: -0.5,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  _getStepSubtitle(_step),
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    color: textSecondary,
+                                    height: 1.3,
+                                    fontWeight: FontWeight.w400,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(height: 6),
-                          Text(
-                            _getStepSubtitle(_step),
-                            style: TextStyle(
-                              fontSize: 15,
-                              color: textSecondary,
-                              height: 1.3,
-                              fontWeight: FontWeight.w400,
+                        ] else
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _getStepTitle(_step),
+                                    style: TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w800,
+                                      color: textPrimary,
+                                      letterSpacing: -0.4,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    _getStepSubtitle(_step),
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                        ],
-                      ),
-                    ),
                       ],
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     // Animated Gradient Progress indicator
                     Row(
-                      children: List.generate(5, (index) {
+                      children: List.generate(_totalSteps, (index) {
                         final isActive = index <= _step;
                         final isCurrent = index == _step;
                         return Expanded(
@@ -581,7 +703,7 @@ class _SignupWizardPageState extends State<SignupWizardPage>
                             curve: Curves.easeInOut,
                             height: isCurrent ? 3 : 2,
                             margin: EdgeInsets.only(
-                              right: index < 4 ? 6 : 0,
+                              right: index < _lastStepIndex ? 6 : 0,
                             ),
                             decoration: BoxDecoration(
                               gradient: isActive
@@ -640,7 +762,7 @@ class _SignupWizardPageState extends State<SignupWizardPage>
                         setState(() => _phoneCountryCode = code);
                       },
                     ),
-                    _Step3Content(
+                    _StepAgeGenderContent(
                       dob: _dob,
                       gender: _gender,
                       onDobChanged: (d) {
@@ -652,32 +774,38 @@ class _SignupWizardPageState extends State<SignupWizardPage>
                         setState(() => _gender = g);
                       },
                     ),
-                    _Step4Content(
+                    _StepHeightContent(
                       heightInCm: _heightInCm,
-                      weightInKg: _weightInKg,
                       heightCm: _heightCm,
                       feet: _feet,
                       inch: _inch,
-                      weightKg: _weightKg,
-                      weightLbs: _weightLbs,
                       onToggleHeightUnit: (v) {
                         HapticFeedback.selectionClick();
                         setState(() => _heightInCm = v);
                       },
+                      onHeightCm: (v) => setState(() => _heightCm = v),
+                      onFeet: (v) => setState(() => _feet = v),
+                      onInch: (v) => setState(() => _inch = v),
+                    ),
+                    _StepWeightContent(
+                      weightInKg: _weightInKg,
+                      weightKg: _weightKg,
+                      weightLbs: _weightLbs,
                       onToggleWeightUnit: (v) {
                         HapticFeedback.selectionClick();
                         setState(() => _weightInKg = v);
                       },
-                      onHeightCm: (v) => setState(() => _heightCm = v),
-                      onFeet: (v) => setState(() => _feet = v),
-                      onInch: (v) => setState(() => _inch = v),
                       onWeightKg: (v) => setState(() => _weightKg = v),
                       onWeightLbs: (v) => setState(() => _weightLbs = v),
                     ),
-                    _Step5Content(
+                    _StepPreferencesContent(
                       goals: _goals,
-                      selected: _selectedGoals,
+                      selectedGoals: _selectedGoals,
                       role: _role,
+                      trainerSpecialties: _trainerSpecialties,
+                      nutritionistSpecialties: _nutritionistSpecialties,
+                      selectedSpecializations: _selectedSpecializations,
+                      customSpecialty: _customSpecialty,
                       onToggleGoal: (g) {
                         HapticFeedback.selectionClick();
                         setState(() {
@@ -690,8 +818,24 @@ class _SignupWizardPageState extends State<SignupWizardPage>
                       },
                       onRoleChanged: (r) {
                         HapticFeedback.selectionClick();
-                        setState(() => _role = r);
+                        setState(() {
+                          if (r != _role) {
+                            _selectedSpecializations.clear();
+                          }
+                          _role = r;
+                        });
                       },
+                      onToggleSpecialization: (s) {
+                        HapticFeedback.selectionClick();
+                        setState(() {
+                          if (_selectedSpecializations.contains(s)) {
+                            _selectedSpecializations.remove(s);
+                          } else {
+                            _selectedSpecializations.add(s);
+                          }
+                        });
+                      },
+                      onAddCustomSpecialty: _addCustomSpecialty,
                     ),
                   ],
                 ),
@@ -729,7 +873,7 @@ class _SignupWizardPageState extends State<SignupWizardPage>
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Text(
-                                  _step == 4 ? 'Create Account' : 'Next',
+                                  _step == _lastStepIndex ? 'Create Account' : 'Next',
                                   style: const TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w600,
@@ -1099,14 +1243,14 @@ class _Step2Content extends StatelessWidget {
   }
 }
 
-// Step 3: DOB & Gender
-class _Step3Content extends StatelessWidget {
+// Step 3: Age & Gender
+class _StepAgeGenderContent extends StatelessWidget {
   final DateTime dob;
   final String gender;
   final ValueChanged<DateTime> onDobChanged;
   final ValueChanged<String> onGenderChanged;
 
-  const _Step3Content({
+  const _StepAgeGenderContent({
     required this.dob,
     required this.gender,
     required this.onDobChanged,
@@ -1117,12 +1261,12 @@ class _Step3Content extends StatelessWidget {
     final now = DateTime.now();
     int years = now.year - birthDate.year;
     int months = now.month - birthDate.month;
-    
+
     if (months < 0) {
       years--;
       months += 12;
     }
-    
+
     if (now.day < birthDate.day) {
       months--;
       if (months < 0) {
@@ -1130,7 +1274,7 @@ class _Step3Content extends StatelessWidget {
         months += 12;
       }
     }
-    
+
     if (years == 0) {
       return '$months ${months == 1 ? 'month' : 'months'}';
     } else if (months == 0) {
@@ -1142,24 +1286,30 @@ class _Step3Content extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final surfaceColor = DesignTokens.surfaceOf(context);
-    final borderColor = DesignTokens.borderColorOf(context);
     final textPrimary = DesignTokens.textPrimaryOf(context);
+    final textSecondary = DesignTokens.textSecondaryOf(context);
     final ageText = _calculateAge(dob);
+    final sectionLabel = TextStyle(
+      color: textSecondary,
+      fontSize: 14,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0.2,
+    );
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.fromLTRB(24, 4, 24, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 8),
+          Text('Date of birth', style: sectionLabel),
+          const SizedBox(height: 12),
           SizedBox(
-            height: 180,
+            height: 170,
             child: ShaderMask(
               shaderCallback: (bounds) => LinearGradient(
                 begin: Alignment.centerLeft,
                 end: Alignment.centerRight,
-                stops: const [0.0, 0.15, 0.85, 1.0],
+                stops: const [0.0, 0.12, 0.88, 1.0],
                 colors: [
                   Colors.transparent,
                   Colors.white,
@@ -1189,68 +1339,52 @@ class _Step3Content extends StatelessWidget {
               ),
             ),
           ),
-
-          const SizedBox(height: 20),
-
+          const SizedBox(height: 16),
           Center(
-            child: ShaderMask(
-              shaderCallback: (bounds) => const LinearGradient(
-                colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
-              ).createShader(bounds),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: DesignTokens.accentOrange.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: DesignTokens.accentOrange.withValues(alpha: 0.22),
+                ),
+              ),
               child: Text(
                 'Age: $ageText',
                 style: TextStyle(
-                  color: Colors.white, // This will be masked by the gradient
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
+                  color: DesignTokens.accentOrange,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),
           ),
-
-          const SizedBox(height: 32),
-
-          Text(
-            'Gender',
-            style: TextStyle(
-              color: DesignTokens.textSecondaryOf(context),
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.2,
-            ),
+          const SizedBox(height: 28),
+          Text('Gender', style: sectionLabel),
+          const SizedBox(height: 12),
+          _GenderCard(
+            icon: Icons.male_rounded,
+            title: 'Male',
+            subtitle: 'Identify as male',
+            isSelected: gender == 'Male',
+            onTap: () => onGenderChanged('Male'),
           ),
-
-          const SizedBox(height: 16),
-
-          Row(
-            children: [
-              Expanded(
-                child: _GenderOption(
-                  symbol: '♂',
-                  name: 'Male',
-                  isSelected: gender == 'Male',
-                  onTap: () => onGenderChanged('Male'),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: _GenderOption(
-                  symbol: '♀',
-                  name: 'Female',
-                  isSelected: gender == 'Female',
-                  onTap: () => onGenderChanged('Female'),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: _GenderOption(
-                  symbol: '⚧',
-                  name: 'Other',
-                  isSelected: gender == 'Other',
-                  onTap: () => onGenderChanged('Other'),
-                ),
-              ),
-            ],
+          const SizedBox(height: 10),
+          _GenderCard(
+            icon: Icons.female_rounded,
+            title: 'Female',
+            subtitle: 'Identify as female',
+            isSelected: gender == 'Female',
+            onTap: () => onGenderChanged('Female'),
+          ),
+          const SizedBox(height: 10),
+          _GenderCard(
+            icon: Icons.wc_rounded,
+            title: 'Other',
+            subtitle: 'Prefer not to say or other',
+            isSelected: gender == 'Other',
+            onTap: () => onGenderChanged('Other'),
           ),
         ],
       ),
@@ -1258,53 +1392,40 @@ class _Step3Content extends StatelessWidget {
   }
 }
 
-// Step 4: Height & Weight
-class _Step4Content extends StatefulWidget {
+// Step 4: Height (full screen + typing)
+class _StepHeightContent extends StatefulWidget {
   final bool heightInCm;
-  final bool weightInKg;
   final double heightCm;
   final int feet;
   final int inch;
-  final double weightKg;
-  final double weightLbs;
   final ValueChanged<bool> onToggleHeightUnit;
-  final ValueChanged<bool> onToggleWeightUnit;
   final ValueChanged<double> onHeightCm;
   final ValueChanged<int> onFeet;
   final ValueChanged<int> onInch;
-  final ValueChanged<double> onWeightKg;
-  final ValueChanged<double> onWeightLbs;
 
-  const _Step4Content({
+  const _StepHeightContent({
     required this.heightInCm,
-    required this.weightInKg,
     required this.heightCm,
     required this.feet,
     required this.inch,
-    required this.weightKg,
-    required this.weightLbs,
     required this.onToggleHeightUnit,
-    required this.onToggleWeightUnit,
     required this.onHeightCm,
     required this.onFeet,
     required this.onInch,
-    required this.onWeightKg,
-    required this.onWeightLbs,
   });
 
   @override
-  State<_Step4Content> createState() => _Step4ContentState();
+  State<_StepHeightContent> createState() => _StepHeightContentState();
 }
 
-class _Step4ContentState extends State<_Step4Content> {
+class _StepHeightContentState extends State<_StepHeightContent> {
   late FixedExtentScrollController _heightCmController;
   late FixedExtentScrollController _feetController;
   late FixedExtentScrollController _inchController;
-  late FixedExtentScrollController _weightKgController;
-  late FixedExtentScrollController _weightLbsController;
-  
-  late int _selectedWeightKgIndex;
-  late int _selectedWeightLbsIndex;
+  late TextEditingController _cmTextController;
+  late TextEditingController _feetTextController;
+  late TextEditingController _inchTextController;
+  bool _syncingFromPicker = false;
 
   @override
   void initState() {
@@ -1318,6 +1439,326 @@ class _Step4ContentState extends State<_Step4Content> {
     _inchController = FixedExtentScrollController(
       initialItem: widget.inch.clamp(0, 11),
     );
+    _cmTextController = TextEditingController(
+      text: widget.heightCm.round().toString(),
+    );
+    _feetTextController = TextEditingController(text: '${widget.feet}');
+    _inchTextController = TextEditingController(text: '${widget.inch}');
+  }
+
+  @override
+  void didUpdateWidget(covariant _StepHeightContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_syncingFromPicker) return;
+    if (oldWidget.heightInCm != widget.heightInCm) {
+      if (widget.heightInCm) {
+        _cmTextController.text = widget.heightCm.round().toString();
+      } else {
+        _feetTextController.text = '${widget.feet}';
+        _inchTextController.text = '${widget.inch}';
+      }
+      return;
+    }
+    if (oldWidget.heightCm != widget.heightCm && widget.heightInCm) {
+      _cmTextController.text = widget.heightCm.round().toString();
+    }
+    if ((oldWidget.feet != widget.feet || oldWidget.inch != widget.inch) &&
+        !widget.heightInCm) {
+      _feetTextController.text = '${widget.feet}';
+      _inchTextController.text = '${widget.inch}';
+    }
+  }
+
+  @override
+  void dispose() {
+    _heightCmController.dispose();
+    _feetController.dispose();
+    _inchController.dispose();
+    _cmTextController.dispose();
+    _feetTextController.dispose();
+    _inchTextController.dispose();
+    super.dispose();
+  }
+
+  void _applyCmFromText(String raw) {
+    final parsed = double.tryParse(raw.trim());
+    if (parsed == null) return;
+    final cm = parsed.clamp(80.0, 230.0);
+    widget.onHeightCm(cm);
+    final totalInches = (cm / 2.54).round();
+    widget.onFeet((totalInches / 12).floor().clamp(3, 8));
+    widget.onInch((totalInches % 12).clamp(0, 11));
+    _syncingFromPicker = true;
+    _heightCmController.jumpToItem((cm - 80).round().clamp(0, 150));
+    _syncingFromPicker = false;
+  }
+
+  void _applyImperialFromText() {
+    final ft = int.tryParse(_feetTextController.text.trim());
+    final inch = int.tryParse(_inchTextController.text.trim());
+    if (ft == null || inch == null) return;
+    final feet = ft.clamp(3, 8);
+    final inches = inch.clamp(0, 11);
+    widget.onFeet(feet);
+    widget.onInch(inches);
+    final cm = ((feet * 30.48) + (inches * 2.54)).clamp(80.0, 230.0);
+    widget.onHeightCm(cm);
+    _syncingFromPicker = true;
+    _feetController.jumpToItem((feet - 3).clamp(0, 5));
+    _inchController.jumpToItem(inches.clamp(0, 11));
+    _heightCmController.jumpToItem((cm - 80).round().clamp(0, 150));
+    _syncingFromPicker = false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textPrimary = DesignTokens.textPrimaryOf(context);
+    final textSecondary = DesignTokens.textSecondaryOf(context);
+    final borderColor = DesignTokens.borderColorOf(context);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+      child: Column(
+        children: [
+          Align(
+            alignment: Alignment.centerRight,
+            child: _UnitToggle(
+              left: 'cm',
+              right: 'ft/in',
+              isLeft: widget.heightInCm,
+              onChanged: widget.onToggleHeightUnit,
+            ),
+          ),
+          const SizedBox(height: 20),
+          if (widget.heightInCm)
+            _MetricTextField(
+              controller: _cmTextController,
+              suffix: 'cm',
+              hint: '170',
+              onSubmitted: _applyCmFromText,
+              onChanged: _applyCmFromText,
+            )
+          else
+            Row(
+              children: [
+                Expanded(
+                  child: _MetricTextField(
+                    controller: _feetTextController,
+                    suffix: 'ft',
+                    hint: '5',
+                    onSubmitted: (_) => _applyImperialFromText(),
+                    onChanged: (_) => _applyImperialFromText(),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _MetricTextField(
+                    controller: _inchTextController,
+                    suffix: 'in',
+                    hint: '7',
+                    onSubmitted: (_) => _applyImperialFromText(),
+                    onChanged: (_) => _applyImperialFromText(),
+                  ),
+                ),
+              ],
+            ),
+          const SizedBox(height: 8),
+          Text(
+            'Type a value or scroll below',
+            style: TextStyle(color: textSecondary, fontSize: 13),
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: widget.heightInCm
+                ? _PickerFadeWrapper(
+                    child: CupertinoTheme(
+                      data: CupertinoThemeData(
+                        brightness: Theme.of(context).brightness,
+                        primaryColor: DesignTokens.accentOrange,
+                        textTheme: CupertinoTextThemeData(
+                          pickerTextStyle: TextStyle(
+                            color: textPrimary,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      child: _LoopingPicker(
+                        scrollController: _heightCmController,
+                        itemExtent: 48,
+                        itemCount: 151,
+                        initialIndex: (widget.heightCm - 80).round().clamp(0, 150),
+                        onSelectedItemChanged: (index) {
+                          if (_syncingFromPicker) return;
+                          HapticFeedback.selectionClick();
+                          final newHeightCm = (80 + (index % 151)).toDouble();
+                          widget.onHeightCm(newHeightCm);
+                          _cmTextController.text = newHeightCm.round().toString();
+                          final totalInches = (newHeightCm / 2.54).round();
+                          widget.onFeet((totalInches / 12).floor().clamp(3, 8));
+                          widget.onInch((totalInches % 12).clamp(0, 11));
+                        },
+                        builder: (context, index) {
+                          final value = 80 + (index % 151);
+                          final isSelected = value == widget.heightCm.round();
+                          return Center(
+                            child: Text(
+                              '$value cm',
+                              style: TextStyle(
+                                color: isSelected
+                                    ? DesignTokens.accentOrange
+                                    : textPrimary.withValues(alpha: 0.55),
+                                fontSize: isSelected ? 24 : 18,
+                                fontWeight:
+                                    isSelected ? FontWeight.w800 : FontWeight.w500,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  )
+                : Row(
+                    children: [
+                      Expanded(
+                        child: _PickerFadeWrapper(
+                          child: CupertinoTheme(
+                            data: CupertinoThemeData(
+                              brightness: Theme.of(context).brightness,
+                              primaryColor: DesignTokens.accentOrange,
+                              textTheme: CupertinoTextThemeData(
+                                pickerTextStyle: TextStyle(
+                                  color: textPrimary,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            child: _LoopingPicker(
+                              scrollController: _feetController,
+                              itemExtent: 48,
+                              itemCount: 6,
+                              initialIndex: (widget.feet - 3).clamp(0, 5),
+                              onSelectedItemChanged: (index) {
+                                if (_syncingFromPicker) return;
+                                HapticFeedback.selectionClick();
+                                widget.onFeet(3 + (index % 6));
+                                _feetTextController.text = '${3 + (index % 6)}';
+                                _applyImperialFromText();
+                              },
+                              builder: (context, index) {
+                                final value = 3 + (index % 6);
+                                final isSelected = value == widget.feet;
+                                return Center(
+                                  child: Text(
+                                    '$value ft',
+                                    style: TextStyle(
+                                      color: isSelected
+                                          ? DesignTokens.accentOrange
+                                          : textPrimary.withValues(alpha: 0.55),
+                                      fontSize: isSelected ? 24 : 18,
+                                      fontWeight: isSelected
+                                          ? FontWeight.w800
+                                          : FontWeight.w500,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                      Container(width: 1, color: borderColor),
+                      Expanded(
+                        child: _PickerFadeWrapper(
+                          child: CupertinoTheme(
+                            data: CupertinoThemeData(
+                              brightness: Theme.of(context).brightness,
+                              primaryColor: DesignTokens.accentOrange,
+                              textTheme: CupertinoTextThemeData(
+                                pickerTextStyle: TextStyle(
+                                  color: textPrimary,
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            child: _LoopingPicker(
+                              scrollController: _inchController,
+                              itemExtent: 48,
+                              itemCount: 12,
+                              initialIndex: widget.inch.clamp(0, 11),
+                              onSelectedItemChanged: (index) {
+                                if (_syncingFromPicker) return;
+                                HapticFeedback.selectionClick();
+                                widget.onInch(index % 12);
+                                _inchTextController.text = '${index % 12}';
+                                _applyImperialFromText();
+                              },
+                              builder: (context, index) {
+                                final value = index % 12;
+                                final isSelected = value == widget.inch;
+                                return Center(
+                                  child: Text(
+                                    '$value in',
+                                    style: TextStyle(
+                                      color: isSelected
+                                          ? DesignTokens.accentOrange
+                                          : textPrimary.withValues(alpha: 0.55),
+                                      fontSize: isSelected ? 24 : 18,
+                                      fontWeight: isSelected
+                                          ? FontWeight.w800
+                                          : FontWeight.w500,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Step 6: Weight
+class _StepWeightContent extends StatefulWidget {
+  final bool weightInKg;
+  final double weightKg;
+  final double weightLbs;
+  final ValueChanged<bool> onToggleWeightUnit;
+  final ValueChanged<double> onWeightKg;
+  final ValueChanged<double> onWeightLbs;
+
+  const _StepWeightContent({
+    required this.weightInKg,
+    required this.weightKg,
+    required this.weightLbs,
+    required this.onToggleWeightUnit,
+    required this.onWeightKg,
+    required this.onWeightLbs,
+  });
+
+  @override
+  State<_StepWeightContent> createState() => _StepWeightContentState();
+}
+
+class _StepWeightContentState extends State<_StepWeightContent> {
+  late FixedExtentScrollController _weightKgController;
+  late FixedExtentScrollController _weightLbsController;
+  late TextEditingController _weightTextController;
+  late int _selectedWeightKgIndex;
+  late int _selectedWeightLbsIndex;
+  bool _syncingFromPicker = false;
+
+  @override
+  void initState() {
+    super.initState();
     _selectedWeightKgIndex = ((widget.weightKg - 35) / 0.1).round().clamp(0, 1150);
     _weightKgController = FixedExtentScrollController(
       initialItem: _selectedWeightKgIndex,
@@ -1326,481 +1767,191 @@ class _Step4ContentState extends State<_Step4Content> {
     _weightLbsController = FixedExtentScrollController(
       initialItem: _selectedWeightLbsIndex,
     );
+    _weightTextController = TextEditingController(
+      text: widget.weightInKg
+          ? widget.weightKg.toStringAsFixed(1)
+          : widget.weightLbs.toStringAsFixed(1),
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _StepWeightContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_syncingFromPicker) return;
+    if (oldWidget.weightInKg != widget.weightInKg) {
+      _weightTextController.text = widget.weightInKg
+          ? widget.weightKg.toStringAsFixed(1)
+          : widget.weightLbs.toStringAsFixed(1);
+    }
   }
 
   @override
   void dispose() {
-    _heightCmController.dispose();
-    _feetController.dispose();
-    _inchController.dispose();
     _weightKgController.dispose();
     _weightLbsController.dispose();
+    _weightTextController.dispose();
     super.dispose();
+  }
+
+  void _applyWeightFromText(String raw) {
+    final parsed = double.tryParse(raw.trim());
+    if (parsed == null) return;
+    if (widget.weightInKg) {
+      final kg = parsed.clamp(35.0, 150.0);
+      widget.onWeightKg(kg);
+      widget.onWeightLbs((kg * 2.20462).roundToDouble());
+      _syncingFromPicker = true;
+      _selectedWeightKgIndex = ((kg - 35) / 0.1).round().clamp(0, 1150);
+      _weightKgController.jumpToItem(_selectedWeightKgIndex);
+      _syncingFromPicker = false;
+    } else {
+      final lbs = parsed.clamp(77.0, 330.0);
+      widget.onWeightLbs(lbs);
+      widget.onWeightKg((lbs * 0.453592).roundToDouble());
+      _syncingFromPicker = true;
+      _selectedWeightLbsIndex = ((lbs - 77) / 0.1).round().clamp(0, 2530);
+      _weightLbsController.jumpToItem(_selectedWeightLbsIndex);
+      _syncingFromPicker = false;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final surfaceColor = DesignTokens.surfaceOf(context);
-    final borderColor = DesignTokens.borderColorOf(context);
     final textPrimary = DesignTokens.textPrimaryOf(context);
+    final textSecondary = DesignTokens.textSecondaryOf(context);
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Align(
+            alignment: Alignment.centerRight,
+            child: _UnitToggle(
+              left: 'kg',
+              right: 'lbs',
+              isLeft: widget.weightInKg,
+              onChanged: (isKg) {
+                widget.onToggleWeightUnit(isKg);
+                _weightTextController.text = isKg
+                    ? widget.weightKg.toStringAsFixed(1)
+                    : widget.weightLbs.toStringAsFixed(1);
+              },
+            ),
+          ),
+          const SizedBox(height: 20),
+          _MetricTextField(
+            controller: _weightTextController,
+            suffix: widget.weightInKg ? 'kg' : 'lbs',
+            hint: widget.weightInKg ? '70.0' : '154.0',
+            allowDecimal: true,
+            onSubmitted: _applyWeightFromText,
+            onChanged: _applyWeightFromText,
+          ),
           const SizedBox(height: 8),
-          // Height
-          Row(
-            children: [
-              Row(
-                children: [
-                  ShaderMask(
-                    shaderCallback: (bounds) => const LinearGradient(
-                      colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
-                    ).createShader(bounds),
-                    child: Icon(
-                      Icons.height,
-                      size: 18,
-                      color: Colors.white, // This will be masked by the gradient
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  ShaderMask(
-                    shaderCallback: (bounds) => const LinearGradient(
-                      colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
-                    ).createShader(bounds),
-                    child: Text(
-                      'Height',
-                      style: TextStyle(
-                        color: Colors.white, // This will be masked by the gradient
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const Spacer(),
-              _UnitToggle(
-                left: 'cm',
-                right: 'ft/in',
-                isLeft: widget.heightInCm,
-                onChanged: widget.onToggleHeightUnit,
-              ),
-            ],
+          Text(
+            'Type a value or scroll below',
+            style: TextStyle(color: textSecondary, fontSize: 13),
           ),
-
-          const SizedBox(height: 16),
-
-          SizedBox(
-            height: 160,
-            child: widget.heightInCm
-              ? ShaderMask(
-                  shaderCallback: (bounds) => LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                    stops: const [0.0, 0.15, 0.85, 1.0],
-                    colors: [
-                      Colors.transparent,
-                      Colors.white,
-                      Colors.white,
-                      Colors.transparent,
-                    ],
-                  ).createShader(bounds),
-                  blendMode: BlendMode.dstIn,
-                  child: CupertinoTheme(
-                    data: CupertinoThemeData(
-                      brightness: Theme.of(context).brightness,
-                      primaryColor: DesignTokens.accentOrange,
-                      textTheme: CupertinoTextThemeData(
-                        pickerTextStyle: TextStyle(
-                          color: textPrimary,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    child: _LoopingPicker(
-                      scrollController: _heightCmController,
-                      itemExtent: 40,
-                      itemCount: 151,
-                      initialIndex: (widget.heightCm - 80).round().clamp(0, 150),
-                      onSelectedItemChanged: (index) {
-                        HapticFeedback.selectionClick();
-                        final newHeightCm = (80 + (index % 151)).toDouble();
-                        widget.onHeightCm(newHeightCm);
-                        final totalInches = (newHeightCm / 2.54).round();
-                        final feet = (totalInches / 12).floor().clamp(3, 8);
-                        final inches = (totalInches % 12).clamp(0, 11);
-                        widget.onFeet(feet);
-                        widget.onInch(inches);
-                      },
-                      builder: (context, index) {
-                        final value = 80 + (index % 151);
-                        final isSelected = value == widget.heightCm.round();
-                        return Center(
-                          child: isSelected
-                            ? ShaderMask(
-                                shaderCallback: (bounds) => const LinearGradient(
-                                  colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
-                                ).createShader(bounds),
-                                child: Text(
-                                  '$value cm',
-                                  style: TextStyle(
-                                    color: Colors.white, // This will be masked by the gradient
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              )
-                            : Text(
-                                '$value cm',
-                                style: TextStyle(
-                                  color: textPrimary.withOpacity(0.8),
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                        );
-                      },
+          const SizedBox(height: 12),
+          Expanded(
+            child: _PickerFadeWrapper(
+              child: CupertinoTheme(
+                data: CupertinoThemeData(
+                  brightness: Theme.of(context).brightness,
+                  primaryColor: DesignTokens.accentOrange,
+                  textTheme: CupertinoTextThemeData(
+                    pickerTextStyle: TextStyle(
+                      color: textPrimary,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                )
-              : Row(
-                  children: [
-                    Expanded(
-                      child: ShaderMask(
-                        shaderCallback: (bounds) => LinearGradient(
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
-                          stops: const [0.0, 0.15, 0.85, 1.0],
-                          colors: [
-                            Colors.transparent,
-                            Colors.white,
-                            Colors.white,
-                            Colors.transparent,
-                          ],
-                        ).createShader(bounds),
-                        blendMode: BlendMode.dstIn,
-                        child: CupertinoTheme(
-                          data: CupertinoThemeData(
-                            brightness: Theme.of(context).brightness,
-                            primaryColor: DesignTokens.accentOrange,
-                            textTheme: CupertinoTextThemeData(
-                              pickerTextStyle: TextStyle(
-                                color: textPrimary,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                          child: _LoopingPicker(
-                            scrollController: _feetController,
-                            itemExtent: 40,
-                            itemCount: 6,
-                            initialIndex: (widget.feet - 3).clamp(0, 5),
-                            onSelectedItemChanged: (index) {
-                              HapticFeedback.selectionClick();
-                              widget.onFeet(3 + (index % 6));
-                            },
-                            builder: (context, index) {
-                              final value = 3 + (index % 6);
-                              final isSelected = value == widget.feet;
-                              return Center(
-                                child: isSelected
-                                  ? ShaderMask(
-                                      shaderCallback: (bounds) => const LinearGradient(
-                                        colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
-                                      ).createShader(bounds),
-                                      child: Text(
-                                        '$value ft',
-                                        style: TextStyle(
-                                          color: Colors.white, // This will be masked by the gradient
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                    )
-                                  : Text(
-                                      '$value ft',
-                                      style: TextStyle(
-                                        color: textPrimary.withOpacity(0.8),
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                    ),
-                    Expanded(
-                      child: ShaderMask(
-                        shaderCallback: (bounds) => LinearGradient(
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
-                          stops: const [0.0, 0.15, 0.85, 1.0],
-                          colors: [
-                            Colors.transparent,
-                            Colors.white,
-                            Colors.white,
-                            Colors.transparent,
-                          ],
-                        ).createShader(bounds),
-                        blendMode: BlendMode.dstIn,
-                        child: CupertinoTheme(
-                          data: CupertinoThemeData(
-                            brightness: Theme.of(context).brightness,
-                            primaryColor: DesignTokens.accentOrange,
-                            textTheme: CupertinoTextThemeData(
-                              pickerTextStyle: TextStyle(
-                                color: textPrimary,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                          child: _LoopingPicker(
-                            scrollController: _inchController,
-                            itemExtent: 40,
-                            itemCount: 12,
-                            initialIndex: widget.inch.clamp(0, 11),
-                            onSelectedItemChanged: (index) {
-                              HapticFeedback.selectionClick();
-                              widget.onInch(index % 12);
-                            },
-                            builder: (context, index) {
-                              final value = index % 12;
-                              final isSelected = value == widget.inch;
-                              return Center(
-                                child: isSelected
-                                  ? ShaderMask(
-                                      shaderCallback: (bounds) => const LinearGradient(
-                                        colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
-                                      ).createShader(bounds),
-                                      child: Text(
-                                        '$value in',
-                                        style: TextStyle(
-                                          color: Colors.white, // This will be masked by the gradient
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                    )
-                                  : Text(
-                                      '$value in',
-                                      style: TextStyle(
-                                        color: textPrimary.withOpacity(0.8),
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
                 ),
-          ),
-
-          const SizedBox(height: 36),
-
-          // Weight
-          Row(
-            children: [
-              Row(
-                children: [
-                  ShaderMask(
-                    shaderCallback: (bounds) => const LinearGradient(
-                      colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
-                    ).createShader(bounds),
-                    child: Icon(
-                      Icons.monitor_weight,
-                      size: 18,
-                      color: Colors.white, // This will be masked by the gradient
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  ShaderMask(
-                    shaderCallback: (bounds) => const LinearGradient(
-                      colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
-                    ).createShader(bounds),
-                    child: Text(
-                      'Weight',
-                      style: TextStyle(
-                        color: Colors.white, // This will be masked by the gradient
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const Spacer(),
-              _UnitToggle(
-                left: 'kg',
-                right: 'lbs',
-                isLeft: widget.weightInKg,
-                onChanged: widget.onToggleWeightUnit,
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 16),
-
-          SizedBox(
-            height: 160,
-            child: widget.weightInKg
-              ? ShaderMask(
-                  shaderCallback: (bounds) => LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                    stops: const [0.0, 0.15, 0.85, 1.0],
-                    colors: [
-                      Colors.transparent,
-                      Colors.white,
-                      Colors.white,
-                      Colors.transparent,
-                    ],
-                  ).createShader(bounds),
-                  blendMode: BlendMode.dstIn,
-                  child: CupertinoTheme(
-                    data: CupertinoThemeData(
-                      brightness: Theme.of(context).brightness,
-                      primaryColor: DesignTokens.accentOrange,
-                      textTheme: CupertinoTextThemeData(
-                        pickerTextStyle: TextStyle(
-                          color: textPrimary,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    child: _LoopingPicker(
-                      scrollController: _weightKgController,
-                      itemExtent: 40,
-                      itemCount: 1151,
-                      initialIndex: _selectedWeightKgIndex,
-                      onSelectedItemChanged: (index) {
-                        setState(() {
-                          _selectedWeightKgIndex = index % 1151;
-                        });
-                        HapticFeedback.selectionClick();
-                        final newWeightKg = (35 + (index % 1151) * 0.1).roundToDouble();
-                        widget.onWeightKg(newWeightKg);
-                        final lbsValue = (newWeightKg * 2.20462).round().toDouble();
-                        widget.onWeightLbs(lbsValue);
-                      },
-                      builder: (context, index) {
-                        final actualIndex = index % 1151;
-                        final value = (35 + actualIndex * 0.1).toStringAsFixed(1);
-                        final isSelected = actualIndex == _selectedWeightKgIndex;
-                        return Center(
-                          child: isSelected
-                            ? ShaderMask(
-                                shaderCallback: (bounds) => const LinearGradient(
-                                  colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
-                                ).createShader(bounds),
-                                child: Text(
-                                  '$value kg',
-                                  style: TextStyle(
-                                    color: Colors.white, // This will be masked by the gradient
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              )
-                            : Text(
-                                '$value kg',
-                                style: TextStyle(
-                                  color: textPrimary.withOpacity(0.8),
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                ),
+                child: widget.weightInKg
+                    ? _LoopingPicker(
+                        scrollController: _weightKgController,
+                        itemExtent: 48,
+                        itemCount: 1151,
+                        initialIndex: _selectedWeightKgIndex,
+                        onSelectedItemChanged: (index) {
+                          if (_syncingFromPicker) return;
+                          setState(() {
+                            _selectedWeightKgIndex = index % 1151;
+                          });
+                          HapticFeedback.selectionClick();
+                          final newWeightKg =
+                              (35 + (index % 1151) * 0.1).roundToDouble();
+                          widget.onWeightKg(newWeightKg);
+                          widget.onWeightLbs(
+                              (newWeightKg * 2.20462).roundToDouble());
+                          _weightTextController.text =
+                              newWeightKg.toStringAsFixed(1);
+                        },
+                        builder: (context, index) {
+                          final actualIndex = index % 1151;
+                          final value =
+                              (35 + actualIndex * 0.1).toStringAsFixed(1);
+                          final isSelected =
+                              actualIndex == _selectedWeightKgIndex;
+                          return Center(
+                            child: Text(
+                              '$value kg',
+                              style: TextStyle(
+                                color: isSelected
+                                    ? DesignTokens.accentOrange
+                                    : textPrimary.withValues(alpha: 0.55),
+                                fontSize: isSelected ? 24 : 18,
+                                fontWeight: isSelected
+                                    ? FontWeight.w800
+                                    : FontWeight.w500,
                               ),
-                        );
-                      },
-                    ),
-                  ),
-                )
-              : ShaderMask(
-                  shaderCallback: (bounds) => LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                    stops: const [0.0, 0.15, 0.85, 1.0],
-                    colors: [
-                      Colors.transparent,
-                      Colors.white,
-                      Colors.white,
-                      Colors.transparent,
-                    ],
-                  ).createShader(bounds),
-                  blendMode: BlendMode.dstIn,
-                  child: CupertinoTheme(
-                    data: CupertinoThemeData(
-                      brightness: Theme.of(context).brightness,
-                      primaryColor: DesignTokens.accentOrange,
-                      textTheme: CupertinoTextThemeData(
-                        pickerTextStyle: TextStyle(
-                          color: textPrimary,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    child: _LoopingPicker(
-                    scrollController: _weightLbsController,
-                    itemExtent: 40,
-                    itemCount: 2531,
-                    initialIndex: _selectedWeightLbsIndex,
-                    onSelectedItemChanged: (index) {
-                      setState(() {
-                        _selectedWeightLbsIndex = index % 2531;
-                      });
-                      HapticFeedback.selectionClick();
-                      final newWeightLbs = (77 + (index % 2531) * 0.1).roundToDouble();
-                      widget.onWeightLbs(newWeightLbs);
-                      final kgValue = (newWeightLbs * 0.453592).roundToDouble();
-                      widget.onWeightKg(kgValue);
-                    },
-                    builder: (context, index) {
-                      final actualIndex = index % 2531;
-                      final value = (77 + actualIndex * 0.1).toStringAsFixed(1);
-                      final isSelected = actualIndex == _selectedWeightLbsIndex;
-                      return Center(
-                        child: isSelected
-                          ? ShaderMask(
-                              shaderCallback: (bounds) => const LinearGradient(
-                                colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
-                              ).createShader(bounds),
-                              child: Text(
-                                '$value lbs',
-                                style: TextStyle(
-                                  color: Colors.white, // This will be masked by the gradient
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            )
-                          : Text(
+                            ),
+                          );
+                        },
+                      )
+                    : _LoopingPicker(
+                        scrollController: _weightLbsController,
+                        itemExtent: 48,
+                        itemCount: 2531,
+                        initialIndex: _selectedWeightLbsIndex,
+                        onSelectedItemChanged: (index) {
+                          if (_syncingFromPicker) return;
+                          setState(() {
+                            _selectedWeightLbsIndex = index % 2531;
+                          });
+                          HapticFeedback.selectionClick();
+                          final newWeightLbs =
+                              (77 + (index % 2531) * 0.1).roundToDouble();
+                          widget.onWeightLbs(newWeightLbs);
+                          widget.onWeightKg(
+                              (newWeightLbs * 0.453592).roundToDouble());
+                          _weightTextController.text =
+                              newWeightLbs.toStringAsFixed(1);
+                        },
+                        builder: (context, index) {
+                          final actualIndex = index % 2531;
+                          final value =
+                              (77 + actualIndex * 0.1).toStringAsFixed(1);
+                          final isSelected =
+                              actualIndex == _selectedWeightLbsIndex;
+                          return Center(
+                            child: Text(
                               '$value lbs',
                               style: TextStyle(
-                                color: textPrimary.withOpacity(0.8),
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
+                                color: isSelected
+                                    ? DesignTokens.accentOrange
+                                    : textPrimary.withValues(alpha: 0.55),
+                                fontSize: isSelected ? 24 : 18,
+                                fontWeight: isSelected
+                                    ? FontWeight.w800
+                                    : FontWeight.w500,
                               ),
                             ),
-                      );
-                    },
-                  ),
-                  ),
-                ),
+                          );
+                        },
+                      ),
+              ),
+            ),
           ),
         ],
       ),
@@ -1808,161 +1959,262 @@ class _Step4ContentState extends State<_Step4Content> {
   }
 }
 
-// Step 5: Goals & Role
-class _Step5Content extends StatefulWidget {
+// Step 6: Role, specialties, and goals
+class _StepPreferencesContent extends StatelessWidget {
   final List<String> goals;
-  final Set<String> selected;
+  final Set<String> selectedGoals;
   final String role;
+  final List<String> trainerSpecialties;
+  final List<String> nutritionistSpecialties;
+  final Set<String> selectedSpecializations;
+  final TextEditingController customSpecialty;
   final ValueChanged<String> onToggleGoal;
   final ValueChanged<String> onRoleChanged;
+  final ValueChanged<String> onToggleSpecialization;
+  final VoidCallback onAddCustomSpecialty;
 
-  const _Step5Content({
+  const _StepPreferencesContent({
     required this.goals,
-    required this.selected,
+    required this.selectedGoals,
     required this.role,
+    required this.trainerSpecialties,
+    required this.nutritionistSpecialties,
+    required this.selectedSpecializations,
+    required this.customSpecialty,
     required this.onToggleGoal,
     required this.onRoleChanged,
+    required this.onToggleSpecialization,
+    required this.onAddCustomSpecialty,
   });
 
   @override
-  State<_Step5Content> createState() => _Step5ContentState();
-}
-
-class _Step5ContentState extends State<_Step5Content> {
-  late FixedExtentScrollController _roleController;
-
-  @override
-  void initState() {
-    super.initState();
-    final roles = ['Client', 'Trainer', 'Nutritionist'];
-    final initialIndex = roles.indexOf(widget.role);
-    _roleController = FixedExtentScrollController(
-      initialItem: initialIndex >= 0 ? initialIndex : 0,
-    );
-  }
-
-  @override
-  void dispose() {
-    _roleController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final isProvider = role == 'Trainer' || role == 'Nutritionist';
+    final specialtyOptions =
+        role == 'Trainer' ? trainerSpecialties : nutritionistSpecialties;
+    final textSecondary = DesignTokens.textSecondaryOf(context);
+    final borderColor = DesignTokens.borderColorOf(context);
+    final sectionLabel = TextStyle(
+      color: textSecondary,
+      fontSize: 14,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0.2,
+    );
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 8),
-          Text(
-            'Categories',
-            style: TextStyle(
-              color: DesignTokens.textSecondaryOf(context),
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.2,
-            ),
+          Text('Join as', style: sectionLabel),
+          const SizedBox(height: 12),
+          _RoleCard(
+            icon: Icons.person_outline_rounded,
+            title: 'Client',
+            subtitle: 'Discover trainers, track workouts & nutrition',
+            isSelected: role == 'Client',
+            onTap: () {
+              HapticFeedback.selectionClick();
+              onRoleChanged('Client');
+            },
           ),
-
-          const SizedBox(height: 16),
-
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: widget.goals.map((goal) {
-              final isSelected = widget.selected.contains(goal);
-              return _GoalChip(
-                label: goal,
-                isSelected: isSelected,
-                onTap: () => widget.onToggleGoal(goal),
-              );
-            }).toList(),
+          const SizedBox(height: 10),
+          _RoleCard(
+            icon: Icons.fitness_center_rounded,
+            title: 'Trainer',
+            subtitle: 'Offer training, manage clients & sessions',
+            isSelected: role == 'Trainer',
+            onTap: () {
+              HapticFeedback.selectionClick();
+              onRoleChanged('Trainer');
+            },
           ),
-
-          const SizedBox(height: 24),
-
-          Text(
-            'Role',
-            style: TextStyle(
-              color: DesignTokens.textSecondaryOf(context),
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.2,
-            ),
+          const SizedBox(height: 10),
+          _RoleCard(
+            icon: Icons.restaurant_rounded,
+            title: 'Nutritionist',
+            subtitle: 'Guide clients on meal plans & nutrition',
+            isSelected: role == 'Nutritionist',
+            onTap: () {
+              HapticFeedback.selectionClick();
+              onRoleChanged('Nutritionist');
+            },
           ),
-
-          const SizedBox(height: 16),
-
-          SizedBox(
-            height: 150,
-            child: ShaderMask(
-              shaderCallback: (bounds) => LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-                stops: const [0.0, 0.15, 0.85, 1.0],
-                colors: [
-                  Colors.transparent,
-                  Colors.white,
-                  Colors.white,
-                  Colors.transparent,
-                ],
-              ).createShader(bounds),
-              blendMode: BlendMode.dstIn,
-              child: CupertinoTheme(
-                data: CupertinoThemeData(
-                  brightness: Theme.of(context).brightness,
-                  primaryColor: DesignTokens.accentOrange,
-                  textTheme: CupertinoTextThemeData(
-                    pickerTextStyle: TextStyle(
-                      color: DesignTokens.textPrimaryOf(context),
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
+          AnimatedCrossFade(
+            duration: const Duration(milliseconds: 280),
+            crossFadeState: isProvider
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
+            sizeCurve: Curves.easeOutCubic,
+            firstChild: const SizedBox(width: double.infinity),
+            secondChild: Padding(
+              padding: const EdgeInsets.only(top: 22),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: DesignTokens.surfaceOf(context),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: DesignTokens.accentOrange.withValues(alpha: 0.28),
                   ),
                 ),
-                child: _LoopingPicker(
-                  scrollController: _roleController,
-                  itemExtent: 40,
-                  itemCount: 3,
-                  initialIndex: ['Client', 'Trainer', 'Nutritionist'].indexOf(widget.role).clamp(0, 2),
-                  onSelectedItemChanged: (index) {
-                    HapticFeedback.selectionClick();
-                    final roles = ['Client', 'Trainer', 'Nutritionist'];
-                    widget.onRoleChanged(roles[index]);
-                  },
-                  builder: (context, index) {
-                    final roles = ['Client', 'Trainer', 'Nutritionist'];
-                    final role = roles[index % 3];
-                    final isSelected = role == widget.role;
-                    final textPrimary = DesignTokens.textPrimaryOf(context);
-                    return Center(
-                      child: isSelected
-                        ? ShaderMask(
-                            shaderCallback: (bounds) => const LinearGradient(
-                              colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
-                            ).createShader(bounds),
-                            child: Text(
-                              role,
-                              style: TextStyle(
-                                color: Colors.white, // This will be masked by the gradient
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          role == 'Trainer'
+                              ? Icons.sports_gymnastics_rounded
+                              : Icons.eco_rounded,
+                          size: 18,
+                          color: DesignTokens.accentOrange,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          role == 'Trainer'
+                              ? 'Training specialties'
+                              : 'Nutrition specialties',
+                          style: sectionLabel.copyWith(
+                            color: DesignTokens.textPrimaryOf(context),
+                            fontSize: 15,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      role == 'Trainer'
+                          ? 'Pick what you train in — Zumba, Boxing, Gym, and more'
+                          : 'Pick your focus areas — weight loss, sports nutrition, etc.',
+                      style: TextStyle(
+                        color: textSecondary,
+                        fontSize: 13,
+                        height: 1.35,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        ...specialtyOptions.map((item) {
+                          final isSelected =
+                              selectedSpecializations.contains(item);
+                          return _GoalChip(
+                            label: item,
+                            isSelected: isSelected,
+                            onTap: () => onToggleSpecialization(item),
+                          );
+                        }),
+                        ...selectedSpecializations
+                            .where((s) => !specialtyOptions.contains(s))
+                            .map((item) => _GoalChip(
+                                  label: item,
+                                  isSelected: true,
+                                  onTap: () => onToggleSpecialization(item),
+                                )),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: customSpecialty,
+                            textCapitalization: TextCapitalization.words,
+                            style: TextStyle(
+                              color: DesignTokens.textPrimaryOf(context),
+                              fontSize: 14,
+                            ),
+                            decoration: InputDecoration(
+                              hintText: role == 'Trainer'
+                                  ? 'Add your own (e.g. CrossFit)'
+                                  : 'Add your own (e.g. Gut Health)',
+                              hintStyle: TextStyle(
+                                color: textSecondary,
+                                fontSize: 14,
+                              ),
+                              filled: true,
+                              fillColor: Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withValues(alpha: 0.04),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: BorderSide(color: borderColor),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: BorderSide(color: borderColor),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(14),
+                                borderSide: const BorderSide(
+                                  color: DesignTokens.accentOrange,
+                                  width: 2,
+                                ),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 12,
                               ),
                             ),
-                          )
-                        : Text(
-                            role,
-                            style: TextStyle(
-                              color: textPrimary.withOpacity(0.8),
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
+                            onSubmitted: (_) => onAddCustomSpecialty(),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Material(
+                          color: DesignTokens.accentOrange,
+                          borderRadius: BorderRadius.circular(14),
+                          child: InkWell(
+                            onTap: onAddCustomSpecialty,
+                            borderRadius: BorderRadius.circular(14),
+                            child: const SizedBox(
+                              width: 48,
+                              height: 48,
+                              child: Icon(
+                                Icons.add_rounded,
+                                color: Colors.black,
+                              ),
                             ),
                           ),
-                    );
-                  },
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
+            ),
+          ),
+          const SizedBox(height: 22),
+          Text('Fitness goals', style: sectionLabel),
+          const SizedBox(height: 6),
+          Text(
+            'What are you working toward?',
+            style: TextStyle(color: textSecondary, fontSize: 13),
+          ),
+          const SizedBox(height: 14),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: DesignTokens.surfaceOf(context),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: borderColor),
+            ),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: goals.map((goal) {
+                final isSelected = selectedGoals.contains(goal);
+                return _GoalChip(
+                  label: goal,
+                  isSelected: isSelected,
+                  onTap: () => onToggleGoal(goal),
+                );
+              }).toList(),
             ),
           ),
         ],
@@ -2189,15 +2441,118 @@ class _PasswordChip extends StatelessWidget {
   }
 }
 
-class _GenderOption extends StatelessWidget {
-  final String symbol;
-  final String name;
+class _MetricTextField extends StatelessWidget {
+  final TextEditingController controller;
+  final String suffix;
+  final String hint;
+  final bool allowDecimal;
+  final ValueChanged<String> onChanged;
+  final ValueChanged<String> onSubmitted;
+
+  const _MetricTextField({
+    required this.controller,
+    required this.suffix,
+    required this.hint,
+    required this.onChanged,
+    required this.onSubmitted,
+    this.allowDecimal = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textPrimary = DesignTokens.textPrimaryOf(context);
+    final borderColor = DesignTokens.borderColorOf(context);
+
+    return TextField(
+      controller: controller,
+      keyboardType: TextInputType.numberWithOptions(decimal: allowDecimal),
+      inputFormatters: [
+        FilteringTextInputFormatter.allow(
+          RegExp(allowDecimal ? r'^\d*\.?\d*' : r'\d*'),
+        ),
+      ],
+      textAlign: TextAlign.center,
+      style: TextStyle(
+        color: textPrimary,
+        fontSize: 42,
+        fontWeight: FontWeight.w800,
+        letterSpacing: -1,
+        height: 1.1,
+      ),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: TextStyle(
+          color: textPrimary.withValues(alpha: 0.25),
+          fontSize: 42,
+          fontWeight: FontWeight.w800,
+        ),
+        suffixText: suffix,
+        suffixStyle: TextStyle(
+          color: DesignTokens.accentOrange,
+          fontSize: 22,
+          fontWeight: FontWeight.w700,
+        ),
+        filled: true,
+        fillColor: DesignTokens.surfaceOf(context),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(20),
+          borderSide: BorderSide(color: borderColor),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(20),
+          borderSide: BorderSide(color: borderColor),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(20),
+          borderSide: const BorderSide(
+            color: DesignTokens.accentOrange,
+            width: 2,
+          ),
+        ),
+      ),
+      onChanged: onChanged,
+      onSubmitted: onSubmitted,
+    );
+  }
+}
+
+class _PickerFadeWrapper extends StatelessWidget {
+  final Widget child;
+
+  const _PickerFadeWrapper({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return ShaderMask(
+      shaderCallback: (bounds) => LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        stops: const [0.0, 0.12, 0.88, 1.0],
+        colors: [
+          Colors.transparent,
+          Colors.white,
+          Colors.white,
+          Colors.transparent,
+        ],
+      ).createShader(bounds),
+      blendMode: BlendMode.dstIn,
+      child: child,
+    );
+  }
+}
+
+class _RoleCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
   final bool isSelected;
   final VoidCallback onTap;
 
-  const _GenderOption({
-    required this.symbol,
-    required this.name,
+  const _RoleCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
     required this.isSelected,
     required this.onTap,
   });
@@ -2206,67 +2561,209 @@ class _GenderOption extends StatelessWidget {
   Widget build(BuildContext context) {
     final surfaceColor = DesignTokens.surfaceOf(context);
     final borderColor = DesignTokens.borderColorOf(context);
+    final textPrimary = DesignTokens.textPrimaryOf(context);
     final textSecondary = DesignTokens.textSecondaryOf(context);
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    final symbolColor = isDarkMode ? Colors.white : Colors.black;
 
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: isSelected
-            ? DesignTokens.accentOrange.withOpacity(0.15)
-            : surfaceColor,
-          borderRadius: BorderRadius.circular(14),
+              ? DesignTokens.accentOrange.withValues(alpha: 0.1)
+              : surfaceColor,
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: isSelected
-              ? DesignTokens.accentOrange
-              : borderColor,
+            color: isSelected ? DesignTokens.accentOrange : borderColor,
             width: isSelected ? 2 : 1.5,
           ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: DesignTokens.accentOrange.withValues(alpha: 0.16),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        child: Row(
           children: [
-            // Symbol - always white/black, gradient when selected
-            isSelected
-              ? ShaderMask(
-                  shaderCallback: (bounds) => const LinearGradient(
-                    colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
-                  ).createShader(bounds),
-                  child: Text(
-                    symbol,
-                    style: TextStyle(
-                      color: Colors.white, // This will be masked by the gradient
-                      fontSize: 24,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                )
-              : ColorFiltered(
-                  colorFilter: ColorFilter.mode(
-                    symbolColor,
-                    BlendMode.srcIn,
-                  ),
-                  child: Text(
-                    symbol,
-                    style: TextStyle(
-                      color: symbolColor, // White in dark mode, black in light mode
-                      fontSize: 24,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-            const SizedBox(height: 8),
-            // Name label
-            Text(
-              name,
-              style: TextStyle(
-                color: textSecondary,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                gradient: isSelected ? DesignTokens.primaryGradient : null,
+                color: isSelected
+                    ? null
+                    : textPrimary.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(16),
               ),
+              child: Icon(
+                icon,
+                size: 26,
+                color: isSelected ? Colors.white : textSecondary,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: textPrimary,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: textSecondary,
+                      fontSize: 13,
+                      height: 1.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: isSelected ? DesignTokens.primaryGradient : null,
+                color: isSelected ? null : Colors.transparent,
+                border: isSelected
+                    ? null
+                    : Border.all(color: borderColor, width: 2),
+              ),
+              child: isSelected
+                  ? const Icon(Icons.check_rounded, size: 16, color: Colors.white)
+                  : null,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _GenderCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _GenderCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final surfaceColor = DesignTokens.surfaceOf(context);
+    final borderColor = DesignTokens.borderColorOf(context);
+    final textPrimary = DesignTokens.textPrimaryOf(context);
+    final textSecondary = DesignTokens.textSecondaryOf(context);
+
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? DesignTokens.accentOrange.withValues(alpha: 0.12)
+              : surfaceColor,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: isSelected ? DesignTokens.accentOrange : borderColor,
+            width: isSelected ? 2 : 1.5,
+          ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: DesignTokens.accentOrange.withValues(alpha: 0.18),
+                    blurRadius: 14,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? DesignTokens.accentOrange.withValues(alpha: 0.18)
+                    : textPrimary.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(
+                icon,
+                size: 26,
+                color: isSelected ? DesignTokens.accentOrange : textSecondary,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: textPrimary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: textSecondary,
+                      fontSize: 13,
+                      height: 1.2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: isSelected
+                    ? DesignTokens.accentOrange
+                    : Colors.transparent,
+                border: Border.all(
+                  color: isSelected
+                      ? DesignTokens.accentOrange
+                      : borderColor,
+                  width: 2,
+                ),
+              ),
+              child: isSelected
+                  ? const Icon(Icons.check_rounded, size: 16, color: Colors.black)
+                  : null,
             ),
           ],
         ),

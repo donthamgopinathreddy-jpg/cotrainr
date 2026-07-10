@@ -71,16 +71,18 @@ Response: { "signedUrl": "...", "path": "..." }
 ```
 POST https://<project>.supabase.co/functions/v1/get-verification-signed-url
 Headers: Authorization: Bearer <anon_key or service_role>, Content-Type: application/json
-Body: { "path": "<certificate_path or gov_id_path>", "expiresIn": 900 }
-Response: { "url": "<signed_url>" }
+Body: { "path": "<certificate_path or gov_id_path>" }
+Response: { "signedUrl": "<signed_url>" }
 ```
 
-**Retool implementation:**
-1. Create two REST queries: `getCertSignedUrl`, `getGovIdSignedUrl`. Both POST to Edge Function with `path` from `drawerState.selectedRow.certificate_path` and `drawerState.selectedRow.gov_id_path`.
-2. Set both queries to run when drawer opens (e.g. trigger on `drawerState.selectedRow` change).
-3. Image 1 `src`: `{{ getCertSignedUrl.data?.url }}` — Image 2 `src`: `{{ getGovIdSignedUrl.data?.url }}`
-4. Approve button `disabled`: `{{ !getCertSignedUrl.data?.url || !getGovIdSignedUrl.data?.url || getCertSignedUrl.isLoading || getGovIdSignedUrl.isLoading }}`
-5. Show "Loading previews..." or spinners until both queries succeed. If either fails, show error and keep Approve disabled.
+**Retool implementation:** See `docs/RETOOL_VERIFICATION_DOCUMENT_PREVIEW.md` (canonical).
+
+Summary:
+1. Use the **existing** Edge Functions REST resource only (no SQL resource for previews).
+2. Queries: `getCertificateSignedUrl`, `getGovIdSignedUrl` → POST `/get-verification-signed-url`.
+3. State: `selectedSubmission` — paths only in request body, never shown in UI.
+4. Image bindings: `{{ getCertificateSignedUrl.data.signedUrl }}`, `{{ getGovIdSignedUrl.data.signedUrl }}`.
+5. Approve disabled until both signed URLs succeed; Reject disabled until notes are entered.
 
 TTL: 5–15 min (900s default).
 

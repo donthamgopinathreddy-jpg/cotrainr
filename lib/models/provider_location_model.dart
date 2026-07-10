@@ -77,7 +77,7 @@ class ProviderLocation {
       'provider_id': providerId,
       'location_type': locationType.value,
       'display_name': displayName,
-      'geo': 'POINT($longitude $latitude)',
+      'geo': 'SRID=4326;POINT($longitude $latitude)',
       'radius_km': radiusKm,
       'is_public_exact': isPublicExact,
       'is_active': isActive,

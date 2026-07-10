@@ -147,6 +147,24 @@ class AppTheme {
       ),
       
       // Buttons - Rounded, gradient-ready
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(
+            horizontal: DesignTokens.spacing32,
+            vertical: DesignTokens.spacing16,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+          ),
+          backgroundColor: DesignTokens.lightTextPrimary,
+          foregroundColor: Colors.white,
+          textStyle: GoogleFonts.poppins(
+            fontSize: DesignTokens.fontSizeBody,
+            fontWeight: DesignTokens.fontWeightSemiBold,
+          ),
+        ),
+      ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           elevation: 0,
@@ -319,6 +337,24 @@ class AppTheme {
       ),
       
       // Buttons - Rounded, gradient-ready
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(
+            horizontal: DesignTokens.spacing32,
+            vertical: DesignTokens.spacing16,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+          ),
+          backgroundColor: Colors.white,
+          foregroundColor: DesignTokens.darkBackground,
+          textStyle: GoogleFonts.poppins(
+            fontSize: DesignTokens.fontSizeBody,
+            fontWeight: DesignTokens.fontWeightSemiBold,
+          ),
+        ),
+      ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           elevation: 0,
@@ -329,8 +365,8 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
           ),
-          backgroundColor: DesignTokens.accentOrange,
-          foregroundColor: Colors.white,
+          backgroundColor: Colors.white,
+          foregroundColor: DesignTokens.darkBackground,
           textStyle: GoogleFonts.poppins(
             fontSize: DesignTokens.fontSizeBody,
             fontWeight: DesignTokens.fontWeightSemiBold,

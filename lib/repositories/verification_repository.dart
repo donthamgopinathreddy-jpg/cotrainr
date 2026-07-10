@@ -2,6 +2,13 @@ import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/storage_service.dart';
 
+enum ProviderVerificationStatus {
+  verified,
+  pending,
+  rejected,
+  notSubmitted,
+}
+
 /// Repository for verification submissions
 class VerificationRepository {
   final SupabaseClient _supabase;
@@ -61,6 +68,34 @@ class VerificationRepository {
   Future<bool> hasPendingSubmission() async {
     final latest = await getMyLatestSubmission();
     return latest?['status'] == 'pending';
+  }
+
+  /// Resolved provider verification for profile UI.
+  Future<ProviderVerificationStatus> getProviderVerificationStatus() async {
+    if (_currentUserId == null) return ProviderVerificationStatus.notSubmitted;
+
+    try {
+      final prov = await _supabase
+          .from('providers')
+          .select('verified')
+          .eq('user_id', _currentUserId!)
+          .maybeSingle();
+      if (prov?['verified'] == true) {
+        return ProviderVerificationStatus.verified;
+      }
+    } catch (_) {}
+
+    final latest = await getMyLatestSubmission();
+    switch (latest?['status'] as String?) {
+      case 'approved':
+        return ProviderVerificationStatus.verified;
+      case 'pending':
+        return ProviderVerificationStatus.pending;
+      case 'rejected':
+        return ProviderVerificationStatus.rejected;
+      default:
+        return ProviderVerificationStatus.notSubmitted;
+    }
   }
 
   /// Upload files and insert verification submission

@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../repositories/metrics_repository.dart';
 import '../../repositories/profile_repository.dart';
+import '../../repositories/verification_repository.dart';
 import '../../services/nutrition_goal_calculator.dart';
 import '../../services/nutrition_planner_local_storage.dart';
 import '../../services/streak_service.dart';
@@ -20,6 +21,7 @@ import '../../widgets/profile/appearance_toggle.dart';
 import '../../providers/profile_images_provider.dart';
 import '../trainer/become_trainer_page.dart';
 import '../trainer/verification_submission_page.dart';
+import '../subscription/subscription_page.dart';
 import '../refer/refer_friend_page.dart';
 import 'goals_preferences_page.dart';
 import 'settings/health_devices_page.dart';
@@ -35,6 +37,7 @@ class ProfilePage extends ConsumerStatefulWidget {
 class _ProfilePageState extends ConsumerState<ProfilePage>
     with SingleTickerProviderStateMixin {
   final ProfileRepository _profileRepo = ProfileRepository();
+  final VerificationRepository _verificationRepo = VerificationRepository();
   final MetricsRepository _metricsRepo = MetricsRepository();
   final UserGoalsService _goalsService = UserGoalsService();
   final NutritionPlannerLocalStorage _plannerStorage =
@@ -44,6 +47,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
   String _handle = '@loading';
   Map<String, dynamic>? _profile;
   bool _isLoadingProfile = true;
+  ProviderVerificationStatus _verificationStatus =
+      ProviderVerificationStatus.notSubmitted;
 
   double _bmi = 0;
   String _bmiStatus = '';
@@ -59,22 +64,22 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
   late AnimationController _headerCtrl;
   late Animation<double> _headerAnim;
 
-  String? get _verificationStatus {
-    if (_role == 'trainer' || _role == 'nutritionist') {
-      final verified = _profile?['verified'] as bool?;
-      if (verified == true) return 'verified';
-      return 'pending';
-    }
-    return null;
+  bool get _isVerified =>
+      _verificationStatus == ProviderVerificationStatus.verified;
+
+  bool get _showVerificationCard {
+    if (_role != 'trainer' && _role != 'nutritionist') return false;
+    return !_isVerified;
   }
 
-  bool get _isPending => _verificationStatus == 'pending';
-
-  bool get _needsVerification {
-    if (_role == 'trainer' || _role == 'nutritionist') {
-      return _verificationStatus != 'verified';
-    }
-    return false;
+  Future<void> _openVerificationFlow() async {
+    HapticFeedback.lightImpact();
+    await Navigator.push(
+      context,
+      PageTransitions.slideRoute(const VerificationSubmissionPage()),
+    );
+    if (!mounted) return;
+    await _loadVerificationStatus();
   }
 
   @override
@@ -106,9 +111,19 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
               'User';
           _handle = '@${profile['username'] ?? ''}';
         });
+        await _loadVerificationStatus();
       }
     } catch (_) {}
     if (mounted) setState(() => _isLoadingProfile = false);
+  }
+
+  Future<void> _loadVerificationStatus() async {
+    final role = _profile?['role'] as String? ?? 'client';
+    if (role != 'trainer' && role != 'nutritionist') return;
+    try {
+      final status = await _verificationRepo.getProviderVerificationStatus();
+      if (mounted) setState(() => _verificationStatus = status);
+    } catch (_) {}
   }
 
   Future<void> _loadHubData() async {
@@ -210,6 +225,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                       username: _username,
                       handle: _handle,
                       isLoading: _isLoadingProfile,
+                      isVerified: _isVerified,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -319,24 +335,15 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                       ),
                     ),
                   ),
-                  if ((_role == 'trainer' || _role == 'nutritionist') &&
-                      _needsVerification) ...[
+                  if (_showVerificationCard) ...[
                     const SizedBox(height: 10),
                     Padding(
                       padding: const EdgeInsets.symmetric(
                           horizontal: AccountHubTheme.horizontalMargin),
                       child: _VerificationCard(
-                        isPending: _isPending,
+                        status: _verificationStatus,
                         role: _role,
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          Navigator.push(
-                            context,
-                            PageTransitions.slideRoute(
-                              const VerificationSubmissionPage(),
-                            ),
-                          );
-                        },
+                        onTap: _openVerificationFlow,
                       ),
                     ),
                   ],
@@ -352,10 +359,11 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                             icon: Icons.star_rounded,
                             iconColor: AccountHubTheme.subscriptionAmber,
                             delayMs: 120,
-                            trailing: const ComingSoonBadge(),
-                            onTap: () => showHubSnackBar(
+                            onTap: () => Navigator.push(
                               context,
-                              'Subscription management coming soon',
+                              PageTransitions.slideRoute(
+                                const SubscriptionPage(),
+                              ),
                             ),
                           ),
                         _ProfileActionRow(
@@ -560,6 +568,7 @@ class _ProfileIdentitySection extends StatelessWidget {
   final String username;
   final String handle;
   final bool isLoading;
+  final bool isVerified;
 
   const _ProfileIdentitySection({
     required this.avatarUrl,
@@ -567,6 +576,7 @@ class _ProfileIdentitySection extends StatelessWidget {
     required this.username,
     required this.handle,
     this.isLoading = false,
+    this.isVerified = false,
   });
 
   @override
@@ -641,7 +651,16 @@ class _ProfileIdentitySection extends StatelessWidget {
           const SizedBox(height: 4),
           Text(handle, style: AccountHubTheme.rowSubtitle(context)),
           const SizedBox(height: 12),
-          PulsingRoleBadge(label: label, gradient: badgeGradient),
+          Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              PulsingRoleBadge(label: label, gradient: badgeGradient),
+              if (isVerified) const VerifiedProviderBadge(),
+            ],
+          ),
         ],
       ),
     );
@@ -649,12 +668,12 @@ class _ProfileIdentitySection extends StatelessWidget {
 }
 
 class _VerificationCard extends StatelessWidget {
-  final bool isPending;
+  final ProviderVerificationStatus status;
   final String role;
   final VoidCallback onTap;
 
   const _VerificationCard({
-    required this.isPending,
+    required this.status,
     required this.role,
     required this.onTap,
   });
@@ -662,6 +681,19 @@ class _VerificationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final roleLabel = role == 'nutritionist' ? 'Nutritionist' : 'Trainer';
+    final isPending = status == ProviderVerificationStatus.pending;
+    final isRejected = status == ProviderVerificationStatus.rejected;
+    final title = isPending
+        ? 'Verification Pending'
+        : isRejected
+            ? 'Verification Rejected'
+            : 'Verify $roleLabel Account';
+    final subtitle = isPending
+        ? 'Documents submitted — review within 24 hours.'
+        : isRejected
+            ? 'Tap to review feedback and submit new documents.'
+            : 'Submit documents to unlock provider features.';
+
     return PressableCard(
       onTap: onTap,
       borderRadius: AccountHubTheme.cardRadius,
@@ -677,26 +709,22 @@ class _VerificationCard extends StatelessWidget {
         child: Row(
           children: [
             Icon(
-              isPending ? Icons.hourglass_top_rounded : Icons.verified_user_outlined,
-              color: AccountHubTheme.subscriptionAmber,
+              isPending
+                  ? Icons.hourglass_top_rounded
+                  : isRejected
+                      ? Icons.error_outline_rounded
+                      : Icons.verified_user_outlined,
+              color: isRejected
+                  ? AccountHubTheme.dangerRed
+                  : AccountHubTheme.subscriptionAmber,
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    isPending
-                        ? 'Verification Pending'
-                        : 'Verify $roleLabel Account',
-                    style: AccountHubTheme.rowTitle(context),
-                  ),
-                  Text(
-                    isPending
-                        ? 'Documents submitted — review within 24 hours.'
-                        : 'Submit documents to unlock provider features.',
-                    style: AccountHubTheme.rowSubtitle(context),
-                  ),
+                  Text(title, style: AccountHubTheme.rowTitle(context)),
+                  Text(subtitle, style: AccountHubTheme.rowSubtitle(context)),
                 ],
               ),
             ),

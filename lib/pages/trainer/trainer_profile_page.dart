@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_colors.dart';
 import '../../repositories/profile_repository.dart';
+import '../../repositories/verification_repository.dart';
 import '../../utils/page_transitions.dart';
 import '../../widgets/common/pressable_card.dart';
 import '../../widgets/common/cover_with_blur_bridge.dart';
@@ -17,6 +17,7 @@ import '../../pages/trainer/verification_submission_page.dart';
 import '../../pages/refer/refer_friend_page.dart';
 import '../profile/settings_page.dart';
 import '../../widgets/profile/appearance_toggle.dart';
+import '../../theme/account_hub_theme.dart';
 
 class TrainerProfilePage extends ConsumerStatefulWidget {
   const TrainerProfilePage({super.key});
@@ -27,16 +28,19 @@ class TrainerProfilePage extends ConsumerStatefulWidget {
 
 class _TrainerProfilePageState extends ConsumerState<TrainerProfilePage>
     with SingleTickerProviderStateMixin {
+  final VerificationRepository _verificationRepo = VerificationRepository();
   String _username = 'Trainer';
   String _handle = '@user';
   final bool _isSubscribed = false;
-  bool? _verified;
+  ProviderVerificationStatus _verificationStatus =
+      ProviderVerificationStatus.notSubmitted;
 
   String get _role => 'trainer';
 
-  bool get _isPending => _verified == false;
+  bool get _isVerified =>
+      _verificationStatus == ProviderVerificationStatus.verified;
 
-  bool get _needsVerification => _role == 'trainer' && _verified != true;
+  bool get _showVerificationCard => !_isVerified;
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
 
@@ -59,23 +63,12 @@ class _TrainerProfilePageState extends ConsumerState<TrainerProfilePage>
     try {
       final profileRepo = ProfileRepository();
       final profile = await profileRepo.fetchMyProfile();
-      final userId = Supabase.instance.client.auth.currentUser?.id;
-      bool? verified;
-      if (userId != null) {
-        try {
-          final prov = await Supabase.instance.client
-              .from('providers')
-              .select('verified')
-              .eq('user_id', userId)
-              .maybeSingle();
-          verified = prov?['verified'] as bool?;
-        } catch (_) {}
-      }
+      final status = await _verificationRepo.getProviderVerificationStatus();
       if (mounted) {
         setState(() {
           _username = profile?['full_name'] as String? ?? profile?['username'] as String? ?? 'Trainer';
           _handle = profile?['username'] != null ? '@${profile!['username']}' : '@user';
-          _verified = verified;
+          _verificationStatus = status;
         });
       }
     } catch (_) {}
@@ -109,6 +102,7 @@ class _TrainerProfilePageState extends ConsumerState<TrainerProfilePage>
                   role: _role,
                   username: _username,
                   handle: _handle,
+                  isVerified: _isVerified,
                 ),
                 Transform.translate(
                   offset: const Offset(0, -56),
@@ -133,22 +127,23 @@ class _TrainerProfilePageState extends ConsumerState<TrainerProfilePage>
                         child: const AppearanceToggle(),
                       ),
                       const SizedBox(height: 10),
-                      // Verification Card for Trainers/Nutritionists
-                      if ((_role == 'trainer' || _role == 'nutritionist') && _needsVerification) ...[
+                      if (_showVerificationCard) ...[
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
                           child: _VerificationCard(
-                            isPending: _isPending,
+                            status: _verificationStatus,
                             role: _role,
-                            onTap: () {
+                            onTap: () async {
                               HapticFeedback.lightImpact();
-                              Navigator.push(
+                              await Navigator.push(
                                 context,
                                 PageTransitions.slideRoute(
                                   const VerificationSubmissionPage(),
                                   beginOffset: const Offset(0, 0.05),
                                 ),
                               );
+                              if (!mounted) return;
+                              _loadProfile();
                             },
                           ),
                         ),
@@ -268,6 +263,7 @@ class _ProfileCoverHeader extends StatelessWidget {
   final String role;
   final String username;
   final String handle;
+  final bool isVerified;
 
   const _ProfileCoverHeader({
     required this.coverImageUrl,
@@ -275,6 +271,7 @@ class _ProfileCoverHeader extends StatelessWidget {
     required this.role,
     required this.username,
     required this.handle,
+    this.isVerified = false,
   });
 
   @override
@@ -411,6 +408,36 @@ class _ProfileCoverHeader extends StatelessWidget {
                       ],
                     ),
                   ),
+                  if (isVerified) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AccountHubTheme.goalsGreen.withValues(alpha: 0.22),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.25),
+                          width: 1,
+                        ),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.verified_rounded, size: 12, color: Colors.white),
+                          SizedBox(width: 4),
+                          Text(
+                            'VERIFIED',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(width: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -700,12 +727,12 @@ class _FullLengthButton extends StatelessWidget {
 }
 
 class _VerificationCard extends StatelessWidget {
-  final bool isPending;
+  final ProviderVerificationStatus status;
   final String role;
   final VoidCallback onTap;
 
   const _VerificationCard({
-    required this.isPending,
+    required this.status,
     required this.role,
     required this.onTap,
   });
@@ -714,6 +741,8 @@ class _VerificationCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final roleLabel = role == 'nutritionist' ? 'Nutritionist' : 'Trainer';
+    final isPending = status == ProviderVerificationStatus.pending;
+    final isRejected = status == ProviderVerificationStatus.rejected;
 
     return PressableCard(
       onTap: onTap,
@@ -721,28 +750,17 @@ class _VerificationCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          gradient: isPending
-              ? LinearGradient(
-                  colors: [
-                    AppColors.orange.withOpacity(0.1),
-                    AppColors.orange.withOpacity(0.05),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                )
-              : LinearGradient(
-                  colors: [
-                    AppColors.orange.withOpacity(0.15),
-                    AppColors.orange.withOpacity(0.08),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
+          gradient: LinearGradient(
+            colors: [
+              AppColors.orange.withOpacity(isPending ? 0.1 : 0.15),
+              AppColors.orange.withOpacity(isPending ? 0.05 : 0.08),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
           borderRadius: BorderRadius.circular(24),
           border: Border.all(
-            color: isPending
-                ? AppColors.orange.withOpacity(0.3)
-                : AppColors.orange.withOpacity(0.4),
+            color: AppColors.orange.withOpacity(isPending ? 0.3 : 0.4),
             width: 1.5,
           ),
         ),
@@ -762,7 +780,11 @@ class _VerificationCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
-                isPending ? Icons.hourglass_empty : Icons.verified_user_outlined,
+                isPending
+                    ? Icons.hourglass_empty
+                    : isRejected
+                        ? Icons.error_outline_rounded
+                        : Icons.verified_user_outlined,
                 color: isPending ? AppColors.orange : Colors.white,
                 size: 24,
               ),
@@ -775,7 +797,9 @@ class _VerificationCard extends StatelessWidget {
                   Text(
                     isPending
                         ? 'Verification Pending'
-                        : 'Verify Your $roleLabel Account',
+                        : isRejected
+                            ? 'Verification Rejected'
+                            : 'Verify Your $roleLabel Account',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
@@ -786,7 +810,9 @@ class _VerificationCard extends StatelessWidget {
                   Text(
                     isPending
                         ? 'Documents submitted. Please wait up to 24 hours for verification.'
-                        : 'Submit documents to verify your $roleLabel account and unlock all features.',
+                        : isRejected
+                            ? 'Tap to review feedback and submit new documents.'
+                            : 'Submit documents to verify your $roleLabel account and unlock all features.',
                     style: TextStyle(
                       fontSize: 13,
                       color: colorScheme.onSurface.withOpacity(0.7),
@@ -798,7 +824,7 @@ class _VerificationCard extends StatelessWidget {
             ),
             Icon(
               Icons.chevron_right,
-              color: colorScheme.onSurface.withOpacity(0.5),
+              color: colorScheme.onSurface.withValues(alpha: 0.5),
               size: 22,
             ),
           ],

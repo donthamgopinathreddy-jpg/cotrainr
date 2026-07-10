@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
-import '../../theme/app_colors.dart';
-import '../../theme/design_tokens.dart';
+
 import '../../providers/referral_provider.dart';
+import '../../theme/account_hub_theme.dart';
+import '../../widgets/home_v3/home_premium_theme.dart';
+import '../../widgets/profile/account_hub_widgets.dart';
 
 class ReferFriendPage extends ConsumerStatefulWidget {
   const ReferFriendPage({super.key});
@@ -14,48 +16,12 @@ class ReferFriendPage extends ConsumerStatefulWidget {
 }
 
 class _ReferFriendPageState extends ConsumerState<ReferFriendPage> {
-  void _copyReferralCode(String code) {
-    Clipboard.setData(ClipboardData(text: code));
-    HapticFeedback.lightImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Row(
-          children: [
-            Icon(Icons.check_circle, color: Colors.white, size: 20),
-            SizedBox(width: 8),
-            Text('Referral code copied!'),
-          ],
-        ),
-        backgroundColor: AppColors.green,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
+  static const _accent = AccountHubTheme.subscriptionAmber;
 
-  void _copyReferralLink(String link) {
-    Clipboard.setData(ClipboardData(text: link));
+  void _copyText(String text, String message) {
+    Clipboard.setData(ClipboardData(text: text));
     HapticFeedback.lightImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Row(
-          children: [
-            Icon(Icons.check_circle, color: Colors.white, size: 20),
-            SizedBox(width: 8),
-            Text('Referral link copied!'),
-          ],
-        ),
-        backgroundColor: AppColors.green,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        duration: const Duration(seconds: 2),
-      ),
-    );
+    showHubSnackBar(context, message);
   }
 
   Future<void> _shareReferral(String code, String link) async {
@@ -68,7 +34,8 @@ class _ReferFriendPageState extends ConsumerState<ReferFriendPage> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final bg = AccountHubTheme.pageBg(context);
     final codeAsync = ref.watch(referralCodeProvider);
     final referralsAsync = ref.watch(referralsCountProvider);
     final rewardsAsync = ref.watch(referralRewardsXpProvider);
@@ -76,352 +43,241 @@ class _ReferFriendPageState extends ConsumerState<ReferFriendPage> {
     final code = codeAsync.valueOrNull ?? '';
     final totalReferrals = referralsAsync.valueOrNull ?? 0;
     final totalRewardsXp = rewardsAsync.valueOrNull ?? 0;
-    final referralLink = code.isNotEmpty ? 'https://www.cotrainr.com/invite?code=$code' : 'https://www.cotrainr.com/invite';
-    final isLoading = codeAsync.isLoading || referralsAsync.isLoading || rewardsAsync.isLoading;
+    final referralLink = code.isNotEmpty
+        ? 'https://www.cotrainr.com/invite?code=$code'
+        : 'https://www.cotrainr.com/invite';
+    final isLoading =
+        codeAsync.isLoading || referralsAsync.isLoading || rewardsAsync.isLoading;
 
     return Scaffold(
-      backgroundColor: colorScheme.background,
+      backgroundColor: bg,
       appBar: AppBar(
-        title: const Text(
-          'Refer a Friend',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
+        backgroundColor: bg,
         elevation: 0,
-        backgroundColor: Colors.transparent,
+        title: const Text('Refer a Friend'),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Hero Section with Gradient
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(28),
-              decoration: BoxDecoration(
-                gradient: AppColors.stepsGradient,
-                borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
-                boxShadow: DesignTokens.cardShadowOf(context),
-              ),
-              child: Column(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.card_giftcard_rounded,
-                      color: Colors.white,
-                      size: 48,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  const Text(
-                    'Invite Friends',
-                    style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                      letterSpacing: 0.5,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Earn rewards when your friends join!',
-                    style: TextStyle(
-                      fontSize: 15,
-                      color: Colors.white.withOpacity(0.95),
-                      fontWeight: FontWeight.w500,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // Stats Cards - Redesigned
-            Row(
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+        children: [
+          _HeroCard(isLight: isLight),
+          const SizedBox(height: 12),
+          HubSectionCard(
+            animationDelayMs: 40,
+            child: Row(
               children: [
                 Expanded(
-                  child: _StatCard(
-                    title: 'Referrals',
-                    value: isLoading ? '...' : '$totalReferrals',
-                    icon: Icons.people_rounded,
-                    gradient: AppColors.stepsGradient,
+                  child: _ReferralStatTile(
+                    label: 'Friends joined',
+                    value: isLoading ? '—' : '$totalReferrals',
+                    icon: Icons.people_outline_rounded,
+                    isLight: isLight,
                   ),
                 ),
-                const SizedBox(width: 12),
+                Container(
+                  width: 1,
+                  height: 52,
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.08),
+                ),
                 Expanded(
-                  child: _StatCard(
-                    title: 'XP Earned',
-                    value: isLoading ? '...' : '$totalRewardsXp',
-                    icon: Icons.stars_rounded,
-                    gradient: AppColors.distanceGradient,
+                  child: _ReferralStatTile(
+                    label: 'XP earned',
+                    value: isLoading ? '—' : '$totalRewardsXp',
+                    icon: Icons.auto_awesome_outlined,
+                    isLight: isLight,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 28),
-
-            // Referral Code Card - Redesigned
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: colorScheme.surface,
-                borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
-                border: Border.all(
-                  color: DesignTokens.borderColorOf(context),
-                  width: 1,
+          ),
+          const SizedBox(height: 12),
+          HubSectionCard(
+            title: 'Your invite',
+            animationDelayMs: 80,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Referral code',
+                  style: AccountHubTheme.rowSubtitle(context),
                 ),
-                boxShadow: DesignTokens.cardShadowOf(context),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          gradient: AppColors.stepsGradient,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(
-                          Icons.qr_code_2_rounded,
-                          color: Colors.white,
-                          size: 22,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        'Your Referral Code',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textPrimaryOf(context),
-                        ),
-                      ),
-                    ],
+                const SizedBox(height: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: isLight ? 0.04 : 0.06),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.08),
+                    ),
                   ),
-                  const SizedBox(height: 20),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 18,
-                    ),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          AppColors.orange.withOpacity(0.1),
-                          AppColors.orange.withOpacity(0.05),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: AppColors.orange.withOpacity(0.3),
-                        width: 2,
-                      ),
-                    ),
-                    child: Center(
-                      child: Text(
-                        isLoading ? '...' : (code.isEmpty ? '—' : code),
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 3,
-                          color: AppColors.orange,
-                          fontFamily: 'monospace',
-                        ),
+                  child: Center(
+                    child: Text(
+                      isLoading ? '...' : (code.isEmpty ? '—' : code),
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 2.4,
+                        color: AccountHubTheme.rowTitle(context).color,
+                        fontFamily: 'monospace',
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: code.isEmpty ? null : () => _copyReferralCode(code),
-                      icon: const Icon(Icons.copy_rounded, size: 20),
-                      label: const Text(
-                        'Copy Code',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        backgroundColor: AppColors.orange,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // Referral Link Card - Redesigned
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: colorScheme.surface,
-                borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
-                border: Border.all(
-                  color: DesignTokens.borderColorOf(context),
-                  width: 1,
                 ),
-                boxShadow: DesignTokens.cardShadowOf(context),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                          gradient: AppColors.distanceGradient,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(
-                          Icons.link_rounded,
-                          color: Colors.white,
-                          size: 22,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        'Your Referral Link',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textPrimaryOf(context),
-                        ),
-                      ),
-                    ],
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed:
+                        code.isEmpty ? null : () => _copyText(code, 'Referral code copied'),
+                    icon: const Icon(Icons.copy_rounded, size: 18),
+                    label: const Text('Copy code'),
                   ),
-                  const SizedBox(height: 20),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: colorScheme.background,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: DesignTokens.borderColorOf(context),
-                        width: 1,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            referralLink,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: AppColors.textSecondaryOf(context),
-                              fontWeight: FontWeight.w500,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Icon(
-                          Icons.link_rounded,
-                          size: 18,
-                          color: AppColors.textSecondaryOf(context),
-                        ),
-                      ],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Invite link',
+                  style: AccountHubTheme.rowSubtitle(context),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: isLight ? 0.04 : 0.06),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withValues(alpha: 0.08),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  Row(
+                  child: Row(
                     children: [
                       Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () => _copyReferralLink(referralLink),
-                          icon: const Icon(Icons.copy_rounded, size: 18),
-                          label: const Text('Copy'),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            side: BorderSide(
-                              color: AppColors.orange.withOpacity(0.5),
-                              width: 1.5,
-                            ),
-                            foregroundColor: AppColors.orange,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-                            ),
-                          ),
+                        child: Text(
+                          referralLink,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: AccountHubTheme.rowSubtitle(context),
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        flex: 2,
-                        child: ElevatedButton.icon(
-                          onPressed: code.isEmpty ? null : () => _shareReferral(code, referralLink),
-                          icon: const Icon(Icons.share_rounded, size: 18),
-                          label: const Text('Share'),
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            backgroundColor: AppColors.orange,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-                            ),
-                          ),
-                        ),
+                      IconButton(
+                        tooltip: 'Copy link',
+                        onPressed: () =>
+                            _copyText(referralLink, 'Referral link copied'),
+                        icon: const Icon(Icons.copy_rounded, size: 20),
+                        visualDensity: VisualDensity.compact,
                       ),
                     ],
                   ),
-                ],
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: code.isEmpty
+                        ? null
+                        : () => _shareReferral(code, referralLink),
+                    icon: const Icon(Icons.ios_share_rounded, size: 18),
+                    label: const Text('Share invite'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          HubSectionCard(
+            title: 'How it works',
+            animationDelayMs: 120,
+            child: Column(
+              children: const [
+                _ReferralStep(
+                  step: '1',
+                  title: 'Share your invite',
+                  description: 'Send your code or link to friends.',
+                ),
+                SizedBox(height: 12),
+                _ReferralStep(
+                  step: '2',
+                  title: 'They sign up',
+                  description: 'Your friend creates an account with your code.',
+                ),
+                SizedBox(height: 12),
+                _ReferralStep(
+                  step: '3',
+                  title: 'You both earn XP',
+                  description: 'Rewards unlock when they reach 500 XP.',
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroCard extends StatelessWidget {
+  final bool isLight;
+
+  const _HeroCard({required this.isLight});
+
+  @override
+  Widget build(BuildContext context) {
+    return HubSectionCard(
+      animationDelayMs: 0,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+        decoration: BoxDecoration(
+          gradient: HomePremiumTheme.bmiTileGradient(
+            isLight,
+            _ReferFriendPageState._accent,
+          ),
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: _ReferFriendPageState._accent.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(
+                Icons.card_giftcard_outlined,
+                color: _ReferFriendPageState._accent,
+                size: 22,
               ),
             ),
-            const SizedBox(height: 28),
-
-            // How It Works Section - Redesigned
+            const SizedBox(height: 14),
             Text(
-              'How It Works',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimaryOf(context),
+              'Invite friends, earn rewards',
+              style: AccountHubTheme.rowTitle(context).copyWith(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
               ),
             ),
-            const SizedBox(height: 16),
-            _HowItWorksStep(
-              step: 1,
-              title: 'Share Your Code',
-              description: 'Share your referral code or link with friends',
-              icon: Icons.share_rounded,
+            const SizedBox(height: 6),
+            Text(
+              'Share Cotrainr with people you train with and collect XP when they get started.',
+              style: AccountHubTheme.rowSubtitle(context).copyWith(height: 1.35),
             ),
-            const SizedBox(height: 12),
-            _HowItWorksStep(
-              step: 2,
-              title: 'Friend Signs Up',
-              description: 'Your friend uses your code to create an account',
-              icon: Icons.person_add_rounded,
-            ),
-            const SizedBox(height: 12),
-            _HowItWorksStep(
-              step: 3,
-              title: 'Earn Rewards',
-              description: 'You both get rewards when they reach 500 XP!',
-              icon: Icons.card_giftcard_rounded,
-            ),
-            const SizedBox(height: 32),
           ],
         ),
       ),
@@ -429,147 +285,92 @@ class _ReferFriendPageState extends ConsumerState<ReferFriendPage> {
   }
 }
 
-class _StatCard extends StatelessWidget {
-  final String title;
+class _ReferralStatTile extends StatelessWidget {
+  final String label;
   final String value;
   final IconData icon;
-  final LinearGradient gradient;
+  final bool isLight;
 
-  const _StatCard({
-    required this.title,
+  const _ReferralStatTile({
+    required this.label,
     required this.value,
     required this.icon,
-    required this.gradient,
+    required this.isLight,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
-        boxShadow: DesignTokens.cardShadowOf(context),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              gradient: gradient,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: Colors.white, size: 22),
+          Icon(
+            icon,
+            size: 18,
+            color: _ReferFriendPageState._accent.withValues(alpha: 0.9),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
           Text(
             value,
-            style: TextStyle(
-              fontSize: 32,
+            style: AccountHubTheme.rowTitle(context).copyWith(
+              fontSize: 22,
               fontWeight: FontWeight.w800,
-              color: AppColors.textPrimaryOf(context),
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 13,
-              color: AppColors.textSecondaryOf(context),
-              fontWeight: FontWeight.w500,
-            ),
-          ),
+          const SizedBox(height: 2),
+          Text(label, style: AccountHubTheme.rowSubtitle(context)),
         ],
       ),
     );
   }
 }
 
-class _HowItWorksStep extends StatelessWidget {
-  final int step;
+class _ReferralStep extends StatelessWidget {
+  final String step;
   final String title;
   final String description;
-  final IconData icon;
 
-  const _HowItWorksStep({
+  const _ReferralStep({
     required this.step,
     required this.title,
     required this.description,
-    required this.icon,
   });
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
-        border: Border.all(
-          color: DesignTokens.borderColorOf(context),
-          width: 1,
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 28,
+          height: 28,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: _ReferFriendPageState._accent.withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Text(
+            step,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: _ReferFriendPageState._accent,
+            ),
+          ),
         ),
-        boxShadow: DesignTokens.cardShadowOf(context),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              gradient: AppColors.stepsGradient,
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                '$step',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 20,
-                ),
-              ),
-            ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: AccountHubTheme.rowTitle(context)),
+              const SizedBox(height: 3),
+              Text(description, style: AccountHubTheme.rowSubtitle(context)),
+            ],
           ),
-          const SizedBox(width: 16),
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: AppColors.orange.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: AppColors.orange, size: 24),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimaryOf(context),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  description,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: AppColors.textSecondaryOf(context),
-                    height: 1.4,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
