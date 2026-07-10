@@ -9,6 +9,7 @@ import 'services/health_tracking_service.dart';
 import 'services/background_health_tracker.dart';
 import 'services/water_reminder_service.dart';
 import 'widgets/quest/quest_sync_initializer.dart';
+import 'widgets/privacy/privacy_preferences_sync_initializer.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -42,8 +43,9 @@ class MyApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeModeProvider);
 
-    return QuestSyncInitializer(
-      child: MaterialApp.router(
+    return PrivacyPreferencesSyncInitializer(
+      child: QuestSyncInitializer(
+        child: MaterialApp.router(
         title: 'Cotrainr',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
@@ -61,6 +63,7 @@ class MyApp extends ConsumerWidget {
             child: child!,
           );
         },
+        ),
       ),
     );
   }

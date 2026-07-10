@@ -100,7 +100,7 @@ Screen: trainer_verification
 
 **Note:** Reject can open a modal for notes, then call rejectVerification. Approve must stay disabled until both images load. **Server-side:** approve_verification_v2 RPC blocks approval if certificate_path or gov_id_path is NULL/empty.
 
-**adminUserId:** Set via a Retool state variable bound to the logged-in admin's user UUID from Retool auth context (e.g. `{{ retoolContext.user.id }}`). **Required:** Add admin UUIDs to `admin_users` table via `admin_add_admin_user` RPC or SQL; when populated, `p_actor_id` must exist in `admin_users`.
+**adminUserId:** Resolve on page load via RPC `admin_resolve_actor_id` with `p_email: {{ current_user.email }}`. Store `data.actor_id` in state. See `docs/RETOOL_ACTOR_RESOLVER.md`. **Do not** use `retoolContext.user.id` — it is not an `auth.users` UUID and causes `verification_submissions_reviewer_id_fkey` failures.
 
 ---
 

@@ -118,7 +118,7 @@ class CoachNotesRepository {
 
       return CoachNote.fromJson(Map<String, dynamic>.from(res));
     } catch (e) {
-      return null;
+      throw Exception('Failed to add coach note: $e');
     }
   }
 
@@ -187,7 +187,7 @@ class CoachNotesRepository {
       final rows = res as List<dynamic>;
       return rows.map((r) => CoachNote.fromJson(r as Map<String, dynamic>)).toList();
     } catch (e) {
-      return [];
+      throw Exception('Failed to load coach notes: $e');
     }
   }
 }

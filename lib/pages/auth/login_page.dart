@@ -1,10 +1,13 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+
+import '../../theme/account_hub_theme.dart';
 import '../../theme/design_tokens.dart';
+import '../../widgets/auth/auth_ui.dart';
+import '../../widgets/profile/account_hub_widgets.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -21,7 +24,7 @@ class _LoginPageState extends State<LoginPage>
   bool _obscure = true;
   bool _isLoading = false;
   bool _rememberMe = false;
-  
+
   late final AnimationController _animationController;
   late final Animation<double> _fadeAnimation;
 
@@ -30,16 +33,12 @@ class _LoginPageState extends State<LoginPage>
     super.initState();
     _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 800),
+      duration: const Duration(milliseconds: 1000),
     );
-    
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: Curves.easeOut,
-      ),
+    _fadeAnimation = CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeOutCubic,
     );
-    
     _animationController.forward();
   }
 
@@ -58,60 +57,36 @@ class _LoginPageState extends State<LoginPage>
 
   Future<void> _forgotPassword() async {
     HapticFeedback.lightImpact();
-    
-    // Show dialog to enter email
+
     final emailController = TextEditingController();
     final result = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: DesignTokens.surfaceOf(context),
+        backgroundColor: AccountHubTheme.cardBg(context),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
+          borderRadius: BorderRadius.circular(AccountHubTheme.sectionRadius),
         ),
-        title: Text(
-          'Reset Password',
-          style: TextStyle(
-            color: DesignTokens.textPrimaryOf(context),
-            fontWeight: DesignTokens.fontWeightBold,
-            fontSize: DesignTokens.fontSizeH3,
-          ),
-        ),
+        title: Text('Reset Password', style: AuthUi.pageTitle(context)),
         content: TextField(
           controller: emailController,
           keyboardType: TextInputType.emailAddress,
-          style: TextStyle(color: DesignTokens.textPrimaryOf(context)),
-          decoration: InputDecoration(
-            labelText: 'Email',
-            labelStyle: TextStyle(color: DesignTokens.textSecondaryOf(context)),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(DesignTokens.radiusSmall),
-              borderSide: BorderSide(color: DesignTokens.borderColorOf(context)),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(DesignTokens.radiusSmall),
-              borderSide: BorderSide(color: DesignTokens.borderColorOf(context)),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(DesignTokens.radiusSmall),
-              borderSide: const BorderSide(color: DesignTokens.accentOrange, width: 2),
-            ),
-          ),
+          decoration: AuthUi.fieldDecoration(context, label: 'Email'),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: Text(
               'Cancel',
-              style: TextStyle(color: DesignTokens.textSecondaryOf(context)),
+              style: AccountHubTheme.rowSubtitle(context),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, emailController.text),
-            child: Text(
+            child: const Text(
               'Send',
               style: TextStyle(
-                color: DesignTokens.accentOrange,
-                fontWeight: DesignTokens.fontWeightSemiBold,
+                color: AuthUi.accent,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ),
@@ -121,23 +96,12 @@ class _LoginPageState extends State<LoginPage>
 
     if (result != null && result.isNotEmpty) {
       try {
-        final supabase = Supabase.instance.client;
-        await supabase.auth.resetPasswordForEmail(
+        await Supabase.instance.client.auth.resetPasswordForEmail(
           result.trim(),
           redirectTo: 'cotrainr://reset-password',
         );
-        
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Password reset email sent!'),
-            backgroundColor: DesignTokens.accentGreen,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
-            ),
-          ),
-        );
+        showHubSnackBar(context, 'Password reset email sent!');
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -145,9 +109,6 @@ class _LoginPageState extends State<LoginPage>
             content: Text('Error: ${e.toString()}'),
             backgroundColor: DesignTokens.accentRed,
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
-            ),
           ),
         );
       }
@@ -159,8 +120,7 @@ class _LoginPageState extends State<LoginPage>
     setState(() => _isLoading = true);
 
     try {
-      final supabase = Supabase.instance.client;
-      await supabase.auth.signInWithOAuth(
+      await Supabase.instance.client.auth.signInWithOAuth(
         provider,
         redirectTo: 'cotrainr://auth-callback',
       );
@@ -171,15 +131,10 @@ class _LoginPageState extends State<LoginPage>
           content: Text('Login failed: ${e.toString()}'),
           backgroundColor: DesignTokens.accentRed,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
-          ),
         ),
       );
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -190,12 +145,10 @@ class _LoginPageState extends State<LoginPage>
     setState(() => _isLoading = true);
 
     try {
-      final supabase = Supabase.instance.client;
-      await supabase.auth.signInWithPassword(
+      await Supabase.instance.client.auth.signInWithPassword(
         email: _idOrEmail.text.trim(),
         password: _pass.text,
       );
-
       if (!mounted) return;
       context.go('/home');
     } catch (e) {
@@ -205,538 +158,218 @@ class _LoginPageState extends State<LoginPage>
           content: Text('Login failed: ${e.toString()}'),
           backgroundColor: DesignTokens.accentRed,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
-          ),
         ),
       );
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // White background in light mode, dark in dark mode
-    final bgColor = Theme.of(context).brightness == Brightness.dark
-        ? DesignTokens.darkBackground
-        : Colors.white;
-    final textPrimary = DesignTokens.textPrimaryOf(context);
-    final textSecondary = DesignTokens.textSecondaryOf(context);
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final bg = AuthUi.pageBg(context);
+    final textSecondary = AccountHubTheme.rowSubtitle(context);
 
     return Scaffold(
-      backgroundColor: bgColor,
-      body: SafeArea(
-        child: FadeTransition(
-          opacity: _fadeAnimation,
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: DesignTokens.spacing24,
-                vertical: DesignTokens.spacing32,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const SizedBox(height: DesignTokens.spacing40),
-                  
-                  // Clean typography
-                  Text(
-                    'Welcome Back',
-                    style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: DesignTokens.fontWeightBold,
-                      color: textPrimary,
-                      letterSpacing: -0.5,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  
-                  const SizedBox(height: DesignTokens.spacing8),
-                  
-                  Text(
-                    'Sign in to continue',
-                    style: TextStyle(
-                      fontSize: DesignTokens.fontSizeBody,
-                      color: textSecondary,
-                      fontWeight: DesignTokens.fontWeightRegular,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  
-                  const SizedBox(height: DesignTokens.spacing48),
-                  
-                  // Clean form
-                  Form(
-                    key: _formKey,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _CleanField(
-                          label: 'User ID or Email',
-                          controller: _idOrEmail,
-                          keyboardType: TextInputType.emailAddress,
-                          validator: (v) =>
-                              (v == null || v.trim().isEmpty) ? 'Required' : null,
-                          prefix: Icons.person_outline_rounded,
+      backgroundColor: bg,
+      appBar: AppBar(
+        backgroundColor: bg,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+          onPressed: () => context.canPop() ? context.pop() : context.go('/welcome'),
+        ),
+      ),
+      body: FadeTransition(
+        opacity: _fadeAnimation,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          children: [
+            AuthHeroCard(
+              isLight: isLight,
+              compact: true,
+              title: 'Welcome back',
+              subtitle:
+                  'Sign in to pick up your training, meals, and progress.',
+            ),
+            const SizedBox(height: 10),
+            AuthSectionCard(
+              compact: true,
+              title: 'Account',
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    AuthTapToTypeField(
+                      controller: _idOrEmail,
+                      keyboardType: TextInputType.emailAddress,
+                      validator: (v) =>
+                          (v == null || v.trim().isEmpty) ? 'Required' : null,
+                      style: AuthUi.fieldTextStyle(context, large: true),
+                      decoration: AuthUi.fieldDecoration(
+                        context,
+                        large: true,
+                        label: 'User ID or Email',
+                        prefixIcon: Icon(
+                          Icons.person_outline_rounded,
+                          color: textSecondary.color,
+                          size: 22,
                         ),
-                        
-                        const SizedBox(height: DesignTokens.spacing20),
-                        
-                        _CleanField(
-                          label: 'Password',
-                          controller: _pass,
-                          obscureText: _obscure,
-                          validator: (v) =>
-                              (v == null || v.length < 6) ? 'Min 6 chars' : null,
-                          prefix: Icons.lock_outline_rounded,
-                          suffix: _obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-                          onSuffixTap: () {
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    AuthTapToTypeField(
+                      controller: _pass,
+                      obscureText: _obscure,
+                      validator: (v) =>
+                          (v == null || v.length < 6) ? 'Min 6 chars' : null,
+                      style: AuthUi.fieldTextStyle(context, large: true),
+                      decoration: AuthUi.fieldDecoration(
+                        context,
+                        large: true,
+                        label: 'Password',
+                        prefixIcon: Icon(
+                          Icons.lock_outline_rounded,
+                          color: textSecondary.color,
+                          size: 22,
+                        ),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscure
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                            size: 20,
+                            color: textSecondary.color,
+                          ),
+                          onPressed: () {
                             HapticFeedback.selectionClick();
                             setState(() => _obscure = !_obscure);
                           },
                         ),
-                        
-                        const SizedBox(height: DesignTokens.spacing16),
-                        
-                        // Remember me and Forgot password row
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            // Remember me checkbox
-                            GestureDetector(
-                              onTap: () {
-                                HapticFeedback.selectionClick();
-                                setState(() => _rememberMe = !_rememberMe);
-                              },
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 20,
-                                    height: 20,
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(4),
-                                      border: Border.all(
-                                        color: _rememberMe
-                                            ? DesignTokens.accentOrange
-                                            : DesignTokens.borderColorOf(context),
-                                        width: _rememberMe ? 2 : 1,
-                                      ),
-                                      color: _rememberMe
-                                          ? DesignTokens.accentOrange
-                                          : Colors.transparent,
-                                    ),
-                                    child: _rememberMe
-                                        ? const Icon(
-                                            Icons.check,
-                                            size: 14,
-                                            color: Colors.white,
-                                          )
-                                        : null,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        GestureDetector(
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            setState(() => _rememberMe = !_rememberMe);
+                          },
+                          child: Row(
+                            children: [
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 180),
+                                width: 22,
+                                height: 22,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(6),
+                                  color: _rememberMe
+                                      ? AuthUi.accent
+                                      : Colors.transparent,
+                                  border: Border.all(
+                                    color: _rememberMe
+                                        ? AuthUi.accent
+                                        : Theme.of(context)
+                                            .colorScheme
+                                            .onSurface
+                                            .withValues(alpha: 0.2),
+                                    width: 1.5,
                                   ),
-                                  const SizedBox(width: DesignTokens.spacing8),
-                                  Text(
-                                    'Remember me',
-                                    style: TextStyle(
-                                      color: textSecondary,
-                                      fontSize: DesignTokens.fontSizeBodySmall,
-                                      fontWeight: DesignTokens.fontWeightRegular,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            // Forgot password
-                            GestureDetector(
-                              onTap: _forgotPassword,
-                              child: Text(
-                                'Forgot Password?',
-                                style: TextStyle(
-                                  color: DesignTokens.accentOrange,
-                                  fontSize: DesignTokens.fontSizeBodySmall,
-                                  fontWeight: DesignTokens.fontWeightSemiBold,
                                 ),
+                                child: _rememberMe
+                                    ? const Icon(Icons.check,
+                                        size: 14, color: Colors.white)
+                                    : null,
                               ),
-                            ),
-                          ],
+                              const SizedBox(width: 8),
+                              Text('Remember me', style: textSecondary),
+                            ],
+                          ),
                         ),
-                        
-                        const SizedBox(height: DesignTokens.spacing32),
-                        
-                        _CleanButton(
-                          text: 'Sign In',
-                          onTap: _isLoading ? null : _login,
-                          isLoading: _isLoading,
+                        const Spacer(),
+                        TextButton(
+                          onPressed: _forgotPassword,
+                          child: const Text(
+                            'Forgot password?',
+                            style: TextStyle(
+                              color: AuthUi.accent,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                          ),
                         ),
                       ],
                     ),
-                  ),
-                  
-                  const SizedBox(height: DesignTokens.spacing32),
-                  
-                  // Divider with "OR"
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Divider(
-                          color: DesignTokens.borderColorOf(context),
-                          thickness: 1,
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: DesignTokens.spacing16),
-                        child: Text(
-                          'OR',
-                          style: TextStyle(
-                            color: textSecondary,
-                            fontSize: DesignTokens.fontSizeBodySmall,
-                            fontWeight: DesignTokens.fontWeightMedium,
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        child: Divider(
-                          color: DesignTokens.borderColorOf(context),
-                          thickness: 1,
-                        ),
-                      ),
-                    ],
-                  ),
-                  
-                  const SizedBox(height: DesignTokens.spacing32),
-                  
-                  // Continue with heading
-                  Text(
-                    'Continue with',
-                    style: TextStyle(
-                      fontSize: DesignTokens.fontSizeBody,
-                      color: textSecondary,
-                      fontWeight: DesignTokens.fontWeightRegular,
+                    const SizedBox(height: 12),
+                    AuthPrimaryButton(
+                      label: 'Sign In',
+                      onPressed: _login,
+                      isLoading: _isLoading,
                     ),
-                    textAlign: TextAlign.center,
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            AuthSectionCard(
+              compact: true,
+              title: 'Or continue with',
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  AuthSocialButton(
+                    isLoading: _isLoading,
+                    onTap: () => _signInWithOAuth(OAuthProvider.google),
+                    icon: FaIcon(
+                      FontAwesomeIcons.google,
+                      size: 22,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
                   ),
-                  
-                  const SizedBox(height: DesignTokens.spacing20),
-                  
-                  // Social login icon boxes
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _SocialIconBox(
-                        iconWidget: FaIcon(
-                          FontAwesomeIcons.google,
-                          size: 32,
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white
-                              : Colors.black,
-                        ),
-                        onTap: () => _signInWithOAuth(OAuthProvider.google),
-                        isLoading: _isLoading,
-                      ),
-                      const SizedBox(width: DesignTokens.spacing20),
-                      _SocialIconBox(
-                        iconWidget: FaIcon(
-                          FontAwesomeIcons.apple,
-                          size: 32,
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white
-                              : Colors.black,
-                        ),
-                        onTap: () => _signInWithOAuth(OAuthProvider.apple),
-                        isLoading: _isLoading,
-                      ),
-                      const SizedBox(width: DesignTokens.spacing20),
-                      _SocialIconBox(
-                        iconWidget: FaIcon(
-                          FontAwesomeIcons.facebook,
-                          size: 32,
-                          color: Theme.of(context).brightness == Brightness.dark
-                              ? Colors.white
-                              : Colors.black,
-                        ),
-                        onTap: () => _signInWithOAuth(OAuthProvider.facebook),
-                        isLoading: _isLoading,
-                      ),
-                    ],
+                  const SizedBox(width: 12),
+                  AuthSocialButton(
+                    isLoading: _isLoading,
+                    onTap: () => _signInWithOAuth(OAuthProvider.apple),
+                    icon: FaIcon(
+                      FontAwesomeIcons.apple,
+                      size: 24,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
                   ),
-                  
-                  const SizedBox(height: DesignTokens.spacing32),
-                  
-                  // Sign up link
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        "Don't have an account? ",
-                        style: TextStyle(
-                          color: textSecondary,
-                          fontSize: DesignTokens.fontSizeBodySmall,
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: _goSignup,
-                        child: Text(
-                          'Sign Up',
-                          style: TextStyle(
-                            fontWeight: DesignTokens.fontWeightSemiBold,
-                            fontSize: DesignTokens.fontSizeBodySmall,
-                            color: DesignTokens.accentOrange,
-                          ),
-                        ),
-                      ),
-                    ],
+                  const SizedBox(width: 12),
+                  AuthSocialButton(
+                    isLoading: _isLoading,
+                    onTap: () => _signInWithOAuth(OAuthProvider.facebook),
+                    icon: FaIcon(
+                      FontAwesomeIcons.facebook,
+                      size: 22,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
                   ),
                 ],
               ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CleanField extends StatelessWidget {
-  final String label;
-  final TextEditingController controller;
-  final TextInputType? keyboardType;
-  final bool obscureText;
-  final String? Function(String?)? validator;
-  final IconData prefix;
-  final IconData? suffix;
-  final VoidCallback? onSuffixTap;
-
-  const _CleanField({
-    required this.label,
-    required this.controller,
-    this.keyboardType,
-    this.obscureText = false,
-    this.validator,
-    required this.prefix,
-    this.suffix,
-    this.onSuffixTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final textPrimary = DesignTokens.textPrimaryOf(context);
-    final textSecondary = DesignTokens.textSecondaryOf(context);
-    final surfaceColor = DesignTokens.surfaceOf(context);
-    final borderColor = DesignTokens.borderColorOf(context);
-    
-    return TextFormField(
-      controller: controller,
-      keyboardType: keyboardType,
-      obscureText: obscureText,
-      validator: validator,
-      style: TextStyle(
-        color: textPrimary,
-        fontWeight: DesignTokens.fontWeightMedium,
-        fontSize: DesignTokens.fontSizeBody,
-      ),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: TextStyle(
-          color: textSecondary,
-          fontWeight: DesignTokens.fontWeightRegular,
-        ),
-        prefixIcon: Icon(prefix, color: textSecondary, size: 20),
-        suffixIcon: suffix != null
-            ? IconButton(
-                icon: Icon(suffix, color: textSecondary, size: 20),
-                onPressed: onSuffixTap,
-              )
-            : null,
-        filled: true,
-        fillColor: surfaceColor,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-          borderSide: BorderSide(color: borderColor, width: 1),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-          borderSide: BorderSide(color: borderColor, width: 1),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-          borderSide: const BorderSide(
-            color: DesignTokens.accentOrange,
-            width: 2,
-          ),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-          borderSide: const BorderSide(
-            color: DesignTokens.accentRed,
-            width: 1,
-          ),
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: DesignTokens.spacing16,
-          vertical: DesignTokens.spacing16,
-        ),
-      ),
-    );
-  }
-}
-
-// Social Icon Box Widget
-class _SocialIconBox extends StatefulWidget {
-  final Widget iconWidget;
-  final VoidCallback? onTap;
-  final bool isLoading;
-
-  const _SocialIconBox({
-    required this.iconWidget,
-    this.onTap,
-    this.isLoading = false,
-  });
-
-  @override
-  State<_SocialIconBox> createState() => _SocialIconBoxState();
-}
-
-class _SocialIconBoxState extends State<_SocialIconBox>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final Animation<double> _scale;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: DesignTokens.interactionDuration,
-    );
-    _scale = Tween<double>(begin: 1.0, end: 0.95)
-        .animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final surfaceColor = DesignTokens.surfaceOf(context);
-    final borderColor = DesignTokens.borderColorOf(context);
-
-    return GestureDetector(
-      onTapDown: (_) => _controller.forward(),
-      onTapCancel: () => _controller.reverse(),
-      onTapUp: (_) {
-        _controller.reverse();
-        if (widget.onTap != null && !widget.isLoading) {
-          HapticFeedback.lightImpact();
-          widget.onTap?.call();
-        }
-      },
-      child: ScaleTransition(
-        scale: _scale,
-        child: Opacity(
-          opacity: widget.isLoading ? 0.6 : 1.0,
-          child: Container(
-            width: 64,
-            height: 64,
-            decoration: BoxDecoration(
-              color: surfaceColor,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: borderColor,
-                width: 1,
-              ),
-            ),
-            child: Center(
-              child: widget.iconWidget,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-
-
-class _CleanButton extends StatefulWidget {
-  final String text;
-  final VoidCallback? onTap;
-  final bool isLoading;
-
-  const _CleanButton({
-    required this.text,
-    this.onTap,
-    this.isLoading = false,
-  });
-
-  @override
-  State<_CleanButton> createState() => _CleanButtonState();
-}
-
-class _CleanButtonState extends State<_CleanButton>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final Animation<double> _scale;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: DesignTokens.interactionDuration,
-    );
-    _scale = Tween<double>(begin: 1.0, end: 0.97)
-        .animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => _controller.forward(),
-      onTapCancel: () => _controller.reverse(),
-      onTapUp: (_) {
-        _controller.reverse();
-        if (widget.onTap != null && !widget.isLoading) {
-          HapticFeedback.lightImpact();
-          widget.onTap?.call();
-        }
-      },
-      child: ScaleTransition(
-        scale: _scale,
-        child: Container(
-          height: 52,
-          decoration: BoxDecoration(
-            gradient: DesignTokens.primaryGradient,
-            borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-          ),
-          alignment: Alignment.center,
-          child: widget.isLoading
-              ? const SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.5,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                  ),
-                )
-              : Text(
-                  widget.text,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: DesignTokens.fontWeightSemiBold,
-                    fontSize: DesignTokens.fontSizeBody,
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text("Don't have an account? ", style: textSecondary),
+                GestureDetector(
+                  onTap: _goSignup,
+                  child: const Text(
+                    'Sign Up',
+                    style: TextStyle(
+                      color: AuthUi.accent,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
+              ],
+            ),
+          ],
         ),
       ),
     );

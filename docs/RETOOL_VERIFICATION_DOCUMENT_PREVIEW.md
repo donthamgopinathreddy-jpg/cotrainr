@@ -16,7 +16,9 @@ Do **not** create another resource. Do **not** use the SQL/Postgres resource for
 |------|------|---------|
 | `selectedSubmission` | Object | Current row under review (set on table row click) |
 | `rejectionNotes` | String | Bound to rejection `TextArea` |
-| `adminUserId` | String | Retool admin UUID (`admin_users` table) |
+| `adminUserId` | String | **Supabase `auth.users.id`** from `admin_resolve_actor_id` RPC — see `docs/RETOOL_ACTOR_RESOLVER.md` |
+
+**Never** bind `adminUserId` to `retoolContext.user.id` (Retool ID ≠ `auth.users` UUID → FK failure on approve).
 
 **Never** display `certificate_path` or `gov_id_path` in the UI. Paths are only sent in the signed-URL request body.
 

@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -5,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/design_tokens.dart';
+import '../../theme/account_hub_theme.dart';
+import '../../widgets/auth/auth_ui.dart';
 import '../../services/user_goals_service.dart';
 import '../../services/pending_referral_service.dart';
 import '../../repositories/referral_repository.dart';
@@ -20,8 +23,9 @@ class SignupWizardPage extends StatefulWidget {
 
 class _SignupWizardPageState extends State<SignupWizardPage>
     with TickerProviderStateMixin {
-  static const _totalSteps = 6;
+  static const _totalSteps = 7;
   static const _lastStepIndex = _totalSteps - 1;
+  static const _roleStepIndex = 5;
 
   final _page = PageController();
   int _step = 0;
@@ -110,14 +114,14 @@ class _SignupWizardPageState extends State<SignupWizardPage>
     _initReferralCode();
     _fadeController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 900),
     )..forward();
-    
+
     _stepTransitionController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 480),
     );
-    
+
     _stepTransitionController.forward();
   }
 
@@ -318,14 +322,7 @@ class _SignupWizardPageState extends State<SignupWizardPage>
     }
   }
 
-  bool _validateFinalStep() {
-    if (_selectedGoals.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Select at least one fitness goal')),
-      );
-      return false;
-    }
-
+  bool _validateRoleStep() {
     if (_role == 'Trainer' || _role == 'Nutritionist') {
       if (_selectedSpecializations.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -340,7 +337,16 @@ class _SignupWizardPageState extends State<SignupWizardPage>
         return false;
       }
     }
+    return true;
+  }
 
+  bool _validateGoalsStep() {
+    if (_selectedGoals.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select at least one fitness goal')),
+      );
+      return false;
+    }
     return true;
   }
 
@@ -354,21 +360,30 @@ class _SignupWizardPageState extends State<SignupWizardPage>
     });
   }
 
+  void _dismissKeyboard() {
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
   void _next() {
     if (_step == 0 && !_validateStep1()) {
       return;
     }
 
-    if (_step == _lastStepIndex && !_validateFinalStep()) {
+    if (_step == _roleStepIndex && !_validateRoleStep()) {
+      return;
+    }
+
+    if (_step == _lastStepIndex && !_validateGoalsStep()) {
       return;
     }
 
     if (_step < _lastStepIndex) {
+      _dismissKeyboard();
       _stepTransitionController.reset();
       setState(() => _step++);
       _page.nextPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeOutCubic,
       );
       _stepTransitionController.forward();
     } else {
@@ -378,10 +393,11 @@ class _SignupWizardPageState extends State<SignupWizardPage>
 
   void _back() {
     if (_step > 0) {
+      _dismissKeyboard();
       _stepTransitionController.reset();
       setState(() => _step--);
       _page.previousPage(
-        duration: const Duration(milliseconds: 300),
+        duration: const Duration(milliseconds: 450),
         curve: Curves.easeOutCubic,
       );
       _stepTransitionController.forward();
@@ -577,6 +593,8 @@ class _SignupWizardPageState extends State<SignupWizardPage>
         return 'Weight';
       case 5:
         return 'Your Role';
+      case 6:
+        return 'Fitness Goals';
       default:
         return 'Create Account';
     }
@@ -595,7 +613,9 @@ class _SignupWizardPageState extends State<SignupWizardPage>
       case 4:
         return 'Enter or scroll your weight';
       case 5:
-        return 'Choose how you\'ll use Cotrainr';
+        return 'How will you use Cotrainr?';
+      case 6:
+        return 'What are you working toward?';
       default:
         return '';
     }
@@ -603,12 +623,7 @@ class _SignupWizardPageState extends State<SignupWizardPage>
 
   @override
   Widget build(BuildContext context) {
-    final bgColor = Theme.of(context).brightness == Brightness.light
-        ? Colors.white
-        : DesignTokens.backgroundOf(context);
-    final textPrimary = DesignTokens.textPrimaryOf(context);
-    final textSecondary = DesignTokens.textSecondaryOf(context);
-
+    final bgColor = AuthUi.pageBg(context);
     final isMetricStep = _step == 3 || _step == 4;
 
     return Scaffold(
@@ -619,127 +634,73 @@ class _SignupWizardPageState extends State<SignupWizardPage>
           child: Column(
             children: [
               Container(
-                padding: EdgeInsets.fromLTRB(16, 12, 16, isMetricStep ? 8 : 16),
+                padding: EdgeInsets.fromLTRB(16, 12, 16, isMetricStep ? 8 : 12),
                 child: Column(
                   children: [
                     Row(
                       children: [
-                        GestureDetector(
-                          onTap: _back,
-                          child: Icon(
-                            Icons.arrow_back_ios_new_rounded,
-                            color: textPrimary,
-                            size: 20,
+                        IconButton(
+                          onPressed: _back,
+                          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _getStepTitle(_step),
+                                style: AuthUi.pageTitle(context).copyWith(
+                                  fontSize: isMetricStep ? 22 : 26,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _getStepSubtitle(_step),
+                                style: AuthUi.pageSubtitle(context).copyWith(
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        if (!isMetricStep) ...[
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  _getStepTitle(_step),
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: textPrimary,
-                                    height: 1.1,
-                                    letterSpacing: -0.5,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  _getStepSubtitle(_step),
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    color: textSecondary,
-                                    height: 1.3,
-                                    fontWeight: FontWeight.w400,
-                                  ),
-                                ),
-                              ],
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AuthUi.accent.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            '${_step + 1}/$_totalSteps',
+                            style: const TextStyle(
+                              color: AuthUi.accent,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
-                        ] else
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.only(left: 12),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    _getStepTitle(_step),
-                                    style: TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.w800,
-                                      color: textPrimary,
-                                      letterSpacing: -0.4,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    _getStepSubtitle(_step),
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: textSecondary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
+                        ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    // Animated Gradient Progress indicator
-                    Row(
-                      children: List.generate(_totalSteps, (index) {
-                        final isActive = index <= _step;
-                        final isCurrent = index == _step;
-                        return Expanded(
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 300),
-                            curve: Curves.easeInOut,
-                            height: isCurrent ? 3 : 2,
-                            margin: EdgeInsets.only(
-                              right: index < _lastStepIndex ? 6 : 0,
-                            ),
-                            decoration: BoxDecoration(
-                              gradient: isActive
-                                ? const LinearGradient(
-                                    colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
-                                  )
-                                : null,
-                              color: isActive
-                                ? null
-                                : DesignTokens.borderColorOf(context),
-                              borderRadius: BorderRadius.circular(2),
-                              boxShadow: isCurrent
-                                ? [
-                                    BoxShadow(
-                                      color: DesignTokens.accentOrange
-                                        .withOpacity(0.4),
-                                      blurRadius: 6,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ]
-                                : null,
-                            ),
-                          ),
-                        );
-                      }),
-                    ),
+                    const SizedBox(height: 14),
+                    AuthProgressBar(step: _step, totalSteps: _totalSteps),
                   ],
                 ),
               ),
 
               // Content Section with better spacing
               Expanded(
-                child: PageView(
-                  controller: _page,
-                  physics: const NeverScrollableScrollPhysics(),
-                  children: [
+                child: AuthStepTransition(
+                  animation: _stepTransitionController,
+                  child: PageView(
+                    controller: _page,
+                    physics: const NeverScrollableScrollPhysics(),
+                    children: [
                     _Step1Content(
                       userId: _userId,
                       email: _email,
@@ -798,24 +759,12 @@ class _SignupWizardPageState extends State<SignupWizardPage>
                       onWeightKg: (v) => setState(() => _weightKg = v),
                       onWeightLbs: (v) => setState(() => _weightLbs = v),
                     ),
-                    _StepPreferencesContent(
-                      goals: _goals,
-                      selectedGoals: _selectedGoals,
+                    _StepRoleContent(
                       role: _role,
                       trainerSpecialties: _trainerSpecialties,
                       nutritionistSpecialties: _nutritionistSpecialties,
                       selectedSpecializations: _selectedSpecializations,
                       customSpecialty: _customSpecialty,
-                      onToggleGoal: (g) {
-                        HapticFeedback.selectionClick();
-                        setState(() {
-                          if (_selectedGoals.contains(g) && _selectedGoals.length > 1) {
-                            _selectedGoals.remove(g);
-                          } else {
-                            _selectedGoals.add(g);
-                          }
-                        });
-                      },
                       onRoleChanged: (r) {
                         HapticFeedback.selectionClick();
                         setState(() {
@@ -837,63 +786,36 @@ class _SignupWizardPageState extends State<SignupWizardPage>
                       },
                       onAddCustomSpecialty: _addCustomSpecialty,
                     ),
+                    _StepGoalsContent(
+                      goals: _goals,
+                      selectedGoals: _selectedGoals,
+                      onToggleGoal: (g) {
+                        HapticFeedback.selectionClick();
+                        setState(() {
+                          if (_selectedGoals.contains(g) && _selectedGoals.length > 1) {
+                            _selectedGoals.remove(g);
+                          } else {
+                            _selectedGoals.add(g);
+                          }
+                        });
+                      },
+                    ),
                   ],
+                  ),
                 ),
               ),
 
-              // Navigation button
               Container(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                 child: SafeArea(
                   top: false,
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: GestureDetector(
-                      onTap: _isSubmitting ? null : _next,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
-                          ),
-                          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-                        ),
-                        child: _isSubmitting
-                          ? SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.5,
-                                valueColor: const AlwaysStoppedAnimation<Color>(
-                                  Colors.black,
-                                ),
-                              ),
-                            )
-                          : Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  _step == _lastStepIndex ? 'Create Account' : 'Next',
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                    letterSpacing: 0.2,
-                                    color: Colors.black,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                const Text(
-                                  '>',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.black,
-                                  ),
-                                ),
-                              ],
-                            ),
-                      ),
-                    ),
+                  child: AuthPrimaryButton(
+                    label: _step == _lastStepIndex ? 'Create Account' : 'Next',
+                    isLoading: _isSubmitting,
+                    trailingIcon: _isSubmitting
+                        ? null
+                        : Icons.arrow_forward_rounded,
+                    onPressed: _isSubmitting ? null : _next,
                   ),
                 ),
               ),
@@ -979,11 +901,12 @@ class _Step1ContentState extends State<_Step1Content> {
     final passwordsMatch = widget.pass.text == widget.confirmPass.text && widget.confirmPass.text.isNotEmpty;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 8),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+      child: AuthSectionCard(
+        title: 'Account credentials',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
           _TextFieldCard(
             label: 'User ID',
             controller: widget.userId,
@@ -1157,6 +1080,7 @@ class _Step1ContentState extends State<_Step1Content> {
             ],
           ),
         ],
+        ),
       ),
     );
   }
@@ -1181,11 +1105,12 @@ class _Step2Content extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 8),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+      child: AuthSectionCard(
+        title: 'Personal details',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
           _TextFieldCard(
             label: 'First Name',
             controller: first,
@@ -1238,6 +1163,7 @@ class _Step2Content extends StatelessWidget {
             ),
           ),
         ],
+        ),
       ),
     );
   }
@@ -1245,6 +1171,8 @@ class _Step2Content extends StatelessWidget {
 
 // Step 3: Age & Gender
 class _StepAgeGenderContent extends StatelessWidget {
+  static const _genderLabels = ['Male', 'Female', 'Other'];
+
   final DateTime dob;
   final String gender;
   final ValueChanged<DateTime> onDobChanged;
@@ -1256,6 +1184,28 @@ class _StepAgeGenderContent extends StatelessWidget {
     required this.onDobChanged,
     required this.onGenderChanged,
   });
+
+  int _genderIndex(String value) {
+    switch (value) {
+      case 'Female':
+        return 1;
+      case 'Other':
+        return 2;
+      default:
+        return 0;
+    }
+  }
+
+  String _genderFromIndex(int index) {
+    switch (index) {
+      case 1:
+        return 'Female';
+      case 2:
+        return 'Other';
+      default:
+        return 'Male';
+    }
+  }
 
   String _calculateAge(DateTime birthDate) {
     final now = DateTime.now();
@@ -1286,49 +1236,29 @@ class _StepAgeGenderContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textPrimary = DesignTokens.textPrimaryOf(context);
     final textSecondary = DesignTokens.textSecondaryOf(context);
     final ageText = _calculateAge(dob);
     final sectionLabel = TextStyle(
       color: textSecondary,
-      fontSize: 14,
-      fontWeight: FontWeight.w600,
+      fontSize: 15,
+      fontWeight: FontWeight.w700,
       letterSpacing: 0.2,
     );
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 4, 24, 24),
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Date of birth', style: sectionLabel),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           SizedBox(
-            height: 170,
-            child: ShaderMask(
-              shaderCallback: (bounds) => LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-                stops: const [0.0, 0.12, 0.88, 1.0],
-                colors: [
-                  Colors.transparent,
-                  Colors.white,
-                  Colors.white,
-                  Colors.transparent,
-                ],
-              ).createShader(bounds),
-              blendMode: BlendMode.dstIn,
+            height: 260,
+            child: AuthPickerFadeMask(
               child: CupertinoTheme(
                 data: CupertinoThemeData(
                   brightness: Theme.of(context).brightness,
                   primaryColor: DesignTokens.accentOrange,
-                  textTheme: CupertinoTextThemeData(
-                    pickerTextStyle: TextStyle(
-                      color: textPrimary,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
                 ),
                 child: _CustomDatePicker(
                   initialDate: dob,
@@ -1339,57 +1269,60 @@ class _StepAgeGenderContent extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           Center(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 320),
+              curve: Curves.easeOutCubic,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               decoration: BoxDecoration(
-                color: DesignTokens.accentOrange.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(20),
+                color: DesignTokens.accentOrange.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(24),
                 border: Border.all(
-                  color: DesignTokens.accentOrange.withValues(alpha: 0.22),
+                  color: DesignTokens.accentOrange.withValues(alpha: 0.28),
                 ),
               ),
               child: Text(
                 'Age: $ageText',
                 style: TextStyle(
                   color: DesignTokens.accentOrange,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 36),
           Text('Gender', style: sectionLabel),
+          const SizedBox(height: 16),
+          AuthPickerFadeMask(
+            child: AuthSidewaysWheelPicker(
+              items: _genderLabels,
+              selectedIndex: _genderIndex(gender),
+              height: 100,
+              itemExtent: 96,
+              selectedFontSize: 20,
+              unselectedFontSize: 16,
+              onSelected: (index) => onGenderChanged(_genderFromIndex(index)),
+            ),
+          ),
           const SizedBox(height: 12),
-          _GenderCard(
-            icon: Icons.male_rounded,
-            title: 'Male',
-            subtitle: 'Identify as male',
-            isSelected: gender == 'Male',
-            onTap: () => onGenderChanged('Male'),
-          ),
-          const SizedBox(height: 10),
-          _GenderCard(
-            icon: Icons.female_rounded,
-            title: 'Female',
-            subtitle: 'Identify as female',
-            isSelected: gender == 'Female',
-            onTap: () => onGenderChanged('Female'),
-          ),
-          const SizedBox(height: 10),
-          _GenderCard(
-            icon: Icons.wc_rounded,
-            title: 'Other',
-            subtitle: 'Prefer not to say or other',
-            isSelected: gender == 'Other',
-            onTap: () => onGenderChanged('Other'),
-          ),
         ],
       ),
     );
   }
+}
+
+bool _isCompleteMetricInput(String raw) {
+  final trimmed = raw.trim();
+  if (trimmed.isEmpty || trimmed == '.') return false;
+  if (trimmed.endsWith('.')) return false;
+  return double.tryParse(trimmed) != null;
+}
+
+double _roundToDecimals(double value, int decimals) {
+  final factor = math.pow(10, decimals).toDouble();
+  return (value * factor).round() / factor;
 }
 
 // Step 4: Height (full screen + typing)
@@ -1452,21 +1385,49 @@ class _StepHeightContentState extends State<_StepHeightContent> {
     if (_syncingFromPicker) return;
     if (oldWidget.heightInCm != widget.heightInCm) {
       if (widget.heightInCm) {
-        _cmTextController.text = widget.heightCm.round().toString();
+        _syncCmTextFromValue(widget.heightCm);
+        _syncCmPicker(widget.heightCm);
       } else {
         _feetTextController.text = '${widget.feet}';
         _inchTextController.text = '${widget.inch}';
+        _syncImperialPickers(widget.feet, widget.inch);
       }
       return;
     }
     if (oldWidget.heightCm != widget.heightCm && widget.heightInCm) {
-      _cmTextController.text = widget.heightCm.round().toString();
+      _syncCmTextFromValue(widget.heightCm);
+      _syncCmPicker(widget.heightCm);
     }
     if ((oldWidget.feet != widget.feet || oldWidget.inch != widget.inch) &&
         !widget.heightInCm) {
       _feetTextController.text = '${widget.feet}';
       _inchTextController.text = '${widget.inch}';
+      _syncImperialPickers(widget.feet, widget.inch);
     }
+  }
+
+  void _syncCmTextFromValue(double cm) {
+    _cmTextController.text = cm.round().toString();
+  }
+
+  void _syncCmPicker(double cm) {
+    final snapped = cm.round().clamp(80, 230);
+    _syncingFromPicker = true;
+    if (_heightCmController.hasClients) {
+      _heightCmController.jumpToItem((snapped - 80).clamp(0, 150));
+    }
+    _syncingFromPicker = false;
+  }
+
+  void _syncImperialPickers(int feet, int inch) {
+    _syncingFromPicker = true;
+    if (_feetController.hasClients) {
+      _feetController.jumpToItem((feet - 3).clamp(0, 5));
+    }
+    if (_inchController.hasClients) {
+      _inchController.jumpToItem(inch.clamp(0, 11));
+    }
+    _syncingFromPicker = false;
   }
 
   @override
@@ -1481,16 +1442,16 @@ class _StepHeightContentState extends State<_StepHeightContent> {
   }
 
   void _applyCmFromText(String raw) {
+    if (!_isCompleteMetricInput(raw)) return;
     final parsed = double.tryParse(raw.trim());
     if (parsed == null) return;
-    final cm = parsed.clamp(80.0, 230.0);
-    widget.onHeightCm(cm);
-    final totalInches = (cm / 2.54).round();
+    final snapped = parsed.round().clamp(80, 230).toDouble();
+    widget.onHeightCm(snapped);
+    final totalInches = (snapped / 2.54).round();
     widget.onFeet((totalInches / 12).floor().clamp(3, 8));
     widget.onInch((totalInches % 12).clamp(0, 11));
-    _syncingFromPicker = true;
-    _heightCmController.jumpToItem((cm - 80).round().clamp(0, 150));
-    _syncingFromPicker = false;
+    _syncCmPicker(snapped);
+    _cmTextController.text = snapped.toStringAsFixed(0);
   }
 
   void _applyImperialFromText() {
@@ -1502,12 +1463,9 @@ class _StepHeightContentState extends State<_StepHeightContent> {
     widget.onFeet(feet);
     widget.onInch(inches);
     final cm = ((feet * 30.48) + (inches * 2.54)).clamp(80.0, 230.0);
-    widget.onHeightCm(cm);
-    _syncingFromPicker = true;
-    _feetController.jumpToItem((feet - 3).clamp(0, 5));
-    _inchController.jumpToItem(inches.clamp(0, 11));
-    _heightCmController.jumpToItem((cm - 80).round().clamp(0, 150));
-    _syncingFromPicker = false;
+    widget.onHeightCm(_roundToDecimals(cm, 1));
+    _syncImperialPickers(feet, inches);
+    _syncCmPicker(cm);
   }
 
   @override
@@ -1535,6 +1493,7 @@ class _StepHeightContentState extends State<_StepHeightContent> {
               controller: _cmTextController,
               suffix: 'cm',
               hint: '170',
+              allowDecimal: true,
               onSubmitted: _applyCmFromText,
               onChanged: _applyCmFromText,
             )
@@ -1593,7 +1552,7 @@ class _StepHeightContentState extends State<_StepHeightContent> {
                           HapticFeedback.selectionClick();
                           final newHeightCm = (80 + (index % 151)).toDouble();
                           widget.onHeightCm(newHeightCm);
-                          _cmTextController.text = newHeightCm.round().toString();
+                          _cmTextController.text = newHeightCm.toStringAsFixed(0);
                           final totalInches = (newHeightCm / 2.54).round();
                           widget.onFeet((totalInches / 12).floor().clamp(3, 8));
                           widget.onInch((totalInches % 12).clamp(0, 11));
@@ -1779,10 +1738,42 @@ class _StepWeightContentState extends State<_StepWeightContent> {
     super.didUpdateWidget(oldWidget);
     if (_syncingFromPicker) return;
     if (oldWidget.weightInKg != widget.weightInKg) {
-      _weightTextController.text = widget.weightInKg
-          ? widget.weightKg.toStringAsFixed(1)
-          : widget.weightLbs.toStringAsFixed(1);
+      _syncWeightTextFromValue();
+      return;
     }
+    if (widget.weightInKg && oldWidget.weightKg != widget.weightKg) {
+      _syncWeightTextFromValue();
+      _syncKgPicker(widget.weightKg);
+    }
+    if (!widget.weightInKg && oldWidget.weightLbs != widget.weightLbs) {
+      _syncWeightTextFromValue();
+      _syncLbsPicker(widget.weightLbs);
+    }
+  }
+
+  void _syncWeightTextFromValue() {
+    final value = widget.weightInKg ? widget.weightKg : widget.weightLbs;
+    _weightTextController.text = _roundToDecimals(value, 1).toStringAsFixed(1);
+  }
+
+  void _syncKgPicker(double kg) {
+    _selectedWeightKgIndex =
+        ((_roundToDecimals(kg, 1) - 35) * 10).round().clamp(0, 1150);
+    _syncingFromPicker = true;
+    if (_weightKgController.hasClients) {
+      _weightKgController.jumpToItem(_selectedWeightKgIndex);
+    }
+    _syncingFromPicker = false;
+  }
+
+  void _syncLbsPicker(double lbs) {
+    _selectedWeightLbsIndex =
+        ((_roundToDecimals(lbs, 1) - 77) * 10).round().clamp(0, 2530);
+    _syncingFromPicker = true;
+    if (_weightLbsController.hasClients) {
+      _weightLbsController.jumpToItem(_selectedWeightLbsIndex);
+    }
+    _syncingFromPicker = false;
   }
 
   @override
@@ -1794,24 +1785,25 @@ class _StepWeightContentState extends State<_StepWeightContent> {
   }
 
   void _applyWeightFromText(String raw) {
+    if (!_isCompleteMetricInput(raw)) return;
     final parsed = double.tryParse(raw.trim());
     if (parsed == null) return;
     if (widget.weightInKg) {
-      final kg = parsed.clamp(35.0, 150.0);
+      final kg = _roundToDecimals(parsed.clamp(35.0, 150.0), 1);
+      final lbs = _roundToDecimals(kg * 2.2046226218, 1);
       widget.onWeightKg(kg);
-      widget.onWeightLbs((kg * 2.20462).roundToDouble());
-      _syncingFromPicker = true;
-      _selectedWeightKgIndex = ((kg - 35) / 0.1).round().clamp(0, 1150);
-      _weightKgController.jumpToItem(_selectedWeightKgIndex);
-      _syncingFromPicker = false;
-    } else {
-      final lbs = parsed.clamp(77.0, 330.0);
       widget.onWeightLbs(lbs);
-      widget.onWeightKg((lbs * 0.453592).roundToDouble());
-      _syncingFromPicker = true;
-      _selectedWeightLbsIndex = ((lbs - 77) / 0.1).round().clamp(0, 2530);
-      _weightLbsController.jumpToItem(_selectedWeightLbsIndex);
-      _syncingFromPicker = false;
+      _syncKgPicker(kg);
+      _syncLbsPicker(lbs);
+      _weightTextController.text = kg.toStringAsFixed(1);
+    } else {
+      final lbs = _roundToDecimals(parsed.clamp(77.0, 330.0), 1);
+      final kg = _roundToDecimals(lbs * 0.45359237, 1);
+      widget.onWeightLbs(lbs);
+      widget.onWeightKg(kg);
+      _syncLbsPicker(lbs);
+      _syncKgPicker(kg);
+      _weightTextController.text = lbs.toStringAsFixed(1);
     }
   }
 
@@ -1832,9 +1824,12 @@ class _StepWeightContentState extends State<_StepWeightContent> {
               isLeft: widget.weightInKg,
               onChanged: (isKg) {
                 widget.onToggleWeightUnit(isKg);
-                _weightTextController.text = isKg
-                    ? widget.weightKg.toStringAsFixed(1)
-                    : widget.weightLbs.toStringAsFixed(1);
+                _syncWeightTextFromValue();
+                if (isKg) {
+                  _syncKgPicker(widget.weightKg);
+                } else {
+                  _syncLbsPicker(widget.weightLbs);
+                }
               },
             ),
           ),
@@ -1875,15 +1870,17 @@ class _StepWeightContentState extends State<_StepWeightContent> {
                         initialIndex: _selectedWeightKgIndex,
                         onSelectedItemChanged: (index) {
                           if (_syncingFromPicker) return;
+                          final actualIndex = index % 1151;
                           setState(() {
-                            _selectedWeightKgIndex = index % 1151;
+                            _selectedWeightKgIndex = actualIndex;
                           });
                           HapticFeedback.selectionClick();
                           final newWeightKg =
-                              (35 + (index % 1151) * 0.1).roundToDouble();
+                              _roundToDecimals(35.0 + actualIndex * 0.1, 1);
+                          final newWeightLbs =
+                              _roundToDecimals(newWeightKg * 2.2046226218, 1);
                           widget.onWeightKg(newWeightKg);
-                          widget.onWeightLbs(
-                              (newWeightKg * 2.20462).roundToDouble());
+                          widget.onWeightLbs(newWeightLbs);
                           _weightTextController.text =
                               newWeightKg.toStringAsFixed(1);
                         },
@@ -1916,15 +1913,17 @@ class _StepWeightContentState extends State<_StepWeightContent> {
                         initialIndex: _selectedWeightLbsIndex,
                         onSelectedItemChanged: (index) {
                           if (_syncingFromPicker) return;
+                          final actualIndex = index % 2531;
                           setState(() {
-                            _selectedWeightLbsIndex = index % 2531;
+                            _selectedWeightLbsIndex = actualIndex;
                           });
                           HapticFeedback.selectionClick();
                           final newWeightLbs =
-                              (77 + (index % 2531) * 0.1).roundToDouble();
+                              _roundToDecimals(77.0 + actualIndex * 0.1, 1);
+                          final newWeightKg =
+                              _roundToDecimals(newWeightLbs * 0.45359237, 1);
                           widget.onWeightLbs(newWeightLbs);
-                          widget.onWeightKg(
-                              (newWeightLbs * 0.453592).roundToDouble());
+                          widget.onWeightKg(newWeightKg);
                           _weightTextController.text =
                               newWeightLbs.toStringAsFixed(1);
                         },
@@ -1959,29 +1958,23 @@ class _StepWeightContentState extends State<_StepWeightContent> {
   }
 }
 
-// Step 6: Role, specialties, and goals
-class _StepPreferencesContent extends StatelessWidget {
-  final List<String> goals;
-  final Set<String> selectedGoals;
+// Step 6: Role & provider specialties
+class _StepRoleContent extends StatelessWidget {
   final String role;
   final List<String> trainerSpecialties;
   final List<String> nutritionistSpecialties;
   final Set<String> selectedSpecializations;
   final TextEditingController customSpecialty;
-  final ValueChanged<String> onToggleGoal;
   final ValueChanged<String> onRoleChanged;
   final ValueChanged<String> onToggleSpecialization;
   final VoidCallback onAddCustomSpecialty;
 
-  const _StepPreferencesContent({
-    required this.goals,
-    required this.selectedGoals,
+  const _StepRoleContent({
     required this.role,
     required this.trainerSpecialties,
     required this.nutritionistSpecialties,
     required this.selectedSpecializations,
     required this.customSpecialty,
-    required this.onToggleGoal,
     required this.onRoleChanged,
     required this.onToggleSpecialization,
     required this.onAddCustomSpecialty,
@@ -1994,230 +1987,355 @@ class _StepPreferencesContent extends StatelessWidget {
         role == 'Trainer' ? trainerSpecialties : nutritionistSpecialties;
     final textSecondary = DesignTokens.textSecondaryOf(context);
     final borderColor = DesignTokens.borderColorOf(context);
-    final sectionLabel = TextStyle(
-      color: textSecondary,
-      fontSize: 14,
-      fontWeight: FontWeight.w600,
-      letterSpacing: 0.2,
-    );
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Join as', style: sectionLabel),
-          const SizedBox(height: 12),
           _RoleCard(
             icon: Icons.person_outline_rounded,
             title: 'Client',
-            subtitle: 'Discover trainers, track workouts & nutrition',
+            subtitle: 'Find trainers, log workouts, and track nutrition',
             isSelected: role == 'Client',
-            onTap: () {
-              HapticFeedback.selectionClick();
-              onRoleChanged('Client');
-            },
+            onTap: () => onRoleChanged('Client'),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           _RoleCard(
             icon: Icons.fitness_center_rounded,
             title: 'Trainer',
-            subtitle: 'Offer training, manage clients & sessions',
+            subtitle: 'Coach clients, schedule sessions, and grow your brand',
             isSelected: role == 'Trainer',
-            onTap: () {
-              HapticFeedback.selectionClick();
-              onRoleChanged('Trainer');
-            },
+            onTap: () => onRoleChanged('Trainer'),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           _RoleCard(
             icon: Icons.restaurant_rounded,
             title: 'Nutritionist',
-            subtitle: 'Guide clients on meal plans & nutrition',
+            subtitle: 'Create meal plans and guide clients on nutrition',
             isSelected: role == 'Nutritionist',
-            onTap: () {
-              HapticFeedback.selectionClick();
-              onRoleChanged('Nutritionist');
-            },
+            onTap: () => onRoleChanged('Nutritionist'),
           ),
-          AnimatedCrossFade(
-            duration: const Duration(milliseconds: 280),
-            crossFadeState: isProvider
-                ? CrossFadeState.showSecond
-                : CrossFadeState.showFirst,
-            sizeCurve: Curves.easeOutCubic,
-            firstChild: const SizedBox(width: double.infinity),
-            secondChild: Padding(
-              padding: const EdgeInsets.only(top: 22),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: DesignTokens.surfaceOf(context),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                    color: DesignTokens.accentOrange.withValues(alpha: 0.28),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          role == 'Trainer'
-                              ? Icons.sports_gymnastics_rounded
-                              : Icons.eco_rounded,
-                          size: 18,
-                          color: DesignTokens.accentOrange,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          role == 'Trainer'
-                              ? 'Training specialties'
-                              : 'Nutrition specialties',
-                          style: sectionLabel.copyWith(
-                            color: DesignTokens.textPrimaryOf(context),
-                            fontSize: 15,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      role == 'Trainer'
-                          ? 'Pick what you train in — Zumba, Boxing, Gym, and more'
-                          : 'Pick your focus areas — weight loss, sports nutrition, etc.',
-                      style: TextStyle(
-                        color: textSecondary,
-                        fontSize: 13,
-                        height: 1.35,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        ...specialtyOptions.map((item) {
-                          final isSelected =
-                              selectedSpecializations.contains(item);
-                          return _GoalChip(
-                            label: item,
-                            isSelected: isSelected,
-                            onTap: () => onToggleSpecialization(item),
-                          );
-                        }),
-                        ...selectedSpecializations
-                            .where((s) => !specialtyOptions.contains(s))
-                            .map((item) => _GoalChip(
-                                  label: item,
-                                  isSelected: true,
-                                  onTap: () => onToggleSpecialization(item),
-                                )),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: customSpecialty,
-                            textCapitalization: TextCapitalization.words,
+          AnimatedSize(
+            duration: const Duration(milliseconds: 420),
+            curve: Curves.easeOutCubic,
+            child: isProvider
+                ? Padding(
+                    padding: const EdgeInsets.only(top: 20),
+                    child: AuthSectionCard(
+                      title: role == 'Trainer'
+                          ? 'Your specialties'
+                          : 'Your focus areas',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            role == 'Trainer'
+                                ? 'What do you train in? Pick all that apply.'
+                                : 'What nutrition areas do you cover?',
                             style: TextStyle(
-                              color: DesignTokens.textPrimaryOf(context),
+                              color: textSecondary,
                               fontSize: 14,
+                              height: 1.4,
                             ),
-                            decoration: InputDecoration(
-                              hintText: role == 'Trainer'
-                                  ? 'Add your own (e.g. CrossFit)'
-                                  : 'Add your own (e.g. Gut Health)',
-                              hintStyle: TextStyle(
-                                color: textSecondary,
-                                fontSize: 14,
-                              ),
-                              filled: true,
-                              fillColor: Theme.of(context)
-                                  .colorScheme
-                                  .onSurface
-                                  .withValues(alpha: 0.04),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(14),
-                                borderSide: BorderSide(color: borderColor),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(14),
-                                borderSide: BorderSide(color: borderColor),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(14),
-                                borderSide: const BorderSide(
-                                  color: DesignTokens.accentOrange,
-                                  width: 2,
+                          ),
+                          const SizedBox(height: 16),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              ...specialtyOptions.map((item) {
+                                final isSelected =
+                                    selectedSpecializations.contains(item);
+                                return _GoalChip(
+                                  label: item,
+                                  isSelected: isSelected,
+                                  onTap: () => onToggleSpecialization(item),
+                                );
+                              }),
+                              ...selectedSpecializations
+                                  .where((s) => !specialtyOptions.contains(s))
+                                  .map(
+                                    (item) => _GoalChip(
+                                      label: item,
+                                      isSelected: true,
+                                      onTap: () => onToggleSpecialization(item),
+                                    ),
+                                  ),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: AuthTapToTypeField(
+                                  controller: customSpecialty,
+                                  style: AuthUi.fieldTextStyle(
+                                    context,
+                                    large: true,
+                                  ).copyWith(
+                                    color: DesignTokens.textPrimaryOf(context),
+                                  ),
+                                  decoration: InputDecoration(
+                                    hintText: role == 'Trainer'
+                                        ? 'Add custom (e.g. CrossFit)'
+                                        : 'Add custom (e.g. Gut Health)',
+                                    hintStyle: TextStyle(
+                                      color: textSecondary,
+                                      fontSize: 15,
+                                    ),
+                                    filled: true,
+                                    fillColor: Theme.of(context)
+                                        .colorScheme
+                                        .onSurface
+                                        .withValues(alpha: 0.04),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(18),
+                                      borderSide:
+                                          BorderSide(color: borderColor),
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(18),
+                                      borderSide:
+                                          BorderSide(color: borderColor),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(18),
+                                      borderSide: const BorderSide(
+                                        color: DesignTokens.accentOrange,
+                                        width: 2,
+                                      ),
+                                    ),
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 18,
+                                    ),
+                                  ),
+                                  onChanged: (_) {},
                                 ),
                               ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 12,
+                              const SizedBox(width: 10),
+                              Material(
+                                color: DesignTokens.accentOrange,
+                                borderRadius: BorderRadius.circular(14),
+                                child: InkWell(
+                                  onTap: onAddCustomSpecialty,
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: const SizedBox(
+                                    width: 52,
+                                    height: 52,
+                                    child: Icon(
+                                      Icons.add_rounded,
+                                      color: Colors.black,
+                                    ),
+                                  ),
+                                ),
                               ),
-                            ),
-                            onSubmitted: (_) => onAddCustomSpecialty(),
+                            ],
                           ),
-                        ),
-                        const SizedBox(width: 10),
-                        Material(
-                          color: DesignTokens.accentOrange,
-                          borderRadius: BorderRadius.circular(14),
-                          child: InkWell(
-                            onTap: onAddCustomSpecialty,
-                            borderRadius: BorderRadius.circular(14),
-                            child: const SizedBox(
-                              width: 48,
-                              height: 48,
-                              child: Icon(
-                                Icons.add_rounded,
-                                color: Colors.black,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ],
-                ),
-              ),
-            ),
+                  )
+                : const SizedBox.shrink(),
           ),
-          const SizedBox(height: 22),
-          Text('Fitness goals', style: sectionLabel),
-          const SizedBox(height: 6),
-          Text(
-            'What are you working toward?',
-            style: TextStyle(color: textSecondary, fontSize: 13),
-          ),
-          const SizedBox(height: 14),
+        ],
+      ),
+    );
+  }
+}
+
+// Step 7: Fitness goals
+class _StepGoalsContent extends StatelessWidget {
+  final List<String> goals;
+  final Set<String> selectedGoals;
+  final ValueChanged<String> onToggleGoal;
+
+  const _StepGoalsContent({
+    required this.goals,
+    required this.selectedGoals,
+    required this.onToggleGoal,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textSecondary = DesignTokens.textSecondaryOf(context);
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
-              color: DesignTokens.surfaceOf(context),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: borderColor),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  DesignTokens.accentOrange.withValues(alpha: 0.16),
+                  AccountHubTheme.cardBg(context),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: DesignTokens.accentOrange.withValues(alpha: 0.28),
+              ),
             ),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: goals.map((goal) {
+            child: Row(
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    gradient: DesignTokens.primaryGradient,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Icon(
+                    Icons.flag_rounded,
+                    color: Colors.white,
+                    size: 26,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Pick your goals',
+                        style: TextStyle(
+                          color: DesignTokens.textPrimaryOf(context),
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Choose one or more — you can change these later.',
+                        style: TextStyle(
+                          color: textSecondary,
+                          fontSize: 14,
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Text(
+                'Selected',
+                style: TextStyle(
+                  color: textSecondary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: DesignTokens.accentOrange.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  '${selectedGoals.length}',
+                  style: const TextStyle(
+                    color: DesignTokens.accentOrange,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          AuthSectionCard(
+            child: GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
+                childAspectRatio: 2.35,
+              ),
+              itemCount: goals.length,
+              itemBuilder: (context, index) {
+                final goal = goals[index];
                 final isSelected = selectedGoals.contains(goal);
-                return _GoalChip(
+                return _GoalTile(
                   label: goal,
                   isSelected: isSelected,
                   onTap: () => onToggleGoal(goal),
                 );
-              }).toList(),
+              },
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _GoalTile extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _GoalTile({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textPrimary = DesignTokens.textPrimaryOf(context);
+
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          gradient: isSelected ? DesignTokens.primaryGradient : null,
+          color: isSelected ? null : DesignTokens.surfaceOf(context),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected
+                ? Colors.transparent
+                : DesignTokens.borderColorOf(context),
+            width: 1.5,
+          ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: DesignTokens.accentOrange.withValues(alpha: 0.2),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: isSelected ? Colors.white : textPrimary,
+            fontSize: 14,
+            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+          ),
+        ),
       ),
     );
   }
@@ -2259,93 +2377,36 @@ class _TextFieldCard extends StatefulWidget {
 }
 
 class _TextFieldCardState extends State<_TextFieldCard> {
-  final _focusNode = FocusNode();
-
-  @override
-  void initState() {
-    super.initState();
-  }
-
-  @override
-  void dispose() {
-    _focusNode.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
-    final surfaceColor = DesignTokens.surfaceOf(context);
     final textPrimary = DesignTokens.textPrimaryOf(context);
     final textSecondary = DesignTokens.textSecondaryOf(context);
-    final borderColor = DesignTokens.borderColorOf(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Use exact same structure as login page - Material handles gap automatically
-        TextFormField(
+        AuthTapToTypeField(
           controller: widget.controller,
-          focusNode: _focusNode,
           obscureText: widget.obscureText,
           keyboardType: widget.keyboardType,
           inputFormatters: widget.inputFormatters,
           onChanged: (value) {
-            if (widget.onChanged != null) {
-              widget.onChanged!(value);
-            }
-            setState(() {}); // Trigger rebuild for label animation
+            widget.onChanged?.call(value);
+            setState(() {});
           },
-          style: TextStyle(
+          style: AuthUi.fieldTextStyle(context, large: true).copyWith(
             color: textPrimary,
-            fontWeight: DesignTokens.fontWeightMedium,
-            fontSize: DesignTokens.fontSizeBody,
           ),
-          decoration: InputDecoration(
-            labelText: widget.label,
-            hintText: widget.hint,
-            labelStyle: TextStyle(
-              color: textSecondary,
-              fontWeight: DesignTokens.fontWeightRegular,
-            ),
-            prefixIcon: widget.prefix != null
-              ? null
-              : Icon(widget.prefixIcon, color: textSecondary, size: 20),
+          decoration: AuthUi.fieldDecoration(
+            context,
+            large: true,
+            label: widget.label,
+            hint: widget.hint,
             prefix: widget.prefix,
+            prefixIcon: widget.prefix == null
+                ? Icon(widget.prefixIcon, color: textSecondary, size: 22)
+                : null,
             suffixIcon: widget.suffix,
-            filled: true,
-            fillColor: surfaceColor,
-            isDense: true,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-              borderSide: BorderSide(color: borderColor, width: 1),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-              borderSide: BorderSide(color: borderColor, width: 1),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-              borderSide: const BorderSide(
-                color: DesignTokens.accentOrange,
-                width: 2,
-              ),
-            ),
-            errorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-              borderSide: BorderSide(color: borderColor, width: 1),
-            ),
-            focusedErrorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-              borderSide: BorderSide(color: borderColor, width: 1),
-            ),
-            disabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-              borderSide: BorderSide(color: borderColor, width: 1),
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: DesignTokens.spacing12,
-              vertical: DesignTokens.spacing12,
-            ),
           ),
         ),
         if (widget.helperText != null) ...[
@@ -2441,7 +2502,7 @@ class _PasswordChip extends StatelessWidget {
   }
 }
 
-class _MetricTextField extends StatelessWidget {
+class _MetricTextField extends StatefulWidget {
   final TextEditingController controller;
   final String suffix;
   final String hint;
@@ -2459,16 +2520,43 @@ class _MetricTextField extends StatelessWidget {
   });
 
   @override
+  State<_MetricTextField> createState() => _MetricTextFieldState();
+}
+
+class _MetricTextFieldState extends State<_MetricTextField> {
+  final _focusNode = FocusNode();
+  bool _keyboardEnabled = false;
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _enableKeyboard() {
+    if (_keyboardEnabled) return;
+    setState(() => _keyboardEnabled = true);
+    Future.microtask(() => _focusNode.requestFocus());
+  }
+
+  @override
   Widget build(BuildContext context) {
     final textPrimary = DesignTokens.textPrimaryOf(context);
     final borderColor = DesignTokens.borderColorOf(context);
+    final hintText =
+        _keyboardEnabled ? widget.hint : '${widget.hint} · tap';
 
     return TextField(
-      controller: controller,
-      keyboardType: TextInputType.numberWithOptions(decimal: allowDecimal),
+      controller: widget.controller,
+      focusNode: _focusNode,
+      readOnly: !_keyboardEnabled,
+      showCursor: _keyboardEnabled,
+      enableInteractiveSelection: _keyboardEnabled,
+      onTap: _enableKeyboard,
+      keyboardType: TextInputType.numberWithOptions(decimal: widget.allowDecimal),
       inputFormatters: [
         FilteringTextInputFormatter.allow(
-          RegExp(allowDecimal ? r'^\d*\.?\d*' : r'\d*'),
+          RegExp(widget.allowDecimal ? r'^\d*\.?\d*' : r'\d*'),
         ),
       ],
       textAlign: TextAlign.center,
@@ -2480,13 +2568,13 @@ class _MetricTextField extends StatelessWidget {
         height: 1.1,
       ),
       decoration: InputDecoration(
-        hintText: hint,
+        hintText: hintText,
         hintStyle: TextStyle(
           color: textPrimary.withValues(alpha: 0.25),
-          fontSize: 42,
+          fontSize: _keyboardEnabled ? 42 : 28,
           fontWeight: FontWeight.w800,
         ),
-        suffixText: suffix,
+        suffixText: widget.suffix,
         suffixStyle: TextStyle(
           color: DesignTokens.accentOrange,
           fontSize: 22,
@@ -2511,8 +2599,9 @@ class _MetricTextField extends StatelessWidget {
           ),
         ),
       ),
-      onChanged: onChanged,
-      onSubmitted: onSubmitted,
+      onChanged: widget.onChanged,
+      onSubmitted: widget.onSubmitted,
+      onEditingComplete: () => widget.onSubmitted(widget.controller.text),
     );
   }
 }

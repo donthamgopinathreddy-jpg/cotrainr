@@ -160,6 +160,15 @@ class _PrivacySecurityPageState extends State<PrivacySecurityPage> {
                       ),
                       const Divider(height: 1),
                       HubToggleRow(
+                        title: 'Share Meal Data with Trainer',
+                        value: _prefs.shareMealsWithTrainer,
+                        onChanged: (v) => setState(
+                          () => _prefs =
+                              _prefs.copyWith(shareMealsWithTrainer: v),
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      HubToggleRow(
                         title: 'Share Nutrition Data with Nutritionist',
                         value: _prefs.shareNutritionWithNutritionist,
                         onChanged: (v) => setState(

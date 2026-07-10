@@ -23,6 +23,9 @@ enum NotificationType {
   questCompleted,
   stepsGoalAchieved,
   streakReached,
+  leadRequest,
+  leadAccepted,
+  leadDeclined,
 }
 
 class NotificationPage extends StatefulWidget {
@@ -84,7 +87,9 @@ class _NotificationPageState extends State<NotificationPage> {
 
         // Parse data JSONB for additional info
         final data = notif['data'] as Map<String, dynamic>?;
-        final actorId = data?['actor_id'] as String?;
+        final actorId = data?['actor_id'] as String? ??
+            data?['client_id'] as String? ??
+            data?['provider_id'] as String?;
         final actorProfile = actorId != null ? await _getActorProfile(actorId) : null;
         final postId = data?['post_id'] as String?;
 
@@ -116,6 +121,8 @@ class _NotificationPageState extends State<NotificationPage> {
           postId: postId,
           postContentPreview: postContentPreview,
           postMediaUrl: postMediaUrl,
+          action: data?['action'] as String?,
+          leadId: data?['lead_id'] as String?,
         ));
       }
 
@@ -201,6 +208,14 @@ class _NotificationPageState extends State<NotificationPage> {
         return NotificationType.stepsGoalAchieved;
       case 'streak':
         return NotificationType.streakReached;
+      case 'lead_request':
+      case 'trainer_request':
+      case 'provider_request':
+        return NotificationType.leadRequest;
+      case 'lead_accepted':
+        return NotificationType.leadAccepted;
+      case 'lead_declined':
+        return NotificationType.leadDeclined;
       default:
         return NotificationType.goalReached;
     }
@@ -432,6 +447,12 @@ class _NotificationPageState extends State<NotificationPage> {
                                   if (meeting != null) {
                                     context.push('/video/room/${meeting.shareKey}');
                                   }
+                                } else if (notification.action == 'open_pending_requests') {
+                                  context.go('/home?tab=1');
+                                } else if (notification.action == 'open_messaging') {
+                                  context.go('/home?tab=2');
+                                } else if (notification.action == 'open_discover') {
+                                  context.go('/home?tab=1');
                                 }
                                 if (notification.hasUnread) {
                                   await _notificationsRepo.markAsRead(notification.id);
@@ -514,6 +535,8 @@ class NotificationData {
   final String? postId;
   final String? postContentPreview;
   final String? postMediaUrl;
+  final String? action;
+  final String? leadId;
 
   NotificationData({
     required this.id,
@@ -530,6 +553,8 @@ class NotificationData {
     this.postId,
     this.postContentPreview,
     this.postMediaUrl,
+    this.action,
+    this.leadId,
   });
 }
 
@@ -709,6 +734,12 @@ class _NotificationItemState extends State<_NotificationItem>
         return Icons.check_circle_rounded;
       case NotificationType.streakReached:
         return Icons.local_fire_department_rounded;
+      case NotificationType.leadRequest:
+        return Icons.person_add_alt_1_rounded;
+      case NotificationType.leadAccepted:
+        return Icons.check_circle_rounded;
+      case NotificationType.leadDeclined:
+        return Icons.cancel_rounded;
     }
   }
 
@@ -743,10 +774,13 @@ class _NotificationItemState extends State<_NotificationItem>
   Widget _buildAvatar(BuildContext context, NotificationType type) {
     final cs = Theme.of(context).colorScheme;
     
-    final shouldShowAvatar = widget.notification.userName != null && 
-                            (type == NotificationType.postLike || 
-                             type == NotificationType.following || 
-                             type == NotificationType.comment);
+    final shouldShowAvatar = widget.notification.userName != null &&
+                            (type == NotificationType.postLike ||
+                             type == NotificationType.following ||
+                             type == NotificationType.comment ||
+                             type == NotificationType.leadRequest ||
+                             type == NotificationType.leadAccepted ||
+                             type == NotificationType.leadDeclined);
     
     if (shouldShowAvatar) {
       if (widget.notification.userAvatarUrl != null && widget.notification.userAvatarUrl!.isNotEmpty) {

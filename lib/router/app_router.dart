@@ -155,6 +155,8 @@ final GoRouter appRouter = GoRouter(
       pageBuilder: (context, state) => _fadeSlidePage(
         child: HomeShellPage(
           showWelcome: state.uri.queryParameters['showWelcome'] == 'true',
+          initialTabIndex:
+              int.tryParse(state.uri.queryParameters['tab'] ?? '') ?? 0,
         ),
         state: state,
       ),

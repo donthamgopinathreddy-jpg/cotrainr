@@ -101,7 +101,26 @@ class _TrainerMyClientsPageState extends State<TrainerMyClientsPage>
       avatar: avatar,
       alerts: [],
       leadId: lead.status == 'requested' ? lead.id : null,
+      requestMessage: lead.message,
     );
+  }
+
+  Future<void> _rejectLead(String leadId) async {
+    try {
+      await _leadsService.updateLeadStatus(leadId: leadId, status: 'declined');
+      await _loadLeads();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Request declined')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_leadActionError(e, 'decline'))),
+        );
+      }
+    }
   }
 
   Future<void> _acceptLead(String leadId) async {
@@ -116,10 +135,24 @@ class _TrainerMyClientsPageState extends State<TrainerMyClientsPage>
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to accept: $e')),
+          SnackBar(content: Text(_leadActionError(e, 'accept'))),
         );
       }
     }
+  }
+
+  String _leadActionError(Object e, String action) {
+    final err = e.toString().replaceFirst('Exception: ', '');
+    if (err.contains('FunctionException') && err.contains('404')) {
+      return 'App needs a full restart. Stop and run flutter run again.';
+    }
+    if (err.contains('Lead already processed')) {
+      return 'This request was already handled.';
+    }
+    if (err.contains('Only provider can')) {
+      return 'You cannot update this request.';
+    }
+    return 'Failed to $action request: $err';
   }
 
   @override
@@ -542,37 +575,86 @@ class _TrainerMyClientsPageState extends State<TrainerMyClientsPage>
                           ],
                         ),
                       ],
-                      // Accept button for pending
+                      // Accept / reject for pending
                       if (client.status == ClientStatus.pending && client.leadId != null) ...[
+                        if (client.requestMessage != null && client.requestMessage!.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            client.requestMessage!,
+                            style: TextStyle(
+                              color: textSecondary,
+                              fontSize: 12,
+                              fontStyle: FontStyle.italic,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
                         const SizedBox(height: 8),
-                        GestureDetector(
-                          onTap: () => _acceptLead(client.leadId!),
-                          behavior: HitTestBehavior.opaque,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              gradient: TrainerTheme.gradient,
-                              borderRadius: BorderRadius.circular(8),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: const Color(0xFF3ED598).withOpacity(0.3),
-                                  blurRadius: 6,
-                                  offset: const Offset(0, 2),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () => _acceptLead(client.leadId!),
+                                behavior: HitTestBehavior.opaque,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    gradient: TrainerTheme.gradient,
+                                    borderRadius: BorderRadius.circular(8),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: const Color(0xFF3ED598).withOpacity(0.3),
+                                        blurRadius: 6,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Text(
+                                    'Approve',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
                                 ),
-                              ],
-                            ),
-                            child: const Text(
-                              'Accept',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
                               ),
                             ),
-                          ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () => _rejectLead(client.leadId!),
+                                behavior: HitTestBehavior.opaque,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: textSecondary.withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: textSecondary.withOpacity(0.2),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    'Reject',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: textSecondary,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ],

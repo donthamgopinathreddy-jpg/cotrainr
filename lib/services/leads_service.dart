@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'leads_models.dart' show Lead, CreateLeadResult, UpdateLeadResult;
 
@@ -12,22 +13,26 @@ class LeadsService {
     String? message,
   }) async {
     try {
-      final response = await _supabase.functions.invoke(
-        'create-lead',
-        body: {
-          'provider_id': providerId,
-          if (message != null) 'message': message,
+      final raw = await _supabase.rpc(
+        'create_lead_tx',
+        params: {
+          'p_provider_id': providerId,
+          'p_message': message,
         },
       );
 
-      if (response.status != 200) {
-        final error = response.data?['error'] as String? ?? 'Failed to create lead';
+      final data = Map<String, dynamic>.from(raw as Map);
+      final error = data['error'] as String?;
+      if (error != null) {
         throw Exception(error);
       }
 
-      final data = response.data as Map<String, dynamic>;
       return CreateLeadResult.fromJson(data);
     } catch (e) {
+      debugPrint('LeadsService.createLead error: $e');
+      if (e is Exception && !e.toString().startsWith('Exception: Failed to create lead')) {
+        rethrow;
+      }
       throw Exception('Failed to create lead: $e');
     }
   }
@@ -37,22 +42,26 @@ class LeadsService {
     required String status,
   }) async {
     try {
-      final response = await _supabase.functions.invoke(
-        'update-lead-status',
-        body: {
-          'lead_id': leadId,
-          'status': status,
+      final raw = await _supabase.rpc(
+        'update_lead_status_tx',
+        params: {
+          'p_lead_id': leadId,
+          'p_status': status,
         },
       );
 
-      if (response.status != 200) {
-        final error = response.data?['error'] as String? ?? 'Failed to update lead';
+      final data = Map<String, dynamic>.from(raw as Map);
+      final error = data['error'] as String?;
+      if (error != null) {
         throw Exception(error);
       }
 
-      final data = response.data as Map<String, dynamic>;
       return UpdateLeadResult.fromJson(data);
     } catch (e) {
+      debugPrint('LeadsService.updateLeadStatus error: $e');
+      if (e is Exception && !e.toString().startsWith('Exception: Failed to update lead')) {
+        rethrow;
+      }
       throw Exception('Failed to update lead: $e');
     }
   }
@@ -100,7 +109,7 @@ class LeadsService {
             };
           }
         } catch (e) {
-          print('LeadsService: Error fetching client profiles: $e');
+          debugPrint('LeadsService: Error fetching client profiles: $e');
         }
       }
 
@@ -154,7 +163,7 @@ class LeadsService {
             };
           }
         } catch (e) {
-          print('LeadsService: Error fetching client profiles: $e');
+          debugPrint('LeadsService: Error fetching client profiles: $e');
         }
       }
 
@@ -207,7 +216,7 @@ class LeadsService {
             };
           }
         } catch (e) {
-          print('LeadsService: Error fetching client profiles: $e');
+          debugPrint('LeadsService: Error fetching client profiles: $e');
         }
       }
 
@@ -224,4 +233,3 @@ class LeadsService {
     }
   }
 }
-

@@ -11,6 +11,8 @@ import '../../widgets/discover/discover_filter_sheet.dart';
 import '../../repositories/provider_locations_repository.dart';
 import '../../models/subscription_plans.dart';
 import '../../repositories/subscriptions_repository.dart';
+import '../../services/leads_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'center_detail_page.dart';
 import '../profile/public_profile_readonly_page.dart';
 
@@ -51,6 +53,8 @@ class _DiscoverPageState extends State<DiscoverPage>
 
   // Track request status: 'none', 'pending', 'accepted'
   final Map<String, String> _requestStatus = {};
+  final Map<String, String> _leadIdsByProvider = {};
+  final Set<String> _submittingProviders = {};
 
   // Real data from Supabase
   final List<DiscoverItem> _trainers = [];
@@ -58,6 +62,7 @@ class _DiscoverPageState extends State<DiscoverPage>
   final List<DiscoverItem> _centers = [];
 
   final ProviderLocationsRepository _repo = ProviderLocationsRepository();
+  final LeadsService _leadsService = LeadsService();
 
   @override
   void initState() {
@@ -240,6 +245,8 @@ class _DiscoverPageState extends State<DiscoverPage>
         _nutritionists.clear();
       }
 
+      await _loadRequestStatuses();
+
       if (!mounted) return;
       setState(() {
         _isLoading = false;
@@ -252,6 +259,121 @@ class _DiscoverPageState extends State<DiscoverPage>
         _errorMessage = _classifyLoadError(e);
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _loadRequestStatuses() async {
+    final uid = Supabase.instance.client.auth.currentUser?.id;
+    if (uid == null) return;
+
+    try {
+      final leads = await _leadsService.getMyLeads();
+      if (!mounted) return;
+
+      _requestStatus.clear();
+      _leadIdsByProvider.clear();
+      for (final lead in leads.where((l) => l.clientId == uid)) {
+        if (lead.status == 'requested') {
+          _requestStatus[lead.providerId] = 'pending';
+          _leadIdsByProvider[lead.providerId] = lead.id;
+        } else if (lead.status == 'accepted') {
+          _requestStatus[lead.providerId] = 'accepted';
+        }
+      }
+    } catch (e) {
+      debugPrint('Discover: failed to load lead statuses: $e');
+    }
+  }
+
+  Future<void> _sendRequest(DiscoverItem item) async {
+    if (_submittingProviders.contains(item.id)) return;
+    HapticFeedback.mediumImpact();
+    setState(() => _submittingProviders.add(item.id));
+
+    try {
+      final result = await _leadsService.createLead(providerId: item.id);
+      if (!mounted) return;
+      setState(() {
+        _requestStatus[item.id] = 'pending';
+        _leadIdsByProvider[item.id] = result.leadId;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Request sent to ${item.name}'),
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      debugPrint('Discover: send request failed: $e');
+      final err = e.toString();
+      final String message;
+      if (err.contains('Lead already exists')) {
+        message = 'You already have a pending or active request with ${item.name}';
+      } else if (err.contains('Only clients can create leads')) {
+        message = 'Only client accounts can send coaching requests.';
+      } else if (err.contains('Provider not found')) {
+        message = 'This provider is no longer available.';
+      } else if (err.contains('limit reached')) {
+        message = 'Weekly request limit reached. Upgrade your plan for more requests.';
+      } else if (err.contains('Nutritionist requests require')) {
+        message = 'Nutritionist requests require a Basic or Premium plan.';
+      } else {
+        final match = RegExp(r'Exception:\s*(.+)$').firstMatch(err);
+        message = match?.group(1)?.trim() ?? 'Could not send request. Please try again.';
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _submittingProviders.remove(item.id));
+      }
+    }
+  }
+
+  Future<void> _cancelRequest(DiscoverItem item) async {
+    final leadId = _leadIdsByProvider[item.id];
+    if (leadId == null) {
+      setState(() => _requestStatus[item.id] = 'none');
+      return;
+    }
+    if (_submittingProviders.contains(item.id)) return;
+    HapticFeedback.mediumImpact();
+    setState(() => _submittingProviders.add(item.id));
+
+    try {
+      await _leadsService.updateLeadStatus(leadId: leadId, status: 'cancelled');
+      if (!mounted) return;
+      setState(() {
+        _requestStatus[item.id] = 'none';
+        _leadIdsByProvider.remove(item.id);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Request canceled'),
+          duration: Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not cancel request: $e'),
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _submittingProviders.remove(item.id));
+      }
     }
   }
 
@@ -478,34 +600,8 @@ class _DiscoverPageState extends State<DiscoverPage>
                                 );
                               }
                             },
-                            onRequest: () {
-                              HapticFeedback.mediumImpact();
-                              setState(() {
-                                _requestStatus[item.id] = 'pending';
-                              });
-                              // TODO: Send notification to trainer/nutritionist
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Request sent to ${item.name}'),
-                                  duration: const Duration(seconds: 2),
-                                  behavior: SnackBarBehavior.floating,
-                                ),
-                              );
-                            },
-                            onCancelRequest: () {
-                              HapticFeedback.mediumImpact();
-                              setState(() {
-                                _requestStatus[item.id] = 'none';
-                              });
-                              // TODO: Cancel request notification
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: const Text('Request canceled'),
-                                  duration: const Duration(seconds: 2),
-                                  behavior: SnackBarBehavior.floating,
-                                ),
-                              );
-                            },
+                            onRequest: () => _sendRequest(item),
+                            onCancelRequest: () => _cancelRequest(item),
                             onChat: () {
                               HapticFeedback.lightImpact();
                               // TODO: Navigate to chat

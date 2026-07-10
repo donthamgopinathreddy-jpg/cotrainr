@@ -15,10 +15,12 @@ import '../../providers/unread_messages_count_provider.dart';
 
 class HomeShellPage extends ConsumerStatefulWidget {
   final bool showWelcome;
+  final int initialTabIndex;
 
   const HomeShellPage({
     super.key,
     this.showWelcome = false,
+    this.initialTabIndex = 0,
   });
 
   @override
@@ -100,6 +102,11 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
   @override
   void initState() {
     super.initState();
+    final tab = widget.initialTabIndex;
+    if (tab > 0 && tab < 5) {
+      _currentIndex = tab;
+      _visitedTabIndexes.add(tab);
+    }
     _welcomeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),

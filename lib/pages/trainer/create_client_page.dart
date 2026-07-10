@@ -579,6 +579,7 @@ class ClientItem {
   final double? adherencePercentage; // 0-100
   final DateTime? lastCheckIn;
   final String? leadId; // For pending: needed to accept
+  final String? requestMessage;
 
   ClientItem({
     required this.id,
@@ -592,6 +593,7 @@ class ClientItem {
     this.adherencePercentage,
     this.lastCheckIn,
     this.leadId,
+    this.requestMessage,
   });
 
   String get statusString {

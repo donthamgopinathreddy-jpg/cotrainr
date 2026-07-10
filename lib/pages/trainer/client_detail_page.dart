@@ -7,6 +7,7 @@ import '../../repositories/coach_notes_repository.dart';
 import '../../repositories/profile_repository.dart';
 import '../../repositories/metrics_repository.dart';
 import '../../repositories/meal_repository.dart' show MealRepository, DayMealsData;
+import '../../services/coach_client_access_service.dart';
 import 'create_client_page.dart';
 
 class ClientDetailPage extends StatefulWidget {
@@ -45,6 +46,9 @@ class _ClientDetailPageState extends State<ClientDetailPage>
   final ProfileRepository _profileRepo = ProfileRepository();
   final MetricsRepository _metricsRepo = MetricsRepository();
   final MealRepository _mealRepo = MealRepository();
+  final CoachClientAccessService _accessService = CoachClientAccessService();
+  CoachClientAccessStatus? _accessStatus;
+  bool _accessLoading = true;
 
   // Notes controller
   final TextEditingController _notesController = TextEditingController();
@@ -87,7 +91,15 @@ class _ClientDetailPageState extends State<ClientDetailPage>
   Future<void> _loadClientData() async {
     final id = widget.clientId ?? _client.id;
     if (id.isEmpty) return;
+    setState(() => _accessLoading = true);
     try {
+      final access = await _accessService.getClientAccess(id);
+      if (!mounted) return;
+      setState(() {
+        _accessStatus = access;
+        _accessLoading = false;
+      });
+
       final profile = await _profileRepo.fetchUserProfile(id);
       if (profile != null && mounted) {
         setState(() {
@@ -107,18 +119,35 @@ class _ClientDetailPageState extends State<ClientDetailPage>
           _bmiStatus = profile['bmi_status'] as String? ?? '—';
         });
       }
-      final todayMetrics = await _metricsRepo.getClientMetricsForDate(id, DateTime.now());
-      final meals = await _mealRepo.getClientDayMeals(id, DateTime.now());
-      if (mounted) {
+
+      if (access.canViewMetrics) {
+        final todayMetrics = await _metricsRepo.getClientMetricsForDate(id, DateTime.now());
+        if (mounted) {
+          setState(() {
+            _currentSteps = (todayMetrics?['steps'] as num?)?.toInt() ?? 0;
+            _currentCalories = ((todayMetrics?['calories_burned'] as num?)?.toDouble() ?? 0.0).round();
+            _currentWater = (todayMetrics?['water_intake_liters'] as num?)?.toDouble() ?? 0;
+            _currentDistance = (todayMetrics?['distance_km'] as num?)?.toDouble() ?? 0;
+          });
+        }
+      } else if (mounted) {
         setState(() {
-          _currentSteps = (todayMetrics?['steps'] as num?)?.toInt() ?? 0;
-          _currentCalories = ((todayMetrics?['calories_burned'] as num?)?.toDouble() ?? 0.0).round();
-          _currentWater = (todayMetrics?['water_intake_liters'] as num?)?.toDouble() ?? 0;
-          _currentDistance = (todayMetrics?['distance_km'] as num?)?.toDouble() ?? 0;
-          _mealsData = meals;
+          _currentSteps = 0;
+          _currentCalories = 0;
+          _currentWater = 0;
+          _currentDistance = 0;
         });
       }
-    } catch (_) {}
+
+      if (access.canViewMeals) {
+        final meals = await _mealRepo.getClientDayMeals(id, DateTime.now());
+        if (mounted) setState(() => _mealsData = meals);
+      } else if (mounted) {
+        setState(() => _mealsData = null);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _accessLoading = false);
+    }
   }
 
   Future<void> _loadNotes() async {
@@ -494,6 +523,21 @@ class _ClientDetailPageState extends State<ClientDetailPage>
     Color surfaceColor,
     Color borderColor,
   ) {
+    if (_accessLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_accessStatus?.canViewMetrics != true) {
+      return _buildLockedSharingCard(
+        textPrimary,
+        textSecondary,
+        surfaceColor,
+        borderColor,
+        icon: Icons.lock_outline_rounded,
+        message: _accessStatus?.hasAcceptedLead == false
+            ? 'Accept this client before viewing progress metrics.'
+            : 'Client has not enabled meal and progress sharing.',
+      );
+    }
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: _buildOverviewContent(textPrimary, textSecondary, surfaceColor, borderColor),
@@ -552,9 +596,64 @@ class _ClientDetailPageState extends State<ClientDetailPage>
     Color surfaceColor,
     Color borderColor,
   ) {
+    if (_accessLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_accessStatus?.canViewMeals != true) {
+      return _buildLockedSharingCard(
+        textPrimary,
+        textSecondary,
+        surfaceColor,
+        borderColor,
+        icon: Icons.restaurant_outlined,
+        message: _accessStatus?.hasAcceptedLead == false
+            ? 'Accept this client before viewing meal progress.'
+            : 'Client has not enabled meal and progress sharing.',
+      );
+    }
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: _buildMealsContent(textPrimary, textSecondary, surfaceColor, borderColor),
+    );
+  }
+
+  Widget _buildLockedSharingCard(
+    Color textPrimary,
+    Color textSecondary,
+    Color surfaceColor,
+    Color borderColor, {
+    required IconData icon,
+    required String message,
+  }) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: surfaceColor,
+            borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
+            border: Border.all(color: borderColor),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 48, color: textSecondary),
+              const SizedBox(height: 16),
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: textPrimary,
+                  fontSize: DesignTokens.fontSizeBody,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -741,11 +840,22 @@ class _ClientDetailPageState extends State<ClientDetailPage>
     final clientId = widget.clientId ?? _client.id;
     if (clientId.isEmpty) return;
 
-    final note = await _notesRepo.addNote(clientId, noteText);
-    if (!mounted) return;
+    if (_accessStatus?.canUseCoachNotes == false) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Accept this client before sending coach notes.'),
+          backgroundColor: DesignTokens.accentRed,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
 
-    if (note != null) {
-      setState(() => _notesList = [note, ..._notesList]);
+    try {
+      final note = await _notesRepo.addNote(clientId, noteText);
+      if (!mounted) return;
+
+      setState(() => _notesList = [note!, ..._notesList]);
       HapticFeedback.lightImpact();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -756,10 +866,15 @@ class _ClientDetailPageState extends State<ClientDetailPage>
         ),
       );
       _notesController.clear();
-    } else {
+    } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Could not send note. Make sure you have accepted this client.'),
+          content: Text(
+            _accessStatus?.hasAcceptedLead == false
+                ? 'Accept this client before sending coach notes.'
+                : 'Could not send note. Please try again.',
+          ),
           backgroundColor: DesignTokens.accentRed,
           behavior: SnackBarBehavior.floating,
         ),
