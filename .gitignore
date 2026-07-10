@@ -16,6 +16,11 @@ node_modules/
 migrate_working_dir/
 supabase/.temp/
 
+# Local environment secrets (never commit)
+.env
+.env.*
+!.env.example
+
 # IntelliJ related
 *.iml
 *.ipr
