@@ -45,7 +45,7 @@ class BrandingAssets {
   static const String appIcon1024 =
       'assets/branding/icons/cotrainr_app_icon_1024.png';
   static const String appIconForeground =
-      'assets/branding/icons/cotrainr_app_icon_foreground.png';
+      'assets/branding/icons/cotrainr_symbol_foreground.png';
 
   // Legacy aliases
   static const String logo = appIcon1024;

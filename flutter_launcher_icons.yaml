@@ -1,16 +1,24 @@
 # dart run flutter_launcher_icons
+# Master: assets/branding/icons/cotrainr_app_icon_1024.png (supplied PNG, do not redesign)
 flutter_launcher_icons:
   android: true
   ios: true
   image_path: assets/branding/icons/cotrainr_app_icon_1024.png
-  adaptive_icon_background: "#FF8A00"
-  adaptive_icon_foreground: assets/branding/icons/cotrainr_app_icon_foreground.png
-  adaptive_icon_monochrome: assets/branding/icons/cotrainr_app_icon_monochrome.png
-  adaptive_icon_foreground_inset: 12
+  adaptive_icon_background: "#FF6A00"
+  adaptive_icon_foreground: assets/branding/icons/cotrainr_symbol_foreground.png
+  # Do not add inset padding — master already has final safe padding.
+  adaptive_icon_foreground_inset: 0
   remove_alpha_ios: true
   web:
     generate: true
     image_path: assets/branding/icons/cotrainr_app_icon_1024.png
-    background_color: "#FF8A00"
-    theme_color: "#FF8A00"
+    background_color: "#FF6A00"
+    theme_color: "#FF6A00"
+  windows:
+    generate: true
+    image_path: assets/branding/icons/cotrainr_app_icon_1024.png
+    icon_size: 48
+  macos:
+    generate: true
+    image_path: assets/branding/icons/cotrainr_app_icon_1024.png
   min_sdk_android: 21
