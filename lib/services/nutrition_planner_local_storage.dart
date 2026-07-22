@@ -46,6 +46,9 @@ class SavedNutritionPlannerState {
   final int timelineDays;
   final double weeklyChangeKg;
   final DateTime savedAt;
+  final String calorieAdjustmentMode;
+  final int? calorieAdjustmentKcal;
+  final int resolvedCalorieAdjustmentKcal;
 
   const SavedNutritionPlannerState({
     required this.goalCalories,
@@ -67,6 +70,9 @@ class SavedNutritionPlannerState {
     required this.timelineDays,
     required this.weeklyChangeKg,
     required this.savedAt,
+    this.calorieAdjustmentMode = 'auto',
+    this.calorieAdjustmentKcal,
+    this.resolvedCalorieAdjustmentKcal = 0,
   });
 
   NutritionGoals toNutritionGoals() => NutritionGoals(
@@ -98,6 +104,9 @@ class SavedNutritionPlannerState {
         'timeline_days': timelineDays,
         'weekly_change_kg': weeklyChangeKg,
         'saved_at': savedAt.toIso8601String(),
+        'calorie_adjustment_mode': calorieAdjustmentMode,
+        'calorie_adjustment_kcal': calorieAdjustmentKcal,
+        'resolved_calorie_adjustment_kcal': resolvedCalorieAdjustmentKcal,
       };
 
   factory SavedNutritionPlannerState.fromJson(Map<String, dynamic> json) {
@@ -121,6 +130,12 @@ class SavedNutritionPlannerState {
       timelineDays: (json['timeline_days'] as num?)?.toInt() ?? 84,
       weeklyChangeKg: (json['weekly_change_kg'] as num?)?.toDouble() ?? 0,
       savedAt: DateTime.tryParse(json['saved_at'] as String? ?? '') ?? DateTime.now(),
+      calorieAdjustmentMode:
+          json['calorie_adjustment_mode'] as String? ?? 'auto',
+      calorieAdjustmentKcal:
+          (json['calorie_adjustment_kcal'] as num?)?.toInt(),
+      resolvedCalorieAdjustmentKcal:
+          (json['resolved_calorie_adjustment_kcal'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -130,6 +145,15 @@ class SavedNutritionPlannerState {
     required String gender,
     required double heightCm,
   }) {
+    final mode = switch (result.calorieAdjustmentMode) {
+      CalorieAdjustmentMode.auto => 'auto',
+      CalorieAdjustmentMode.preset => 'preset',
+      CalorieAdjustmentMode.custom => 'custom',
+    };
+    final storedAdj = result.calorieAdjustmentMode == CalorieAdjustmentMode.custom
+        ? result.customAdjustmentKcal
+        : result.selectedPresetAdjustmentKcal;
+
     return SavedNutritionPlannerState(
       goalCalories: result.calories,
       goalProtein: result.proteinG,
@@ -150,6 +174,9 @@ class SavedNutritionPlannerState {
       timelineDays: result.timelineDays,
       weeklyChangeKg: result.weeklyChangeKg,
       savedAt: DateTime.now(),
+      calorieAdjustmentMode: mode,
+      calorieAdjustmentKcal: storedAdj,
+      resolvedCalorieAdjustmentKcal: result.resolvedAdjustmentKcal,
     );
   }
 }
@@ -217,6 +244,10 @@ class NutritionPlannerLocalStorage {
             timelineDays: existing.timelineDays,
             weeklyChangeKg: existing.weeklyChangeKg,
             savedAt: now,
+            calorieAdjustmentMode: existing.calorieAdjustmentMode,
+            calorieAdjustmentKcal: existing.calorieAdjustmentKcal,
+            resolvedCalorieAdjustmentKcal:
+                existing.resolvedCalorieAdjustmentKcal,
           )
         : SavedNutritionPlannerState(
             goalCalories: goals.goalCalories,

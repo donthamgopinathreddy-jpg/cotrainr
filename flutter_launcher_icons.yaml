@@ -1,12 +1,12 @@
 # dart run flutter_launcher_icons
-# Master: assets/branding/icons/cotrainr_app_icon_1024.png (supplied PNG, do not redesign)
+# Master artwork (do not redesign): assets/branding/icons/cotrainr_app_icon_1024.png
 flutter_launcher_icons:
   android: true
   ios: true
   image_path: assets/branding/icons/cotrainr_app_icon_1024.png
   adaptive_icon_background: "#FF6A00"
   adaptive_icon_foreground: assets/branding/icons/cotrainr_symbol_foreground.png
-  # Do not add inset padding — master already has final safe padding.
+  # Master already has approved padding — do not add inset.
   adaptive_icon_foreground_inset: 0
   remove_alpha_ios: true
   web:

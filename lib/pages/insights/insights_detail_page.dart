@@ -41,7 +41,8 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
   double? _currentGoal;
   double? _previousPeriodTotal;
   String _waterReminderStatus = 'Reminder: Off';
-  late List<double> _weekWaterData;
+  late List<double> _weekSeriesData;
+  bool _weekSeriesLoading = true;
   final MetricsRepository _metricsRepo = MetricsRepository();
 
   static const _rangeDays = [7, 30, 90];
@@ -52,10 +53,11 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
     super.initState();
     final now = DateTime.now();
     _weekDates = _datesForDays(7, now);
-    _weekWaterData = List<double>.from(widget.args.w);
+    _weekSeriesData = List<double>.from(widget.args.w);
     _loadGoal();
     _loadWaterReminderStatus();
     _loadPreviousPeriodTotal(7);
+    _reloadWeekSeries();
     if (widget.args.t == MetricType.water) {
       WaterIntakeService.revision.addListener(_onWaterIntakeRevision);
     }
@@ -63,25 +65,43 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
 
   void _onWaterIntakeRevision() {
     if (widget.args.t == MetricType.water) {
-      _reloadWaterWeekData();
+      _reloadWeekSeries();
     }
   }
 
-  Future<void> _reloadWaterWeekData() async {
+  Future<void> _reloadWeekSeries() async {
     try {
       final rows = await _metricsRepo.getWeeklyMetrics();
       final map = <String, double>{};
       for (final row in rows) {
         final dateStr = row['date'] as String?;
         if (dateStr == null) continue;
-        map[dateStr] =
-            (row['water_intake_liters'] as num?)?.toDouble() ?? 0.0;
+        map[dateStr.split('T').first] =
+            _metricValueFromRow(row, widget.args.t);
       }
       final data = _weekDates
           .map((d) => map[d.toIso8601String().split('T')[0]] ?? 0.0)
           .toList();
-      if (mounted) setState(() => _weekWaterData = data);
-    } catch (_) {}
+
+      // Water: always use shared local-first total (notification + in-app).
+      if (widget.args.t == MetricType.water && data.isNotEmpty) {
+        data[data.length - 1] =
+            await WaterIntakeService.instance.getTodayLiters();
+      } else if (data.isNotEmpty &&
+          widget.args.w.isNotEmpty &&
+          widget.args.w.last > data.last) {
+        // Keep any higher today value already passed from home (live HC).
+        data[data.length - 1] = widget.args.w.last;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _weekSeriesData = data;
+        _weekSeriesLoading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _weekSeriesLoading = false);
+    }
   }
 
   @override
@@ -332,19 +352,18 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
     InsightMetricTheme theme,
   ) async {
     final current = await WaterReminderService.instance.getIntervalMinutes();
-    if (!mounted) return;
+    if (!context.mounted) return;
     final saved = await WaterReminderPickerSheet.show(
       context,
       theme: theme,
       initialMinutes: current > 0 ? current : 120,
     );
-    if (saved == true && mounted) {
+    if (saved == true && context.mounted) {
       await _loadWaterReminderStatus();
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Water reminder updated')),
-        );
-      }
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Water reminder updated')),
+      );
     }
   }
   ({List<double> data, List<DateTime> dates}) _activeRange() {
@@ -361,7 +380,7 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
         );
       default:
         return (
-          data: widget.args.t == MetricType.water ? _weekWaterData : widget.args.w,
+          data: _weekSeriesData,
           dates: _weekDates,
         );
     }
@@ -554,6 +573,16 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
                           ),
                         ),
                       )
+                    else if (_weekSeriesLoading && _rangeIndex == 0)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 24),
+                        child: Center(
+                          child: CircularProgressIndicator(
+                            color: theme.accent,
+                            strokeWidth: 2,
+                          ),
+                        ),
+                      )
                     else if (!hasData)
                       InsightEmptyState(theme: theme)
                     else ...[
@@ -732,53 +761,121 @@ class _WaterReminderRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
     final muted = DesignTokens.textSecondaryOf(context);
+    final active = !statusLabel.toLowerCase().contains('off');
 
-    return InsightPremiumCard(
-      radius: 18,
-      color: InsightMetricTheme.surfaceCardOf(context),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      child: Row(
-        children: [
-          Icon(Icons.notifications_active_outlined,
-              size: 20, color: theme.accent),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Drinking reminder',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: DesignTokens.textPrimaryOf(context),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: isLight
+                  ? [
+                      theme.accent.withValues(alpha: 0.14),
+                      DesignTokens.lightMutedCardBackground,
+                    ]
+                  : const [
+                      Color(0xFF163B5A),
+                      Color(0xFF12263A),
+                    ],
+            ),
+            border: Border.all(
+              color: theme.accent.withValues(alpha: 0.28),
+            ),
+            boxShadow: InsightMetricTheme.cardShadowOf(context),
+          ),
+          padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
+          child: Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  gradient: LinearGradient(
+                    colors: [
+                      theme.accent,
+                      Color.lerp(theme.accent, Colors.white, 0.22)!,
+                    ],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: theme.accent.withValues(alpha: 0.35),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.water_drop_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Water reminder',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: DesignTokens.textPrimaryOf(context),
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      active ? statusLabel : 'Reminders are off',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: muted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: active
+                      ? theme.accent.withValues(alpha: isLight ? 0.16 : 0.22)
+                      : (isLight
+                          ? Colors.black.withValues(alpha: 0.05)
+                          : Colors.white.withValues(alpha: 0.06)),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: active
+                        ? theme.accent.withValues(alpha: 0.45)
+                        : InsightMetricTheme.borderColorOf(context),
                   ),
                 ),
-                Text(
-                  statusLabel,
+                child: Text(
+                  active ? 'Edit' : 'Set up',
                   style: TextStyle(
                     fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: muted,
+                    fontWeight: FontWeight.w800,
+                    color: active
+                        ? theme.accent
+                        : DesignTokens.textPrimaryOf(context),
                   ),
                 ),
-              ],
-            ),
-          ),
-          TextButton(
-            onPressed: onTap,
-            child: Text(
-              'Set',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: theme.accent,
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 }
+

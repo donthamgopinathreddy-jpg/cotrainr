@@ -4,10 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../../theme/branding_assets.dart';
 import '../../theme/design_tokens.dart';
 
-/// Official Cotrainr mark rendered from the master SVG.
-///
-/// Never upscale a PNG logo — always use [BrandingAssets.logoSvg] /
-/// [BrandingAssets.logoWhiteSvg].
+/// Official Cotrainr mark from master SVG (never upscale a PNG logo).
 class CotrainrLogo extends StatelessWidget {
   const CotrainrLogo({
     super.key,
@@ -44,27 +41,86 @@ class CotrainrLogo extends StatelessWidget {
 }
 
 enum CotrainrLogoVariant {
-  /// White symbol + orange blade (master).
   color,
-
-  /// All-white symbol (orange / photographic backgrounds).
   white,
 }
 
-/// Symbol + COTRAINR wordmark + optional tagline for splash / welcome.
+/// Official transparent wordmark asset (not a system font).
+class CotrainrWordmark extends StatelessWidget {
+  const CotrainrWordmark({
+    super.key,
+    this.width,
+    this.height,
+  });
+
+  final double? width;
+  final double? height;
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.asset(
+      BrandingAssets.wordmarkOfficial,
+      width: width,
+      height: height,
+      fit: BoxFit.contain,
+      filterQuality: FilterQuality.high,
+      errorBuilder: (context, error, stackTrace) => Image.asset(
+        BrandingAssets.wordmark,
+        width: width,
+        height: height,
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.high,
+      ),
+    );
+  }
+}
+
+/// Tagline as Flutter text (not baked into artwork).
+class CotrainrTagline extends StatelessWidget {
+  const CotrainrTagline({
+    super.key,
+    this.fontSize = 11,
+  });
+
+  final double fontSize;
+
+  @override
+  Widget build(BuildContext context) {
+    return RichText(
+      textAlign: TextAlign.center,
+      text: TextSpan(
+        style: TextStyle(
+          fontSize: fontSize,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 1.8,
+          color: Colors.white.withValues(alpha: 0.92),
+        ),
+        children: const [
+          TextSpan(text: 'FIND. CONNECT. TRAIN. '),
+          TextSpan(
+            text: 'TRANSFORM.',
+            style: TextStyle(color: DesignTokens.accentOrange),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Symbol + official wordmark + optional tagline.
 class CotrainrBrandLockup extends StatelessWidget {
   const CotrainrBrandLockup({
     super.key,
     this.logoWidth = 120,
     this.showTagline = true,
+    this.showWordmark = true,
     this.variant = CotrainrLogoVariant.color,
-    this.wordmarkColor = Colors.white,
   });
 
   final double logoWidth;
   final bool showTagline;
+  final bool showWordmark;
   final CotrainrLogoVariant variant;
-  final Color wordmarkColor;
 
   @override
   Widget build(BuildContext context) {
@@ -72,46 +128,14 @@ class CotrainrBrandLockup extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         CotrainrLogo(width: logoWidth, variant: variant),
-        SizedBox(height: logoWidth * 0.14),
-        RichText(
-          textAlign: TextAlign.center,
-          text: TextSpan(
-            style: TextStyle(
-              fontSize: (logoWidth * 0.22).clamp(18.0, 34.0),
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.6,
-              fontStyle: FontStyle.italic,
-              height: 1.0,
-              color: wordmarkColor,
-            ),
-            children: const [
-              TextSpan(text: 'COTRAIN'),
-              TextSpan(
-                text: 'R',
-                style: TextStyle(color: DesignTokens.accentOrange),
-              ),
-            ],
-          ),
-        ),
+        if (showWordmark) ...[
+          SizedBox(height: logoWidth * 0.12),
+          CotrainrWordmark(width: logoWidth * 1.55),
+        ],
         if (showTagline) ...[
           SizedBox(height: logoWidth * 0.10),
-          RichText(
-            textAlign: TextAlign.center,
-            text: TextSpan(
-              style: TextStyle(
-                fontSize: (logoWidth * 0.072).clamp(9.0, 13.0),
-                fontWeight: FontWeight.w600,
-                letterSpacing: 1.8,
-                color: wordmarkColor.withValues(alpha: 0.92),
-              ),
-              children: const [
-                TextSpan(text: 'FIND. CONNECT. TRAIN. '),
-                TextSpan(
-                  text: 'TRANSFORM.',
-                  style: TextStyle(color: DesignTokens.accentOrange),
-                ),
-              ],
-            ),
+          CotrainrTagline(
+            fontSize: (logoWidth * 0.072).clamp(9.0, 13.0),
           ),
         ],
       ],

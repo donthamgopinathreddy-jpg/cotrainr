@@ -4,6 +4,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:health/health.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../theme/design_tokens.dart';
+import '../../widgets/provider/provider_professional_form_validation.dart';
 import 'package:flutter/services.dart';
 
 class PermissionsPage extends StatefulWidget {
@@ -220,6 +221,11 @@ class _PermissionsPageState extends State<PermissionsPage> {
     _proceedToApp();
   }
 
+  void _navigateAfterOnboarding() {
+    HapticFeedback.heavyImpact();
+    context.go(postPermissionsDestination(widget.userRole));
+  }
+
   void _proceedToApp() {
     // Check if required permissions are granted
     final requiredPermissions = _permissions.where((p) => p.isRequired).toList();
@@ -231,18 +237,7 @@ class _PermissionsPageState extends State<PermissionsPage> {
     );
 
     if (allRequiredGranted) {
-      HapticFeedback.heavyImpact();
-      // Navigate to appropriate dashboard based on role
-      switch (widget.userRole.toLowerCase()) {
-        case 'trainer':
-          context.go('/home');
-          break;
-        case 'nutritionist':
-          context.go('/home');
-          break;
-        default:
-          context.go('/home');
-      }
+      _navigateAfterOnboarding();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -415,7 +410,10 @@ class _PermissionsPageState extends State<PermissionsPage> {
                 children: [
                   Expanded(
                     child: TextButton(
-                      onPressed: () => _proceedToApp(),
+                      onPressed: () {
+                        HapticFeedback.lightImpact();
+                        _navigateAfterOnboarding();
+                      },
                       style: TextButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(

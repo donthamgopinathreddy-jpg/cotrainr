@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="water_notification_title">#FF1A1A1A</color>
-    <color name="water_notification_body">#99000000</color>
-    <color name="water_notification_pill_text">#FF1A1A1A</color>
+    <color name="water_notification_title">#FF0F172A</color>
+    <color name="water_notification_body">#990F172A</color>
+    <color name="water_notification_pill_text">#FFFFFFFF</color>
 </resources>

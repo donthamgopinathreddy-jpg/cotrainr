@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../repositories/nutrition_goal_planner_repository.dart';
 import '../../services/nutrition_goal_calculator.dart';
 import '../../services/nutrition_planner_local_storage.dart';
+import '../../utils/unit_conversion.dart';
 import '../../widgets/common/pressable_card.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
 import '../../theme/text_styles.dart';
@@ -35,10 +36,16 @@ class _NutritionGoalPlannerPageState extends State<NutritionGoalPlannerPage>
 
   final _ageCtrl = TextEditingController();
   final _heightCtrl = TextEditingController();
+  final _heightFeetCtrl = TextEditingController();
+  final _heightInchesCtrl = TextEditingController();
   final _currentWeightCtrl = TextEditingController();
   final _targetWeightCtrl = TextEditingController();
   final _timelineCtrl = TextEditingController(text: '84');
   String _gender = 'Male';
+  /// Height display: true = cm, false = ft / in.
+  bool _useMetricHeight = true;
+  /// Weight display: true = kg, false = lbs.
+  bool _useMetricWeight = true;
 
   String _goalType = 'fat_loss';
   String _activityLevel = 'moderately_active';
@@ -46,6 +53,14 @@ class _NutritionGoalPlannerPageState extends State<NutritionGoalPlannerPage>
 
   NutritionGoalResult? _result;
   DietPreference _dietPreference = DietPreference.all;
+
+  bool _advancedExpanded = false;
+  CalorieAdjustmentMode _calorieAdjustmentMode = CalorieAdjustmentMode.auto;
+  String _selectedPresetId = 'auto';
+  int? _selectedPresetKcal;
+  int _customAdjustmentKcal = -500;
+  final _customAdjCtrl = TextEditingController(text: '-500');
+  String? _customAdjError;
 
   static const _goalTypeIcons = <String, IconData>{
     'fat_loss': Icons.trending_down_rounded,
@@ -93,11 +108,79 @@ class _NutritionGoalPlannerPageState extends State<NutritionGoalPlannerPage>
     _fadeController.dispose();
     _ageCtrl.dispose();
     _heightCtrl.dispose();
+    _heightFeetCtrl.dispose();
+    _heightInchesCtrl.dispose();
     _currentWeightCtrl.dispose();
     _targetWeightCtrl.dispose();
     _timelineCtrl.dispose();
+    _customAdjCtrl.dispose();
     _pageController.dispose();
     super.dispose();
+  }
+
+  double? get _heightCm {
+    if (_useMetricHeight) {
+      return double.tryParse(_heightCtrl.text.trim());
+    }
+    final feet = int.tryParse(_heightFeetCtrl.text.trim()) ?? 0;
+    final inches = int.tryParse(_heightInchesCtrl.text.trim()) ?? 0;
+    if (feet <= 0 && inches <= 0) return null;
+    return UnitConversion.feetInchesToCm(feet, inches);
+  }
+
+  double? get _currentWeightKg {
+    final v = double.tryParse(_currentWeightCtrl.text.trim());
+    if (v == null) return null;
+    return _useMetricWeight ? v : UnitConversion.lbsToKg(v);
+  }
+
+  double? get _targetWeightKg {
+    final v = double.tryParse(_targetWeightCtrl.text.trim());
+    if (v == null) return null;
+    return _useMetricWeight ? v : UnitConversion.lbsToKg(v);
+  }
+
+  void _applyHeightDisplay(double? heightCm) {
+    if (heightCm == null) return;
+    if (_useMetricHeight) {
+      _heightCtrl.text = heightCm.toStringAsFixed(0);
+    } else {
+      final fi = UnitConversion.cmToFeetInches(heightCm);
+      _heightFeetCtrl.text = '${fi.$1}';
+      _heightInchesCtrl.text = '${fi.$2}';
+    }
+  }
+
+  void _applyWeightDisplay({double? weightKg, double? targetKg}) {
+    if (weightKg != null) {
+      _currentWeightCtrl.text = _useMetricWeight
+          ? weightKg.toStringAsFixed(1)
+          : UnitConversion.kgToLbs(weightKg).toStringAsFixed(1);
+    }
+    if (targetKg != null) {
+      _targetWeightCtrl.text = _useMetricWeight
+          ? targetKg.toStringAsFixed(1)
+          : UnitConversion.kgToLbs(targetKg).toStringAsFixed(1);
+    }
+  }
+
+  void _toggleHeightUnit(bool metric) {
+    if (metric == _useMetricHeight) return;
+    final hCm = _heightCm;
+    setState(() {
+      _useMetricHeight = metric;
+      _applyHeightDisplay(hCm);
+    });
+  }
+
+  void _toggleWeightUnit(bool metric) {
+    if (metric == _useMetricWeight) return;
+    final curKg = _currentWeightKg;
+    final tgtKg = _targetWeightKg;
+    setState(() {
+      _useMetricWeight = metric;
+      _applyWeightDisplay(weightKg: curKg, targetKg: tgtKg);
+    });
   }
 
   Future<void> _loadProfile() async {
@@ -105,17 +188,11 @@ class _NutritionGoalPlannerPageState extends State<NutritionGoalPlannerPage>
     final diet = await _repo.loadDietPreference();
     if (!mounted) return;
     if (snap.age != null) _ageCtrl.text = '${snap.age}';
-    if (snap.heightCm != null) {
-      _heightCtrl.text = snap.heightCm!.toStringAsFixed(0);
-    }
-    if (snap.weightKg != null) {
-      _currentWeightCtrl.text = snap.weightKg!.toStringAsFixed(1);
-    }
-    if (snap.targetWeightKg != null) {
-      _targetWeightCtrl.text = snap.targetWeightKg!.toStringAsFixed(1);
-    } else if (snap.weightKg != null) {
-      _targetWeightCtrl.text = snap.weightKg!.toStringAsFixed(1);
-    }
+    _applyHeightDisplay(snap.heightCm);
+    _applyWeightDisplay(
+      weightKg: snap.weightKg,
+      targetKg: snap.targetWeightKg ?? snap.weightKg,
+    );
     if (snap.timelineDays != null) {
       _timelineCtrl.text = '${snap.timelineDays}';
     }
@@ -129,9 +206,48 @@ class _NutritionGoalPlannerPageState extends State<NutritionGoalPlannerPage>
     if (snap.activityLevel != null && snap.activityLevel!.isNotEmpty) {
       _activityLevel = snap.activityLevel!;
     }
+    _restoreCalorieAdjustment(snap);
     _dietPreference = diet;
     _syncSuggestedGoalType();
     setState(() => _loadingProfile = false);
+  }
+
+  void _restoreCalorieAdjustment(PlannerProfileSnapshot snap) {
+    final mode = snap.calorieAdjustmentMode ?? 'auto';
+    switch (mode) {
+      case 'preset':
+        final kcal = snap.calorieAdjustmentKcal;
+        final presets = NutritionGoalCalculator.presetsForGoal(_goalType);
+        final match = presets.where(
+          (p) => !p.isAuto && !p.isCustom && p.adjustmentKcal == kcal,
+        );
+        if (match.isNotEmpty) {
+          _calorieAdjustmentMode = CalorieAdjustmentMode.preset;
+          _selectedPresetId = match.first.id;
+          _selectedPresetKcal = kcal;
+          return;
+        }
+        break;
+      case 'custom':
+        final kcal = snap.calorieAdjustmentKcal ??
+            snap.resolvedCalorieAdjustmentKcal ??
+            0;
+        _calorieAdjustmentMode = CalorieAdjustmentMode.custom;
+        _selectedPresetId = 'custom';
+        _selectedPresetKcal = null;
+        _customAdjustmentKcal = kcal.clamp(-1000, 1000);
+        _customAdjCtrl.text = _customAdjustmentKcal > 0
+            ? '+$_customAdjustmentKcal'
+            : '$_customAdjustmentKcal';
+        _customAdjError = null;
+        return;
+      default:
+        break;
+    }
+    _calorieAdjustmentMode = CalorieAdjustmentMode.auto;
+    _selectedPresetId = 'auto';
+    _selectedPresetKcal = null;
+    _customAdjError = null;
   }
 
   Future<void> _onDietPreferenceChanged(DietPreference diet) async {
@@ -141,30 +257,129 @@ class _NutritionGoalPlannerPageState extends State<NutritionGoalPlannerPage>
 
   bool get _bodyValid {
     final age = int.tryParse(_ageCtrl.text.trim());
-    final h = double.tryParse(_heightCtrl.text.trim());
+    final h = _heightCm;
     return age != null &&
         age >= 14 &&
         age <= 100 &&
         h != null &&
-        h > 0;
+        h >= 90 &&
+        h <= 272;
   }
 
   bool get _weightsValid {
-    final current = double.tryParse(_currentWeightCtrl.text.trim());
-    final target = double.tryParse(_targetWeightCtrl.text.trim());
+    final current = _currentWeightKg;
+    final target = _targetWeightKg;
     final days = int.tryParse(_timelineCtrl.text.trim());
-    return current != null &&
+    final base = current != null &&
         current > 0 &&
         target != null &&
         target > 0 &&
         days != null &&
         days >= 7 &&
         days <= 730;
+    if (!base) return false;
+    if (_calorieAdjustmentMode == CalorieAdjustmentMode.custom) {
+      if (_customAdjError != null) return false;
+      if (_customAdjustmentKcal < -1000 || _customAdjustmentKcal > 1000) {
+        return false;
+      }
+    }
+    final preview = _liveCaloriePreview;
+    if (preview?.directionMismatchMessage != null) return false;
+    return true;
+  }
+
+  NutritionGoalResult? get _liveCaloriePreview {
+    final age = int.tryParse(_ageCtrl.text.trim());
+    final heightCm = _heightCm;
+    final current = _currentWeightKg;
+    final target = _targetWeightKg;
+    final days = int.tryParse(_timelineCtrl.text.trim());
+    if (age == null ||
+        heightCm == null ||
+        current == null ||
+        target == null ||
+        days == null ||
+        days < 1) {
+      return null;
+    }
+    return NutritionGoalCalculator.calculate(
+      age: age,
+      gender: _gender,
+      heightCm: heightCm,
+      currentWeightKg: current,
+      targetWeightKg: target,
+      timelineDays: days,
+      activityLevel: _activityLevel,
+      goalType: _goalType,
+      adjustmentMode: _calorieAdjustmentMode,
+      selectedPresetAdjustmentKcal: _selectedPresetKcal,
+      customAdjustmentKcal: _customAdjustmentKcal,
+    );
+  }
+
+  void _selectCaloriePreset(CalorieAdjustmentPreset preset) {
+    HapticFeedback.selectionClick();
+    setState(() {
+      _selectedPresetId = preset.id;
+      if (preset.isAuto) {
+        _calorieAdjustmentMode = CalorieAdjustmentMode.auto;
+        _selectedPresetKcal = null;
+        _customAdjError = null;
+      } else if (preset.isCustom) {
+        _calorieAdjustmentMode = CalorieAdjustmentMode.custom;
+        _selectedPresetKcal = null;
+        _validateCustomAdj(_customAdjCtrl.text);
+      } else {
+        _calorieAdjustmentMode = CalorieAdjustmentMode.preset;
+        _selectedPresetKcal = preset.adjustmentKcal;
+        _customAdjError = null;
+      }
+    });
+  }
+
+  void _validateCustomAdj(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) {
+      _customAdjError = 'Choose a value between −1000 and +1000 kcal/day.';
+      return;
+    }
+    if (!RegExp(r'^[+-]?\d+$').hasMatch(trimmed)) {
+      _customAdjError = 'Enter a whole number only (no letters or decimals).';
+      return;
+    }
+    final v = int.tryParse(trimmed);
+    if (v == null || v < -1000 || v > 1000) {
+      _customAdjError = 'Choose a value between −1000 and +1000 kcal/day.';
+      return;
+    }
+    _customAdjError = null;
+    _customAdjustmentKcal = v;
+  }
+
+  void _nudgeCustomAdj(int delta) {
+    final next = (_customAdjustmentKcal + delta).clamp(-1000, 1000);
+    setState(() {
+      _customAdjustmentKcal = next;
+      _customAdjCtrl.text = next > 0 ? '+$next' : '$next';
+      _customAdjError = null;
+    });
+  }
+
+  void _ensurePresetValidForGoal() {
+    final presets = NutritionGoalCalculator.presetsForGoal(_goalType);
+    final stillValid = presets.any((p) => p.id == _selectedPresetId);
+    if (!stillValid) {
+      _selectedPresetId = 'auto';
+      _calorieAdjustmentMode = CalorieAdjustmentMode.auto;
+      _selectedPresetKcal = null;
+      _customAdjError = null;
+    }
   }
 
   WeightDirection? get _inferredDirection {
-    final current = double.tryParse(_currentWeightCtrl.text.trim());
-    final target = double.tryParse(_targetWeightCtrl.text.trim());
+    final current = _currentWeightKg;
+    final target = _targetWeightKg;
     if (current == null || target == null) return null;
     return NutritionGoalCalculator.inferDirection(
       currentWeightKg: current,
@@ -185,9 +400,9 @@ class _NutritionGoalPlannerPageState extends State<NutritionGoalPlannerPage>
 
   void _computeResults() {
     final age = int.parse(_ageCtrl.text.trim());
-    final heightCm = double.parse(_heightCtrl.text.trim());
-    final current = double.parse(_currentWeightCtrl.text.trim());
-    final target = double.parse(_targetWeightCtrl.text.trim());
+    final heightCm = _heightCm!;
+    final current = _currentWeightKg!;
+    final target = _targetWeightKg!;
     final days = int.parse(_timelineCtrl.text.trim());
 
     _result = NutritionGoalCalculator.calculate(
@@ -199,6 +414,9 @@ class _NutritionGoalPlannerPageState extends State<NutritionGoalPlannerPage>
       timelineDays: days,
       activityLevel: _activityLevel,
       goalType: _goalType,
+      adjustmentMode: _calorieAdjustmentMode,
+      selectedPresetAdjustmentKcal: _selectedPresetKcal,
+      customAdjustmentKcal: _customAdjustmentKcal,
     );
   }
 
@@ -210,7 +428,14 @@ class _NutritionGoalPlannerPageState extends State<NutritionGoalPlannerPage>
       return;
     }
     if (_step == 1 && !_weightsValid) {
-      _snack('Enter valid weights and timeline (7–730 days).');
+      final live = _liveCaloriePreview;
+      if (live?.directionMismatchMessage != null) {
+        _snack(live!.directionMismatchMessage!);
+      } else if (_customAdjError != null) {
+        _snack(_customAdjError!);
+      } else {
+        _snack('Enter valid weights and timeline (7–730 days).');
+      }
       return;
     }
     if (_step == 3) {
@@ -283,7 +508,7 @@ class _NutritionGoalPlannerPageState extends State<NutritionGoalPlannerPage>
         result: _result!,
         age: int.parse(_ageCtrl.text.trim()),
         gender: _gender,
-        heightCm: double.parse(_heightCtrl.text.trim()),
+        heightCm: _heightCm!,
       );
       if (!mounted) return;
       HapticFeedback.mediumImpact();
@@ -575,7 +800,63 @@ class _NutritionGoalPlannerPageState extends State<NutritionGoalPlannerPage>
           80,
         ),
         const SizedBox(height: 12),
-        _animated(_homeField('Height (cm)', _heightCtrl, TextInputType.number, isLight), 120),
+        _animated(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Height',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: HomePremiumTheme.primaryText(isLight),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment(value: true, label: Text('cm')),
+                  ButtonSegment(value: false, label: Text('ft / in')),
+                ],
+                selected: {_useMetricHeight},
+                onSelectionChanged: (s) {
+                  HapticFeedback.selectionClick();
+                  _toggleHeightUnit(s.first);
+                },
+              ),
+              const SizedBox(height: 10),
+              if (_useMetricHeight)
+                _homeField(
+                  'Height (cm)',
+                  _heightCtrl,
+                  TextInputType.number,
+                  isLight,
+                )
+              else
+                Row(
+                  children: [
+                    Expanded(
+                      child: _homeField(
+                        'Feet',
+                        _heightFeetCtrl,
+                        TextInputType.number,
+                        isLight,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _homeField(
+                        'Inches',
+                        _heightInchesCtrl,
+                        TextInputType.number,
+                        isLight,
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+          120,
+        ),
       ],
     );
   }
@@ -592,10 +873,38 @@ class _NutritionGoalPlannerPageState extends State<NutritionGoalPlannerPage>
           'We infer your goal direction from current vs target weight.',
           isLight,
         ), 0),
-        const SizedBox(height: 20),
+        const SizedBox(height: 12),
+        _animated(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Weight units',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: HomePremiumTheme.primaryText(isLight),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment(value: true, label: Text('kg')),
+                  ButtonSegment(value: false, label: Text('lbs')),
+                ],
+                selected: {_useMetricWeight},
+                onSelectionChanged: (s) {
+                  HapticFeedback.selectionClick();
+                  _toggleWeightUnit(s.first);
+                },
+              ),
+            ],
+          ),
+          20,
+        ),
+        const SizedBox(height: 16),
         _animated(
           _homeField(
-            'Current weight (kg)',
+            _useMetricWeight ? 'Current weight (kg)' : 'Current weight (lbs)',
             _currentWeightCtrl,
             const TextInputType.numberWithOptions(decimal: true),
             isLight,
@@ -606,7 +915,7 @@ class _NutritionGoalPlannerPageState extends State<NutritionGoalPlannerPage>
         const SizedBox(height: 12),
         _animated(
           _homeField(
-            'Target weight (kg)',
+            _useMetricWeight ? 'Target weight (kg)' : 'Target weight (lbs)',
             _targetWeightCtrl,
             const TextInputType.numberWithOptions(decimal: true),
             isLight,
@@ -682,7 +991,315 @@ class _NutritionGoalPlannerPageState extends State<NutritionGoalPlannerPage>
                   ),
                 ),
         ),
+        const SizedBox(height: 16),
+        _animated(_advancedCalorieSection(isLight), 200),
+        const SizedBox(height: 8),
       ],
+    );
+  }
+
+  Widget _advancedCalorieSection(bool isLight) {
+    final presets = NutritionGoalCalculator.presetsForGoal(_goalType);
+    final live = _liveCaloriePreview;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        PressableCard(
+          borderRadius: 16,
+          onTap: () {
+            HapticFeedback.selectionClick();
+            setState(() => _advancedExpanded = !_advancedExpanded);
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            decoration: BoxDecoration(
+              color: isLight
+                  ? HomePremiumTheme.lightCreamCard
+                  : HomePremiumTheme.darkCard,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: HomePremiumTheme.secondaryText(isLight)
+                    .withValues(alpha: 0.12),
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Advanced options',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                          color: HomePremiumTheme.primaryText(isLight),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Fine-tune your daily calorie target.',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: HomePremiumTheme.secondaryText(isLight),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  _advancedExpanded
+                      ? Icons.keyboard_arrow_up_rounded
+                      : Icons.keyboard_arrow_down_rounded,
+                  color: HomePremiumTheme.primaryText(isLight),
+                ),
+              ],
+            ),
+          ),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: !_advancedExpanded
+              ? const SizedBox.shrink()
+              : Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'Calorie deficit / surplus',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: HomePremiumTheme.primaryText(isLight),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Leave this on Auto if you are unsure. Cotrainr will calculate a recommended target from your goal, timeline and activity level.',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          height: 1.35,
+                          color: HomePremiumTheme.secondaryText(isLight),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      ...presets.map((preset) {
+                        final selected = _selectedPresetId == preset.id;
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Semantics(
+                            button: true,
+                            selected: selected,
+                            label: preset.semanticsLabel,
+                            child: _selectTile(
+                              isLight: isLight,
+                              selected: selected,
+                              icon: selected
+                                  ? Icons.check_circle_rounded
+                                  : Icons.circle_outlined,
+                              title: preset.title,
+                              subtitle: preset.subtitle,
+                              onTap: () => _selectCaloriePreset(preset),
+                            ),
+                          ),
+                        );
+                      }),
+                      if (_calorieAdjustmentMode ==
+                          CalorieAdjustmentMode.custom) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'Daily calorie adjustment',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: HomePremiumTheme.primaryText(isLight),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            SizedBox(
+                              width: 48,
+                              height: 48,
+                              child: IconButton.filledTonal(
+                                onPressed: () => _nudgeCustomAdj(-50),
+                                icon: const Icon(Icons.remove),
+                                tooltip: 'Decrease by 50 kilocalories',
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Semantics(
+                                label: 'Daily calorie adjustment in kilocalories',
+                                textField: true,
+                                child: TextField(
+                                  controller: _customAdjCtrl,
+                                  keyboardType: const TextInputType.numberWithOptions(
+                                    signed: true,
+                                  ),
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.allow(
+                                      RegExp(r'[+\-\d]'),
+                                    ),
+                                  ],
+                                  style: TextStyle(
+                                    color: HomePremiumTheme.primaryText(isLight),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                  decoration: InputDecoration(
+                                    hintText: 'e.g. -500',
+                                    suffixText: 'kcal/day',
+                                    filled: true,
+                                    fillColor: isLight
+                                        ? Colors.white
+                                        : HomePremiumTheme.darkCard,
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    errorText: _customAdjError,
+                                  ),
+                                  onChanged: (v) {
+                                    setState(() => _validateCustomAdj(v));
+                                  },
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            SizedBox(
+                              width: 48,
+                              height: 48,
+                              child: IconButton.filledTonal(
+                                onPressed: () => _nudgeCustomAdj(50),
+                                icon: const Icon(Icons.add),
+                                tooltip: 'Increase by 50 kilocalories',
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (_customAdjError == null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(
+                              'Choose a value between −1000 and +1000 kcal/day.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: HomePremiumTheme.secondaryText(isLight),
+                              ),
+                            ),
+                          ),
+                      ],
+                      if (live != null) ...[
+                        const SizedBox(height: 14),
+                        _calorieLivePreviewCard(live, isLight),
+                      ],
+                    ],
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _calorieLivePreviewCard(NutritionGoalResult live, bool isLight) {
+    String weeklyLabel(double kg) {
+      if (_useMetricWeight) {
+        return '≈ ${kg.toStringAsFixed(2)} kg/week';
+      }
+      return '≈ ${UnitConversion.kgToLbs(kg).toStringAsFixed(1)} lb/week';
+    }
+
+    return _insightCard(
+      isLight,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Live estimate',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: HomePremiumTheme.primaryText(isLight),
+            ),
+          ),
+          const SizedBox(height: 10),
+          _previewRow('Maintenance calories', '${live.maintenanceCalories} kcal', isLight),
+          _previewRow('Daily adjustment', live.signedAdjustmentLabel, isLight),
+          _previewRow('Estimated daily target', '${live.calories} kcal', isLight),
+          _previewRow(
+            'Estimated weekly change',
+            weeklyLabel(live.estimatedWeeklyChangeKg),
+            isLight,
+          ),
+          if (live.safetyClampMessage != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              live.safetyClampMessage!,
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.35,
+                color: Colors.amber.shade700,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+          if (live.timelineConflictMessage != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              live.timelineConflictMessage!,
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.35,
+                color: HomePremiumTheme.secondaryText(isLight),
+              ),
+            ),
+          ],
+          if (live.directionMismatchMessage != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              live.directionMismatchMessage!,
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.35,
+                color: Colors.redAccent.shade100,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _previewRow(String label, String value, bool isLight) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                color: HomePremiumTheme.secondaryText(isLight),
+              ),
+            ),
+          ),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            child: Text(
+              value,
+              key: ValueKey(value),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: HomePremiumTheme.primaryText(isLight),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -728,16 +1345,22 @@ class _NutritionGoalPlannerPageState extends State<NutritionGoalPlannerPage>
   }
 
   String? _timelinePreview() {
-    final current = double.tryParse(_currentWeightCtrl.text.trim());
-    final target = double.tryParse(_targetWeightCtrl.text.trim());
+    final current = _currentWeightKg;
+    final target = _targetWeightKg;
     final days = int.tryParse(_timelineCtrl.text.trim());
     if (current == null || target == null || days == null || days < 1) {
       return null;
     }
-    final weekly = (target - current).abs() / (days / 7.0);
-    final daily = (target - current).abs() / days;
-    return 'Weekly change: ${weekly.toStringAsFixed(2)} kg/week · '
-        '${(daily * 1000).toStringAsFixed(0)} g/day';
+    final weeklyKg = (target - current).abs() / (days / 7.0);
+    final dailyKg = (target - current).abs() / days;
+    if (_useMetricWeight) {
+      return 'Weekly change: ${weeklyKg.toStringAsFixed(2)} kg/week · '
+          '${(dailyKg * 1000).toStringAsFixed(0)} g/day';
+    }
+    final weeklyLbs = UnitConversion.kgToLbs(weeklyKg);
+    final dailyLbs = UnitConversion.kgToLbs(dailyKg);
+    return 'Weekly change: ${weeklyLbs.toStringAsFixed(2)} lbs/week · '
+        '${dailyLbs.toStringAsFixed(2)} lbs/day';
   }
 
   Widget _goalStep(bool isLight) {
@@ -770,6 +1393,7 @@ class _NutritionGoalPlannerPageState extends State<NutritionGoalPlannerPage>
                   setState(() {
                     _goalType = e.key;
                     _goalTypeTouched = true;
+                    _ensurePresetValidForGoal();
                   });
                 },
               ),
@@ -875,17 +1499,26 @@ class _NutritionGoalPlannerPageState extends State<NutritionGoalPlannerPage>
   }
 
   Widget _resultsSummary(NutritionGoalResult r, bool isLight) {
+    String weightLabel(double kg) {
+      if (_useMetricWeight) return '${kg.toStringAsFixed(1)} kg';
+      return '${UnitConversion.kgToLbs(kg).toStringAsFixed(1)} lbs';
+    }
+
+    String weeklyLabel(double kgPerWeek) {
+      if (_useMetricWeight) return '${kgPerWeek.toStringAsFixed(2)} kg/week';
+      return '${UnitConversion.kgToLbs(kgPerWeek).toStringAsFixed(2)} lbs/week';
+    }
+
     return Column(
       children: [
-        _summaryRow('Current weight', '${r.currentWeightKg.toStringAsFixed(1)} kg', isLight),
-        _summaryRow('Target weight', '${r.targetWeightKg.toStringAsFixed(1)} kg', isLight),
+        _summaryRow('Current weight', weightLabel(r.currentWeightKg), isLight),
+        _summaryRow('Target weight', weightLabel(r.targetWeightKg), isLight),
         _summaryRow('Timeline', '${r.timelineDays} days', isLight),
-        _summaryRow(
-          'Weekly change',
-          '${r.weeklyChangeKg.toStringAsFixed(2)} kg/week',
-          isLight,
-        ),
+        _summaryRow('Weekly change', weeklyLabel(r.weeklyChangeKg), isLight),
         _summaryRow('Goal type', r.goalTypeLabel, isLight),
+        _summaryRow(r.adjustmentRowLabel, r.adjustmentRowValue, isLight),
+        _summaryRow('Target calories', '${r.calories} kcal', isLight),
+        _summaryRow('Calculation mode', r.calculationModeLabel, isLight),
       ],
     );
   }

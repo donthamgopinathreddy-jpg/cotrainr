@@ -26,6 +26,9 @@ class NutritionGoalPlannerRepository {
       timelineDays: saved.timelineDays,
       goalType: saved.goalType,
       activityLevel: saved.activityLevel,
+      calorieAdjustmentMode: saved.calorieAdjustmentMode,
+      calorieAdjustmentKcal: saved.calorieAdjustmentKcal,
+      resolvedCalorieAdjustmentKcal: saved.resolvedCalorieAdjustmentKcal,
     );
   }
 
@@ -63,6 +66,9 @@ class PlannerProfileSnapshot {
   final int? timelineDays;
   final String? goalType;
   final String? activityLevel;
+  final String? calorieAdjustmentMode;
+  final int? calorieAdjustmentKcal;
+  final int? resolvedCalorieAdjustmentKcal;
 
   const PlannerProfileSnapshot({
     this.age,
@@ -73,5 +79,8 @@ class PlannerProfileSnapshot {
     this.timelineDays,
     this.goalType,
     this.activityLevel,
+    this.calorieAdjustmentMode,
+    this.calorieAdjustmentKcal,
+    this.resolvedCalorieAdjustmentKcal,
   });
 }

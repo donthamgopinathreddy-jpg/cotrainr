@@ -1,9 +1,12 @@
+import 'provider_specialty_taxonomy.dart';
+
 /// Filters for discover page provider search
 class DiscoverFilters {
   final double maxDistanceKm;
   final List<String>? providerTypes;
   final List<String>? locationTypes;
   final double? minRating;
+  /// Specialty ids (canonical) or center category labels.
   final Set<String> categories;
 
   const DiscoverFilters({
@@ -35,7 +38,7 @@ class DiscoverFilters {
       minRating != null ||
       categories.isNotEmpty;
 
-  /// Short label for filter chips, e.g. "Within 10 km • 4.5+ • Gym"
+  /// Short label for filter chips, e.g. "Within 10 km • 4.5+ • Boxing"
   String toChipLabel() {
     final parts = <String>[];
     if (maxDistanceKm < 50) {
@@ -45,7 +48,11 @@ class DiscoverFilters {
       parts.add('${minRating!.toStringAsFixed(1)}+');
     }
     if (categories.isNotEmpty) {
-      parts.add(categories.take(2).join(', '));
+      final labels = categories
+          .take(2)
+          .map(ProviderSpecialtyTaxonomy.labelFor)
+          .toList();
+      parts.add(labels.join(', '));
       if (categories.length > 2) {
         parts.add('+${categories.length - 2}');
       }

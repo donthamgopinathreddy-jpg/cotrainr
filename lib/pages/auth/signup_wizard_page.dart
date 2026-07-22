@@ -12,6 +12,7 @@ import '../../widgets/auth/auth_screen_background.dart';
 import '../../services/user_goals_service.dart';
 import '../../services/pending_referral_service.dart';
 import '../../repositories/referral_repository.dart';
+import '../../models/provider_specialty_taxonomy.dart';
 
 class SignupWizardPage extends StatefulWidget {
   const SignupWizardPage({super.key, this.initialReferralCode});
@@ -81,27 +82,9 @@ class _SignupWizardPageState extends State<SignupWizardPage>
   final Set<String> _selectedSpecializations = {};
   final _customSpecialty = TextEditingController();
 
-  static const _trainerSpecialties = [
-    'Gym',
-    'Boxing',
-    'Yoga',
-    'Pilates',
-    'Zumba',
-    'Calisthenics',
-    'Strength',
-    'HIIT',
-    'Cardio',
-  ];
-
-  static const _nutritionistSpecialties = [
-    'Weight Loss',
-    'Sports Nutrition',
-    'Clinical',
-    'Plant-Based',
-    'Lifestyle',
-    'Meal Planning',
-    'Diabetes Care',
-  ];
+  static const _trainerSpecialties = ProviderSpecialtyTaxonomy.trainer;
+  static const _nutritionistSpecialties =
+      ProviderSpecialtyTaxonomy.nutritionist;
 
   bool _isSubmitting = false;
   bool _referralApplied = false; // Guard: prevent double apply_referral_code
@@ -438,7 +421,8 @@ class _SignupWizardPageState extends State<SignupWizardPage>
       };
 
       if (_role == 'Trainer' || _role == 'Nutritionist') {
-        signUpData['specialization'] = _selectedSpecializations.toList();
+        signUpData['specialization'] =
+            ProviderSpecialtyTaxonomy.normalizeList(_selectedSpecializations);
       }
 
       final response = await supabase.auth.signUp(
@@ -532,7 +516,9 @@ class _SignupWizardPageState extends State<SignupWizardPage>
               await supabase.from('providers').upsert({
                 'user_id': response.user!.id,
                 'provider_type': _role.toLowerCase(),
-                'specialization': _selectedSpecializations.toList(),
+                'specialization': ProviderSpecialtyTaxonomy.normalizeList(
+                  _selectedSpecializations,
+                ),
               });
             } catch (_) {
               // Non-fatal: handle_new_user trigger may have created the row
@@ -2007,8 +1993,8 @@ class _StepWeightContentState extends State<_StepWeightContent> {
 // Step 6: Role & provider specialties
 class _StepRoleContent extends StatelessWidget {
   final String role;
-  final List<String> trainerSpecialties;
-  final List<String> nutritionistSpecialties;
+  final List<ProviderSpecialty> trainerSpecialties;
+  final List<ProviderSpecialty> nutritionistSpecialties;
   final Set<String> selectedSpecializations;
   final TextEditingController customSpecialty;
   final ValueChanged<String> onRoleChanged;
@@ -2092,20 +2078,25 @@ class _StepRoleContent extends StatelessWidget {
                             children: [
                               ...specialtyOptions.map((item) {
                                 final isSelected =
-                                    selectedSpecializations.contains(item);
+                                    selectedSpecializations.contains(item.id);
                                 return _GoalChip(
-                                  label: item,
+                                  label: item.label,
                                   isSelected: isSelected,
-                                  onTap: () => onToggleSpecialization(item),
+                                  onTap: () => onToggleSpecialization(item.id),
                                 );
                               }),
                               ...selectedSpecializations
-                                  .where((s) => !specialtyOptions.contains(s))
+                                  .where(
+                                    (s) => !specialtyOptions
+                                        .any((opt) => opt.id == s),
+                                  )
                                   .map(
                                     (item) => _GoalChip(
-                                      label: item,
+                                      label: ProviderSpecialtyTaxonomy
+                                          .labelFor(item),
                                       isSelected: true,
-                                      onTap: () => onToggleSpecialization(item),
+                                      onTap: () =>
+                                          onToggleSpecialization(item),
                                     ),
                                   ),
                             ],

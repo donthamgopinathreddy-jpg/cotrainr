@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Monochrome Cotrainr mark for Android status-bar / notification small icon.
+     Android tints this white silhouette; do not use the full-color launcher here. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M714,665 L691,663 L631,654 L606,652 L545,643 L536,643 L491,636 L466,634 L406,625 L388,624 L366,620 L309,614 L295,611 L280,610 L276,608 L277,604 L330,528 L339,513 L398,428 L406,419 L455,453 L486,455 L548,463 L653,473 L653,471 L559,402 L398,287 L393,286 L256,505 L251,511 L209,580 L168,643 L146,680 L117,724 L117,726 L111,734 L111,737 L219,725 L233,722 L303,715 L309,713 L389,705 L395,703 L425,701 L483,693 L512,691 L650,674 L711,668 L714,667 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M507,485 L507,487 L529,500 L546,512 L548,512 L552,516 L557,518 L577,532 L579,532 L580,534 L637,569 L665,588 L663,591 L591,615 L591,617 L837,670 L907,683 L907,680 L903,676 L900,675 L826,611 L686,497 L537,486 Z" />
+</vector>

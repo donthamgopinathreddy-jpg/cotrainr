@@ -78,3 +78,36 @@ class UpdateLeadResult {
     );
   }
 }
+
+/// Accepted trainer linked to the signed-in client via `leads.status = accepted`.
+class AcceptedTrainer {
+  final String leadId;
+  final String trainerId;
+  final String fullName;
+  final String? avatarUrl;
+  final String? specializationLabel;
+  final int experienceYears;
+  final double rating;
+  final int reviewCount;
+  final bool verified;
+  final String relationshipStatus;
+  final String? locationLabel;
+  final DateTime connectedAt;
+
+  const AcceptedTrainer({
+    required this.leadId,
+    required this.trainerId,
+    required this.fullName,
+    this.avatarUrl,
+    this.specializationLabel,
+    this.experienceYears = 0,
+    this.rating = 0,
+    this.reviewCount = 0,
+    this.verified = false,
+    this.relationshipStatus = 'accepted',
+    this.locationLabel,
+    required this.connectedAt,
+  });
+
+  bool get isActive => relationshipStatus == 'accepted';
+}

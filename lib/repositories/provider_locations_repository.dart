@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/provider_location_model.dart';
 import '../models/discover_filters.dart';
@@ -206,9 +207,8 @@ class ProviderLocationsRepository {
     }
   }
 
-  /// Fetch nearby providers for discovery (public API)
-  /// Uses the nearby_providers RPC function for efficient spatial queries
-  /// Enforces both user max_distance AND provider radius_km (coverage).
+  /// Fetch nearby providers for discovery (public API).
+  /// Uses [nearby_providers] — client search radius only (not provider coverage).
   Future<List<Map<String, dynamic>>> fetchNearbyProviders({
     required double userLat,
     required double userLng,
@@ -217,7 +217,8 @@ class ProviderLocationsRepository {
     try {
       final f = filters ?? const DiscoverFilters();
       final locationTypeStrings = f.locationTypes;
-      final specializations = f.categories.isEmpty ? null : f.categories.toList();
+      final specializations =
+          f.categories.isEmpty ? null : f.categories.toList();
 
       final params = <String, dynamic>{
         'user_lat': userLat,
@@ -229,10 +230,59 @@ class ProviderLocationsRepository {
         'specializations': specializations,
       };
 
+      if (kDebugMode) {
+        debugPrint(
+          'Discover RPC nearby_providers '
+          'types=${f.providerTypes} dist=${f.maxDistanceKm} '
+          'rating=${f.minRating} specs=$specializations '
+          'lat=${userLat.toStringAsFixed(3)} lng=${userLng.toStringAsFixed(3)}',
+        );
+      }
+
       final response = await _supabase.rpc('nearby_providers', params: params);
-      return (response as List).cast<Map<String, dynamic>>();
+      final rows = (response as List).cast<Map<String, dynamic>>();
+      if (kDebugMode) {
+        debugPrint('Discover nearby_providers → ${rows.length} rows');
+      }
+      return rows;
     } catch (e) {
       throw Exception('Failed to fetch nearby providers: $e');
+    }
+  }
+
+  /// Browse discoverable providers without client GPS (verified + discoverable).
+  Future<List<Map<String, dynamic>>> fetchDiscoverableProviders({
+    DiscoverFilters? filters,
+    int limit = 50,
+  }) async {
+    try {
+      final f = filters ?? const DiscoverFilters();
+      final specializations =
+          f.categories.isEmpty ? null : f.categories.toList();
+
+      final params = <String, dynamic>{
+        'provider_types': f.providerTypes,
+        'min_rating': f.minRating,
+        'specializations': specializations,
+        'result_limit': limit,
+      };
+
+      if (kDebugMode) {
+        debugPrint(
+          'Discover RPC discover_providers '
+          'types=${f.providerTypes} rating=${f.minRating} specs=$specializations',
+        );
+      }
+
+      final response =
+          await _supabase.rpc('discover_providers', params: params);
+      final rows = (response as List).cast<Map<String, dynamic>>();
+      if (kDebugMode) {
+        debugPrint('Discover discover_providers → ${rows.length} rows');
+      }
+      return rows;
+    } catch (e) {
+      throw Exception('Failed to fetch discoverable providers: $e');
     }
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
 import '../../services/notification_service.dart';
@@ -9,6 +10,7 @@ import '../../services/meeting_storage_service.dart';
 import '../../repositories/notifications_repository.dart';
 import '../../repositories/profile_repository.dart';
 import '../../config/feature_flags.dart';
+import '../../providers/accepted_client_trainers_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 enum NotificationType {
@@ -447,6 +449,12 @@ class _NotificationPageState extends State<NotificationPage> {
                                   if (meeting != null) {
                                     context.push('/video/room/${meeting.shareKey}');
                                   }
+                                } else if (notification.type == NotificationType.leadAccepted) {
+                                  try {
+                                    ProviderScope.containerOf(context)
+                                        .invalidate(acceptedClientTrainersProvider);
+                                  } catch (_) {}
+                                  context.push('/my-trainers');
                                 } else if (notification.action == 'open_pending_requests') {
                                   context.go('/home?tab=1');
                                 } else if (notification.action == 'open_messaging') {

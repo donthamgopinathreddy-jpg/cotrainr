@@ -2,7 +2,7 @@
 class BrandingAssets {
   BrandingAssets._();
 
-  // --- Vector masters (always prefer these for logo / decor) ---
+  // --- Vector masters ---
   static const String logoSvg = 'assets/branding/vector/cotrainr_logo.svg';
   static const String logoWhiteSvg =
       'assets/branding/vector/cotrainr_logo_white.svg';
@@ -20,11 +20,19 @@ class BrandingAssets {
   static const String cornerOverlaySvg =
       'assets/branding/vector/corner_overlay.svg';
 
-  // --- Photographic / raster ---
-  static const String logoBlackFull =
-      'assets/branding/cotrainr_logo_black_full.png';
+  // --- Photographic / raster (runner only — logo stays SVG) ---
+  static const String runnerHero =
+      'assets/branding/cotrainr_runner_hero.png';
+  static const String runnerHeroWebp =
+      'assets/branding/cotrainr_runner_hero.webp';
   static const String runnerAthlete =
       'assets/branding/cotrainr_runner_athlete.png';
+  static const String wordmarkOfficial =
+      'assets/branding/cotrainr_wordmark_official.png';
+  static const String wordmark = 'assets/branding/cotrainr_wordmark.png';
+
+  static const String logoBlackFull =
+      'assets/branding/cotrainr_logo_black_full.png';
   static const String runnerSplash =
       'assets/branding/cotrainr_runner_splash_clean.png';
   static const String runnerSplashOriginal =
@@ -50,8 +58,7 @@ class BrandingAssets {
   // Legacy aliases
   static const String logo = appIcon1024;
   static const String logoWhite = 'assets/branding/cotrainr_logo_white.png';
-  static const String wordmark = 'assets/branding/cotrainr_wordmark.png';
-  static const String splashRunner = runnerAthlete;
+  static const String splashRunner = runnerHero;
   static const String appIcon = 'assets/branding/cotrainr_app_icon.png';
   static const String splashLockup = logoBlackFull;
   static const String welcomeFull = orangeFullLogo;

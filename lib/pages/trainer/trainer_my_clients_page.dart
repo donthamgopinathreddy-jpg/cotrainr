@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -9,6 +10,8 @@ import '../../widgets/trainer/trainer_theme.dart';
 import '../../widgets/common/pressable_card.dart';
 import '../../services/leads_service.dart';
 import '../../services/leads_models.dart' show Lead;
+import '../../providers/accepted_client_trainers_provider.dart';
+import '../../providers/leads_provider.dart';
 import 'create_client_page.dart';
 
 class TrainerMyClientsPage extends StatefulWidget {
@@ -128,6 +131,11 @@ class _TrainerMyClientsPageState extends State<TrainerMyClientsPage>
       await _leadsService.updateLeadStatus(leadId: leadId, status: 'accepted');
       await _loadLeads();
       if (mounted) {
+        try {
+          ProviderScope.containerOf(context)
+              .invalidate(acceptedClientTrainersProvider);
+          ProviderScope.containerOf(context).invalidate(leadsProvider);
+        } catch (_) {}
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Client accepted')),
         );

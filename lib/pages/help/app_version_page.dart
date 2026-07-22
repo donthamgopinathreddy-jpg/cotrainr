@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../theme/account_hub_theme.dart';
+import '../../theme/branding_assets.dart';
 import '../../widgets/profile/account_hub_widgets.dart';
 
 class AppVersionPage extends StatefulWidget {
@@ -37,10 +39,20 @@ class _AppVersionPageState extends State<AppVersionPage> {
     }
   }
 
+  Future<void> _copyVersion() async {
+    if (_isLoading) return;
+    await Clipboard.setData(
+      ClipboardData(text: 'Cotrainr $_version (build $_buildNumber)'),
+    );
+    if (!mounted) return;
+    HapticFeedback.selectionClick();
+    showHubSnackBar(context, 'Version copied');
+  }
+
   @override
   Widget build(BuildContext context) {
     final bg = AccountHubTheme.pageBg(context);
-    final isLight = Theme.of(context).brightness == Brightness.light;
+    final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
       backgroundColor: bg,
@@ -50,9 +62,58 @@ class _AppVersionPageState extends State<AppVersionPage> {
         title: const Text('App Version'),
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
-          _HeroCard(isLight: isLight, isLoading: _isLoading, version: _version),
+          HubSectionCard(
+            animationDelayMs: 0,
+            child: Column(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(18),
+                  child: Image.asset(
+                    BrandingAssets.appIcon1024,
+                    width: 72,
+                    height: 72,
+                    fit: BoxFit.cover,
+                    filterQuality: FilterQuality.high,
+                    semanticLabel: 'Cotrainr app icon',
+                    errorBuilder: (context, error, stackTrace) => Image.asset(
+                      BrandingAssets.appIcon,
+                      width: 72,
+                      height: 72,
+                      fit: BoxFit.cover,
+                      filterQuality: FilterQuality.high,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'Cotrainr',
+                  style: AccountHubTheme.rowTitle(context).copyWith(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _isLoading
+                      ? 'Loading version…'
+                      : 'Version $_version · Build $_buildNumber',
+                  style: AccountHubTheme.rowSubtitle(context),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Your fitness companion',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                    color: cs.onSurface.withValues(alpha: 0.4),
+                  ),
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 12),
           HubSectionCard(
             title: 'Build details',
@@ -60,149 +121,98 @@ class _AppVersionPageState extends State<AppVersionPage> {
             child: _isLoading
                 ? const Padding(
                     padding: EdgeInsets.symmetric(vertical: 24),
-                    child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                    child: Center(
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
                   )
                 : Column(
                     children: [
-                      _InfoRow(label: 'Version', value: _version),
+                      HubActionRow(
+                        icon: Icons.tag_rounded,
+                        title: 'Version',
+                        showChevron: false,
+                        trailing: Text(
+                          _version,
+                          style: AccountHubTheme.rowTitle(context)
+                              .copyWith(fontSize: 14),
+                        ),
+                      ),
                       Divider(
                         height: 1,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withValues(alpha: 0.08),
+                        color: cs.onSurface.withValues(alpha: 0.08),
                       ),
-                      _InfoRow(label: 'Build', value: _buildNumber),
+                      HubActionRow(
+                        icon: Icons.construction_outlined,
+                        title: 'Build',
+                        showChevron: false,
+                        trailing: Text(
+                          _buildNumber,
+                          style: AccountHubTheme.rowTitle(context)
+                              .copyWith(fontSize: 14),
+                        ),
+                      ),
                       Divider(
                         height: 1,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withValues(alpha: 0.08),
+                        color: cs.onSurface.withValues(alpha: 0.08),
                       ),
-                      const _InfoRow(label: 'Environment', value: 'Production'),
+                      HubActionRow(
+                        icon: Icons.cloud_outlined,
+                        title: 'Environment',
+                        showChevron: false,
+                        trailing: Text(
+                          'Production',
+                          style: AccountHubTheme.rowTitle(context)
+                              .copyWith(fontSize: 14),
+                        ),
+                      ),
                       Divider(
                         height: 1,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withValues(alpha: 0.08),
+                        color: cs.onSurface.withValues(alpha: 0.08),
                       ),
-                      const _InfoRow(label: 'Release channel', value: 'Stable'),
+                      HubActionRow(
+                        icon: Icons.rocket_launch_outlined,
+                        title: 'Release channel',
+                        showChevron: false,
+                        trailing: Text(
+                          'Stable',
+                          style: AccountHubTheme.rowTitle(context)
+                              .copyWith(fontSize: 14),
+                        ),
+                      ),
                     ],
                   ),
           ),
           const SizedBox(height: 12),
           HubSectionCard(
-            title: 'Support',
+            title: 'Actions',
             animationDelayMs: 80,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Column(
               children: [
-                Icon(
-                  Icons.mail_outline_rounded,
-                  size: AccountHubTheme.iconSize,
-                  color: Theme.of(context)
-                      .colorScheme
-                      .onSurface
-                      .withValues(alpha: 0.55),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Emails are sent from noreply@cotrainr.com',
-                    style: AccountHubTheme.rowSubtitle(context).copyWith(height: 1.4),
-                  ),
+                HubActionRow(
+                  icon: Icons.copy_rounded,
+                  title: 'Copy version',
+                  subtitle: _isLoading
+                      ? null
+                      : 'Cotrainr $_version (build $_buildNumber)',
+                  onTap: _copyVersion,
                 ),
               ],
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HeroCard extends StatelessWidget {
-  final bool isLight;
-  final bool isLoading;
-  final String version;
-
-  const _HeroCard({
-    required this.isLight,
-    required this.isLoading,
-    required this.version,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return HubSectionCard(
-      child: Column(
-        children: [
-          Container(
-            width: 72,
-            height: 72,
-            decoration: BoxDecoration(
-              color: AccountHubTheme.messagesBlue.withValues(alpha: isLight ? 0.12 : 0.2),
-              borderRadius: BorderRadius.circular(20),
+          const SizedBox(height: 12),
+          HubSectionCard(
+            title: 'Support',
+            animationDelayMs: 120,
+            child: Column(
+              children: [
+                HubActionRow(
+                  icon: Icons.mail_outline_rounded,
+                  title: 'Support email',
+                  subtitle: 'Emails are sent from noreply@cotrainr.com',
+                  showChevron: false,
+                ),
+              ],
             ),
-            child: const Icon(
-              Icons.fitness_center_rounded,
-              color: AccountHubTheme.messagesBlue,
-              size: 34,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Cotrainr',
-            style: AccountHubTheme.rowTitle(context).copyWith(
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.4,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            isLoading ? 'Loading version…' : 'Version $version',
-            style: AccountHubTheme.rowSubtitle(context),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Your fitness companion',
-            style: TextStyle(
-              fontSize: 13,
-              color: cs.onSurface.withValues(alpha: 0.45),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _InfoRow extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _InfoRow({
-    required this.label,
-    required this.value,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(label, style: AccountHubTheme.rowSubtitle(context)),
-          ),
-          Text(
-            value,
-            style: AccountHubTheme.rowTitle(context).copyWith(fontSize: 14),
           ),
         ],
       ),

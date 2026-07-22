@@ -98,13 +98,16 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
     _loadNotificationsCount();
     _loadStreak();
     _loadGoals();
-    _loadMetrics();
     _loadCoachingData();
     
-    // Initialize health tracking service for background step counting
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    // Initialize health tracking + sync, then load week series.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       ref.read(healthTrackingServiceProvider).initialize();
+      try {
+        await ref.read(metricsSyncServiceProvider).syncNow();
+      } catch (_) {}
+      if (mounted) await _loadMetrics();
     });
   }
   
@@ -298,21 +301,30 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
       final metricsRepo = MetricsRepository();
       final todayMetrics = await metricsRepo.getTodayMetrics();
       final weeklyRows = await metricsRepo.getWeeklyMetrics();
+      // Same source as notification quick-actions / Insights water metric.
+      final todayWater =
+          await WaterIntakeService.instance.getTodayLiters();
 
       List<double> seriesFromRows(
         List<Map<String, dynamic>> rows,
         String key,
       ) {
-        final list = rows
-            .map((m) => ((m[key] as num?) ?? 0).toDouble())
+        final now = DateTime.now();
+        final dates = List.generate(7, (i) {
+          final d = now.subtract(Duration(days: 6 - i));
+          return DateTime(d.year, d.month, d.day);
+        });
+        final map = <String, double>{};
+        for (final row in rows) {
+          final dateStr = row['date'] as String?;
+          if (dateStr == null) continue;
+          // Normalize date keys (handle timestamp or date-only).
+          final keyDate = dateStr.split('T').first;
+          map[keyDate] = ((row[key] as num?) ?? 0).toDouble();
+        }
+        return dates
+            .map((d) => map[d.toIso8601String().split('T')[0]] ?? 0.0)
             .toList();
-        while (list.length < 7) {
-          list.insert(0, 0);
-        }
-        if (list.length > 7) {
-          return list.sublist(list.length - 7);
-        }
-        return list;
       }
 
       if (!mounted) return;
@@ -324,12 +336,12 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
               (todayMetrics['calories_burned'] as num?)?.toDouble() ?? 0.0;
           _currentDistance =
               (todayMetrics['distance_km'] as num?)?.toDouble() ?? 0.0;
-          _currentWater =
-              (todayMetrics['water_intake_liters'] as num?)?.toDouble() ?? 0.0;
+          _currentWater = todayWater;
           print(
             'HomePageV3: Loaded metrics from Supabase - Steps: $_currentSteps, Water: $_currentWater L, Calories: $_currentCalories, Distance: $_currentDistance km',
           );
         } else {
+          _currentWater = todayWater;
           print(
             'HomePageV3: No metrics found for today, keeping current values',
           );
@@ -347,6 +359,28 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
         _distanceWeeklyData
           ..clear()
           ..addAll(seriesFromRows(weeklyRows, 'distance_km'));
+
+        // Prefer today's live / cached value for the last day so insights
+        // aren't empty when Health Connect has data but sync lags.
+        if (_stepsWeeklyData.isNotEmpty) {
+          final todaySteps = _currentSteps.toDouble();
+          if (todaySteps > _stepsWeeklyData.last) {
+            _stepsWeeklyData[_stepsWeeklyData.length - 1] = todaySteps;
+          }
+        }
+        if (_caloriesWeeklyData.isNotEmpty &&
+            _currentCalories > _caloriesWeeklyData.last) {
+          _caloriesWeeklyData[_caloriesWeeklyData.length - 1] = _currentCalories;
+        }
+        if (_waterWeeklyData.isNotEmpty &&
+            _currentWater > _waterWeeklyData.last) {
+          _waterWeeklyData[_waterWeeklyData.length - 1] = _currentWater;
+        }
+        if (_distanceWeeklyData.isNotEmpty &&
+            _currentDistance > _distanceWeeklyData.last) {
+          _distanceWeeklyData[_distanceWeeklyData.length - 1] =
+              _currentDistance;
+        }
       });
     } catch (e) {
       print('HomePageV3: Error loading metrics: $e');
@@ -548,13 +582,33 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                         ),
                       ],
                       onMetricTap: (i) async {
+                        List<double> weekWithToday(
+                          List<double> week,
+                          double today,
+                        ) {
+                          final w = List<double>.from(week);
+                          while (w.length < 7) {
+                            w.insert(0, 0);
+                          }
+                          if (w.length > 7) {
+                            w.removeRange(0, w.length - 7);
+                          }
+                          if (today > w.last) {
+                            w[w.length - 1] = today;
+                          }
+                          return w;
+                        }
+
                         switch (i) {
                           case 0:
                             await context.push(
                               '/insights/steps',
                               extra: InsightArgs(
                                 MetricType.steps,
-                                List<double>.from(_stepsWeeklyData),
+                                weekWithToday(
+                                  _stepsWeeklyData,
+                                  currentSteps.toDouble(),
+                                ),
                                 goal: _goalSteps.toDouble(),
                               ),
                             );
@@ -564,7 +618,10 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                               '/insights/calories',
                               extra: InsightArgs(
                                 MetricType.calories,
-                                List<double>.from(_caloriesWeeklyData),
+                                weekWithToday(
+                                  _caloriesWeeklyData,
+                                  currentCalories.toDouble(),
+                                ),
                                 goal: _goalCalories.toDouble(),
                                 sourceNote: liveMetrics?.caloriesSource
                                     .insightsNote,
@@ -576,7 +633,10 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                               '/insights/water',
                               extra: InsightArgs(
                                 MetricType.water,
-                                List<double>.from(_waterWeeklyData),
+                                weekWithToday(
+                                  _waterWeeklyData,
+                                  _currentWater,
+                                ),
                                 goal: _goalWater,
                               ),
                             );
@@ -586,7 +646,10 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                               '/insights/distance',
                               extra: InsightArgs(
                                 MetricType.distance,
-                                List<double>.from(_distanceWeeklyData),
+                                weekWithToday(
+                                  _distanceWeeklyData,
+                                  currentDistance,
+                                ),
                                 goal: _goalDistance,
                                 sourceNote: liveMetrics?.distanceSource
                                     .insightsNote,

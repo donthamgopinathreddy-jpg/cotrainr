@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'leads_models.dart' show Lead, CreateLeadResult, UpdateLeadResult;
+import 'leads_models.dart'
+    show Lead, CreateLeadResult, UpdateLeadResult, AcceptedTrainer;
 
 class LeadsService {
   final SupabaseClient _supabase;
@@ -177,6 +178,119 @@ class LeadsService {
       }).toList();
     } catch (e) {
       throw Exception('Failed to fetch accepted leads: $e');
+    }
+  }
+
+  /// Accepted trainers for the signed-in client (`leads.status = accepted`).
+  Future<List<AcceptedTrainer>> getAcceptedTrainersAsClient() async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) throw Exception('Not authenticated');
+
+      final response = await _supabase
+          .from('leads')
+          .select('''
+            id,
+            client_id,
+            provider_id,
+            provider_type,
+            status,
+            created_at,
+            provider:providers!leads_provider_id_fkey(
+              user_id,
+              provider_type,
+              verified,
+              rating,
+              total_reviews,
+              specialization,
+              experience_years
+            )
+          ''')
+          .eq('client_id', userId)
+          .eq('status', 'accepted')
+          .eq('provider_type', 'trainer')
+          .order('created_at', ascending: false);
+
+      final rows = (response as List).cast<Map<String, dynamic>>();
+      if (rows.isEmpty) return const [];
+
+      final providerIds = rows
+          .map((r) => r['provider_id'] as String?)
+          .whereType<String>()
+          .toSet()
+          .toList();
+
+      final profilesMap = <String, Map<String, dynamic>>{};
+      if (providerIds.isNotEmpty) {
+        try {
+          final profilesResponse = await _supabase.rpc(
+            'get_public_profiles',
+            params: {'p_user_ids': providerIds},
+          );
+          for (final p in profilesResponse as List) {
+            final m = p as Map<String, dynamic>;
+            profilesMap[m['id'] as String] = m;
+          }
+        } catch (e) {
+          debugPrint('LeadsService: Error fetching trainer profiles: $e');
+        }
+      }
+
+      final locationMap = <String, String>{};
+      if (providerIds.isNotEmpty) {
+        try {
+          final locs = await _supabase
+              .from('provider_locations')
+              .select('provider_id, display_name, location_type, is_primary')
+              .inFilter('provider_id', providerIds)
+              .eq('is_active', true);
+          for (final raw in locs as List) {
+            final loc = Map<String, dynamic>.from(raw as Map);
+            final uid = loc['provider_id'] as String?;
+            if (uid == null || locationMap.containsKey(uid)) continue;
+            final name = (loc['display_name'] as String?)?.trim();
+            if (name != null && name.isNotEmpty) {
+              locationMap[uid] = name;
+            } else if (loc['location_type'] != null) {
+              locationMap[uid] = loc['location_type'].toString();
+            }
+          }
+        } catch (e) {
+          debugPrint('LeadsService: Error fetching trainer locations: $e');
+        }
+      }
+
+      return rows.map((json) {
+        final providerId = json['provider_id'] as String;
+        final providerRaw = json['provider'];
+        final provider = providerRaw is Map
+            ? Map<String, dynamic>.from(providerRaw)
+            : <String, dynamic>{};
+        final profile = profilesMap[providerId];
+        final specs = provider['specialization'];
+        String? specLabel;
+        if (specs is List && specs.isNotEmpty) {
+          specLabel = specs.map((e) => e.toString()).join(', ');
+        }
+
+        final name = (profile?['full_name'] as String?)?.trim();
+        return AcceptedTrainer(
+          leadId: json['id'] as String,
+          trainerId: providerId,
+          fullName: (name != null && name.isNotEmpty) ? name : 'Trainer',
+          avatarUrl: profile?['avatar_url'] as String?,
+          specializationLabel: specLabel,
+          experienceYears: (provider['experience_years'] as num?)?.toInt() ?? 0,
+          rating: (provider['rating'] as num?)?.toDouble() ?? 0,
+          reviewCount: (provider['total_reviews'] as num?)?.toInt() ?? 0,
+          verified: provider['verified'] as bool? ?? false,
+          relationshipStatus: json['status'] as String? ?? 'accepted',
+          locationLabel: locationMap[providerId],
+          connectedAt: DateTime.parse(json['created_at'] as String),
+        );
+      }).toList();
+    } catch (e) {
+      throw Exception('Failed to fetch accepted trainers: $e');
     }
   }
 

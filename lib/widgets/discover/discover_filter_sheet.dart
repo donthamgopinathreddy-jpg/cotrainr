@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../models/discover_filters.dart';
+import '../../models/provider_specialty_taxonomy.dart';
 
 enum FilterType { trainers, nutritionists, centers }
 
@@ -32,16 +33,28 @@ class _DiscoverFilterSheetState extends State<DiscoverFilterSheet> {
   late Set<String> _selectedCategories;
 
   List<String> get _ratingOptions => ['Any', '3.5+', '4+', '4.5+'];
-  
+
+  /// Stable specialty ids (or center labels) used as filter values.
   List<String> get _categories {
     switch (widget.filterType) {
       case FilterType.trainers:
-        return ['Strength', 'Yoga', 'Cardio', 'Boxing', 'HIIT'];
+        return ProviderSpecialtyTaxonomy.discoverFilterIds('trainer');
       case FilterType.nutritionists:
-        return ['Weight Loss', 'Sports Nutrition', 'Clinical', 'Plant-Based', 'Lifestyle'];
+        return ProviderSpecialtyTaxonomy.discoverFilterIds('nutritionist');
       case FilterType.centers:
-        return ['Gym', 'Yoga Studio', 'CrossFit', 'Pilates', 'Martial Arts'];
+        return const [
+          'Gym',
+          'Yoga Studio',
+          'CrossFit',
+          'Pilates',
+          'Martial Arts',
+        ];
     }
+  }
+
+  String _categoryLabel(String idOrLabel) {
+    if (widget.filterType == FilterType.centers) return idOrLabel;
+    return ProviderSpecialtyTaxonomy.labelFor(idOrLabel);
   }
 
   String get _title {
@@ -336,7 +349,7 @@ class _DiscoverFilterSheetState extends State<DiscoverFilterSheet> {
                   ),
                 ),
                 child: Text(
-                  category,
+                  _categoryLabel(category),
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,

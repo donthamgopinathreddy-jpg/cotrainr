@@ -7,6 +7,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../theme/design_tokens.dart';
 import '../../models/discover_filters.dart';
+import '../../models/provider_specialty_taxonomy.dart';
 import '../../widgets/discover/discover_filter_sheet.dart';
 import '../../repositories/provider_locations_repository.dart';
 import '../../models/subscription_plans.dart';
@@ -14,7 +15,6 @@ import '../../repositories/subscriptions_repository.dart';
 import '../../services/leads_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'center_detail_page.dart';
-import '../profile/public_profile_readonly_page.dart';
 
 const _discoverGradient = DesignTokens.discoverGradient;
 const _discoverAccent = DesignTokens.discoverAccent;
@@ -45,11 +45,16 @@ class _DiscoverPageState extends State<DiscoverPage>
   int _selectedTabIndex = 0;
   bool _isLoading = false;
   String? _errorMessage;
+  /// Soft banner when browsing without GPS (list still loads).
+  String? _locationNotice;
+  bool _browseWithoutLocation = false;
+  bool _nutritionistsLockedByPlan = false;
   Position? _userPosition;
   DiscoverLocationState _locationState = DiscoverLocationState.granted;
   double? _manualLat;
   double? _manualLng;
   DiscoverFilters _filters = const DiscoverFilters();
+  String _searchQuery = '';
 
   // Track request status: 'none', 'pending', 'accepted'
   final Map<String, String> _requestStatus = {};
@@ -76,11 +81,13 @@ class _DiscoverPageState extends State<DiscoverPage>
       curve: Curves.easeOut,
     );
     _fadeController.forward();
+    _searchController.addListener(_onSearchChanged);
     _loadRealData();
   }
 
   @override
   void dispose() {
+    _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
     _searchFocusNode.dispose();
     _scrollController.dispose();
@@ -88,152 +95,76 @@ class _DiscoverPageState extends State<DiscoverPage>
     super.dispose();
   }
 
-  /// Load real data from Supabase using nearby_providers RPC
+  void _onSearchChanged() {
+    final next = _searchController.text.trim();
+    if (next == _searchQuery) return;
+    setState(() => _searchQuery = next);
+  }
+
+  /// Load real data from Supabase (nearby when GPS available, else browse).
   Future<void> _loadRealData() async {
     if (!mounted) return;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
+      _locationNotice = null;
+      _browseWithoutLocation = false;
+      _nutritionistsLockedByPlan = false;
       _trainers.clear();
       _nutritionists.clear();
       _centers.clear();
     });
 
     try {
-      // Get user location
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!mounted) return;
-      if (!serviceEnabled) {
-        setState(() {
-          _errorMessage = 'location_disabled';
-          _isLoading = false;
-        });
-        return;
+      final uid = Supabase.instance.client.auth.currentUser?.id;
+      if (kDebugMode) {
+        debugPrint('Discover load start user=${uid ?? 'anon'}');
       }
 
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (!mounted) return;
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (!mounted) return;
-        if (permission == LocationPermission.denied) {
-          setState(() {
-            _errorMessage = 'location_denied';
-            _isLoading = false;
-          });
-          return;
-        }
-      }
-
-      if (!mounted) return;
-      if (permission == LocationPermission.deniedForever) {
-        setState(() {
-          _errorMessage = 'location_denied_forever';
-          _isLoading = false;
-        });
-        return;
-      }
-
-      _userPosition = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.medium,
-      );
-      if (!mounted) return;
-      // Fetch nearby trainers
-      final trainerResults = await _repo.fetchNearbyProviders(
-        userLat: _userPosition!.latitude,
-        userLng: _userPosition!.longitude,
-        filters: _filters.copyWith(providerTypes: ['trainer']),
-      );
-
-      // Fetch nearby nutritionists
-      final nutritionistResults = await _repo.fetchNearbyProviders(
-        userLat: _userPosition!.latitude,
-        userLng: _userPosition!.longitude,
-        filters: _filters.copyWith(providerTypes: ['nutritionist']),
-      );
+      final location = await _resolveClientLocation();
       if (!mounted) return;
 
-      // Map trainer results to DiscoverItem
-      for (var result in trainerResults) {
-        final distanceKm = (result['distance_km'] as num?)?.toDouble() ?? 0.0;
-        final locationType = result['location_type'] as String?;
-        final geo = result['geo']; // May be null for home-private locations
+      List<Map<String, dynamic>> trainerResults;
+      List<Map<String, dynamic>> nutritionistResults;
 
-        // Extract provider info
-        final providerId = result['provider_id'] as String? ?? '';
-        final displayName = result['display_name'] as String? ?? 'Unknown Location';
-        final fullName = result['full_name'] as String? ?? 'Unknown Provider';
-        final avatarUrl = result['avatar_url'] as String?;
-        final verified = result['verified'] as bool? ?? false;
-        final rating = (result['rating'] as num?)?.toDouble() ?? 0.0;
-        final totalReviews = (result['total_reviews'] as int?) ?? 0;
-        final experienceYears = (result['experience_years'] as int?) ?? 0;
-        final specialization = (result['specialization'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [];
-        final subtitle = specialization.isNotEmpty 
-            ? specialization.join(', ')
-            : 'Fitness Trainer';
-
-        // Create location string (use display_name for home-private, otherwise show distance)
-        final location = geo == null && locationType == 'home'
-            ? displayName
-            : '${distanceKm.toStringAsFixed(1)} km away';
-
-        _trainers.add(DiscoverItem(
-          id: providerId,
-          name: fullName,
-          subtitle: subtitle,
-          rating: rating,
-          reviews: totalReviews,
-          distance: distanceKm,
-          location: location,
-          isVerified: verified,
-          avatarUrl: avatarUrl,
-          experienceYears: experienceYears,
-        ));
+      if (location != null) {
+        _userPosition = location;
+        _locationState = DiscoverLocationState.granted;
+        trainerResults = await _repo.fetchNearbyProviders(
+          userLat: location.latitude,
+          userLng: location.longitude,
+          filters: _filters.copyWith(providerTypes: ['trainer']),
+        );
+        nutritionistResults = await _repo.fetchNearbyProviders(
+          userLat: location.latitude,
+          userLng: location.longitude,
+          filters: _filters.copyWith(providerTypes: ['nutritionist']),
+        );
+      } else {
+        _browseWithoutLocation = true;
+        _locationState = DiscoverLocationState.browse;
+        _locationNotice =
+            'Location unavailable — showing all eligible trainers.';
+        trainerResults = await _repo.fetchDiscoverableProviders(
+          filters: _filters.copyWith(providerTypes: ['trainer']),
+        );
+        nutritionistResults = await _repo.fetchDiscoverableProviders(
+          filters: _filters.copyWith(providerTypes: ['nutritionist']),
+        );
       }
+      if (!mounted) return;
 
-      // Map nutritionist results to DiscoverItem
-      for (var result in nutritionistResults) {
-        final distanceKm = (result['distance_km'] as num?)?.toDouble() ?? 0.0;
-        final locationType = result['location_type'] as String?;
-        final geo = result['geo']; // May be null for home-private locations
+      _trainers
+        ..clear()
+        ..addAll(_mapProviderRows(trainerResults, fallbackSubtitle: 'Fitness Trainer'));
+      _nutritionists
+        ..clear()
+        ..addAll(
+          _mapProviderRows(nutritionistResults, fallbackSubtitle: 'Nutritionist'),
+        );
 
-        // Extract provider info
-        final providerId = result['provider_id'] as String? ?? '';
-        final displayName = result['display_name'] as String? ?? 'Unknown Location';
-        final fullName = result['full_name'] as String? ?? 'Unknown Provider';
-        final avatarUrl = result['avatar_url'] as String?;
-        final verified = result['verified'] as bool? ?? false;
-        final rating = (result['rating'] as num?)?.toDouble() ?? 0.0;
-        final totalReviews = (result['total_reviews'] as int?) ?? 0;
-        final experienceYears = (result['experience_years'] as int?) ?? 0;
-        final specialization = (result['specialization'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [];
-        final subtitle = specialization.isNotEmpty 
-            ? specialization.join(', ')
-            : 'Nutritionist';
-
-        // Create location string (use display_name for home-private, otherwise show distance)
-        final location = geo == null && locationType == 'home'
-            ? displayName
-            : '${distanceKm.toStringAsFixed(1)} km away';
-
-        _nutritionists.add(DiscoverItem(
-          id: providerId,
-          name: fullName,
-          subtitle: subtitle,
-          rating: rating,
-          reviews: totalReviews,
-          distance: distanceKm,
-          location: location,
-          isVerified: verified,
-          avatarUrl: avatarUrl,
-          experienceYears: experienceYears,
-        ));
-      }
-
-      // Sort by distance
-      _trainers.sort((a, b) => a.distance.compareTo(b.distance));
-      _nutritionists.sort((a, b) => a.distance.compareTo(b.distance));
+      _trainers.sort(_compareDiscoverItems);
+      _nutritionists.sort(_compareDiscoverItems);
 
       final sub = await SubscriptionsRepository().fetchMine();
       final plan = sub?.plan ?? SubscriptionPlans.free;
@@ -242,7 +173,19 @@ class _DiscoverPageState extends State<DiscoverPage>
         if (_trainers.length > cap) {
           _trainers.removeRange(cap, _trainers.length);
         }
+        // Free plan: trainers only (product rule). Keep flag for empty copy.
+        if (_nutritionists.isNotEmpty) {
+          _nutritionistsLockedByPlan = true;
+        }
         _nutritionists.clear();
+      }
+
+      if (kDebugMode) {
+        debugPrint(
+          'Discover mapped trainers=${_trainers.length} '
+          'nutritionists=${_nutritionists.length} '
+          'browse=$_browseWithoutLocation filters=${_filters.toChipLabel()}',
+        );
       }
 
       await _loadRequestStatuses();
@@ -260,6 +203,123 @@ class _DiscoverPageState extends State<DiscoverPage>
         _isLoading = false;
       });
     }
+  }
+
+  Future<Position?> _resolveClientLocation() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        return null;
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        return null;
+      }
+
+      return Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Discover location resolve failed: $e');
+      }
+      return null;
+    }
+  }
+
+  List<DiscoverItem> _mapProviderRows(
+    List<Map<String, dynamic>> rows, {
+    required String fallbackSubtitle,
+  }) {
+    final byId = <String, DiscoverItem>{};
+    for (final result in rows) {
+      final providerId = result['provider_id'] as String? ?? '';
+      if (providerId.isEmpty) continue;
+
+      final distanceKm = (result['distance_km'] as num?)?.toDouble();
+      final locationType = result['location_type'] as String?;
+      final geo = result['geo'];
+      final displayName = result['display_name'] as String?;
+      final fullName = result['full_name'] as String? ?? 'Unknown Provider';
+      final avatarUrl = result['avatar_url'] as String?;
+      final verified = result['verified'] as bool? ?? false;
+      final rating = (result['rating'] as num?)?.toDouble() ?? 0.0;
+      final totalReviews = (result['total_reviews'] as num?)?.toInt() ?? 0;
+      final experienceYears = (result['experience_years'] as num?)?.toInt();
+      final specializationRaw = (result['specialization'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [];
+      final specializationIds =
+          ProviderSpecialtyTaxonomy.normalizeList(specializationRaw);
+      final specialtyLabels = ProviderSpecialtyTaxonomy.labelsFor(
+        specializationIds.take(3),
+      );
+      final headline =
+          (result['professional_headline'] as String?)?.trim() ?? '';
+      final sessionModes = (result['session_modes'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          const <String>[];
+
+      final String subtitle;
+      if (headline.isNotEmpty && specialtyLabels.isNotEmpty) {
+        subtitle = '$headline · ${specialtyLabels.join(', ')}';
+      } else if (headline.isNotEmpty) {
+        subtitle = headline;
+      } else if (specialtyLabels.isNotEmpty) {
+        subtitle = specialtyLabels.join(', ');
+      } else {
+        subtitle = fallbackSubtitle;
+      }
+
+      final String location;
+      if (distanceKm != null) {
+        location = (geo == null && locationType == 'home' && displayName != null)
+            ? displayName
+            : '${distanceKm.toStringAsFixed(1)} km away';
+      } else if (displayName != null && displayName.trim().isNotEmpty) {
+        location = displayName.trim();
+      } else {
+        location = 'Location not set';
+      }
+
+      final item = DiscoverItem(
+        id: providerId,
+        name: fullName,
+        subtitle: subtitle,
+        rating: rating,
+        reviews: totalReviews,
+        distance: distanceKm ?? double.infinity,
+        location: location,
+        isVerified: verified,
+        avatarUrl: avatarUrl,
+        experienceYears: (experienceYears != null && experienceYears > 0)
+            ? experienceYears
+            : null,
+        sessionModes: sessionModes,
+        offersOnline: sessionModes.contains(ProviderSessionModes.online),
+      );
+
+      final existing = byId[providerId];
+      if (existing == null || item.distance < existing.distance) {
+        byId[providerId] = item;
+      }
+    }
+    return byId.values.toList();
+  }
+
+  int _compareDiscoverItems(DiscoverItem a, DiscoverItem b) {
+    final ad = a.distance.isFinite ? a.distance : double.infinity;
+    final bd = b.distance.isFinite ? b.distance : double.infinity;
+    final byDistance = ad.compareTo(bd);
+    if (byDistance != 0) return byDistance;
+    return a.name.toLowerCase().compareTo(b.name.toLowerCase());
   }
 
   Future<void> _loadRequestStatuses() async {
@@ -380,6 +440,7 @@ class _DiscoverPageState extends State<DiscoverPage>
   String _classifyLoadError(Object e) {
     final raw = e.toString().toLowerCase();
     if (raw.contains('nearby_providers') ||
+        raw.contains('discover_providers') ||
         raw.contains('postgrestexception') ||
         raw.contains('could not find function')) {
       return 'backend_unavailable';
@@ -389,12 +450,6 @@ class _DiscoverPageState extends State<DiscoverPage>
 
   String _friendlyErrorMessage() {
     switch (_errorMessage) {
-      case 'location_disabled':
-        return 'Location services are off. Enable them to discover nearby providers.';
-      case 'location_denied':
-        return 'Location permission is required to find providers near you.';
-      case 'location_denied_forever':
-        return 'Location access was denied. Open settings to enable it.';
       case 'backend_unavailable':
         return 'We couldn\'t load providers right now.\nPlease try again.';
       default:
@@ -402,22 +457,21 @@ class _DiscoverPageState extends State<DiscoverPage>
     }
   }
 
-  bool get _errorNeedsSettings =>
-      _errorMessage == 'location_denied_forever' ||
-      _errorMessage == 'location_disabled';
-
+  bool get _errorNeedsSettings => false;
 
   List<DiscoverItem> get _currentItems {
-    switch (_selectedTabIndex) {
-      case 0:
-        return _trainers;
-      case 1:
-        return _nutritionists;
-      case 2:
-        return _centers;
-      default:
-        return _trainers;
-    }
+    final source = switch (_selectedTabIndex) {
+      1 => _nutritionists,
+      2 => _centers,
+      _ => _trainers,
+    };
+    final q = _searchQuery.toLowerCase();
+    if (q.isEmpty) return source;
+    return source.where((item) {
+      return item.name.toLowerCase().contains(q) ||
+          item.subtitle.toLowerCase().contains(q) ||
+          item.location.toLowerCase().contains(q);
+    }).toList();
   }
 
   void _showFilterSheet(BuildContext context) {
@@ -496,6 +550,15 @@ class _DiscoverPageState extends State<DiscoverPage>
                       selectedTabIndex: _selectedTabIndex,
                       onFilterTap: () => _showFilterSheet(context),
                     ),
+                    if (_locationNotice != null) ...[
+                      const SizedBox(height: DesignTokens.spacing12),
+                      _LocationBrowseBanner(
+                        message: _locationNotice!,
+                        onOpenSettings: () async {
+                          await Geolocator.openAppSettings();
+                        },
+                      ),
+                    ],
                     const SizedBox(height: DesignTokens.spacing16),
                     _DiscoverSegmentTabs(
                       tabs: const ['Trainers', 'Nutritionists', 'Centers'],
@@ -585,18 +648,14 @@ class _DiscoverPageState extends State<DiscoverPage>
                                   ),
                                 );
                               } else {
-                                // Navigate to user profile page for trainers/nutritionists
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => PublicProfileReadonlyPage(
-                                      userId: item.id,
-                                      titleFallback: item.name,
-                                      providerType: _selectedTabIndex == 0
-                                          ? 'trainer'
-                                          : 'nutritionist',
-                                    ),
-                                  ),
+                                context.push(
+                                  '/providers/${item.id}',
+                                  extra: {
+                                    'titleFallback': item.name,
+                                    'providerType': _selectedTabIndex == 0
+                                        ? 'trainer'
+                                        : 'nutritionist',
+                                  },
                                 );
                               }
                             },
@@ -625,6 +684,29 @@ class _DiscoverPageState extends State<DiscoverPage>
   }
 
   Widget _buildEmptyState() {
+    final searching = _searchQuery.isNotEmpty;
+    final filtered = _filters.hasActiveFilters;
+    final String title;
+    final String subtitle;
+    if (_selectedTabIndex == 2) {
+      title = 'Centers coming soon';
+      subtitle = 'Fitness centers will appear here in a future update.';
+    } else if (_selectedTabIndex == 1 && _nutritionistsLockedByPlan) {
+      title = 'Nutritionists on Basic & Unlimited';
+      subtitle =
+          'Upgrade your plan to discover and connect with nutritionists.';
+    } else if (searching) {
+      title = 'No matches for “$_searchQuery”';
+      subtitle = 'Try another name, specialty, or clear your search.';
+    } else if (filtered) {
+      title = 'No trainers match these filters';
+      subtitle = 'Clear filters to see all eligible trainers.';
+    } else {
+      title = 'No trainers available yet';
+      subtitle =
+          'Verified, discoverable trainers will appear here once they complete their profile.';
+    }
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(DesignTokens.spacing24),
@@ -638,32 +720,39 @@ class _DiscoverPageState extends State<DiscoverPage>
             ),
             const SizedBox(height: DesignTokens.spacing16),
             Text(
-              'No providers found',
+              title,
               style: TextStyle(
                 fontSize: DesignTokens.fontSizeH3,
                 fontWeight: FontWeight.w700,
                 color: DesignTokens.textPrimaryOf(context),
               ),
+              textAlign: TextAlign.center,
             ),
             const SizedBox(height: DesignTokens.spacing8),
             Text(
-              'Try changing filters or distance.',
+              subtitle,
               style: TextStyle(
                 fontSize: DesignTokens.fontSizeBodySmall,
                 color: DesignTokens.textSecondaryOf(context),
               ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: DesignTokens.spacing16),
-            OutlinedButton.icon(
-              onPressed: () {
-                HapticFeedback.selectionClick();
-                setState(() => _filters = const DiscoverFilters());
-                _loadRealData();
-              },
-              icon: const Icon(Icons.filter_alt_off_rounded, size: 18),
-              label: const Text('Reset filters'),
-            ),
+            if (filtered || searching) ...[
+              const SizedBox(height: DesignTokens.spacing16),
+              OutlinedButton.icon(
+                onPressed: () {
+                  HapticFeedback.selectionClick();
+                  setState(() {
+                    _filters = const DiscoverFilters();
+                    _searchController.clear();
+                    _searchQuery = '';
+                  });
+                  _loadRealData();
+                },
+                icon: const Icon(Icons.filter_alt_off_rounded, size: 18),
+                label: const Text('Clear filters'),
+              ),
+            ],
           ],
         ),
       ),
@@ -844,6 +933,56 @@ class _DiscoverHeaderRow extends StatelessWidget {
                 color: titleColor,
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LocationBrowseBanner extends StatelessWidget {
+  final String message;
+  final VoidCallback onOpenSettings;
+
+  const _LocationBrowseBanner({
+    required this.message,
+    required this.onOpenSettings,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: DesignTokens.accentOrange.withValues(alpha: isDark ? 0.16 : 0.10),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: DesignTokens.accentOrange.withValues(alpha: 0.28),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.location_off_rounded,
+            size: 18,
+            color: DesignTokens.accentOrange,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: DesignTokens.textPrimaryOf(context),
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: onOpenSettings,
+            child: const Text('Settings'),
           ),
         ],
       ),
@@ -1251,7 +1390,8 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                       color: colorScheme.onSurface.withOpacity(0.85),
                     ),
                   ),
-                  if (widget.item.experienceYears > 0) ...[
+                  if (widget.item.experienceYears != null &&
+                      widget.item.experienceYears! > 0) ...[
                     const SizedBox(height: 6),
                     Row(
                       children: [
@@ -1262,7 +1402,46 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                         ),
                         const SizedBox(width: 3),
                         Text(
-                          '${widget.item.experienceYears} years',
+                          widget.item.experienceYears == 1
+                              ? '1 year'
+                              : '${widget.item.experienceYears} years',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: colorScheme.onSurface.withOpacity(0.7),
+                          ),
+                        ),
+                        if (widget.item.offersOnline) ...[
+                          const SizedBox(width: 10),
+                          Icon(
+                            Icons.videocam_outlined,
+                            size: 12,
+                            color: colorScheme.onSurface.withOpacity(0.5),
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            'Online',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: colorScheme.onSurface.withOpacity(0.7),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ] else if (widget.item.offersOnline) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.videocam_outlined,
+                          size: 12,
+                          color: colorScheme.onSurface.withOpacity(0.5),
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          'Online',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -1281,11 +1460,17 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                         color: colorScheme.onSurface.withOpacity(0.5),
                       ),
                       const SizedBox(width: 3),
-                      Text(
-                        '${widget.item.distance.toStringAsFixed(1)} km',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: colorScheme.onSurface.withOpacity(0.6),
+                      Flexible(
+                        child: Text(
+                          widget.item.distance.isFinite
+                              ? '${widget.item.distance.toStringAsFixed(1)} km'
+                              : widget.item.location,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colorScheme.onSurface.withOpacity(0.6),
+                          ),
                         ),
                       ),
                     ],
@@ -1469,11 +1654,17 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                     color: colorScheme.onSurface.withOpacity(0.5),
                   ),
                   const SizedBox(width: 3),
-                  Text(
-                    '${widget.item.distance.toStringAsFixed(1)} km',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: colorScheme.onSurface.withOpacity(0.6),
+                  Flexible(
+                    child: Text(
+                      widget.item.distance.isFinite
+                          ? '${widget.item.distance.toStringAsFixed(1)} km'
+                          : widget.item.location,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colorScheme.onSurface.withOpacity(0.6),
+                      ),
                     ),
                   ),
                 ],
@@ -2065,7 +2256,9 @@ class DiscoverItem {
   final String location;
   final bool isVerified;
   final String? avatarUrl;
-  final int experienceYears;
+  final int? experienceYears;
+  final List<String> sessionModes;
+  final bool offersOnline;
 
   DiscoverItem({
     required this.id,
@@ -2077,6 +2270,8 @@ class DiscoverItem {
     required this.location,
     required this.isVerified,
     required this.avatarUrl,
-    required this.experienceYears,
+    this.experienceYears,
+    this.sessionModes = const [],
+    this.offersOnline = false,
   });
 }

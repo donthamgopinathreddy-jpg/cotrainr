@@ -149,6 +149,15 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
   }
 
   @override
+  void didUpdateWidget(covariant HomeShellPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final tab = widget.initialTabIndex;
+    if (tab != oldWidget.initialTabIndex && tab >= 0 && tab < 5) {
+      _goToTab(tab);
+    }
+  }
+
+  @override
   void dispose() {
     _welcomeController.dispose();
     super.dispose();

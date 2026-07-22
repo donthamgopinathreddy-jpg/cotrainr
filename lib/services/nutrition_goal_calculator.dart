@@ -119,21 +119,140 @@ class NutritionGoalCalculator {
     }
   }
 
-  static bool _isLossGoal(String goalType) =>
+  static bool isLossGoal(String goalType) =>
       goalType == 'fat_loss' || goalType == 'weight_loss';
 
-  static bool _isGainGoal(String goalType) =>
+  static bool isGainGoal(String goalType) =>
       goalType == 'muscle_gain' ||
       goalType == 'lean_bulk' ||
       goalType == 'weight_gain';
-
-  static bool _isMaintenanceGoal(String goalType) =>
-      goalType == 'maintenance' || goalType == 'general_health';
 
   static bool _isPerformanceGoal(String goalType) =>
       goalType == 'athletic_performance' ||
       goalType == 'endurance_training' ||
       goalType == 'strength_training';
+
+  /// Goal-aware calorie adjustment chips for the advanced options UI.
+  static List<CalorieAdjustmentPreset> presetsForGoal(String goalType) {
+    switch (goalType) {
+      case 'fat_loss':
+      case 'weight_loss':
+        return const [
+          CalorieAdjustmentPreset.auto(),
+          CalorieAdjustmentPreset(
+            id: 'def_250',
+            title: '250 kcal deficit',
+            subtitle: 'Slow fat loss',
+            adjustmentKcal: -250,
+          ),
+          CalorieAdjustmentPreset(
+            id: 'def_500',
+            title: '500 kcal deficit',
+            subtitle: 'Moderate fat loss',
+            adjustmentKcal: -500,
+          ),
+          CalorieAdjustmentPreset(
+            id: 'def_750',
+            title: '750 kcal deficit',
+            subtitle: 'Aggressive fat loss',
+            adjustmentKcal: -750,
+          ),
+          CalorieAdjustmentPreset.custom(),
+        ];
+      case 'muscle_gain':
+      case 'lean_bulk':
+      case 'weight_gain':
+        return const [
+          CalorieAdjustmentPreset.auto(),
+          CalorieAdjustmentPreset(
+            id: 'sur_250',
+            title: '250 kcal surplus',
+            subtitle: 'Lean bulk',
+            adjustmentKcal: 250,
+          ),
+          CalorieAdjustmentPreset(
+            id: 'sur_500',
+            title: '500 kcal surplus',
+            subtitle: 'Muscle gain',
+            adjustmentKcal: 500,
+          ),
+          CalorieAdjustmentPreset.custom(),
+        ];
+      case 'body_recomposition':
+        return const [
+          CalorieAdjustmentPreset.auto(),
+          CalorieAdjustmentPreset(
+            id: 'def_100',
+            title: '100 kcal deficit',
+            subtitle: 'Gentle cut',
+            adjustmentKcal: -100,
+          ),
+          CalorieAdjustmentPreset(
+            id: 'def_250',
+            title: '250 kcal deficit',
+            subtitle: 'Leaner recomp',
+            adjustmentKcal: -250,
+          ),
+          CalorieAdjustmentPreset(
+            id: 'maint_0',
+            title: 'Maintenance',
+            subtitle: 'Hold calories',
+            adjustmentKcal: 0,
+          ),
+          CalorieAdjustmentPreset(
+            id: 'sur_100',
+            title: '100 kcal surplus',
+            subtitle: 'Gentle build',
+            adjustmentKcal: 100,
+          ),
+          CalorieAdjustmentPreset.custom(),
+        ];
+      case 'maintenance':
+        return const [
+          CalorieAdjustmentPreset.auto(),
+          CalorieAdjustmentPreset(
+            id: 'maint_0',
+            title: 'Maintenance',
+            subtitle: '0 kcal adjustment',
+            adjustmentKcal: 0,
+          ),
+          CalorieAdjustmentPreset.custom(),
+        ];
+      default:
+        return const [
+          CalorieAdjustmentPreset.auto(),
+          CalorieAdjustmentPreset(
+            id: 'maint_0',
+            title: 'Maintenance',
+            subtitle: '0 kcal adjustment',
+            adjustmentKcal: 0,
+          ),
+          CalorieAdjustmentPreset.custom(),
+        ];
+    }
+  }
+
+  /// Clamp auto timeline-derived adjustment to safe goal-specific bands.
+  static int clampAutoAdjustment(String goalType, double raw) {
+    final v = raw.round();
+    switch (goalType) {
+      case 'fat_loss':
+      case 'weight_loss':
+        return v.clamp(-750, -250);
+      case 'body_recomposition':
+        return v.clamp(-250, 100);
+      case 'muscle_gain':
+      case 'lean_bulk':
+        return v.clamp(150, 350);
+      case 'weight_gain':
+        return v.clamp(250, 500);
+      case 'maintenance':
+      case 'general_health':
+        return 0;
+      default:
+        return v.clamp(-350, 350);
+    }
+  }
 
   /// Returns BMR in kcal/day (Mifflin–St Jeor).
   static double bmr({
@@ -158,6 +277,9 @@ class NutritionGoalCalculator {
     required int timelineDays,
     required String activityLevel,
     required String goalType,
+    CalorieAdjustmentMode adjustmentMode = CalorieAdjustmentMode.auto,
+    int? selectedPresetAdjustmentKcal,
+    int? customAdjustmentKcal,
   }) {
     final activity = normalizeActivityLevel(activityLevel);
     final direction = inferDirection(
@@ -172,16 +294,23 @@ class NutritionGoalCalculator {
       gender: gender,
     );
     final maintenance = bmrVal * activityMultiplier(activity);
+    final maintenanceRounded = maintenance.round();
 
-    final totalChangeKg = (targetWeightKg - currentWeightKg).abs();
+    final weightDiffKg = targetWeightKg - currentWeightKg;
+    final totalChangeKg = weightDiffKg.abs();
     final timelineWeeks = timelineDays > 0 ? timelineDays / 7.0 : 0.0;
-    final weeklyChangeKg = timelineWeeks > 0
+    final timelineWeeklyChangeKg = timelineWeeks > 0
         ? totalChangeKg / timelineWeeks
         : 0.0;
-    final pctBodyPerWeek =
-        currentWeightKg > 0 ? (weeklyChangeKg / currentWeightKg) * 100 : 0.0;
+    final pctBodyPerWeek = currentWeightKg > 0
+        ? (timelineWeeklyChangeKg / currentWeightKg) * 100
+        : 0.0;
 
     final warnings = <String>[];
+    String? timelineConflictMessage;
+    String? directionMismatchMessage;
+    String? safetyClampMessage;
+    var safetyClamped = false;
 
     if (timelineDays > 0 && totalChangeKg > 0.01) {
       if (direction == WeightDirection.loss) {
@@ -209,58 +338,107 @@ class NutritionGoalCalculator {
       }
     }
 
-    var targetCalories = maintenance.round();
-
-    if (_isLossGoal(goalType)) {
-      var dailyDeficit = maintenance * 0.15;
-      if (timelineDays > 0 && weeklyChangeKg > 0) {
-        dailyDeficit = weeklyChangeKg * kcalPerKgFat / 7;
-        final maxDeficit = maintenance * 0.25;
-        if (dailyDeficit > maxDeficit) {
-          warnings.add(
-            'Daily deficit capped at 25% of maintenance calories for safety.',
-          );
-          dailyDeficit = maxDeficit;
-        }
+    // --- Resolve calorie adjustment ---
+    int resolvedAdjustment;
+    if (adjustmentMode == CalorieAdjustmentMode.custom) {
+      resolvedAdjustment = (customAdjustmentKcal ?? 0).clamp(-1000, 1000);
+    } else if (adjustmentMode == CalorieAdjustmentMode.preset) {
+      resolvedAdjustment = selectedPresetAdjustmentKcal ?? 0;
+    } else {
+      // Auto: derive from timeline weight change, then clamp to goal band.
+      // Prefer signed: loss → negative, gain → positive.
+      double raw;
+      if (timelineDays > 0 && totalChangeKg > 0.01) {
+        raw = (weightDiffKg * kcalPerKgFat) / timelineDays;
+      } else if (isLossGoal(goalType)) {
+        raw = -(maintenance * 0.15);
+      } else if (isGainGoal(goalType)) {
+        raw = maintenance * 0.08;
+      } else if (goalType == 'body_recomposition') {
+        raw = -(maintenance * 0.05);
+      } else if (_isPerformanceGoal(goalType)) {
+        raw = maintenance *
+            ((activity == 'very_active' || activity == 'extra_active')
+                ? 0.10
+                : 0.05);
+      } else {
+        raw = 0;
       }
-      targetCalories = (maintenance - dailyDeficit).round();
-    } else if (_isGainGoal(goalType)) {
-      var dailySurplus = maintenance * 0.08;
-      if (timelineDays > 0 && weeklyChangeKg > 0) {
-        dailySurplus = weeklyChangeKg * kcalPerKgFat / 7;
-        final maxSurplus = maintenance * 0.15;
-        if (dailySurplus > maxSurplus) {
-          warnings.add(
-            'Daily surplus capped at 15% of maintenance calories for safety.',
-          );
-          dailySurplus = maxSurplus;
-        }
-      }
-      targetCalories = (maintenance + dailySurplus).round();
-    } else if (goalType == 'body_recomposition') {
-      targetCalories = (maintenance * 0.95).round();
-    } else if (_isMaintenanceGoal(goalType)) {
-      targetCalories = maintenance.round();
-    } else if (_isPerformanceGoal(goalType)) {
-      final factor = activity == 'very_active' || activity == 'extra_active'
-          ? 1.10
-          : 1.05;
-      targetCalories = (maintenance * factor).round();
+      resolvedAdjustment = clampAutoAdjustment(goalType, raw);
     }
 
+    // Direction consistency for manual modes
+    if (adjustmentMode != CalorieAdjustmentMode.auto) {
+      if (weightDiffKg < -0.1 && resolvedAdjustment > 0) {
+        directionMismatchMessage =
+            'This calorie adjustment does not match your selected weight goal.';
+      } else if (weightDiffKg > 0.1 && resolvedAdjustment < 0) {
+        directionMismatchMessage =
+            'This calorie adjustment does not match your selected weight goal.';
+      }
+    }
+
+    // Timeline conflict when manual adjustment differs from requested pace
+    if (adjustmentMode != CalorieAdjustmentMode.auto &&
+        resolvedAdjustment != 0 &&
+        totalChangeKg > 0.01 &&
+        directionMismatchMessage == null) {
+      final matchesLoss =
+          weightDiffKg < 0 && resolvedAdjustment < 0;
+      final matchesGain =
+          weightDiffKg > 0 && resolvedAdjustment > 0;
+      if (matchesLoss || matchesGain) {
+        final estimatedDays =
+            (totalChangeKg * kcalPerKgFat / resolvedAdjustment.abs()).round();
+        if (timelineDays > 0 &&
+            (estimatedDays - timelineDays).abs() >= 7) {
+          timelineConflictMessage =
+              'At a ${resolvedAdjustment.abs()} kcal daily '
+              '${resolvedAdjustment < 0 ? 'deficit' : 'surplus'}, '
+              'your estimated timeline is about $estimatedDays days '
+              'instead of $timelineDays days.';
+        }
+      }
+    }
+
+    var targetCalories = maintenanceRounded + resolvedAdjustment;
     final minCal = minCaloriesForGender(gender);
     if (targetCalories < minCal) {
-      warnings.add(
-        'Target calories ($targetCalories kcal) are below the recommended '
-        'minimum of $minCal kcal/day for your profile.',
-      );
+      safetyClamped = true;
+      safetyClampMessage =
+          'Your selected deficit would create a very low calorie target. '
+          'Cotrainr adjusted it to ${minCal.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]},')} kcal/day.';
+      // Fix common formatting for 1200/1500 without weird commas on 4 digits - use simple:
+      safetyClampMessage =
+          'Your selected deficit would create a very low calorie target. '
+          'Cotrainr adjusted it to $minCal kcal/day.';
+      // Recalculate effective adjustment after clamp
+      targetCalories = minCal;
+      resolvedAdjustment = targetCalories - maintenanceRounded;
+      warnings.add(safetyClampMessage);
     }
+
     if (targetCalories < bmrVal.round()) {
       warnings.add(
         'Target calories are below your estimated BMR (${bmrVal.round()} kcal). '
         'Extended periods below BMR should be discussed with a professional.',
       );
     }
+
+    final estimatedWeeklyFromAdj =
+        double.parse(((resolvedAdjustment * 7) / kcalPerKgFat).toStringAsFixed(2));
+
+    // Prefer adjustment-based weekly estimate when not pure auto-timeline display;
+    // still store signed estimate from adjustment for results.
+    final weeklyChangeKg = adjustmentMode == CalorieAdjustmentMode.auto &&
+            totalChangeKg > 0.01
+        ? double.parse(
+            (weightDiffKg.isNegative
+                    ? -timelineWeeklyChangeKg
+                    : timelineWeeklyChangeKg)
+                .toStringAsFixed(2),
+          )
+        : estimatedWeeklyFromAdj;
 
     var proteinG = (currentWeightKg * proteinPerKg(goalType)).round();
     var fatG = (currentWeightKg * 0.7).round();
@@ -298,7 +476,7 @@ class NutritionGoalCalculator {
 
     return NutritionGoalResult(
       bmr: bmrVal.round(),
-      maintenanceCalories: maintenance.round(),
+      maintenanceCalories: maintenanceRounded,
       calories: targetCalories.clamp(minCal, 10000),
       proteinG: proteinG.clamp(0, 10000),
       carbsG: carbsG,
@@ -311,19 +489,76 @@ class NutritionGoalCalculator {
       currentWeightKg: currentWeightKg,
       targetWeightKg: targetWeightKg,
       timelineDays: timelineDays,
-      weeklyChangeKg: double.parse(weeklyChangeKg.toStringAsFixed(2)),
+      weeklyChangeKg: weeklyChangeKg,
       direction: direction,
       directionLabel: directionLabel(direction),
       warnings: warnings,
-      belowMinimumCalories: targetCalories < minCal,
+      belowMinimumCalories: targetCalories < minCal && !safetyClamped,
       belowBmr: targetCalories < bmrVal.round(),
       aggressiveTimeline: warnings.any((w) => w.contains('aggressive')),
       formulaVersion: formulaVersion,
+      calorieAdjustmentMode: adjustmentMode,
+      selectedPresetAdjustmentKcal: selectedPresetAdjustmentKcal,
+      customAdjustmentKcal: customAdjustmentKcal,
+      resolvedAdjustmentKcal: resolvedAdjustment,
+      estimatedWeeklyChangeKg: estimatedWeeklyFromAdj,
+      safetyClamped: safetyClamped,
+      safetyClampMessage: safetyClampMessage,
+      timelineConflictMessage: timelineConflictMessage,
+      directionMismatchMessage: directionMismatchMessage,
     );
   }
 }
 
 enum WeightDirection { loss, gain, maintain }
+
+enum CalorieAdjustmentMode { auto, preset, custom }
+
+class CalorieAdjustmentPreset {
+  final String id;
+  final String title;
+  final String subtitle;
+  /// Null means Auto or Custom (not a fixed preset value).
+  final int? adjustmentKcal;
+  final bool isAuto;
+  final bool isCustom;
+
+  const CalorieAdjustmentPreset({
+    required this.id,
+    required this.title,
+    required this.subtitle,
+    this.adjustmentKcal,
+    this.isAuto = false,
+    this.isCustom = false,
+  });
+
+  const CalorieAdjustmentPreset.auto()
+      : id = 'auto',
+        title = 'Auto — Recommended',
+        subtitle = 'Calculated from your goal and timeline',
+        adjustmentKcal = null,
+        isAuto = true,
+        isCustom = false;
+
+  const CalorieAdjustmentPreset.custom()
+      : id = 'custom',
+        title = 'Custom',
+        subtitle = 'Set your own daily adjustment',
+        adjustmentKcal = null,
+        isAuto = false,
+        isCustom = true;
+
+  String get semanticsLabel {
+    if (isAuto) return 'Auto, recommended calorie adjustment';
+    if (isCustom) return 'Custom calorie adjustment';
+    final v = adjustmentKcal ?? 0;
+    if (v == 0) return 'Maintenance, zero kilocalories per day';
+    if (v < 0) {
+      return 'Minus ${v.abs()} kilocalories per day, $subtitle';
+    }
+    return 'Plus $v kilocalories per day, $subtitle';
+  }
+}
 
 class NutritionGoalResult {
   final int bmr;
@@ -349,6 +584,16 @@ class NutritionGoalResult {
   final bool aggressiveTimeline;
   final String formulaVersion;
 
+  final CalorieAdjustmentMode calorieAdjustmentMode;
+  final int? selectedPresetAdjustmentKcal;
+  final int? customAdjustmentKcal;
+  final int resolvedAdjustmentKcal;
+  final double estimatedWeeklyChangeKg;
+  final bool safetyClamped;
+  final String? safetyClampMessage;
+  final String? timelineConflictMessage;
+  final String? directionMismatchMessage;
+
   const NutritionGoalResult({
     required this.bmr,
     required this.maintenanceCalories,
@@ -372,7 +617,46 @@ class NutritionGoalResult {
     this.belowBmr = false,
     this.aggressiveTimeline = false,
     required this.formulaVersion,
+    this.calorieAdjustmentMode = CalorieAdjustmentMode.auto,
+    this.selectedPresetAdjustmentKcal,
+    this.customAdjustmentKcal,
+    this.resolvedAdjustmentKcal = 0,
+    this.estimatedWeeklyChangeKg = 0,
+    this.safetyClamped = false,
+    this.safetyClampMessage,
+    this.timelineConflictMessage,
+    this.directionMismatchMessage,
   });
 
   String? get warning => warnings.isEmpty ? null : warnings.join('\n\n');
+
+  String get calculationModeLabel {
+    switch (calorieAdjustmentMode) {
+      case CalorieAdjustmentMode.auto:
+        return 'Auto';
+      case CalorieAdjustmentMode.preset:
+      case CalorieAdjustmentMode.custom:
+        return 'Manual';
+    }
+  }
+
+  String get adjustmentRowLabel {
+    final v = resolvedAdjustmentKcal;
+    if (v < 0) return 'Calorie deficit';
+    if (v > 0) return 'Calorie surplus';
+    return 'Maintenance';
+  }
+
+  String get adjustmentRowValue {
+    final v = resolvedAdjustmentKcal;
+    if (v == 0) return '0 kcal/day';
+    return '${v.abs()} kcal/day';
+  }
+
+  String get signedAdjustmentLabel {
+    final v = resolvedAdjustmentKcal;
+    if (v > 0) return '+$v kcal';
+    if (v < 0) return '−${v.abs()} kcal';
+    return '0 kcal';
+  }
 }

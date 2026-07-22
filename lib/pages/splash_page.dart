@@ -10,13 +10,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme/branding_assets.dart';
 import '../theme/design_tokens.dart';
 import '../widgets/branding/cotrainr_logo.dart';
-import '../widgets/branding/splash_vector_layers.dart';
+import '../widgets/branding/splash_light_trails.dart';
 
-/// Animated Flutter runner splash (after native OS splash).
+/// Layered cinematic Flutter splash (after native OS splash).
 ///
-/// Composed from SVG atmosphere layers + PNG athlete + SVG logo.
-/// Runs real startup work immediately, stays visible ≥ 4 seconds, then routes
-/// once via [context.go] to Home (authenticated) or Welcome (guest).
+/// Layers: black → light trails → runner photo → SVG logo → wordmark →
+/// tagline text → Flutter loader. Init runs immediately; stays ≥ 3.5s.
 class CotrainrSplashScreen extends StatefulWidget {
   const CotrainrSplashScreen({
     super.key,
@@ -33,16 +32,20 @@ typedef SplashPage = CotrainrSplashScreen;
 
 class _CotrainrSplashScreenState extends State<CotrainrSplashScreen>
     with TickerProviderStateMixin {
-  static const _minimumDuration = Duration(seconds: 4);
+  static const _minimumDuration = Duration(milliseconds: 3500);
   static const _slowHintAfter = Duration(seconds: 4);
 
-  late final AnimationController _master;
+  late final AnimationController _sequence;
   late final AnimationController _loader;
+  late final AnimationController _lightsLoop;
   late final AnimationController _exit;
 
-  late final Animation<double> _artOpacity;
-  late final Animation<double> _artScale;
-  late final Animation<double> _glowOpacity;
+  late final Animation<double> _runnerOpacity;
+  late final Animation<double> _runnerScale;
+  late final Animation<double> _lightsOpacity;
+  late final Animation<double> _brandOpacity;
+  late final Animation<Offset> _brandSlide;
+  late final Animation<double> _taglineOpacity;
 
   bool _hasNavigated = false;
   bool _showPreparing = false;
@@ -53,34 +56,61 @@ class _CotrainrSplashScreenState extends State<CotrainrSplashScreen>
   void initState() {
     super.initState();
 
-    _master = AnimationController(
+    // Timeline mapped onto 0–1700 ms sequence, then hold.
+    _sequence = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1900),
+      duration: const Duration(milliseconds: 1700),
     );
     _loader = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1600),
+      duration: const Duration(milliseconds: 1400),
+    );
+    _lightsLoop = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 4800),
     );
     _exit = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 280),
     );
 
-    _artOpacity = CurvedAnimation(
-      parent: _master,
+    // 0–600 ms: runner fade + settle 1.03 → 1.0
+    _runnerOpacity = CurvedAnimation(
+      parent: _sequence,
       curve: const Interval(0.0, 0.35, curve: Curves.easeOut),
     );
-    _artScale = Tween<double>(begin: 1.035, end: 1.0).animate(
+    _runnerScale = Tween<double>(begin: 1.03, end: 1.0).animate(
       CurvedAnimation(
-        parent: _master,
-        curve: const Interval(0.0, 0.4, curve: Curves.easeOutCubic),
+        parent: _sequence,
+        curve: const Interval(0.0, 0.35, curve: Curves.easeOutCubic),
       ),
     );
-    _glowOpacity = Tween<double>(begin: 0.15, end: 0.55).animate(
+
+    // 400–1100 ms: lights
+    _lightsOpacity = CurvedAnimation(
+      parent: _sequence,
+      curve: const Interval(0.24, 0.65, curve: Curves.easeInOut),
+    );
+
+    // 800–1400 ms: brand
+    _brandOpacity = CurvedAnimation(
+      parent: _sequence,
+      curve: const Interval(0.47, 0.82, curve: Curves.easeOutCubic),
+    );
+    _brandSlide = Tween<Offset>(
+      begin: const Offset(0, 0.08),
+      end: Offset.zero,
+    ).animate(
       CurvedAnimation(
-        parent: _master,
-        curve: const Interval(0.18, 0.55, curve: Curves.easeInOut),
+        parent: _sequence,
+        curve: const Interval(0.47, 0.82, curve: Curves.easeOutCubic),
       ),
+    );
+
+    // 1200–1700 ms: tagline
+    _taglineOpacity = CurvedAnimation(
+      parent: _sequence,
+      curve: const Interval(0.70, 1.0, curve: Curves.easeOut),
     );
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -89,11 +119,12 @@ class _CotrainrSplashScreenState extends State<CotrainrSplashScreen>
       unawaited(_precache());
       final reduce = MediaQuery.of(context).disableAnimations;
       if (reduce) {
-        _master.value = 1;
+        _sequence.value = 1;
         _loader.value = 0.45;
       } else {
-        _master.forward();
+        _sequence.forward();
         _loader.repeat();
+        _lightsLoop.repeat();
       }
       if (widget.runStartupNavigation) {
         unawaited(_bootstrap());
@@ -104,12 +135,10 @@ class _CotrainrSplashScreenState extends State<CotrainrSplashScreen>
   Future<void> _precache() async {
     try {
       await Future.wait([
-        precacheImage(const AssetImage(BrandingAssets.runnerAthlete), context),
-        precacheImage(const AssetImage(BrandingAssets.runnerSplash), context),
+        precacheImage(const AssetImage(BrandingAssets.runnerHero), context),
+        precacheImage(const AssetImage(BrandingAssets.wordmarkOfficial), context),
       ]);
-    } catch (_) {
-      // Offline / decode failures must not block startup.
-    }
+    } catch (_) {}
   }
 
   Future<void> _bootstrap() async {
@@ -151,8 +180,9 @@ class _CotrainrSplashScreenState extends State<CotrainrSplashScreen>
   @override
   void dispose() {
     _slowHintTimer?.cancel();
-    _master.dispose();
+    _sequence.dispose();
     _loader.dispose();
+    _lightsLoop.dispose();
     _exit.dispose();
     super.dispose();
   }
@@ -170,54 +200,80 @@ class _CotrainrSplashScreenState extends State<CotrainrSplashScreen>
       child: Scaffold(
         backgroundColor: Colors.black,
         body: AnimatedBuilder(
-          animation: Listenable.merge([_master, _loader, _exit]),
+          animation: Listenable.merge([
+            _sequence,
+            _loader,
+            _lightsLoop,
+            _exit,
+          ]),
           builder: (context, _) {
             final exitT = _exit.value;
-            final exitOpacity = 1.0 - exitT;
-            final exitScale = 1.0 + (0.015 * exitT);
-
             return Opacity(
-              opacity: exitOpacity.clamp(0.0, 1.0),
+              opacity: (1.0 - exitT).clamp(0.0, 1.0),
               child: Transform.scale(
-                scale: exitScale,
+                scale: 1.0 + (0.012 * exitT),
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     final w = constraints.maxWidth;
                     final h = constraints.maxHeight;
-                    final barW = (w * 0.40).clamp(130.0, 210.0);
-                    final logoW = (w * 0.28).clamp(96.0, 148.0);
+                    final pad = MediaQuery.paddingOf(context);
+                    final logoW = (w * 0.26).clamp(88.0, 132.0);
+                    final barW = (w * 0.38).clamp(120.0, 200.0);
+                    final runnerH = h * 0.58;
 
                     return Stack(
                       fit: StackFit.expand,
                       children: [
+                        // Layer 1 — black
                         const ColoredBox(color: Colors.black),
-                        // Vector atmosphere (sharp at every resolution).
-                        SplashVectorLayers(
-                          opacity: reduce ? 0.55 : _glowOpacity.value,
-                        ),
-                        // Photographic runner (PNG only for photo).
-                        Center(
+
+                        // Layer 3 — orange light trails (behind / around runner)
+                        if (!reduce)
+                          Positioned(
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            height: h * 0.62,
+                            child: SplashLightTrails(
+                              progress: _lightsOpacity.value,
+                              opacity: 0.55 + 0.35 * _lightsLoop.value,
+                            ),
+                          )
+                        else
+                          Positioned(
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            height: h * 0.62,
+                            child: const SplashLightTrails(
+                              progress: 1,
+                              opacity: 0.7,
+                            ),
+                          ),
+
+                        // Layer 2 — runner photo (upper 55–60%, contain)
+                        Positioned(
+                          top: pad.top + h * 0.02,
+                          left: 0,
+                          right: 0,
+                          height: runnerH,
                           child: Opacity(
-                            opacity: reduce ? 1 : _artOpacity.value,
+                            opacity: reduce ? 1 : _runnerOpacity.value,
                             child: Transform.scale(
-                              scale: reduce ? 1 : _artScale.value,
+                              scale: reduce ? 1 : _runnerScale.value,
+                              alignment: Alignment.topCenter,
                               child: Image.asset(
-                                BrandingAssets.runnerAthlete,
-                                width: w,
-                                height: h,
+                                BrandingAssets.runnerHero,
                                 fit: BoxFit.contain,
                                 alignment: Alignment.topCenter,
                                 filterQuality: FilterQuality.high,
                                 cacheWidth: (w *
                                         MediaQuery.devicePixelRatioOf(context))
                                     .round()
-                                    .clamp(320, 1600),
+                                    .clamp(320, 1400),
                                 errorBuilder: (context, error, stackTrace) {
-                                  // Fallback: full splash art, then cover baked logo.
                                   return Image.asset(
-                                    BrandingAssets.runnerSplash,
-                                    width: w,
-                                    height: h,
+                                    BrandingAssets.runnerAthlete,
                                     fit: BoxFit.contain,
                                     alignment: Alignment.topCenter,
                                     filterQuality: FilterQuality.high,
@@ -227,13 +283,15 @@ class _CotrainrSplashScreenState extends State<CotrainrSplashScreen>
                             ),
                           ),
                         ),
-                        // Cover any residual baked lockup from fallback PNG.
-                        Align(
-                          alignment: Alignment.bottomCenter,
-                          child: Container(
-                            width: w,
-                            height: h * 0.42,
-                            decoration: const BoxDecoration(
+
+                        // Soft fade into brand zone
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          top: h * 0.48,
+                          height: h * 0.18,
+                          child: const DecoratedBox(
+                            decoration: BoxDecoration(
                               gradient: LinearGradient(
                                 begin: Alignment.topCenter,
                                 end: Alignment.bottomCenter,
@@ -241,56 +299,92 @@ class _CotrainrSplashScreenState extends State<CotrainrSplashScreen>
                                   Color(0x00000000),
                                   Color(0xCC000000),
                                   Color(0xFF000000),
-                                  Color(0xFF000000),
                                 ],
-                                stops: [0.0, 0.22, 0.45, 1.0],
                               ),
                             ),
                           ),
                         ),
-                        // Master SVG logo + wordmark / tagline.
+
+                        // Layers 4–6 — logo SVG, wordmark, tagline
                         Positioned(
-                          left: 24,
-                          right: 24,
-                          bottom: MediaQuery.paddingOf(context).bottom +
-                              h * 0.14,
-                          child: Opacity(
-                            opacity: reduce ? 1 : _artOpacity.value,
-                            child: CotrainrBrandLockup(
-                              logoWidth: logoW,
-                              showTagline: true,
-                              variant: CotrainrLogoVariant.color,
-                            ),
-                          ),
-                        ),
-                        // Real Flutter loader.
-                        Positioned(
-                          left: 0,
-                          right: 0,
-                          bottom:
-                              MediaQuery.paddingOf(context).bottom + h * 0.05,
+                          left: 20,
+                          right: 20,
+                          bottom: pad.bottom + h * 0.12,
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              _IndeterminateBar(
-                                width: barW,
-                                progress: _loader.value,
-                              ),
-                              const SizedBox(height: 14),
-                              AnimatedOpacity(
-                                opacity: _showPreparing ? 1 : 0,
-                                duration: const Duration(milliseconds: 280),
-                                child: Text(
-                                  'PREPARING YOUR EXPERIENCE',
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.55),
-                                    fontSize: 11,
-                                    letterSpacing: 2.2,
-                                    fontWeight: FontWeight.w600,
+                              FadeTransition(
+                                opacity: reduce
+                                    ? const AlwaysStoppedAnimation(1)
+                                    : _brandOpacity,
+                                child: SlideTransition(
+                                  position: reduce
+                                      ? const AlwaysStoppedAnimation(
+                                          Offset.zero)
+                                      : _brandSlide,
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      CotrainrLogo(
+                                        width: logoW,
+                                        variant: CotrainrLogoVariant.color,
+                                      ),
+                                      SizedBox(height: logoW * 0.12),
+                                      CotrainrWordmark(
+                                        width: (logoW * 1.65)
+                                            .clamp(140.0, 240.0),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
+                              SizedBox(height: logoW * 0.10),
+                              Opacity(
+                                opacity: reduce ? 1 : _taglineOpacity.value,
+                                child: CotrainrTagline(
+                                  fontSize: (w * 0.028).clamp(9.0, 12.5),
+                                ),
+                              ),
                             ],
+                          ),
+                        ),
+
+                        // Layer 7 — Flutter loader (from ~1500 ms)
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: pad.bottom + h * 0.045,
+                          child: Opacity(
+                            opacity: reduce
+                                ? 1
+                                : Curves.easeOut.transform(
+                                    ((_sequence.value - 0.88) / 0.12)
+                                        .clamp(0.0, 1.0),
+                                  ),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _IndeterminateBar(
+                                  width: barW,
+                                  progress: _loader.value,
+                                ),
+                                const SizedBox(height: 12),
+                                AnimatedOpacity(
+                                  opacity: _showPreparing ? 1 : 0,
+                                  duration: const Duration(milliseconds: 280),
+                                  child: Text(
+                                    'PREPARING YOUR EXPERIENCE',
+                                    style: TextStyle(
+                                      color:
+                                          Colors.white.withValues(alpha: 0.5),
+                                      fontSize: 10.5,
+                                      letterSpacing: 2.0,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ],
@@ -320,7 +414,7 @@ class _IndeterminateBar extends StatelessWidget {
 
     return SizedBox(
       width: width,
-      height: 3.5,
+      height: 3.2,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(999),
         child: ColoredBox(

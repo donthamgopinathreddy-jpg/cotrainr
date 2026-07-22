@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Monochrome status-bar icon for hydration reminders (Android tints white). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,3.15C12,3.15 6.5,9.9 6.5,14.25C6.5,17.42 8.97,20 12,20C15.03,20 17.5,17.42 17.5,14.25C17.5,9.9 12,3.15 12,3.15Z" />
+</vector>

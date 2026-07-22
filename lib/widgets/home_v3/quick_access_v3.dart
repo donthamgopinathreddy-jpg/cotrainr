@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../providers/accepted_client_trainers_provider.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/design_tokens.dart';
 import '../../theme/text_styles.dart';
 import '../common/pressable_card.dart';
 import 'home_premium_theme.dart';
@@ -32,7 +34,16 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
           .toLowerCase() ??
       'client';
 
-  Map<String, _ExploreTileData> _tilesForRole(String userRole) {
+  String _myTrainersSubtitle(int count) {
+    if (count <= 0) return 'No trainers connected';
+    if (count == 1) return '1 trainer connected';
+    return '$count trainers connected';
+  }
+
+  Map<String, _ExploreTileData> _tilesForRole(
+    String userRole, {
+    required int acceptedTrainerCount,
+  }) {
     final isTrainer = userRole == 'trainer';
     final isNutritionist = userRole == 'nutritionist';
     final excludeTrainerOnly = isTrainer || isNutritionist;
@@ -65,6 +76,12 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
         subtitle: 'View trainer feedback and notes.',
         icon: Icons.note_rounded,
         accent: Color(0xFFFF6B6B),
+      );
+      tiles['My Trainers'] = _ExploreTileData(
+        title: 'My Trainers',
+        subtitle: _myTrainersSubtitle(acceptedTrainerCount),
+        icon: Icons.sports_rounded,
+        accent: DesignTokens.accentOrange,
       );
     }
 
@@ -100,6 +117,12 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
         return () => context.push('/nutrition-goals');
       case 'Subscription':
         return () => context.push('/subscription');
+      case 'My Trainers':
+        return () {
+          final loc = GoRouterState.of(context).matchedLocation;
+          if (loc == '/my-trainers') return;
+          context.push('/my-trainers');
+        };
       default:
         return null;
     }
@@ -108,7 +131,15 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
   @override
   Widget build(BuildContext context) {
     final isLight = Theme.of(context).brightness == Brightness.light;
-    final tiles = _tilesForRole(_role);
+    final trainerCount = ref.watch(acceptedClientTrainersCountProvider);
+    // Ensure realtime/list provider is warm for clients.
+    if (_role != 'trainer' && _role != 'nutritionist') {
+      ref.watch(acceptedClientTrainersProvider);
+    }
+    final tiles = _tilesForRole(
+      _role,
+      acceptedTrainerCount: trainerCount,
+    );
     if (tiles.isEmpty) return const SizedBox.shrink();
 
     return TweenAnimationBuilder<double>(
@@ -257,6 +288,7 @@ class _ExploreBentoGrid extends StatelessWidget {
     final nutrition = _get('Nutrition Goals')!;
     final coach = _get('Coach Notes')!;
     final video = _get('Video Sessions')!;
+    final myTrainers = _get('My Trainers')!;
     final become = _get('Become a Trainer')!;
     final subscription = _get('Subscription')!;
 
@@ -276,7 +308,18 @@ class _ExploreBentoGrid extends StatelessWidget {
           ),
         ),
         const SizedBox(height: _gap),
-        _buildPairRow(pairH, become, subscription),
+        _buildPairRow(pairH, myTrainers, subscription),
+        const SizedBox(height: _gap),
+        SizedBox(
+          height: bannerH,
+          width: double.infinity,
+          child: _ExploreTile(
+            item: become,
+            layout: _ExploreTileLayout.banner,
+            isLight: isLight,
+            onTap: () => onTileTap(become),
+          ),
+        ),
       ],
     );
   }
@@ -446,6 +489,7 @@ class _ExploreTileData {
       'Nutrition Goals' => const Color(0xFF1FA876),
       'Coach Notes' || 'Client Notes' => const Color(0xFFE85555),
       'Video Sessions' => const Color(0xFF6D5CE6),
+      'My Trainers' => const Color(0xFFE8952E),
       'Become a Trainer' => const Color(0xFF3A96C4),
       'Subscription' => const Color(0xFFD4187A),
       _ => Color.lerp(accent, HomePremiumTheme.lightCharcoalText, 0.10)!,

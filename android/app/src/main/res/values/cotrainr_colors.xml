@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Matches DesignTokens.accentOrange / AppColors.orange -->
+    <color name="cotrainr_orange">#FFFF8A00</color>
+</resources>

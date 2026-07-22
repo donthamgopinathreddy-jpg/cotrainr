@@ -49,6 +49,16 @@ class _AppLinkHandlerState extends State<AppLinkHandler> {
       context.go(target);
       return;
     }
+    if (_isWaterInsightsUri(uri)) {
+      if (!mounted) return;
+      final isLoggedIn = Supabase.instance.client.auth.currentSession != null;
+      if (!isLoggedIn) {
+        context.go('/welcome');
+        return;
+      }
+      context.go('/insights/water');
+      return;
+    }
     if (!_isInviteUri(uri)) return;
     final code = _extractCode(uri);
     if (code == null) return;
@@ -58,6 +68,15 @@ class _AppLinkHandlerState extends State<AppLinkHandler> {
     if (!isLoggedIn) {
       context.go('/auth/create-account?code=${Uri.encodeComponent(code)}');
     }
+  }
+
+  bool _isWaterInsightsUri(Uri uri) {
+    if (uri.scheme == 'cotrainr' &&
+        (uri.host == 'insights' || uri.host == 'water')) {
+      if (uri.host == 'water') return true;
+      return uri.path == '/water' || uri.path.startsWith('/water');
+    }
+    return false;
   }
 
   @override

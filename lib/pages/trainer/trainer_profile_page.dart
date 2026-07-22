@@ -13,7 +13,6 @@ import '../../widgets/common/cover_with_blur_bridge.dart';
 import '../../providers/profile_images_provider.dart';
 import '../../pages/insights/insights_detail_page.dart';
 import '../../pages/trainer/become_trainer_page.dart';
-import '../../pages/trainer/verification_submission_page.dart';
 import '../../pages/refer/refer_friend_page.dart';
 import '../profile/settings_page.dart';
 import '../../widgets/profile/appearance_toggle.dart';
@@ -135,13 +134,7 @@ class _TrainerProfilePageState extends ConsumerState<TrainerProfilePage>
                             role: _role,
                             onTap: () async {
                               HapticFeedback.lightImpact();
-                              await Navigator.push(
-                                context,
-                                PageTransitions.slideRoute(
-                                  const VerificationSubmissionPage(),
-                                  beginOffset: const Offset(0, 0.05),
-                                ),
-                              );
+                              await context.push('/verification');
                               if (!mounted) return;
                               _loadProfile();
                             },

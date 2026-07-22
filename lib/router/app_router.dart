@@ -33,6 +33,11 @@ import '../../pages/ai_planner/ai_planner_page.dart';
 import '../../pages/nutrition_goal_planner/nutrition_goal_planner_page.dart';
 import '../../pages/quest/quest_page.dart';
 import '../../pages/bmi/bmi_details_screen.dart';
+import '../../pages/client/my_trainers_page.dart';
+import '../../pages/profile/provider_professional_edit_page.dart';
+import '../../pages/profile/provider_certifications_page.dart';
+import '../../pages/profile/public_profile_readonly_page.dart';
+import '../../pages/profile/settings/service_locations_page.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: '/splash',
@@ -201,14 +206,19 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/home',
       name: 'home',
-      pageBuilder: (context, state) => _fadeSlidePage(
-        child: HomeShellPage(
-          showWelcome: state.uri.queryParameters['showWelcome'] == 'true',
-          initialTabIndex:
-              int.tryParse(state.uri.queryParameters['tab'] ?? '') ?? 0,
-        ),
-        state: state,
-      ),
+      pageBuilder: (context, state) {
+        final tab =
+            int.tryParse(state.uri.queryParameters['tab'] ?? '') ?? 0;
+        return _fadeSlidePage(
+          child: HomeShellPage(
+            key: ValueKey('home-shell-tab-$tab'),
+            showWelcome: state.uri.queryParameters['showWelcome'] == 'true',
+            initialTabIndex: tab,
+          ),
+          state: state,
+          pageKey: ValueKey('home?tab=$tab'),
+        );
+      },
     ),
     GoRoute(
       path: '/notifications',
@@ -239,6 +249,14 @@ final GoRouter appRouter = GoRouter(
       name: 'coachNotes',
       pageBuilder: (context, state) => _fadeSlidePage(
         child: const CoachNotesPage(),
+        state: state,
+      ),
+    ),
+    GoRoute(
+      path: '/my-trainers',
+      name: 'myTrainers',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const MyTrainersPage(),
         state: state,
       ),
     ),
@@ -311,6 +329,46 @@ final GoRouter appRouter = GoRouter(
         child: const BecomeTrainerPage(),
         state: state,
       ),
+    ),
+    GoRoute(
+      path: '/profile/professional',
+      name: 'providerProfessional',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const ProviderProfessionalEditPage(),
+        state: state,
+      ),
+    ),
+    GoRoute(
+      path: '/profile/certifications',
+      name: 'providerCertifications',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const ProviderCertificationsPage(),
+        state: state,
+      ),
+    ),
+    GoRoute(
+      path: '/profile/service-locations',
+      name: 'providerServiceLocations',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const ServiceLocationsPage(),
+        state: state,
+      ),
+    ),
+    GoRoute(
+      path: '/providers/:providerId',
+      name: 'publicProviderProfile',
+      pageBuilder: (context, state) {
+        final id = state.pathParameters['providerId'] ?? '';
+        final extra = state.extra as Map<String, dynamic>?;
+        return _fadeSlidePage(
+          child: PublicProfileReadonlyPage(
+            userId: id,
+            titleFallback: extra?['titleFallback'] as String?,
+            providerType: extra?['providerType'] as String?,
+          ),
+          state: state,
+        );
+      },
     ),
     GoRoute(
       path: '/trainer/dashboard',
@@ -490,9 +548,10 @@ CustomTransitionPage<void> _authFromWelcomePage({
 CustomTransitionPage<void> _fadeSlidePage({
   required Widget child,
   required GoRouterState state,
+  LocalKey? pageKey,
 }) {
   return CustomTransitionPage<void>(
-    key: state.pageKey,
+    key: pageKey ?? state.pageKey,
     child: child,
     transitionDuration: Motion.pageTransitionDuration,
     reverseTransitionDuration: Motion.pageTransitionReverseDuration,

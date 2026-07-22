@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../services/water_reminder_service.dart';
 import '../../theme/design_tokens.dart';
 import '../../theme/insight_metric_theme.dart';
+import '../common/pressable_card.dart';
 
 /// Bottom sheet for drinking reminder interval selection.
 class WaterReminderPickerSheet extends StatefulWidget {
@@ -42,6 +43,14 @@ class _WaterReminderPickerSheetState extends State<WaterReminderPickerSheet> {
   bool _isCustom = false;
   final _hoursController = TextEditingController();
   final _minutesController = TextEditingController();
+
+  static const _presetMeta = <(int, String, String)>[
+    (0, 'Off', 'No reminders'),
+    (30, '30 min', 'Stay sharp'),
+    (60, '1 hour', 'Steady pace'),
+    (120, '2 hours', 'Balanced'),
+    (180, '3 hours', 'Light nudges'),
+  ];
 
   @override
   void initState() {
@@ -133,200 +142,212 @@ class _WaterReminderPickerSheetState extends State<WaterReminderPickerSheet> {
     final isLight = Theme.of(context).brightness == Brightness.light;
     final sheetBg = isLight
         ? DesignTokens.lightCardBackground
-        : InsightMetricTheme.surfaceCard;
+        : const Color(0xFF0E1218);
     final titleColor = DesignTokens.textPrimaryOf(context);
     final subtitleColor = DesignTokens.textSecondaryOf(context);
-    final borderColor = isLight
-        ? DesignTokens.lightBorder
-        : Colors.white.withValues(alpha: 0.12);
-    final pillBg = InsightMetricTheme.surfaceCardOf(context);
+    final accent = widget.theme.accent;
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final safeBottom = MediaQuery.of(context).padding.bottom;
 
     return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-      ),
+      padding: EdgeInsets.only(bottom: bottomInset),
       child: Container(
         decoration: BoxDecoration(
           color: sheetBg,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          boxShadow: [
+            BoxShadow(
+              color: accent.withValues(alpha: 0.12),
+              blurRadius: 28,
+              offset: const Offset(0, -6),
+            ),
+          ],
         ),
-        padding: const EdgeInsets.all(24),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Drinking reminder',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: titleColor,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Choose how often Cotrainr should remind you to drink water.',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: subtitleColor,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final minutes in WaterReminderService.presetMinutes)
-                    _ReminderPill(
-                      label: WaterReminderService.pillLabel(minutes),
-                      selected: !_isCustom && _selectedMinutes == minutes,
-                      accent: widget.theme.accent,
-                      unselectedBg: pillBg,
-                      titleColor: titleColor,
-                      borderColor: borderColor,
-                      onTap: () => _selectPreset(minutes),
+        child: SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(20, 10, 20, 16 + safeBottom * 0.25),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: subtitleColor.withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(999),
                     ),
-                  _ReminderPill(
-                    label: 'Custom',
-                    selected: _isCustom,
-                    accent: widget.theme.accent,
-                    unselectedBg: pillBg,
-                    titleColor: titleColor,
-                    borderColor: borderColor,
-                    onTap: _selectCustom,
                   ),
+                ),
+                const SizedBox(height: 16),
+                _SheetHero(accent: accent, isLight: isLight),
+                const SizedBox(height: 20),
+                Text(
+                  'Reminder interval',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.2,
+                    color: subtitleColor,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                for (final preset in _presetMeta) ...[
+                  _IntervalCard(
+                    title: preset.$2,
+                    subtitle: preset.$3,
+                    selected: !_isCustom && _selectedMinutes == preset.$1,
+                    accent: accent,
+                    isLight: isLight,
+                    icon: preset.$1 == 0
+                        ? Icons.notifications_off_outlined
+                        : Icons.water_drop_rounded,
+                    onTap: () => _selectPreset(preset.$1),
+                  ),
+                  const SizedBox(height: 8),
                 ],
-              ),
-              if (_isCustom) ...[
-                const SizedBox(height: 12),
+                _IntervalCard(
+                  title: 'Custom',
+                  subtitle: 'Set your own hours and minutes',
+                  selected: _isCustom,
+                  accent: accent,
+                  isLight: isLight,
+                  icon: Icons.tune_rounded,
+                  onTap: _selectCustom,
+                ),
+                if (_isCustom) ...[
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _TimeField(
+                          controller: _hoursController,
+                          label: 'Hours',
+                          accent: accent,
+                          titleColor: titleColor,
+                          subtitleColor: subtitleColor,
+                          isLight: isLight,
+                          onChanged: (_) => setState(() {}),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _TimeField(
+                          controller: _minutesController,
+                          label: 'Minutes',
+                          accent: accent,
+                          titleColor: titleColor,
+                          subtitleColor: subtitleColor,
+                          isLight: isLight,
+                          onChanged: (_) => setState(() {}),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_customMinutes != null &&
+                      _customMinutes! > 0 &&
+                      _customMinutes! < 30)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: Row(
+                        children: [
+                          Icon(Icons.info_outline_rounded,
+                              size: 16, color: accent),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              'Minimum interval is 30 minutes.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: subtitleColor,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+                const SizedBox(height: 22),
                 Row(
                   children: [
                     Expanded(
-                      child: TextField(
-                        controller: _hoursController,
-                        autofocus: true,
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: titleColor,
-                        ),
-                        decoration: InputDecoration(
-                          hintText: 'hours',
-                          hintStyle: TextStyle(color: subtitleColor),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: borderColor),
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          side: BorderSide(
+                            color: InsightMetricTheme.borderColorOf(context),
                           ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: widget.theme.accent,
-                              width: 2,
-                            ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
                           ),
                         ),
-                        onChanged: (_) => setState(() {}),
+                        child: Text(
+                          'Cancel',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: titleColor,
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: TextField(
-                        controller: _minutesController,
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: titleColor,
+                      flex: 1,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16),
+                          gradient: _canSave
+                              ? LinearGradient(
+                                  colors: [
+                                    accent,
+                                    Color.lerp(accent, Colors.white, 0.22)!,
+                                  ],
+                                )
+                              : null,
+                          color: _canSave
+                              ? null
+                              : accent.withValues(alpha: 0.28),
+                          boxShadow: _canSave
+                              ? [
+                                  BoxShadow(
+                                    color: accent.withValues(alpha: 0.35),
+                                    blurRadius: 16,
+                                    offset: const Offset(0, 6),
+                                  ),
+                                ]
+                              : null,
                         ),
-                        decoration: InputDecoration(
-                          hintText: 'minutes',
-                          hintStyle: TextStyle(color: subtitleColor),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: borderColor),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: widget.theme.accent,
-                              width: 2,
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: _canSave ? _save : null,
+                            borderRadius: BorderRadius.circular(16),
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 15),
+                              child: Center(
+                                child: Text(
+                                  'Save reminder',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                         ),
-                        onChanged: (_) => setState(() {}),
                       ),
                     ),
                   ],
                 ),
-                if (_customMinutes != null &&
-                    _customMinutes! > 0 &&
-                    _customMinutes! < 30)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      'Minimum interval is 30 minutes.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: subtitleColor,
-                      ),
-                    ),
-                  ),
               ],
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        side: BorderSide(color: borderColor),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: Text(
-                        'Cancel',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: titleColor,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: _canSave ? _save : null,
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        backgroundColor: widget.theme.accent,
-                        foregroundColor: Colors.white,
-                        disabledBackgroundColor:
-                            widget.theme.accent.withValues(alpha: 0.35),
-                        disabledForegroundColor:
-                            Colors.white.withValues(alpha: 0.7),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text(
-                        'Save',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -334,47 +355,257 @@ class _WaterReminderPickerSheetState extends State<WaterReminderPickerSheet> {
   }
 }
 
-class _ReminderPill extends StatelessWidget {
-  final String label;
+class _SheetHero extends StatelessWidget {
+  final Color accent;
+  final bool isLight;
+
+  const _SheetHero({required this.accent, required this.isLight});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: isLight
+              ? [
+                  accent.withValues(alpha: 0.16),
+                  const Color(0xFF163B5A).withValues(alpha: 0.08),
+                ]
+              : const [
+                  Color(0xFF163B5A),
+                  Color(0xFF1E4A72),
+                ],
+        ),
+        border: Border.all(color: accent.withValues(alpha: 0.28)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                colors: [
+                  accent,
+                  Color.lerp(accent, Colors.white, 0.25)!,
+                ],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: accent.withValues(alpha: 0.4),
+                  blurRadius: 14,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+            ),
+            child: const Icon(
+              Icons.water_drop_rounded,
+              color: Colors.white,
+              size: 28,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Stay hydrated',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.3,
+                    color: isLight
+                        ? DesignTokens.lightTextPrimary
+                        : Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Cotrainr will nudge you to log water on your schedule.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.35,
+                    fontWeight: FontWeight.w500,
+                    color: isLight
+                        ? DesignTokens.lightTextSecondary
+                        : Colors.white.withValues(alpha: 0.72),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _IntervalCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
   final bool selected;
   final Color accent;
-  final Color unselectedBg;
-  final Color titleColor;
-  final Color borderColor;
+  final bool isLight;
+  final IconData icon;
   final VoidCallback onTap;
 
-  const _ReminderPill({
-    required this.label,
+  const _IntervalCard({
+    required this.title,
+    required this.subtitle,
     required this.selected,
     required this.accent,
-    required this.unselectedBg,
-    required this.titleColor,
-    required this.borderColor,
+    required this.isLight,
+    required this.icon,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    final titleColor = DesignTokens.textPrimaryOf(context);
+    final subtitleColor = DesignTokens.textSecondaryOf(context);
+
+    return PressableCard(
       onTap: onTap,
+      borderRadius: 16,
+      pressScale: 0.985,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
+        duration: const Duration(milliseconds: 220),
         curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: selected ? accent : unselectedBg,
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: selected ? accent : borderColor),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: selected ? Colors.white : titleColor,
+          borderRadius: BorderRadius.circular(16),
+          gradient: selected
+              ? LinearGradient(
+                  colors: [
+                    accent.withValues(alpha: isLight ? 0.18 : 0.28),
+                    accent.withValues(alpha: isLight ? 0.08 : 0.12),
+                  ],
+                )
+              : null,
+          color: selected
+              ? null
+              : (isLight
+                  ? DesignTokens.lightMutedCardBackground
+                  : Colors.white.withValues(alpha: 0.04)),
+          border: Border.all(
+            color: selected
+                ? accent.withValues(alpha: 0.7)
+                : InsightMetricTheme.borderColorOf(context),
+            width: selected ? 1.5 : 1,
           ),
         ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                color: selected
+                    ? accent
+                    : accent.withValues(alpha: isLight ? 0.12 : 0.16),
+              ),
+              child: Icon(
+                icon,
+                size: 20,
+                color: selected ? Colors.white : accent,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: titleColor,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: subtitleColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            AnimatedOpacity(
+              duration: const Duration(milliseconds: 180),
+              opacity: selected ? 1 : 0,
+              child: Icon(Icons.check_circle_rounded, color: accent, size: 22),
+            ),
+          ],
+        ),
       ),
+    );
+  }
+}
+
+class _TimeField extends StatelessWidget {
+  final TextEditingController controller;
+  final String label;
+  final Color accent;
+  final Color titleColor;
+  final Color subtitleColor;
+  final bool isLight;
+  final ValueChanged<String> onChanged;
+
+  const _TimeField({
+    required this.controller,
+    required this.label,
+    required this.accent,
+    required this.titleColor,
+    required this.subtitleColor,
+    required this.isLight,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      keyboardType: TextInputType.number,
+      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+      style: TextStyle(
+        fontSize: 18,
+        fontWeight: FontWeight.w700,
+        color: titleColor,
+      ),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: TextStyle(color: subtitleColor, fontWeight: FontWeight.w600),
+        filled: true,
+        fillColor: isLight
+            ? DesignTokens.lightMutedCardBackground
+            : Colors.white.withValues(alpha: 0.04),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(
+            color: InsightMetricTheme.borderColorOf(context),
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: accent, width: 2),
+        ),
+      ),
+      onChanged: onChanged,
     );
   }
 }

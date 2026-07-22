@@ -9,9 +9,12 @@ import 'router/app_router.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_mode_provider.dart';
 import 'services/health_tracking_service.dart';
+import 'services/water_notification_handler.dart';
+import 'services/water_notification_platform.dart';
 import 'services/water_reminder_service.dart';
-import 'widgets/quest/quest_sync_initializer.dart';
+import 'widgets/hydration/hydration_lifecycle_refresher.dart';
 import 'widgets/privacy/privacy_preferences_sync_initializer.dart';
+import 'widgets/quest/quest_sync_initializer.dart';
 
 void main() async {
   final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
@@ -37,6 +40,10 @@ void main() async {
   });
 
   unawaited(_initWaterReminders());
+  // Register as early as possible so cold-start notification actions are not dropped.
+  WaterNotificationPlatform.ensureQuickLogHandler(
+    handler: WaterNotificationHandler.handleActionId,
+  );
 
   runApp(const ProviderScope(child: MyApp()));
 }
@@ -59,7 +66,8 @@ class MyApp extends ConsumerWidget {
 
     return PrivacyPreferencesSyncInitializer(
       child: QuestSyncInitializer(
-        child: MaterialApp.router(
+        child: HydrationLifecycleRefresher(
+          child: MaterialApp.router(
         title: 'Cotrainr',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.lightTheme,
@@ -77,6 +85,7 @@ class MyApp extends ConsumerWidget {
             child: child!,
           );
         },
+          ),
         ),
       ),
     );

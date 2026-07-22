@@ -14,13 +14,13 @@ import '../../services/streak_service.dart';
 import '../../services/user_goals_service.dart';
 import '../../theme/account_hub_theme.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/design_tokens.dart';
 import '../../utils/page_transitions.dart';
 import '../../widgets/common/pressable_card.dart';
 import '../../widgets/profile/account_hub_widgets.dart';
 import '../../widgets/profile/appearance_toggle.dart';
 import '../../providers/profile_images_provider.dart';
-import '../trainer/become_trainer_page.dart';
-import '../trainer/verification_submission_page.dart';
+import '../../providers/provider_professional_provider.dart';
 import '../subscription/subscription_page.dart';
 import '../refer/refer_friend_page.dart';
 import 'goals_preferences_page.dart';
@@ -74,10 +74,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
 
   Future<void> _openVerificationFlow() async {
     HapticFeedback.lightImpact();
-    await Navigator.push(
-      context,
-      PageTransitions.slideRoute(const VerificationSubmissionPage()),
-    );
+    await context.push('/verification');
     if (!mounted) return;
     await _loadVerificationStatus();
   }
@@ -347,6 +344,19 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                       ),
                     ),
                   ],
+                  if (_role == 'trainer' || _role == 'nutritionist') ...[
+                    const SizedBox(height: 10),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: AccountHubTheme.horizontalMargin),
+                      child: _ProfessionalCompletionCard(
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          context.push('/profile/professional');
+                        },
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 14),
                   Padding(
                     padding: const EdgeInsets.symmetric(
@@ -366,6 +376,29 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                               ),
                             ),
                           ),
+                        if (_role == 'trainer' || _role == 'nutritionist') ...[
+                          _ProfileActionRow(
+                            label: 'Professional profile',
+                            icon: Icons.badge_outlined,
+                            iconColor: DesignTokens.accentOrange,
+                            delayMs: 120,
+                            onTap: () => context.push('/profile/professional'),
+                          ),
+                          _ProfileActionRow(
+                            label: 'Certifications',
+                            icon: Icons.workspace_premium_outlined,
+                            delayMs: 140,
+                            onTap: () =>
+                                context.push('/profile/certifications'),
+                          ),
+                          _ProfileActionRow(
+                            label: 'Service locations',
+                            icon: Icons.place_outlined,
+                            delayMs: 150,
+                            onTap: () =>
+                                context.push('/profile/service-locations'),
+                          ),
+                        ],
                         _ProfileActionRow(
                           label: 'Goals & Preferences',
                           icon: Icons.flag_outlined,
@@ -415,12 +448,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                             label: 'Become a Trainer',
                             icon: Icons.school_rounded,
                             delayMs: 320,
-                            onTap: () => Navigator.push(
-                              context,
-                              PageTransitions.slideRoute(
-                                const BecomeTrainerPage(),
-                              ),
-                            ),
+                            onTap: () => context.push('/trainer/become'),
                           ),
                         if (_role == 'trainer' || _role == 'nutritionist')
                           _ProfileActionRow(
@@ -662,6 +690,84 @@ class _ProfileIdentitySection extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ProfessionalCompletionCard extends ConsumerWidget {
+  final VoidCallback onTap;
+
+  const _ProfessionalCompletionCard({required this.onTap});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(myProviderProfessionalProvider);
+    final profile = async.valueOrNull;
+    final ratio = profile?.completionRatio ?? 0;
+    final pct = (ratio * 100).round();
+    final incomplete = ratio < 1;
+
+    return PressableCard(
+      onTap: onTap,
+      borderRadius: AccountHubTheme.cardRadius,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AccountHubTheme.cardBg(context),
+          borderRadius: BorderRadius.circular(AccountHubTheme.cardRadius),
+          border: Border.all(
+            color: DesignTokens.accentOrange.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(
+                  Icons.badge_outlined,
+                  color: DesignTokens.accentOrange,
+                  size: 22,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    incomplete
+                        ? 'Complete your professional profile'
+                        : 'Professional profile',
+                    style: AccountHubTheme.rowTitle(context),
+                  ),
+                ),
+                Text(
+                  '$pct%',
+                  style: AccountHubTheme.rowSubtitle(context).copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: DesignTokens.accentOrange,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              incomplete
+                  ? 'Add headline, bio, specialties, experience, and session modes.'
+                  : 'Keep specialties and certifications up to date.',
+              style: AccountHubTheme.rowSubtitle(context),
+            ),
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                value: ratio.clamp(0.0, 1.0),
+                minHeight: 6,
+                backgroundColor:
+                    Theme.of(context).colorScheme.surfaceContainerHighest,
+                color: DesignTokens.accentOrange,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

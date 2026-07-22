@@ -184,22 +184,41 @@ class MetricsRepository {
       }
     } catch (e) {
       print('Error updating today metrics: $e');
+      rethrow;
     }
   }
 
-  /// Increment water intake (add to existing value)
-  Future<void> incrementWater(double liters) async {
-    if (_currentUserId == null) return;
+  /// Increment water intake (add to existing value).
+  /// Returns `true` when the write succeeds for an authenticated user.
+  Future<bool> incrementWater(double liters) async {
+    if (_currentUserId == null) {
+      print('MetricsRepository: incrementWater skipped — not authenticated');
+      return false;
+    }
+    if (liters <= 0) return false;
 
     try {
-      // Get current water intake
       final existing = await getTodayMetrics();
-      final currentWater = (existing?['water_intake_liters'] as num?)?.toDouble() ?? 0.0;
+      final currentWater =
+          (existing?['water_intake_liters'] as num?)?.toDouble() ?? 0.0;
       final newWater = currentWater + liters;
 
       await updateTodayMetrics(waterIntakeLiters: newWater);
+
+      // Verify write landed.
+      final verify = await getTodayMetrics();
+      final verified =
+          (verify?['water_intake_liters'] as num?)?.toDouble() ?? 0.0;
+      if (verified + 0.0001 < newWater) {
+        print(
+          'MetricsRepository: incrementWater verify mismatch '
+          'expected=$newWater actual=$verified',
+        );
+      }
+      return true;
     } catch (e) {
       print('Error incrementing water: $e');
+      return false;
     }
   }
 
