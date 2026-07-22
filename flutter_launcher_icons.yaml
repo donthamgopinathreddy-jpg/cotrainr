@@ -1,0 +1,16 @@
+# dart run flutter_launcher_icons
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/branding/icons/cotrainr_app_icon_1024.png
+  adaptive_icon_background: "#FF8A00"
+  adaptive_icon_foreground: assets/branding/icons/cotrainr_app_icon_foreground.png
+  adaptive_icon_monochrome: assets/branding/icons/cotrainr_app_icon_monochrome.png
+  adaptive_icon_foreground_inset: 12
+  remove_alpha_ios: true
+  web:
+    generate: true
+    image_path: assets/branding/icons/cotrainr_app_icon_1024.png
+    background_color: "#FF8A00"
+    theme_color: "#FF8A00"
+  min_sdk_android: 21

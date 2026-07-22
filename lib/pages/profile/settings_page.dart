@@ -70,7 +70,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     try {
       await Supabase.instance.client.auth.signOut();
       if (!mounted) return;
-      context.go('/splash');
+      context.go('/welcome');
     } catch (e) {
       if (!mounted) return;
       showHubSnackBar(context, 'Logout failed: $e');

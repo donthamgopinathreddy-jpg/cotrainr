@@ -3,9 +3,9 @@
     "short_name": "Cotrainr",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#FF8A00",
+    "theme_color": "#FF8A00",
+    "description": "Cotrainr — Find. Connect. Train. Transform.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import '../../theme/account_hub_theme.dart';
 import '../../theme/design_tokens.dart';
+import '../../widgets/branding/cotrainr_logo.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
 
 /// Shared auth flow styling aligned with account hub pages.
@@ -95,6 +96,25 @@ abstract final class AuthUi {
   }
 }
 
+/// Official Cotrainr mark for auth screens — always from master SVG.
+class AuthBrandLogo extends StatelessWidget {
+  final double width;
+
+  const AuthBrandLogo({
+    super.key,
+    this.width = 200,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return CotrainrBrandLockup(
+      logoWidth: width * 0.42,
+      showTagline: false,
+      variant: CotrainrLogoVariant.color,
+    );
+  }
+}
+
 class AuthHeroCard extends StatelessWidget {
   final bool isLight;
   final IconData? icon;
@@ -102,6 +122,7 @@ class AuthHeroCard extends StatelessWidget {
   final String subtitle;
   final Color accent;
   final bool compact;
+  final bool showLogo;
 
   const AuthHeroCard({
     super.key,
@@ -111,6 +132,7 @@ class AuthHeroCard extends StatelessWidget {
     required this.subtitle,
     this.accent = AuthUi.accent,
     this.compact = false,
+    this.showLogo = false,
   });
 
   @override
@@ -118,7 +140,7 @@ class AuthHeroCard extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: compact
-          ? const EdgeInsets.fromLTRB(16, 14, 16, 14)
+          ? const EdgeInsets.fromLTRB(16, 18, 16, 16)
           : const EdgeInsets.fromLTRB(20, 22, 20, 20),
       decoration: BoxDecoration(
         color: AccountHubTheme.cardBg(context),
@@ -127,9 +149,14 @@ class AuthHeroCard extends StatelessWidget {
         gradient: HomePremiumTheme.bmiTileGradient(isLight, accent).scale(0.45),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: showLogo
+            ? CrossAxisAlignment.center
+            : CrossAxisAlignment.start,
         children: [
-          if (icon != null) ...[
+          if (showLogo) ...[
+            AuthBrandLogo(width: compact ? 168 : 200),
+            SizedBox(height: compact ? 16 : 20),
+          ] else if (icon != null) ...[
             Container(
               width: 44,
               height: 44,
@@ -146,6 +173,7 @@ class AuthHeroCard extends StatelessWidget {
             style: compact
                 ? AuthUi.pageTitle(context).copyWith(fontSize: 22)
                 : AuthUi.heroTitle(context),
+            textAlign: showLogo ? TextAlign.center : TextAlign.start,
           ),
           SizedBox(height: compact ? 4 : 8),
           Text(
@@ -153,6 +181,7 @@ class AuthHeroCard extends StatelessWidget {
             style: compact
                 ? AuthUi.pageSubtitle(context).copyWith(fontSize: 14)
                 : AuthUi.heroSubtitle(context),
+            textAlign: showLogo ? TextAlign.center : TextAlign.start,
           ),
         ],
       ),

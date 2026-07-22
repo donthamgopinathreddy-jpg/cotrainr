@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/config/supabase_config.dart';
@@ -6,21 +9,24 @@ import 'router/app_router.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_mode_provider.dart';
 import 'services/health_tracking_service.dart';
-import 'services/background_health_tracker.dart';
 import 'services/water_reminder_service.dart';
 import 'widgets/quest/quest_sync_initializer.dart';
 import 'widgets/privacy/privacy_preferences_sync_initializer.dart';
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
+  // Keep OS splash (black + logo) until Flutter paints CotrainrSplashScreen.
+  FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
-  // Initialize Supabase
+  // Critical startup: Supabase must be ready before GoRouter redirect runs.
+  // Branded CotrainrSplashScreen then restores session, loads local prefs,
+  // and chooses the initial route (with a short minimum display time).
   await Supabase.initialize(
     url: SupabaseConfig.supabaseUrl,
     anonKey: SupabaseConfig.supabaseAnonKey,
   );
 
-  // Initialize health tracking service for background step counting
+  // Non-blocking secondary services — do not delay first frame / splash.
   final healthService = HealthTrackingService();
   healthService.initialize().then((initialized) {
     if (initialized) {
@@ -30,10 +36,18 @@ void main() async {
     }
   });
 
-  await WaterReminderService.instance.ensureInitialized();
-  await WaterReminderService.instance.rescheduleIfEnabled();
+  unawaited(_initWaterReminders());
 
   runApp(const ProviderScope(child: MyApp()));
+}
+
+Future<void> _initWaterReminders() async {
+  try {
+    await WaterReminderService.instance.ensureInitialized();
+    await WaterReminderService.instance.rescheduleIfEnabled();
+  } catch (e) {
+    print('Water reminder init failed: $e');
+  }
 }
 
 class MyApp extends ConsumerWidget {

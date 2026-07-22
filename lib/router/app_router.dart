@@ -9,6 +9,7 @@ import '../../pages/auth/signup_wizard_page.dart';
 import '../../pages/auth/welcome_page.dart';
 import '../../pages/auth/welcome_animation_page.dart';
 import '../../pages/auth/permissions_page.dart';
+import '../../pages/splash_page.dart';
 import '../../pages/home/home_shell_page.dart';
 import '../../pages/notifications/notification_page.dart';
 import '../../pages/insights/insights_detail_page.dart';
@@ -34,25 +35,41 @@ import '../../pages/quest/quest_page.dart';
 import '../../pages/bmi/bmi_details_screen.dart';
 
 final GoRouter appRouter = GoRouter(
-  initialLocation: '/welcome',
+  initialLocation: '/splash',
   debugLogDiagnostics: true,
   redirect: (BuildContext context, GoRouterState state) {
     final supabase = Supabase.instance.client;
     final session = supabase.auth.currentSession;
     final isLoggedIn = session != null;
+    final location = state.matchedLocation;
 
     // Public routes that don't require auth
-    final publicRoutes = ['/welcome', '/auth/login', '/auth/create-account', '/auth/permissions', '/welcome-animation', '/invite'];
-    final isPublicRoute = publicRoutes.contains(state.matchedLocation);
+    final publicRoutes = [
+      '/splash',
+      '/welcome',
+      '/auth/login',
+      '/auth/create-account',
+      '/auth/permissions',
+      '/welcome-animation',
+      '/invite',
+    ];
+    final isPublicRoute = publicRoutes.contains(location);
+
+    // Splash owns the first auth decision — do not bounce away mid-startup.
+    if (location == '/splash') {
+      return null;
+    }
 
     // If not logged in and trying to access protected route
     if (!isLoggedIn && !isPublicRoute) {
       return '/welcome';
     }
 
-    // If logged in and trying to access auth routes, redirect based on user role
-    // But allow /welcome-animation to be accessed even when logged in
-    if (isLoggedIn && isPublicRoute && state.matchedLocation != '/welcome-animation') {
+    // If logged in and on public auth routes, redirect home (splash owns cold start).
+    if (isLoggedIn &&
+        isPublicRoute &&
+        location != '/welcome-animation' &&
+        location != '/splash') {
       // Try to get user role from metadata (fallback, pages will check profiles.role)
       try {
         final user = supabase.auth.currentUser;
@@ -93,17 +110,49 @@ final GoRouter appRouter = GoRouter(
   },
   routes: [
     GoRoute(
+      path: '/splash',
+      name: 'splash',
+      pageBuilder: (context, state) => CustomTransitionPage<void>(
+        key: state.pageKey,
+        child: const CotrainrSplashScreen(),
+        transitionDuration: Duration.zero,
+        reverseTransitionDuration: const Duration(milliseconds: 280),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+      ),
+    ),
+    GoRoute(
       path: '/welcome',
       name: 'welcome',
-      pageBuilder: (context, state) => _fadeSlidePage(
+      pageBuilder: (context, state) => CustomTransitionPage<void>(
+        key: state.pageKey,
         child: const WelcomePage(),
-        state: state,
+        transitionDuration: const Duration(milliseconds: 320),
+        reverseTransitionDuration: const Duration(milliseconds: 280),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
+          );
+          return FadeTransition(
+            opacity: curved,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0.03, 0),
+                end: Offset.zero,
+              ).animate(curved),
+              child: child,
+            ),
+          );
+        },
       ),
     ),
     GoRoute(
       path: '/auth/login',
       name: 'login',
-      pageBuilder: (context, state) => _fadeSlidePage(
+      pageBuilder: (context, state) => _authFromWelcomePage(
         child: const LoginPage(),
         state: state,
       ),
@@ -113,7 +162,7 @@ final GoRouter appRouter = GoRouter(
       name: 'createAccount',
       pageBuilder: (context, state) {
         final code = state.uri.queryParameters['code'];
-        return _fadeSlidePage(
+        return _authFromWelcomePage(
           child: SignupWizardPage(initialReferralCode: code),
           state: state,
         );
@@ -403,6 +452,39 @@ final GoRouter appRouter = GoRouter(
     ),
   ],
 );
+
+/// Welcome (orange) → Login/Register (black): fade + light horizontal slide.
+CustomTransitionPage<void> _authFromWelcomePage({
+  required Widget child,
+  required GoRouterState state,
+}) {
+  return CustomTransitionPage<void>(
+    key: state.pageKey,
+    child: child,
+    transitionDuration: const Duration(milliseconds: 320),
+    reverseTransitionDuration: const Duration(milliseconds: 280),
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      );
+      return ColoredBox(
+        color: Colors.black,
+        child: FadeTransition(
+          opacity: curved,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0.04, 0),
+              end: Offset.zero,
+            ).animate(curved),
+            child: child,
+          ),
+        ),
+      );
+    },
+  );
+}
 
 /// Standard page transition (smooth fade + subtle slide with scale)
 CustomTransitionPage<void> _fadeSlidePage({
