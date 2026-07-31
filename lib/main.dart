@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -75,14 +76,30 @@ class MyApp extends ConsumerWidget {
         themeMode: themeMode,
         routerConfig: appRouter,
         builder: (context, child) {
-          return MediaQuery(
-            data: MediaQuery.of(context).copyWith(
-              textScaler: MediaQuery.of(context).textScaler.clamp(
-                minScaleFactor: 0.8,
-                maxScaleFactor: 1.2,
+          final brightness = Theme.of(context).brightness;
+          final isDark = brightness == Brightness.dark;
+          final overlay = SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness:
+                isDark ? Brightness.light : Brightness.dark,
+            statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
+            systemNavigationBarColor:
+                isDark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+            systemNavigationBarIconBrightness:
+                isDark ? Brightness.light : Brightness.dark,
+            systemNavigationBarDividerColor: Colors.transparent,
+          );
+          return AnnotatedRegion<SystemUiOverlayStyle>(
+            value: overlay,
+            child: MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaler: MediaQuery.of(context).textScaler.clamp(
+                  minScaleFactor: 0.8,
+                  maxScaleFactor: 1.2,
+                ),
               ),
+              child: child ?? const SizedBox.shrink(),
             ),
-            child: child!,
           );
         },
           ),

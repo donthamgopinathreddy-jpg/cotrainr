@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'weekly_insights_page.dart';
+import '../../theme/design_tokens.dart';
 import '../../theme/meal_tracker_tokens.dart';
 import '../../widgets/common/app_tab_page_header.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
@@ -45,12 +46,12 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
   int goalFats = 65; // grams
   int goalFiber = 30; // grams
 
-  // Current totals
-  int calories = 1260;
-  int protein = 92;
-  int carbs = 140;
-  int fats = 38;
-  int fiber = 18;
+  // Current totals (start empty; filled from DB or after adding food)
+  int calories = 0;
+  int protein = 0;
+  int carbs = 0;
+  int fats = 0;
+  int fiber = 0;
 
   // Meal data
   final Map<String, List<FoodItem>> _meals = {
@@ -112,26 +113,37 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
   }
 
   Future<void> _loadDayData() async {
-    final data = await _mealRepo.getDayMeals(_selectedDate);
-    if (!mounted) return;
-    setState(() {
-      const defaultOrder = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
-      final customFromData = data.mealsByType.keys
-          .where((k) => !defaultOrder.contains(k))
-          .toList();
-      _mealOrder = [...defaultOrder, ...customFromData];
-      _meals.clear();
-      for (final k in _mealOrder) {
-        _meals[k] = data.mealsByType[k]?.map(_foodItemFromRow).toList() ?? [];
-      }
-      calories = data.totalCalories;
-      protein = data.totalProtein.round();
-      carbs = data.totalCarbs.round();
-      fats = data.totalFats.round();
-      fiber = data.totalFiber.round();
-    });
-    _ringController.reset();
-    _ringController.forward();
+    try {
+      final data = await _mealRepo.getDayMeals(_selectedDate);
+      if (!mounted) return;
+      setState(() {
+        const defaultOrder = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
+        final customFromData = data.mealsByType.keys
+            .where((k) => !defaultOrder.contains(k))
+            .toList();
+        _mealOrder = [...defaultOrder, ...customFromData];
+        _meals.clear();
+        for (final k in _mealOrder) {
+          _meals[k] =
+              data.mealsByType[k]?.map(_foodItemFromRow).toList() ?? [];
+        }
+        calories = data.totalCalories;
+        protein = data.totalProtein.round();
+        carbs = data.totalCarbs.round();
+        fats = data.totalFats.round();
+        fiber = data.totalFiber.round();
+      });
+      _ringController.reset();
+      _ringController.forward();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   FoodItem _foodItemFromRow(MealItemRow row) {
@@ -410,7 +422,7 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
         foodCatalogRepo: _foodCatalogRepo,
         onFoodAdded: (food, meal, {String? catalogFoodId}) async {
           try {
-            await _mealRepo.addFoodItem(
+            final newId = await _mealRepo.addFoodItem(
               date: _selectedDate,
               mealType: meal,
               foodName: food.name,
@@ -424,17 +436,25 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
               foodId: catalogFoodId,
             );
             if (!mounted) return;
-            final data = await _mealRepo.getDayMeals(_selectedDate);
-            if (!mounted) return;
+
+            // Optimistic local update so UI stays populated even if refetch fails.
             setState(() {
-              const defaultOrder = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
-              final customFromData = data.mealsByType.keys
-                  .where((k) => !defaultOrder.contains(k))
-                  .toList();
-              _mealOrder = [...defaultOrder, ...customFromData];
-              _meals.clear();
-              for (final k in _mealOrder) {
-                _meals[k] = data.mealsByType[k]?.map(_foodItemFromRow).toList() ?? [];
+              _meals.putIfAbsent(meal, () => []);
+              _meals[meal]!.add(
+                FoodItem(
+                  id: newId,
+                  name: food.name,
+                  calories: food.calories,
+                  protein: food.protein,
+                  carbs: food.carbs,
+                  fats: food.fats,
+                  fiber: food.fiber,
+                  unit: food.unit,
+                  amount: food.amount,
+                ),
+              );
+              if (!_mealOrder.contains(meal)) {
+                _mealOrder.add(meal);
               }
               _recomputeTotals();
               if (!_recentFoods.any((f) => f.name == food.name)) {
@@ -442,6 +462,28 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
                 if (_recentFoods.length > 5) _recentFoods.removeLast();
               }
             });
+
+            try {
+              final data = await _mealRepo.getDayMeals(_selectedDate);
+              if (!mounted) return;
+              setState(() {
+                const defaultOrder = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
+                final customFromData = data.mealsByType.keys
+                    .where((k) => !defaultOrder.contains(k))
+                    .toList();
+                _mealOrder = [...defaultOrder, ...customFromData];
+                _meals.clear();
+                for (final k in _mealOrder) {
+                  _meals[k] =
+                      data.mealsByType[k]?.map(_foodItemFromRow).toList() ??
+                          [];
+                }
+                _recomputeTotals();
+              });
+            } catch (_) {
+              // Keep optimistic row; day already shows the added food.
+            }
+
             _ringController.reset();
             _ringController.forward();
             HapticFeedback.mediumImpact();
@@ -457,9 +499,14 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
           } catch (e) {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Failed to add: $e')),
+                SnackBar(
+                  content: Text(
+                    e.toString().replaceFirst('Exception: ', ''),
+                  ),
+                ),
               );
             }
+            rethrow;
           }
         },
         recentFoods: _recentFoods,
@@ -633,9 +680,17 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
           bottom: true,
           child: FadeTransition(
             opacity: _fadeAnimation,
-            child: CustomScrollView(
+            child: RefreshIndicator(
+              color: DesignTokens.accentOrange,
+              backgroundColor: DesignTokens.surfaceOf(context),
+              onRefresh: () async {
+                await Future.wait([_loadGoals(), _loadDayData()]);
+              },
+              child: CustomScrollView(
               controller: _scrollController,
-              physics: const BouncingScrollPhysics(),
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
               slivers: [
                 SliverPersistentHeader(
                   pinned: true,
@@ -761,6 +816,7 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
                   ),
                 ),
               ],
+            ),
             ),
           ),
         ),
@@ -2431,23 +2487,54 @@ class _AddFoodSheet extends StatefulWidget {
 }
 
 class _AddFoodSheetState extends State<_AddFoodSheet> {
-  int _step = 0; // 0 = search, 1 = details (grams + portions + macro preview)
+  int _step = 0; // 0 = search, 1 = catalog details, 2 = custom food
   CatalogFood? _selectedCatalogFood;
   double _grams = 100;
   String _selectedMeal = 'Breakfast';
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _gramsController = TextEditingController(text: '100');
+  final TextEditingController _customNameController = TextEditingController();
+  final TextEditingController _customCaloriesController = TextEditingController();
+  final TextEditingController _customProteinController = TextEditingController(text: '0');
+  final TextEditingController _customCarbsController = TextEditingController(text: '0');
+  final TextEditingController _customFatsController = TextEditingController(text: '0');
   List<CatalogFood> _searchResults = [];
   List<FoodPortion> _portions = [];
   bool _searching = false;
   bool _saving = false;
+  String? _catalogError;
   Timer? _searchDebounce;
 
   @override
   void initState() {
     super.initState();
-    _selectedMeal = widget.mealType ?? (widget.mealOptions.isNotEmpty ? widget.mealOptions.first : 'Breakfast');
+    _selectedMeal = widget.mealType ??
+        (widget.mealOptions.isNotEmpty ? widget.mealOptions.first : 'Breakfast');
     _searchController.addListener(_onSearchChanged);
+    // Browse catalog immediately so add sheet is not empty until typing.
+    _loadCatalogBrowse();
+  }
+
+  Future<void> _loadCatalogBrowse() async {
+    setState(() => _searching = true);
+    try {
+      final results = await widget.foodCatalogRepo.searchFoods('');
+      if (!mounted) return;
+      setState(() {
+        _searchResults = results;
+        _searching = false;
+        _catalogError = results.isEmpty
+            ? 'No foods in catalog yet. Add a custom food or seed the foods table.'
+            : null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _searchResults = [];
+        _searching = false;
+        _catalogError = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
   }
 
   void _onSearchChanged() {
@@ -2455,13 +2542,29 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
     _searchDebounce = Timer(const Duration(milliseconds: 350), () async {
       final q = _searchController.text.trim();
       if (!mounted) return;
-      setState(() => _searching = true);
-      final results = await widget.foodCatalogRepo.searchFoods(q);
-      if (!mounted) return;
       setState(() {
-        _searchResults = results;
-        _searching = false;
+        _searching = true;
+        _catalogError = null;
       });
+      try {
+        final results = await widget.foodCatalogRepo.searchFoods(q);
+        if (!mounted) return;
+        setState(() {
+          _searchResults = results;
+          _searching = false;
+          if (results.isEmpty && q.isEmpty) {
+            _catalogError =
+                'No foods in catalog yet. Add a custom food or seed the foods table.';
+          }
+        });
+      } catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _searchResults = [];
+          _searching = false;
+          _catalogError = e.toString().replaceFirst('Exception: ', '');
+        });
+      }
     });
   }
 
@@ -2470,6 +2573,11 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
     _searchDebounce?.cancel();
     _searchController.dispose();
     _gramsController.dispose();
+    _customNameController.dispose();
+    _customCaloriesController.dispose();
+    _customProteinController.dispose();
+    _customCarbsController.dispose();
+    _customFatsController.dispose();
     super.dispose();
   }
 
@@ -2517,6 +2625,54 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
       await widget.onFoodAdded(foodItem, _selectedMeal, catalogFoodId: food.id);
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _addCustomFood() async {
+    if (_saving) return;
+    final name = _customNameController.text.trim();
+    final calories = int.tryParse(_customCaloriesController.text.trim());
+    final protein =
+        double.tryParse(_customProteinController.text.trim()) ?? 0;
+    final carbs = double.tryParse(_customCarbsController.text.trim()) ?? 0;
+    final fats = double.tryParse(_customFatsController.text.trim()) ?? 0;
+    if (name.isEmpty || calories == null || calories < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enter a name and calories for this serving'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    HapticFeedback.mediumImpact();
+    setState(() => _saving = true);
+    final foodItem = FoodItem(
+      id: null,
+      name: name,
+      calories: calories,
+      protein: protein,
+      carbs: carbs,
+      fats: fats,
+      fiber: 0,
+      unit: 'serving',
+      amount: 1,
+    );
+    try {
+      await widget.onFoodAdded(foodItem, _selectedMeal);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  String get _headerTitle {
+    switch (_step) {
+      case 1:
+        return _selectedCatalogFood?.name ?? 'Food Details';
+      case 2:
+        return 'Custom food';
+      default:
+        return 'Add Food';
     }
   }
 
@@ -2573,59 +2729,85 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
                     const SizedBox(height: 14),
                     AnimatedSwitcher(
                       duration: const Duration(milliseconds: 180),
-                      child: _step == 0
-                          ? _AddFoodHeader(
-                              key: const ValueKey('list'),
-                              title: 'Add Food',
-                              onClose: () => Navigator.pop(context),
-                              textPrimary: textPrimary,
-                            )
-                          : _AddFoodHeader(
-                              key: const ValueKey('details'),
-                              title: _selectedCatalogFood?.name ?? 'Food Details',
-                              onClose: () => setState(() => _step = 0),
-                              textPrimary: textPrimary,
-                              leadingIcon: Icons.arrow_back_rounded,
-                            ),
+                      child: _AddFoodHeader(
+                        key: ValueKey(_step),
+                        title: _headerTitle,
+                        onClose: () {
+                          if (_step == 0) {
+                            Navigator.pop(context);
+                          } else {
+                            setState(() => _step = 0);
+                          }
+                        },
+                        textPrimary: textPrimary,
+                        leadingIcon: _step == 0
+                            ? Icons.close_rounded
+                            : Icons.arrow_back_rounded,
+                      ),
                     ),
                     const SizedBox(height: 12),
                     Expanded(
-                      child: _step == 0
-                          ? _CatalogSearchStep(
-                              controller: scrollController,
-                              searchController: _searchController,
-                              searchResults: _searchResults,
-                              searching: _searching,
-                              recentFoods: widget.recentFoods,
-                              onSelectCatalog: _selectFood,
-                              textPrimary: textPrimary,
-                              textSecondary: textSecondary,
-                              surface: surface,
-                            )
-                          : _CatalogDetailsStep(
-                              controller: scrollController,
-                              food: _selectedCatalogFood!,
-                              grams: _grams,
-                              gramsController: _gramsController,
-                              portions: _portions,
-                              onGramsChanged: (v) {
-                                setState(() => _grams = v);
-                                _gramsController.text = v == v.roundToDouble()
-                                    ? v.round().toString()
-                                    : v.toStringAsFixed(1);
-                              },
-                              mealOptions: widget.mealOptions,
-                              selectedMeal: _selectedMeal,
-                              onMealChanged: (m) {
-                                HapticFeedback.selectionClick();
-                                setState(() => _selectedMeal = m);
-                              },
-                              onAdd: _addFood,
-                              saving: _saving,
-                              textPrimary: textPrimary,
-                              textSecondary: textSecondary,
-                              surface: surface,
-                            ),
+                      child: switch (_step) {
+                        1 => _CatalogDetailsStep(
+                            controller: scrollController,
+                            food: _selectedCatalogFood!,
+                            grams: _grams,
+                            gramsController: _gramsController,
+                            portions: _portions,
+                            onGramsChanged: (v) {
+                              setState(() => _grams = v);
+                              _gramsController.text = v == v.roundToDouble()
+                                  ? v.round().toString()
+                                  : v.toStringAsFixed(1);
+                            },
+                            mealOptions: widget.mealOptions,
+                            selectedMeal: _selectedMeal,
+                            onMealChanged: (m) {
+                              HapticFeedback.selectionClick();
+                              setState(() => _selectedMeal = m);
+                            },
+                            onAdd: _addFood,
+                            saving: _saving,
+                            textPrimary: textPrimary,
+                            textSecondary: textSecondary,
+                            surface: surface,
+                          ),
+                        2 => _CustomFoodStep(
+                            controller: scrollController,
+                            nameController: _customNameController,
+                            caloriesController: _customCaloriesController,
+                            proteinController: _customProteinController,
+                            carbsController: _customCarbsController,
+                            fatsController: _customFatsController,
+                            mealOptions: widget.mealOptions,
+                            selectedMeal: _selectedMeal,
+                            onMealChanged: (m) {
+                              HapticFeedback.selectionClick();
+                              setState(() => _selectedMeal = m);
+                            },
+                            onAdd: _addCustomFood,
+                            saving: _saving,
+                            textPrimary: textPrimary,
+                            textSecondary: textSecondary,
+                            surface: surface,
+                          ),
+                        _ => _CatalogSearchStep(
+                            controller: scrollController,
+                            searchController: _searchController,
+                            searchResults: _searchResults,
+                            searching: _searching,
+                            catalogError: _catalogError,
+                            recentFoods: widget.recentFoods,
+                            onSelectCatalog: _selectFood,
+                            onAddCustom: () {
+                              HapticFeedback.selectionClick();
+                              setState(() => _step = 2);
+                            },
+                            textPrimary: textPrimary,
+                            textSecondary: textSecondary,
+                            surface: surface,
+                          ),
+                      },
                     ),
                   ],
                 ),
@@ -2686,8 +2868,10 @@ class _CatalogSearchStep extends StatelessWidget {
   final TextEditingController searchController;
   final List<CatalogFood> searchResults;
   final bool searching;
+  final String? catalogError;
   final List<FoodItem> recentFoods;
   final ValueChanged<CatalogFood> onSelectCatalog;
+  final VoidCallback onAddCustom;
   final Color textPrimary;
   final Color textSecondary;
   final Color surface;
@@ -2697,8 +2881,10 @@ class _CatalogSearchStep extends StatelessWidget {
     required this.searchController,
     required this.searchResults,
     required this.searching,
+    required this.catalogError,
     required this.recentFoods,
     required this.onSelectCatalog,
+    required this.onAddCustom,
     required this.textPrimary,
     required this.textSecondary,
     required this.surface,
@@ -2706,6 +2892,7 @@ class _CatalogSearchStep extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final queryEmpty = searchController.text.trim().isEmpty;
     return ListView(
       controller: controller,
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -2724,7 +2911,22 @@ class _CatalogSearchStep extends StatelessWidget {
             prefixIcon: Icon(Icons.search_rounded, color: textSecondary),
           ),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 10),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: onAddCustom,
+            icon: Icon(Icons.add_rounded, size: 18, color: textPrimary),
+            label: Text(
+              'Add custom food',
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                color: textPrimary,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
         if (recentFoods.isNotEmpty) ...[
           Text(
             'Recent',
@@ -2771,7 +2973,7 @@ class _CatalogSearchStep extends StatelessWidget {
           const SizedBox(height: 16),
         ],
         Text(
-          'Results',
+          queryEmpty ? 'Browse' : 'Results',
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w800,
@@ -2784,14 +2986,33 @@ class _CatalogSearchStep extends StatelessWidget {
             padding: EdgeInsets.only(top: 28),
             child: Center(child: CircularProgressIndicator()),
           )
+        else if (catalogError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 20),
+            child: Column(
+              children: [
+                Text(
+                  catalogError!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: onAddCustom,
+                  child: const Text('Add custom food'),
+                ),
+              ],
+            ),
+          )
         else if (searchResults.isEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 28),
             child: Center(
               child: Text(
-                searchController.text.trim().isEmpty
-                    ? 'Search to find foods'
-                    : 'No results',
+                queryEmpty ? 'No foods to browse' : 'No results',
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
                   color: textSecondary,
@@ -2913,6 +3134,188 @@ class _CatalogFoodCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _CustomFoodStep extends StatelessWidget {
+  final ScrollController controller;
+  final TextEditingController nameController;
+  final TextEditingController caloriesController;
+  final TextEditingController proteinController;
+  final TextEditingController carbsController;
+  final TextEditingController fatsController;
+  final List<String> mealOptions;
+  final String selectedMeal;
+  final ValueChanged<String> onMealChanged;
+  final VoidCallback onAdd;
+  final bool saving;
+  final Color textPrimary;
+  final Color textSecondary;
+  final Color surface;
+
+  const _CustomFoodStep({
+    required this.controller,
+    required this.nameController,
+    required this.caloriesController,
+    required this.proteinController,
+    required this.carbsController,
+    required this.fatsController,
+    required this.mealOptions,
+    required this.selectedMeal,
+    required this.onMealChanged,
+    required this.onAdd,
+    required this.saving,
+    required this.textPrimary,
+    required this.textSecondary,
+    required this.surface,
+  });
+
+  InputDecoration _fieldDecoration(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      filled: true,
+      fillColor: surface,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: textPrimary.withValues(alpha: 0.08)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(16),
+        borderSide: BorderSide(color: textPrimary.withValues(alpha: 0.08)),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      controller: controller,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+      children: [
+        Text(
+          'Values are for this one serving',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: textSecondary,
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: nameController,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: _fieldDecoration('Food name'),
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: caloriesController,
+          keyboardType: TextInputType.number,
+          decoration: _fieldDecoration('Calories (kcal)'),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: proteinController,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: _fieldDecoration('Protein g'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextField(
+                controller: carbsController,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: _fieldDecoration('Carbs g'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextField(
+                controller: fatsController,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: _fieldDecoration('Fat g'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'Meal',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w900,
+            color: textPrimary,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: mealOptions.map((m) {
+            final selected = m == selectedMeal;
+            return _PressScale(
+              onTap: () => onMealChanged(m),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: selected
+                      ? MealTrackerTokens.accent.withValues(alpha: 0.15)
+                      : surface,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: selected
+                        ? MealTrackerTokens.accent.withValues(alpha: 0.5)
+                        : textPrimary.withValues(alpha: 0.08),
+                  ),
+                ),
+                child: Text(
+                  m,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: selected ? MealTrackerTokens.accent : textPrimary,
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 24),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: FilledButton(
+            onPressed: saving ? null : onAdd,
+            style: FilledButton.styleFrom(
+              backgroundColor: MealTrackerTokens.accent,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+            child: saving
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Text(
+                    'Add food',
+                    style: TextStyle(fontWeight: FontWeight.w900),
+                  ),
+          ),
+        ),
+      ],
     );
   }
 }

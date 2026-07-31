@@ -107,12 +107,12 @@ class _HealthDevicesPageState extends ConsumerState<HealthDevicesPage>
       } else if (granted || refreshed.hasCorePermissions) {
         showHubSnackBar(
           context,
-          'Permissions updated — enable any missing types in Health Connect',
+          'Permissions updated — enable any missing types in ${refreshed.platformLabel}',
         );
       } else if (mounted) {
         showHubSnackBar(
           context,
-          'Select Steps, Calories, Distance, and Water in Health Connect',
+          'Select Steps, Calories, Distance, and Water in ${refreshed.platformLabel}',
         );
       }
 
@@ -288,9 +288,9 @@ class _HealthDevicesPageState extends ConsumerState<HealthDevicesPage>
                 const SizedBox(height: 16),
                 HubSectionCard(
                   child: Text(
-                    'Cotrainr uses $title as the primary source for steps, '
-                    'calories, distance, and water. Device sensors are only '
-                    'used when $title is unavailable.',
+                    'Cotrainr reads steps, calories, distance, and water only '
+                    'from $title. Phone sensors are never used — connect $title '
+                    'and allow Steps, Active/Total Calories, Distance, and Water.',
                     style: AccountHubTheme.rowSubtitle(context),
                   ),
                 ),
@@ -302,12 +302,12 @@ class _HealthDevicesPageState extends ConsumerState<HealthDevicesPage>
   String _connectButtonLabel(HealthConnectSettingsInfo? info, String title) {
     if (info == null) return 'Connect $title';
     if (info.isConnected) {
-      return 'Manage Health Connect permissions';
+      return 'Manage $title permissions';
     }
     if (!info.isAvailable && Platform.isAndroid) {
       return 'Install Health Connect';
     }
-    return 'Allow Health Connect access';
+    return 'Allow $title access';
   }
 
   String _statusDescription(HealthConnectSettingsInfo? info) {

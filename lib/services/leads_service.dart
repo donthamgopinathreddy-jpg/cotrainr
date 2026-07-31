@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'leads_models.dart'
-    show Lead, CreateLeadResult, UpdateLeadResult, AcceptedTrainer;
+    show Lead, CreateLeadResult, UpdateLeadResult, AcceptedTrainer, AcceptedProvider;
 
 class LeadsService {
   final SupabaseClient _supabase;
@@ -182,12 +182,16 @@ class LeadsService {
   }
 
   /// Accepted trainers for the signed-in client (`leads.status = accepted`).
-  Future<List<AcceptedTrainer>> getAcceptedTrainersAsClient() async {
+  /// Accepted providers for the signed-in client.
+  /// [providerType] when set filters to `trainer` or `nutritionist`.
+  Future<List<AcceptedProvider>> getAcceptedProvidersAsClient({
+    String? providerType,
+  }) async {
     try {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) throw Exception('Not authenticated');
 
-      final response = await _supabase
+      var query = _supabase
           .from('leads')
           .select('''
             id,
@@ -203,13 +207,18 @@ class LeadsService {
               rating,
               total_reviews,
               specialization,
-              experience_years
+              experience_years,
+              professional_headline
             )
           ''')
           .eq('client_id', userId)
-          .eq('status', 'accepted')
-          .eq('provider_type', 'trainer')
-          .order('created_at', ascending: false);
+          .eq('status', 'accepted');
+
+      if (providerType != null) {
+        query = query.eq('provider_type', providerType);
+      }
+
+      final response = await query.order('created_at', ascending: false);
 
       final rows = (response as List).cast<Map<String, dynamic>>();
       if (rows.isEmpty) return const [];
@@ -232,7 +241,7 @@ class LeadsService {
             profilesMap[m['id'] as String] = m;
           }
         } catch (e) {
-          debugPrint('LeadsService: Error fetching trainer profiles: $e');
+          debugPrint('LeadsService: Error fetching provider profiles: $e');
         }
       }
 
@@ -256,12 +265,13 @@ class LeadsService {
             }
           }
         } catch (e) {
-          debugPrint('LeadsService: Error fetching trainer locations: $e');
+          debugPrint('LeadsService: Error fetching provider locations: $e');
         }
       }
 
       return rows.map((json) {
         final providerId = json['provider_id'] as String;
+        final type = json['provider_type'] as String? ?? 'trainer';
         final providerRaw = json['provider'];
         final provider = providerRaw is Map
             ? Map<String, dynamic>.from(providerRaw)
@@ -272,12 +282,22 @@ class LeadsService {
         if (specs is List && specs.isNotEmpty) {
           specLabel = specs.map((e) => e.toString()).join(', ');
         }
+        final headline =
+            (provider['professional_headline'] as String?)?.trim();
+        if ((specLabel == null || specLabel.isEmpty) &&
+            headline != null &&
+            headline.isNotEmpty) {
+          specLabel = headline;
+        }
 
         final name = (profile?['full_name'] as String?)?.trim();
-        return AcceptedTrainer(
+        final fallback =
+            type == 'nutritionist' ? 'Nutritionist' : 'Trainer';
+        return AcceptedProvider(
           leadId: json['id'] as String,
-          trainerId: providerId,
-          fullName: (name != null && name.isNotEmpty) ? name : 'Trainer',
+          providerId: providerId,
+          providerType: type,
+          fullName: (name != null && name.isNotEmpty) ? name : fallback,
           avatarUrl: profile?['avatar_url'] as String?,
           specializationLabel: specLabel,
           experienceYears: (provider['experience_years'] as num?)?.toInt() ?? 0,
@@ -290,7 +310,35 @@ class LeadsService {
         );
       }).toList();
     } catch (e) {
-      throw Exception('Failed to fetch accepted trainers: $e');
+      throw Exception('Failed to fetch accepted providers: $e');
+    }
+  }
+
+  Future<List<AcceptedTrainer>> getAcceptedTrainersAsClient() {
+    return getAcceptedProvidersAsClient(providerType: 'trainer');
+  }
+
+  Future<List<AcceptedProvider>> getAcceptedNutritionistsAsClient() {
+    return getAcceptedProvidersAsClient(providerType: 'nutritionist');
+  }
+
+  /// Provider IDs with an accepted lead for the current client.
+  Future<Set<String>> getAcceptedProviderIdsAsClient() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return {};
+    try {
+      final response = await _supabase
+          .from('leads')
+          .select('provider_id')
+          .eq('client_id', userId)
+          .eq('status', 'accepted');
+      return (response as List)
+          .map((r) => (r as Map)['provider_id'] as String?)
+          .whereType<String>()
+          .toSet();
+    } catch (e) {
+      debugPrint('LeadsService.getAcceptedProviderIdsAsClient: $e');
+      return {};
     }
   }
 

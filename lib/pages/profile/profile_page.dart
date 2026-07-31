@@ -195,8 +195,14 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
       backgroundColor: bg,
       body: FadeTransition(
         opacity: _headerAnim,
-        child: CustomScrollView(
-          physics: const BouncingScrollPhysics(),
+        child: RefreshIndicator(
+          color: DesignTokens.accentOrange,
+          backgroundColor: DesignTokens.surfaceOf(context),
+          onRefresh: _loadAll,
+          child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          ),
           slivers: [
             SliverToBoxAdapter(
               child: Column(
@@ -467,6 +473,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
               ),
             ),
           ],
+        ),
         ),
       ),
     );

@@ -11,6 +11,7 @@ import '../../services/nutrition_planner_local_storage.dart';
 import '../../services/storage_service.dart';
 import '../../repositories/profile_repository.dart';
 import '../../theme/account_hub_theme.dart';
+import '../../theme/design_tokens.dart';
 import '../../theme/text_styles.dart';
 import '../../widgets/common/pressable_card.dart';
 import '../../widgets/profile/account_hub_widgets.dart';
@@ -60,10 +61,12 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
     _loadProfileData();
   }
 
-  Future<void> _loadProfileData() async {
+  Future<void> _loadProfileData({bool showLoading = true}) async {
     if (!mounted) return;
 
-    setState(() => _isInitializing = true);
+    if (showLoading) {
+      setState(() => _isInitializing = true);
+    }
 
     try {
       // Auth ready guard: wait a bit if user is null (cold start)
@@ -665,7 +668,14 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
               children: [
                 Form(
                   key: _formKey,
-                  child: ListView(
+                  child: RefreshIndicator(
+                    color: DesignTokens.accentOrange,
+                    backgroundColor: DesignTokens.surfaceOf(context),
+                    onRefresh: () => _loadProfileData(showLoading: false),
+                    child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(
+                      parent: BouncingScrollPhysics(),
+                    ),
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
                     children: [
                       _EditSection(
@@ -860,6 +870,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                         ),
                       ),
                     ],
+                  ),
                   ),
                 ),
                 if (_isUploadingImage)

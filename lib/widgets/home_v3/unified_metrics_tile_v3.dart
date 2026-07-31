@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../theme/app_colors.dart';
+import '../common/animated_number.dart';
 import 'home_premium_theme.dart';
 import 'metric_center_widget.dart';
 
@@ -84,8 +85,6 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
   late final PageController _pageController;
   int? _selectedWeekDayIndex;
   int _lastFocusMetric = 0;
-
-  static const _dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
   @override
   void initState() {
@@ -219,7 +218,7 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
                       return Padding(
                         padding: EdgeInsets.only(left: mondayLeft),
                         child: Text(
-                          'This week',
+                          'Last 7 days',
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
@@ -278,6 +277,7 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
                                             100
                                         : 0.0,
                                     sourceNote: item.sourceNote,
+                                    numericValue: item.todayValue,
                                   );
 
                             return Opacity(
@@ -327,8 +327,11 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
                                             ),
                                             SizedBox(
                                                 height: isSelected ? 4 : 3),
-                                            Text(
-                                              display.mainValue,
+                                            AnimatedNumber(
+                                              value: display.numericValue,
+                                              format: (v) =>
+                                                  _formatMainValue(
+                                                      logical, v),
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                               style: TextStyle(
@@ -453,10 +456,26 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
     );
   }
 
-  /// Monday-first row M…S → index 0 = Monday.
-  static int _todayWeekIndex() {
-    final w = DateTime.now().weekday;
-    return w - 1;
+  /// Rolling last-7 series: index 0 = 6 days ago, index 6 = today.
+  static int _todayWeekIndex() => 6;
+
+  /// Weekday short labels aligned to rolling last-7 data (not calendar Mon–Sun).
+  static List<String> _rollingWeekDayLabels() {
+    const names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final now = DateTime.now();
+    return List.generate(7, (i) {
+      final d = now.subtract(Duration(days: 6 - i));
+      return names[d.weekday - 1];
+    });
+  }
+
+  static List<String> _rollingWeekDayInitials() {
+    const initials = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+    final now = DateTime.now();
+    return List.generate(7, (i) {
+      final d = now.subtract(Duration(days: 6 - i));
+      return initials[d.weekday - 1];
+    });
   }
 
   static String _formatMainValue(int metricIndex, double value) {
@@ -497,7 +516,7 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
     int dayIndex,
     double dayValue,
   ) {
-    final label = _dayLabels[dayIndex.clamp(0, 6)];
+    final label = _rollingWeekDayLabels()[dayIndex.clamp(0, 6)];
     final goalFrag = _formatGoalFragment(metricIndex, item.goalValue);
     switch (metricIndex) {
       case 0:
@@ -519,6 +538,7 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
     double progress,
     double progressPercent,
     String? sourceNote,
+    double numericValue,
   }) _displayForMetric(
     UnifiedMetricViewModel item,
     int metricIndex, {
@@ -535,6 +555,7 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
         progress: item.progress,
         progressPercent: pct,
         sourceNote: item.sourceNote,
+        numericValue: item.todayValue,
       );
     }
 
@@ -553,6 +574,7 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
       progress: progress,
       progressPercent: progressPercent,
       sourceNote: dayIndex == today ? item.sourceNote : null,
+      numericValue: value,
     );
   }
 
@@ -660,7 +682,7 @@ class _WeeklyBarChartState extends State<_WeeklyBarChart>
 
   @override
   Widget build(BuildContext context) {
-    const labels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+    final labels = _UnifiedMetricsTileV3State._rollingWeekDayInitials();
     final maxV = widget.values.isEmpty
         ? 1.0
         : widget.values.reduce((a, b) => a > b ? a : b).clamp(0.001, double.infinity);

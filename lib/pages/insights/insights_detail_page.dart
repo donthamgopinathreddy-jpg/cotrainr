@@ -133,7 +133,7 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
     for (final row in metrics) {
       final dateStr = row['date'] as String?;
       if (dateStr == null) continue;
-      map[dateStr] = _metricValueFromRow(row, widget.args.t);
+      map[dateStr.split('T').first] = _metricValueFromRow(row, widget.args.t);
     }
     return dates
         .map((d) => map[d.toIso8601String().split('T')[0]] ?? 0.0)
@@ -420,7 +420,22 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
     return Scaffold(
       backgroundColor: pageBg,
       body: SafeArea(
-        child: CustomScrollView(
+        child: RefreshIndicator(
+          color: DesignTokens.accentOrange,
+          backgroundColor: DesignTokens.surfaceOf(context),
+          onRefresh: () async {
+            await Future.wait([
+              _loadGoal(),
+              _loadWaterReminderStatus(),
+              _reloadWeekSeries(),
+              _loadPreviousPeriodTotal(_rangeDays[_rangeIndex]),
+              _ensureRangeData(_rangeIndex),
+            ]);
+          },
+          child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          ),
           slivers: [
             SliverAppBar(
               pinned: true,
@@ -669,6 +684,7 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
               ),
             ),
           ],
+        ),
         ),
       ),
     );

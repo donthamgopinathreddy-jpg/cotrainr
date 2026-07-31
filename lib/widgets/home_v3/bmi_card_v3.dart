@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_colors.dart';
+import '../common/animated_number.dart';
 import 'home_premium_theme.dart';
 
 /// BMI meter scale — shared by tile tint, value, status, and indicator.
@@ -120,15 +121,26 @@ class BmiCardV3 extends StatelessWidget {
                 children: [
                   FittedBox(
                     fit: BoxFit.scaleDown,
-                    child: Text(
-                      bmi > 0 ? bmi.toStringAsFixed(1) : '--',
-                      style: TextStyle(
-                        fontSize: 36,
-                        fontWeight: FontWeight.w900,
-                        color: bmi > 0 ? meterColor : AppColors.textPrimaryOf(context),
-                        height: 1.0,
-                      ),
-                    ),
+                    child: bmi > 0
+                        ? AnimatedNumber(
+                            value: bmi,
+                            format: (v) => v.toStringAsFixed(1),
+                            style: TextStyle(
+                              fontSize: 36,
+                              fontWeight: FontWeight.w900,
+                              color: meterColor,
+                              height: 1.0,
+                            ),
+                          )
+                        : Text(
+                            '--',
+                            style: TextStyle(
+                              fontSize: 36,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.textPrimaryOf(context),
+                              height: 1.0,
+                            ),
+                          ),
                   ),
                   if (status.isNotEmpty) ...[
                     const SizedBox(height: 2),

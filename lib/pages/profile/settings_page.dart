@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../theme/account_hub_theme.dart';
+import '../../theme/design_tokens.dart';
 import '../../utils/page_transitions.dart';
 import '../../widgets/common/logout_confirmation_sheet.dart';
 import '../../widgets/profile/account_hub_widgets.dart';
@@ -89,7 +90,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         elevation: 0,
         title: const Text('Settings'),
       ),
-      body: ListView(
+      body: RefreshIndicator(
+        color: DesignTokens.accentOrange,
+        backgroundColor: DesignTokens.surfaceOf(context),
+        onRefresh: _loadProfile,
+        child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
           HubSectionCard(
@@ -274,6 +282,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
           ),
         ],
+      ),
       ),
     );
   }

@@ -2,7 +2,10 @@ import 'package:flutter/foundation.dart';
 
 import '../../models/daily_metrics_snapshot.dart';
 
-/// Which backend supplies today's movement metrics.
+/// Which backend supplies movement metrics.
+///
+/// [deviceSensors] is retained only for empty/legacy snapshots — the app never
+/// activates phone sensors as a live metrics source.
 enum MetricsSourceKind {
   healthConnect,
   deviceSensors,
@@ -31,8 +34,10 @@ void logActiveMetricsSource(MetricsSource source) {
   if (!kDebugMode) return;
   switch (source.kind) {
     case MetricsSourceKind.healthConnect:
-      debugPrint('[Metrics] Using Health Connect');
+      debugPrint('[Metrics] Using Health Connect / Apple Health');
     case MetricsSourceKind.deviceSensors:
-      debugPrint('[Metrics] Using Device Sensors fallback');
+      debugPrint(
+        '[Metrics] WARNING: device sensors source should not be active',
+      );
   }
 }

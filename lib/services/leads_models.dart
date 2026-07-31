@@ -79,10 +79,11 @@ class UpdateLeadResult {
   }
 }
 
-/// Accepted trainer linked to the signed-in client via `leads.status = accepted`.
-class AcceptedTrainer {
+/// Accepted provider linked to the signed-in client via `leads.status = accepted`.
+class AcceptedProvider {
   final String leadId;
-  final String trainerId;
+  final String providerId;
+  final String providerType;
   final String fullName;
   final String? avatarUrl;
   final String? specializationLabel;
@@ -94,9 +95,10 @@ class AcceptedTrainer {
   final String? locationLabel;
   final DateTime connectedAt;
 
-  const AcceptedTrainer({
+  const AcceptedProvider({
     required this.leadId,
-    required this.trainerId,
+    required this.providerId,
+    required this.providerType,
     required this.fullName,
     this.avatarUrl,
     this.specializationLabel,
@@ -110,4 +112,13 @@ class AcceptedTrainer {
   });
 
   bool get isActive => relationshipStatus == 'accepted';
+
+  String get roleLabel =>
+      providerType == 'nutritionist' ? 'Nutritionist' : 'Trainer';
+
+  /// Back-compat for trainer-specific call sites.
+  String get trainerId => providerId;
 }
+
+/// Alias kept for existing imports/tests.
+typedef AcceptedTrainer = AcceptedProvider;

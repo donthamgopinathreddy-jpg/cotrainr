@@ -149,11 +149,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
   }
 
-  Future<void> _loadMessages() async {
+  Future<void> _loadMessages({bool showLoading = true}) async {
     if (!mounted) return;
-    setState(() {
-      _isLoading = true;
-    });
+    if (showLoading) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
 
     try {
       final messages = await _messagesRepo.fetchMessages(widget.conversationId);
@@ -784,50 +786,68 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ? const Center(
                     child: CircularProgressIndicator(),
                   )
-                : _messages.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.chat_bubble_outline_rounded,
-                              size: 64,
-                              color: cs.onSurfaceVariant,
+                : RefreshIndicator(
+                    color: DesignTokens.accentOrange,
+                    backgroundColor: DesignTokens.surfaceOf(context),
+                    onRefresh: () => _loadMessages(showLoading: false),
+                    child: _messages.isEmpty
+                        ? ListView(
+                            physics: const AlwaysScrollableScrollPhysics(
+                              parent: BouncingScrollPhysics(),
                             ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'No messages yet',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: cs.onSurfaceVariant,
+                            children: [
+                              SizedBox(
+                                height:
+                                    MediaQuery.sizeOf(context).height * 0.4,
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.chat_bubble_outline_rounded,
+                                      size: 64,
+                                      color: cs.onSurfaceVariant,
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      'No messages yet',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                        color: cs.onSurfaceVariant,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Start the conversation!',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: cs.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
+                            ],
+                          )
+                        : ListView.builder(
+                            controller: _scrollController,
+                            physics: const AlwaysScrollableScrollPhysics(
+                              parent: BouncingScrollPhysics(),
                             ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Start the conversation!',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: cs.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    : ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _messages.length,
-                        itemBuilder: (context, index) {
-                          final message = _messages[index];
-                          return _ChatBubble(
-                            message: message,
-                            onLongPress: message.isSent
-                                ? () => _showDeleteOptions(context, index)
-                                : null,
-                          );
-                        },
-                      ),
+                            padding: const EdgeInsets.all(16),
+                            itemCount: _messages.length,
+                            itemBuilder: (context, index) {
+                              final message = _messages[index];
+                              return _ChatBubble(
+                                message: message,
+                                onLongPress: message.isSent
+                                    ? () =>
+                                        _showDeleteOptions(context, index)
+                                    : null,
+                              );
+                            },
+                          ),
+                  ),
           ),
           // Preview
           if (_previewImagePath != null || _previewVideoPath != null)

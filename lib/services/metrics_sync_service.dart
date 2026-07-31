@@ -19,6 +19,7 @@ class MetricsSyncService {
   StreamSubscription<AuthState>? _authStateSubscription;
   bool _isSyncing = false;
   int _syncCount = 0;
+  DateTime? _lastWeeklyBackfillAt;
 
   MetricsSyncService(Ref ref) {
     // Listen to auth state changes
@@ -127,11 +128,80 @@ class MetricsSyncService {
       );
 
       print('MetricsSyncService: Metrics synced successfully to Supabase');
+
+      // Backfill last 6 prior days from Health Connect so weekly charts
+      // are not empty when only today was ever written.
+      await _backfillPriorWeekDays(
+        healthService: healthService,
+        metricsRepo: metricsRepo,
+        force: false,
+      );
     } catch (e, stackTrace) {
       print('MetricsSyncService: Error syncing metrics: $e');
       print('MetricsSyncService: Stack trace: $stackTrace');
     } finally {
       _isSyncing = false;
+    }
+  }
+
+  /// Pull Health Connect history for the prior 6 days into metrics_daily.
+  /// Skipped when the active source cannot provide history (sensors).
+  Future<void> _backfillPriorWeekDays({
+    required HealthTrackingService healthService,
+    required MetricsRepository metricsRepo,
+    required bool force,
+  }) async {
+    if (!force &&
+        _lastWeeklyBackfillAt != null &&
+        DateTime.now().difference(_lastWeeklyBackfillAt!) <
+            const Duration(hours: 1)) {
+      return;
+    }
+    // Throttle periodic syncs: every ~10 min (20 × 30s) unless forced.
+    if (!force && _syncCount > 1 && _syncCount % 20 != 1) {
+      return;
+    }
+
+    try {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      var wrote = 0;
+
+      for (var i = 1; i <= 6; i++) {
+        final day = today.subtract(Duration(days: i));
+        final snapshot = await healthService.getSnapshotForDay(day);
+        if (snapshot.steps == 0 &&
+            snapshot.activeCalories == 0 &&
+            snapshot.distanceKm == 0 &&
+            snapshot.waterLiters == 0) {
+          continue;
+        }
+
+        final existing = await metricsRepo.getMetricsForDate(day);
+        final existingWater =
+            (existing?['water_intake_liters'] as num?)?.toDouble() ?? 0.0;
+        final waterToSave = snapshot.waterLiters > existingWater
+            ? snapshot.waterLiters
+            : existingWater;
+
+        await metricsRepo.updateMetricsForDate(
+          day,
+          steps: snapshot.steps,
+          caloriesBurned: snapshot.activeCalories,
+          distanceKm: snapshot.distanceKm,
+          waterIntakeLiters: waterToSave > 0 ? waterToSave : null,
+        );
+        wrote++;
+      }
+
+      _lastWeeklyBackfillAt = DateTime.now();
+      if (kDebugMode) {
+        debugPrint('MetricsSyncService: weekly backfill wrote $wrote days');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('MetricsSyncService: weekly backfill failed: $e');
+      }
     }
   }
 
@@ -152,6 +222,17 @@ class MetricsSyncService {
   /// Manually trigger a sync (useful for pull-to-refresh)
   Future<void> syncNow() async {
     await _syncMetrics();
+    // Force weekly backfill on explicit refresh so Home/Insights update ASAP.
+    try {
+      final healthService = HealthTrackingService();
+      await healthService.initialize();
+      await _applyProfileHeight(healthService);
+      await _backfillPriorWeekDays(
+        healthService: healthService,
+        metricsRepo: MetricsRepository(),
+        force: true,
+      );
+    } catch (_) {}
   }
 
   void dispose() {

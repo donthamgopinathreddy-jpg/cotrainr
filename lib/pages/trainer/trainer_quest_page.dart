@@ -186,21 +186,30 @@ class _TrainerQuestPageState extends State<TrainerQuestPage>
               ),
             ),
             Expanded(
-              child: PageView(
-                controller: _tabController,
-                pageSnapping: true,
-                onPageChanged: (index) {
-                  setState(() => _tabIndex = index);
+              child: RefreshIndicator(
+                color: DesignTokens.accentOrange,
+                backgroundColor: DesignTokens.surfaceOf(context),
+                onRefresh: () async {
+                  HapticFeedback.mediumImpact();
+                  await Future<void>.delayed(const Duration(milliseconds: 400));
+                  if (mounted) setState(() {});
                 },
-                children: [
-                  _DailySection(
-                    quests: _daily,
-                    gradient: _primaryGradient,
-                  ),
-                  _WeeklySection(quests: _weekly),
-                  _LeaderboardSection(entries: _leaderboard),
-                  _AchievementsSection(items: _achievements),
-                ],
+                child: PageView(
+                  controller: _tabController,
+                  pageSnapping: true,
+                  onPageChanged: (index) {
+                    setState(() => _tabIndex = index);
+                  },
+                  children: [
+                    _DailySection(
+                      quests: _daily,
+                      gradient: _primaryGradient,
+                    ),
+                    _WeeklySection(quests: _weekly),
+                    _LeaderboardSection(entries: _leaderboard),
+                    _AchievementsSection(items: _achievements),
+                  ],
+                ),
               ),
             ),
           ],
@@ -501,6 +510,9 @@ class _DailySection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Column(
         children: [
@@ -526,6 +538,9 @@ class _WeeklySection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: GridView.builder(
         shrinkWrap: true,
@@ -556,6 +571,9 @@ class _LeaderboardSection extends StatelessWidget {
     final top3 = sorted.where((entry) => entry.rank <= 3).toList();
     final rest = sorted.where((entry) => entry.rank > 3).toList();
     return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Column(
         children: [
@@ -698,6 +716,9 @@ class _AchievementsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: GridView.builder(
         shrinkWrap: true,

@@ -5,6 +5,7 @@ import '../../models/subscription_plans.dart';
 import '../../providers/entitlements_provider.dart';
 import '../../repositories/subscriptions_repository.dart';
 import '../../theme/account_hub_theme.dart';
+import '../../theme/design_tokens.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
 import '../../widgets/profile/account_hub_widgets.dart';
 
@@ -57,7 +58,14 @@ class _SubscriptionPageState extends ConsumerState<SubscriptionPage> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
-          : ListView(
+          : RefreshIndicator(
+              color: DesignTokens.accentOrange,
+              backgroundColor: DesignTokens.surfaceOf(context),
+              onRefresh: _load,
+              child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
               children: [
                 _HeroCard(
@@ -183,6 +191,7 @@ class _SubscriptionPageState extends ConsumerState<SubscriptionPage> {
                   ),
                 ),
               ],
+            ),
             ),
     );
   }

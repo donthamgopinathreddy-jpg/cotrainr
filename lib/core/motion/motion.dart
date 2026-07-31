@@ -34,10 +34,10 @@ class Motion {
 
   // ========== PAGE TRANSITIONS ==========
   /// Standard page transition duration (optimized for smoothness)
-  static const Duration pageTransitionDuration = Duration(milliseconds: 300);
+  static const Duration pageTransitionDuration = Duration(milliseconds: 260);
   
   /// Reverse page transition duration (slightly faster for snappy back navigation)
-  static const Duration pageTransitionReverseDuration = Duration(milliseconds: 250);
+  static const Duration pageTransitionReverseDuration = Duration(milliseconds: 220);
   
   /// Slide offset for page transitions (subtle vertical movement)
   static const Offset pageSlideOffset = Offset(0, 0.02);
@@ -50,7 +50,7 @@ class Motion {
   static const double pressScale = 0.98;
   
   /// Duration for press/release animations
-  static const Duration pressDuration = Duration(milliseconds: 120);
+  static const Duration pressDuration = Duration(milliseconds: 130);
   
   /// Curve for press animations
   static const Curve pressCurve = Curves.easeOut;

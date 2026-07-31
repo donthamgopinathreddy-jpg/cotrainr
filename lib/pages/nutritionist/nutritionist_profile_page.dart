@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/design_tokens.dart';
+import '../../repositories/profile_repository.dart';
 import '../../utils/page_transitions.dart';
 import '../../widgets/common/pressable_card.dart';
 import '../../widgets/common/cover_with_blur_bridge.dart';
@@ -25,34 +27,19 @@ class NutritionistProfilePage extends ConsumerStatefulWidget {
 
 class _NutritionistProfilePageState extends ConsumerState<NutritionistProfilePage>
     with SingleTickerProviderStateMixin {
-  final String _username = 'John Doe';
-  final String _handle = '@fitness_john';
+  String _username = 'Nutritionist';
+  String _handle = '@user';
   final bool _isSubscribed = false;
-  
+  String? _verificationStatus;
+
   String get _role => 'nutritionist';
 
-  // Check verification status - in real app, fetch from Supabase
-  String? get _verificationStatus {
-    if (_role == 'trainer' || _role == 'nutritionist') {
-      // Mock: check if verified - in real app, check user metadata or database
-      final supabase = Supabase.instance.client;
-      final user = supabase.auth.currentUser;
-      return user?.userMetadata?['verification_status']?.toString().toLowerCase();
-    }
-    return null;
-  }
-
-  bool get _isPending {
-    return _verificationStatus == 'pending';
-  }
+  bool get _isPending => _verificationStatus == 'pending';
 
   bool get _needsVerification {
-    if (_role == 'trainer' || _role == 'nutritionist') {
-      // Show verification card if not verified (status is null, 'pending', or anything other than 'verified')
-      return _verificationStatus != 'verified';
-    }
-    return false;
+    return _verificationStatus != 'verified';
   }
+
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
 
@@ -68,6 +55,28 @@ class _NutritionistProfilePageState extends ConsumerState<NutritionistProfilePag
       curve: Curves.easeOut,
     );
     _fadeController.forward();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    try {
+      final profile = await ProfileRepository().fetchMyProfile();
+      final supabase = Supabase.instance.client;
+      final user = supabase.auth.currentUser;
+      final status = user?.userMetadata?['verification_status']
+          ?.toString()
+          .toLowerCase();
+      if (!mounted) return;
+      setState(() {
+        _username = profile?['full_name'] as String? ??
+            profile?['username'] as String? ??
+            'Nutritionist';
+        _handle = profile?['username'] != null
+            ? '@${profile!['username']}'
+            : '@user';
+        _verificationStatus = status;
+      });
+    } catch (_) {}
   }
 
   @override
@@ -85,8 +94,14 @@ class _NutritionistProfilePageState extends ConsumerState<NutritionistProfilePag
       backgroundColor: isLight ? Colors.grey.shade200 : colorScheme.background,
       body: FadeTransition(
         opacity: _fadeAnimation,
-        child: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
+        child: RefreshIndicator(
+          color: DesignTokens.accentOrange,
+          backgroundColor: DesignTokens.surfaceOf(context),
+          onRefresh: _loadProfile,
+          child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
         slivers: [
           SliverToBoxAdapter(
             child: Column(
@@ -241,6 +256,7 @@ class _NutritionistProfilePageState extends ConsumerState<NutritionistProfilePag
         ],
       ),
         ),
+      ),
     );
   }
 }

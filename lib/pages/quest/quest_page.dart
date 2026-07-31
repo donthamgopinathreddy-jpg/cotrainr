@@ -252,48 +252,126 @@ class _QuestPageState extends ConsumerState<QuestPage>
               ),
             ),
             Expanded(
-              child: hasError
-                  ? _QuestErrorWidget(
-                      onRetry: () {
-                        ref.invalidate(dailyQuestsProvider);
-                        ref.invalidate(weeklyQuestsProvider);
-                        ref.invalidate(activeChallengesProvider);
-                        ref.invalidate(achievementsProvider);
-                        ref.invalidate(dailyLeaderboardProvider);
-                        ref.invalidate(userXPProvider);
-                        ref.invalidate(userLevelProvider);
-                        ref.invalidate(xpForNextLevelProvider);
-                      },
-                    )
-                  : PageView(
-                      controller: _tabController,
-                      pageSnapping: true,
-                      onPageChanged: (index) {
-                        setState(() => _tabIndex = index);
-                      },
-                      children: [
-                        isLoading
-                            ? const Center(child: CircularProgressIndicator())
-                            : _DailySection(
-                                quests: dailyItems,
-                                gradient: _primaryGradient,
-                                onClaim: _claimQuest,
-                                claimingQuestId: _claimingQuestId,
-                              ),
-                        isLoading
-                            ? const Center(child: CircularProgressIndicator())
-                            : _WeeklySection(quests: weeklyItems),
-                        isLoading
-                            ? const Center(child: CircularProgressIndicator())
-                            : _ChallengesSection(challenges: challengeItems),
-                        isLoading
-                            ? const Center(child: CircularProgressIndicator())
-                            : _AchievementsSection(items: achievementItems),
-                        isLoading
-                            ? const Center(child: CircularProgressIndicator())
-                            : _LeaderboardSection(entries: leaderboardItems),
-                      ],
-                    ),
+              child: RefreshIndicator(
+                color: DesignTokens.accentOrange,
+                backgroundColor: DesignTokens.surfaceOf(context),
+                onRefresh: () async {
+                  HapticFeedback.mediumImpact();
+                  await _syncQuestProgress();
+                  ref.invalidate(activeChallengesProvider);
+                  ref.invalidate(dailyLeaderboardProvider);
+                  await Future.wait([
+                    ref.refresh(dailyQuestsProvider.future),
+                    ref.refresh(weeklyQuestsProvider.future),
+                    ref.refresh(activeChallengesProvider.future),
+                    ref.refresh(achievementsProvider.future),
+                    ref.refresh(dailyLeaderboardProvider.future),
+                    ref.refresh(userXPProvider.future),
+                  ]);
+                },
+                child: hasError
+                    ? ListView(
+                        physics: const AlwaysScrollableScrollPhysics(
+                          parent: BouncingScrollPhysics(),
+                        ),
+                        children: [
+                          SizedBox(
+                            height: MediaQuery.sizeOf(context).height * 0.5,
+                            child: _QuestErrorWidget(
+                              onRetry: () {
+                                ref.invalidate(dailyQuestsProvider);
+                                ref.invalidate(weeklyQuestsProvider);
+                                ref.invalidate(activeChallengesProvider);
+                                ref.invalidate(achievementsProvider);
+                                ref.invalidate(dailyLeaderboardProvider);
+                                ref.invalidate(userXPProvider);
+                                ref.invalidate(userLevelProvider);
+                                ref.invalidate(xpForNextLevelProvider);
+                              },
+                            ),
+                          ),
+                        ],
+                      )
+                    : PageView(
+                        controller: _tabController,
+                        pageSnapping: true,
+                        onPageChanged: (index) {
+                          setState(() => _tabIndex = index);
+                        },
+                        children: [
+                          isLoading
+                              ? ListView(
+                                  physics: const AlwaysScrollableScrollPhysics(),
+                                  children: const [
+                                    SizedBox(
+                                      height: 240,
+                                      child: Center(
+                                        child: CircularProgressIndicator(),
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : _DailySection(
+                                  quests: dailyItems,
+                                  gradient: _primaryGradient,
+                                  onClaim: _claimQuest,
+                                  claimingQuestId: _claimingQuestId,
+                                ),
+                          isLoading
+                              ? ListView(
+                                  physics: const AlwaysScrollableScrollPhysics(),
+                                  children: const [
+                                    SizedBox(
+                                      height: 240,
+                                      child: Center(
+                                        child: CircularProgressIndicator(),
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : _WeeklySection(quests: weeklyItems),
+                          isLoading
+                              ? ListView(
+                                  physics: const AlwaysScrollableScrollPhysics(),
+                                  children: const [
+                                    SizedBox(
+                                      height: 240,
+                                      child: Center(
+                                        child: CircularProgressIndicator(),
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : _ChallengesSection(challenges: challengeItems),
+                          isLoading
+                              ? ListView(
+                                  physics: const AlwaysScrollableScrollPhysics(),
+                                  children: const [
+                                    SizedBox(
+                                      height: 240,
+                                      child: Center(
+                                        child: CircularProgressIndicator(),
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : _AchievementsSection(items: achievementItems),
+                          isLoading
+                              ? ListView(
+                                  physics: const AlwaysScrollableScrollPhysics(),
+                                  children: const [
+                                    SizedBox(
+                                      height: 240,
+                                      child: Center(
+                                        child: CircularProgressIndicator(),
+                                      ),
+                                    ),
+                                  ],
+                                )
+                              : _LeaderboardSection(entries: leaderboardItems),
+                        ],
+                      ),
+              ),
             ),
           ],
         ),
@@ -653,6 +731,9 @@ class _DailySection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Column(
         children: [
@@ -685,6 +766,9 @@ class _WeeklySection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: GridView.builder(
         shrinkWrap: true,
@@ -716,6 +800,9 @@ class _ChallengesSection extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     
     return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -860,6 +947,9 @@ class _LeaderboardSection extends StatelessWidget {
     final top3 = sorted.where((entry) => entry.rank <= 3).toList();
     final rest = sorted.where((entry) => entry.rank > 3).toList();
     return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Column(
         children: [
@@ -995,6 +1085,9 @@ class _AchievementsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: GridView.builder(
         shrinkWrap: true,

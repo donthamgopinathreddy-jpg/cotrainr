@@ -14,7 +14,71 @@ class ProviderProfessionalRepository {
 
   Future<ProviderProfessionalProfile?> fetchByUserId(String userId) async {
     try {
-      final prov = await _supabase
+      // Prefer SECURITY DEFINER RPC — works even when direct providers SELECT
+      // is blocked or professional columns are partially applied.
+      try {
+        final rpc = await _supabase.rpc(
+          'get_public_provider_profile',
+          params: {'p_user_id': userId},
+        );
+        if (rpc is Map<String, dynamic>) {
+          return _fromPublicRpc(rpc, userId);
+        }
+        if (rpc is Map) {
+          return _fromPublicRpc(Map<String, dynamic>.from(rpc), userId);
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint(
+            'ProviderProfessionalRepository: get_public_provider_profile fallback — $e',
+          );
+        }
+      }
+
+      return await _fetchByUserIdDirect(userId);
+    } catch (e, st) {
+      debugPrint('ProviderProfessionalRepository.fetchByUserId: $e\n$st');
+      // Last resort: public profile + minimal provider fields from signup.
+      return _fetchMinimalFallback(userId);
+    }
+  }
+
+  ProviderProfessionalProfile _fromPublicRpc(
+    Map<String, dynamic> row,
+    String userId,
+  ) {
+    final specs = _asStringList(row['specialization']);
+    final modes = _asStringList(row['session_modes']);
+    final langs = _asStringList(row['languages']);
+    final exp = (row['experience_years'] as num?)?.toInt();
+    return ProviderProfessionalProfile(
+      userId: (row['user_id'] as String?) ?? userId,
+      providerType: row['provider_type']?.toString() ?? 'trainer',
+      professionalHeadline: row['professional_headline'] as String?,
+      bio: row['bio'] as String?,
+      experienceYears: exp,
+      specializationIds: ProviderSpecialtyTaxonomy.normalizeList(specs),
+      sessionModes: modes,
+      languages: langs,
+      hourlyRate: (row['hourly_rate'] as num?)?.toDouble(),
+      acceptingNewClients: row['accepting_new_clients'] as bool? ?? true,
+      verified: row['verified'] as bool? ?? false,
+      discoverable: row['discoverable'] as bool? ?? true,
+      rating: (row['rating'] as num?)?.toDouble() ?? 0,
+      totalReviews: (row['total_reviews'] as num?)?.toInt() ?? 0,
+      fullName: row['full_name'] as String?,
+      avatarUrl: row['avatar_url'] as String?,
+      primaryLocationLabel: row['primary_location_label'] as String?,
+      coverageKm: (row['coverage_km'] as num?)?.toDouble(),
+    );
+  }
+
+  Future<ProviderProfessionalProfile?> _fetchByUserIdDirect(
+    String userId,
+  ) async {
+    Map<String, dynamic>? prov;
+    try {
+      prov = await _supabase
           .from('providers')
           .select('''
             user_id,
@@ -33,90 +97,144 @@ class ProviderProfessionalRepository {
           ''')
           .eq('user_id', userId)
           .maybeSingle();
-      if (prov == null) return null;
-
-      String? bio;
-      String? fullName;
-      String? avatarUrl;
-      try {
-        final list = (await _supabase.rpc(
-          'get_public_profile',
-          params: {'p_user_id': userId},
-        ) as List)
-            .cast<Map<String, dynamic>>();
-        if (list.isNotEmpty) {
-          bio = list.first['bio'] as String?;
-          fullName = list.first['full_name'] as String?;
-          avatarUrl = list.first['avatar_url'] as String?;
-        }
-      } catch (_) {
-        final profile = await _supabase
-            .from('profiles')
-            .select('bio, full_name, avatar_url')
-            .eq('id', userId)
-            .maybeSingle();
-        bio = profile?['bio'] as String?;
-        fullName = profile?['full_name'] as String?;
-        avatarUrl = profile?['avatar_url'] as String?;
+    } catch (e) {
+      // Older schema without professional columns.
+      if (kDebugMode) {
+        debugPrint(
+          'ProviderProfessionalRepository: full select failed, minimal — $e',
+        );
       }
+      prov = await _supabase
+          .from('providers')
+          .select('''
+            user_id,
+            provider_type,
+            specialization,
+            experience_years,
+            hourly_rate,
+            verified,
+            discoverable,
+            rating,
+            total_reviews
+          ''')
+          .eq('user_id', userId)
+          .maybeSingle();
+    }
+    if (prov == null) return _fetchMinimalFallback(userId);
 
-      String? locationLabel;
-      double? coverageKm;
+    final identity = await _loadPublicIdentity(userId);
+    String? locationLabel;
+    double? coverageKm;
+    try {
+      final loc = await _supabase
+          .from('provider_locations')
+          .select('display_name, radius_km, is_primary, is_active')
+          .eq('provider_id', userId)
+          .eq('is_active', true)
+          .order('is_primary', ascending: false)
+          .limit(1)
+          .maybeSingle();
+      locationLabel = (loc?['display_name'] as String?)?.trim();
+      coverageKm = (loc?['radius_km'] as num?)?.toDouble();
+    } catch (_) {}
+
+    final specs = _asStringList(prov['specialization']);
+    final modes = _asStringList(prov['session_modes']);
+    final langs = _asStringList(prov['languages']);
+    final exp = (prov['experience_years'] as num?)?.toInt();
+
+    return ProviderProfessionalProfile(
+      userId: userId,
+      providerType: prov['provider_type']?.toString() ?? 'trainer',
+      professionalHeadline: prov['professional_headline'] as String?,
+      bio: identity.bio,
+      experienceYears: exp,
+      specializationIds: ProviderSpecialtyTaxonomy.normalizeList(specs),
+      sessionModes: modes,
+      languages: langs,
+      hourlyRate: (prov['hourly_rate'] as num?)?.toDouble(),
+      acceptingNewClients: prov['accepting_new_clients'] as bool? ?? true,
+      verified: prov['verified'] as bool? ?? false,
+      discoverable: prov['discoverable'] as bool? ?? true,
+      rating: (prov['rating'] as num?)?.toDouble() ?? 0,
+      totalReviews: (prov['total_reviews'] as num?)?.toInt() ?? 0,
+      fullName: identity.fullName,
+      avatarUrl: identity.avatarUrl,
+      primaryLocationLabel:
+          (locationLabel != null && locationLabel.isNotEmpty)
+              ? locationLabel
+              : null,
+      coverageKm: coverageKm,
+    );
+  }
+
+  /// Build a profile from public identity + basic providers row (signup data).
+  Future<ProviderProfessionalProfile?> _fetchMinimalFallback(
+    String userId,
+  ) async {
+    try {
+      final identity = await _loadPublicIdentity(userId);
+      Map<String, dynamic>? prov;
       try {
-        final loc = await _supabase
-            .from('provider_locations')
-            .select('display_name, radius_km, is_primary, is_active')
-            .eq('provider_id', userId)
-            .eq('is_active', true)
-            .order('is_primary', ascending: false)
-            .limit(1)
+        prov = await _supabase
+            .from('providers')
+            .select('user_id, provider_type, specialization, experience_years, verified, rating, total_reviews')
+            .eq('user_id', userId)
             .maybeSingle();
-        locationLabel = (loc?['display_name'] as String?)?.trim();
-        coverageKm = (loc?['radius_km'] as num?)?.toDouble();
       } catch (_) {}
 
-      final specs = (prov['specialization'] as List<dynamic>?)
-              ?.map((e) => e.toString())
-              .toList() ??
-          const <String>[];
-      final modes = (prov['session_modes'] as List<dynamic>?)
-              ?.map((e) => e.toString())
-              .toList() ??
-          const <String>[];
-      final langs = (prov['languages'] as List<dynamic>?)
-              ?.map((e) => e.toString())
-              .toList() ??
-          const <String>[];
+      if (prov == null &&
+          identity.fullName == null &&
+          identity.avatarUrl == null &&
+          identity.bio == null) {
+        return null;
+      }
 
-      final exp = (prov['experience_years'] as num?)?.toInt();
+      final specs = _asStringList(prov?['specialization']);
       return ProviderProfessionalProfile(
         userId: userId,
-        providerType: prov['provider_type']?.toString() ?? 'trainer',
-        professionalHeadline: prov['professional_headline'] as String?,
-        bio: bio,
-        // Keep 0 as a real value for forms; public UI uses [hasExperience].
-        experienceYears: exp,
+        providerType: prov?['provider_type']?.toString() ?? 'trainer',
+        bio: identity.bio,
+        experienceYears: (prov?['experience_years'] as num?)?.toInt(),
         specializationIds: ProviderSpecialtyTaxonomy.normalizeList(specs),
-        sessionModes: modes,
-        languages: langs,
-        hourlyRate: (prov['hourly_rate'] as num?)?.toDouble(),
-        acceptingNewClients: prov['accepting_new_clients'] as bool? ?? true,
-        verified: prov['verified'] as bool? ?? false,
-        discoverable: prov['discoverable'] as bool? ?? true,
-        rating: (prov['rating'] as num?)?.toDouble() ?? 0,
-        totalReviews: (prov['total_reviews'] as num?)?.toInt() ?? 0,
-        fullName: fullName,
-        avatarUrl: avatarUrl,
-        primaryLocationLabel:
-            (locationLabel != null && locationLabel.isNotEmpty)
-                ? locationLabel
-                : null,
-        coverageKm: coverageKm,
+        verified: prov?['verified'] as bool? ?? false,
+        rating: (prov?['rating'] as num?)?.toDouble() ?? 0,
+        totalReviews: (prov?['total_reviews'] as num?)?.toInt() ?? 0,
+        fullName: identity.fullName,
+        avatarUrl: identity.avatarUrl,
       );
-    } catch (e, st) {
-      debugPrint('ProviderProfessionalRepository.fetchByUserId: $e\n$st');
-      rethrow;
+    } catch (e) {
+      debugPrint('ProviderProfessionalRepository._fetchMinimalFallback: $e');
+      return null;
     }
+  }
+
+  Future<({String? fullName, String? avatarUrl, String? bio, String? username})>
+      _loadPublicIdentity(String userId) async {
+    try {
+      final list = (await _supabase.rpc(
+        'get_public_profile',
+        params: {'p_user_id': userId},
+      ) as List)
+          .cast<Map<String, dynamic>>();
+      if (list.isNotEmpty) {
+        final row = list.first;
+        return (
+          fullName: row['full_name'] as String?,
+          avatarUrl: row['avatar_url'] as String?,
+          bio: row['bio'] as String?,
+          username: row['username'] as String?,
+        );
+      }
+    } catch (_) {}
+    return (fullName: null, avatarUrl: null, bio: null, username: null);
+  }
+
+  List<String> _asStringList(dynamic raw) {
+    if (raw is List) {
+      return raw.map((e) => e.toString()).toList();
+    }
+    return const [];
   }
 
   Future<ProviderProfessionalProfile?> fetchMine() async {
@@ -155,8 +273,6 @@ class ProviderProfessionalRepository {
       'accepting_new_clients': acceptingNewClients,
     });
 
-    // Canonical bio lives on profiles; table SELECT/UPDATE is revoked for
-    // authenticated — must use SECURITY DEFINER RPC (same as ProfileRepository).
     await _supabase.rpc(
       'update_my_profile',
       params: {
@@ -175,18 +291,22 @@ class ProviderProfessionalRepository {
           'id, provider_id, name, issuing_organization, issue_year, expiry_year, verification_status, is_public',
         )
         .eq('provider_id', providerId);
-    // credential_id intentionally omitted from client public reads.
     if (publicOnly) {
       query = query.eq('is_public', true);
     }
-    final rows = await query.order('created_at', ascending: false);
-    return (rows as List)
-        .cast<Map<String, dynamic>>()
-        .map(ProviderCertification.fromJson)
-        .toList();
+    try {
+      final rows = await query.order('created_at', ascending: false);
+      return (rows as List)
+          .cast<Map<String, dynamic>>()
+          .map(ProviderCertification.fromJson)
+          .toList();
+    } catch (e) {
+      debugPrint('ProviderProfessionalRepository.listCertifications: $e');
+      return const [];
+    }
   }
 
-  Future<ProviderCertification> addCertification({
+  Future<void> addCertification({
     required String name,
     String? issuingOrganization,
     int? issueYear,
@@ -196,42 +316,39 @@ class ProviderProfessionalRepository {
   }) async {
     final uid = _uid;
     if (uid == null) throw Exception('Not authenticated');
-    final row = await _supabase
-        .from('provider_certifications')
-        .insert(
-          ProviderCertification(
-            id: '',
-            providerId: uid,
-            name: name,
-            issuingOrganization: issuingOrganization,
-            issueYear: issueYear,
-            expiryYear: expiryYear,
-            credentialId: credentialId,
-            isPublic: isPublic,
-          ).toInsertJson(),
-        )
-        .select(
-          'id, provider_id, name, issuing_organization, issue_year, expiry_year, verification_status, is_public',
-        )
-        .single();
-    return ProviderCertification.fromJson(row);
+    final cert = ProviderCertification(
+      id: '',
+      providerId: uid,
+      name: name,
+      issuingOrganization: issuingOrganization,
+      issueYear: issueYear,
+      expiryYear: expiryYear,
+      credentialId: credentialId,
+      isPublic: isPublic,
+    );
+    await _supabase.from('provider_certifications').insert(cert.toInsertJson());
   }
 
   Future<void> updateCertification(ProviderCertification cert) async {
+    final uid = _uid;
+    if (uid == null) throw Exception('Not authenticated');
+    if (cert.providerId != uid) {
+      throw Exception('Cannot update another provider\'s certification');
+    }
     await _supabase
         .from('provider_certifications')
         .update(cert.toUpdateJson())
         .eq('id', cert.id)
-        .eq('provider_id', cert.providerId);
+        .eq('provider_id', uid);
   }
 
-  Future<void> deleteCertification(String id) async {
+  Future<void> deleteCertification(String certificationId) async {
     final uid = _uid;
     if (uid == null) throw Exception('Not authenticated');
     await _supabase
         .from('provider_certifications')
         .delete()
-        .eq('id', id)
+        .eq('id', certificationId)
         .eq('provider_id', uid);
   }
 }

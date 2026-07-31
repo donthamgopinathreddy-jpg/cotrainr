@@ -8,6 +8,7 @@ import '../../services/nutrition_planner_local_storage.dart';
 import '../../utils/unit_conversion.dart';
 import '../../widgets/common/pressable_card.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
+import '../../theme/design_tokens.dart';
 import '../../theme/text_styles.dart';
 import '../../widgets/nutrition_goal_planner/food_sources_section.dart';
 
@@ -643,7 +644,13 @@ class _NutritionGoalPlannerPageState extends State<NutritionGoalPlannerPage>
                     ),
                   ),
                   Expanded(
-                    child: PageView(
+                    child: RefreshIndicator(
+                      color: DesignTokens.accentOrange,
+                      backgroundColor: DesignTokens.surfaceOf(context),
+                      onRefresh: () async {
+                        await _loadProfile();
+                      },
+                      child: PageView(
                       controller: _pageController,
                       physics: const NeverScrollableScrollPhysics(),
                       children: [
@@ -653,6 +660,7 @@ class _NutritionGoalPlannerPageState extends State<NutritionGoalPlannerPage>
                         _activityStep(isLight),
                         _resultsStep(isLight),
                       ],
+                    ),
                     ),
                   ),
                   Container(
@@ -761,6 +769,9 @@ class _NutritionGoalPlannerPageState extends State<NutritionGoalPlannerPage>
 
   Widget _bodyStep(bool isLight) {
     return ListView(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
       padding: const EdgeInsets.all(20),
       children: [
         _animated(_sectionTitle(
@@ -866,6 +877,9 @@ class _NutritionGoalPlannerPageState extends State<NutritionGoalPlannerPage>
     final preview = _timelinePreview();
 
     return ListView(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
       padding: const EdgeInsets.all(20),
       children: [
         _animated(_sectionTitle(
@@ -1367,6 +1381,9 @@ class _NutritionGoalPlannerPageState extends State<NutritionGoalPlannerPage>
     final entries = NutritionGoalCalculator.goalTypeLabels.entries.toList();
 
     return ListView(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
       padding: const EdgeInsets.all(20),
       children: [
         _animated(_sectionTitle(
@@ -1407,6 +1424,9 @@ class _NutritionGoalPlannerPageState extends State<NutritionGoalPlannerPage>
 
   Widget _activityStep(bool isLight) {
     return ListView(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
       padding: const EdgeInsets.all(20),
       children: [
         _animated(_sectionTitle(
@@ -1457,6 +1477,9 @@ class _NutritionGoalPlannerPageState extends State<NutritionGoalPlannerPage>
     ];
 
     return ListView(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
       padding: const EdgeInsets.all(20),
       children: [
         _animated(_sectionTitle(

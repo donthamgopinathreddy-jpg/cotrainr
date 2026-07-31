@@ -7,13 +7,11 @@ import 'package:permission_handler/permission_handler.dart';
 import '../models/daily_metrics_snapshot.dart';
 import 'metrics/health_connect_metrics_source.dart';
 import 'metrics/metrics_source.dart';
-import 'metrics/sensor_metrics_source.dart';
 import 'health_connect_settings_info.dart';
 import 'health_connect_connect_result.dart';
 
-/// Orchestrates a single active [MetricsSource] — Health Connect primary,
-/// device sensors fallback only when Health Connect is unavailable.
-/// Never runs both simultaneously.
+/// Orchestrates metrics from **Health Connect** (Android) or **Apple Health**
+/// (iOS) only. Device sensors are never used as a fallback.
 class HealthTrackingService {
   static final HealthTrackingService _instance =
       HealthTrackingService._internal();
@@ -35,8 +33,16 @@ class HealthTrackingService {
   ];
 
   MetricsSourceKind? get activeSourceKind => _activeSource?.kind;
-  String get activeSourceLabel =>
-      _activeSource?.debugLabel ?? 'Not initialized';
+  String get activeSourceLabel {
+    if (_activeSource != null) return _activeSource!.debugLabel;
+    if (!_isInitialized) return 'Not initialized';
+    return Platform.isIOS
+        ? 'Apple Health unavailable'
+        : 'Health Connect unavailable';
+  }
+
+  bool get isUsingPlatformHealth =>
+      _activeSource?.kind == MetricsSourceKind.healthConnect;
 
   /// User height (cm) for step-based distance estimation when HC distance is missing.
   void setUserHeightCm(double? heightCm) {
@@ -44,57 +50,62 @@ class HealthTrackingService {
     _activeSource?.setUserHeightCm(heightCm);
   }
 
-  /// Initialize and select Health Connect or sensor fallback.
+  /// Initialize Health Connect / Apple Health only (no sensor fallback).
   Future<bool> initialize() async {
     if (_isInitialized && _activeSource != null) return true;
 
     try {
-      await _requestCorePermissions();
+      await _requestOsPermissions();
 
       _health = Health();
       await _health!.configure();
 
-      final useHealthConnect = await _shouldUseHealthConnect();
-      await _disposeActiveSource();
-
-      if (useHealthConnect) {
-        _activeSource = HealthConnectMetricsSource(_health!);
-      } else {
-        _activeSource = SensorMetricsSource();
+      if (Platform.isAndroid && !await _isAndroidHealthConnectReady()) {
+        await _disposeActiveSource();
+        _activeSource = null;
+        _isInitialized = true;
+        if (kDebugMode) {
+          debugPrint(
+            '[Metrics] Health Connect not ready — sensors disabled by product rule',
+          );
+        }
+        return false;
       }
 
+      await _disposeActiveSource();
+      _activeSource = HealthConnectMetricsSource(_health!);
       _activeSource!.setUserHeightCm(_heightCm);
       await _activeSource!.initialize();
-      _logActiveSourceOnce();
 
+      // Request Steps / Calories / Distance / Water if not already granted.
+      final existing = await _readTypePermissions();
+      if (!_hasCorePermissions(existing)) {
+        await requestHealthConnectPermissions();
+      }
+
+      _logActiveSourceOnce();
       _isInitialized = true;
       return true;
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[Metrics] initialize failed: $e');
       }
+      _isInitialized = true;
       return false;
     }
   }
 
-  Future<bool> _shouldUseHealthConnect() async {
+  Future<bool> _isAndroidHealthConnectReady() async {
     if (_health == null) return false;
-
-    // iOS — always route through Apple Health (same plugin / primary source).
-    if (Platform.isIOS) return true;
-
-    if (!Platform.isAndroid) return false;
-
     try {
       final status = await _health!.getHealthConnectSdkStatus();
-      final available =
-          await _health!.isHealthConnectAvailable() &&
+      final available = await _health!.isHealthConnectAvailable() &&
           status == HealthConnectSdkStatus.sdkAvailable;
-
       if (kDebugMode) {
-        debugPrint('[Metrics] Health Connect SDK status: $status');
+        debugPrint(
+          '[Metrics] Health Connect SDK status: $status available=$available',
+        );
       }
-
       return available;
     } catch (e) {
       if (kDebugMode) {
@@ -104,18 +115,21 @@ class HealthTrackingService {
     }
   }
 
-  Future<void> _requestCorePermissions() async {
+  /// OS-level permissions needed before Health Connect / HealthKit can work.
+  Future<void> _requestOsPermissions() async {
     try {
-      final activityStatus = await Permission.activityRecognition.request();
-      if (activityStatus.isDenied && kDebugMode) {
-        debugPrint(
-          '[Metrics] Activity recognition denied — required for Health Connect steps',
-        );
+      if (Platform.isAndroid) {
+        final activity = await Permission.activityRecognition.request();
+        if (activity.isDenied && kDebugMode) {
+          debugPrint(
+            '[Metrics] ACTIVITY_RECOGNITION denied — required for steps',
+          );
+        }
       }
       await Permission.notification.request();
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('[Metrics] Permission request error: $e');
+        debugPrint('[Metrics] OS permission request error: $e');
       }
     }
   }
@@ -127,15 +141,24 @@ class HealthTrackingService {
   }
 
   Future<void> _ensureReady() async {
-    if (!_isInitialized || _activeSource == null) {
+    if (!_isInitialized) {
       await initialize();
     }
   }
 
   Future<DailyMetricsSnapshot> getTodaySnapshot() async {
     await _ensureReady();
-    return _activeSource?.getTodaySnapshot() ??
-        DailyMetricsSnapshot.empty();
+    return _activeSource?.getTodaySnapshot() ?? DailyMetricsSnapshot.empty();
+  }
+
+  /// Snapshot for a calendar day from Health Connect / Apple Health only.
+  Future<DailyMetricsSnapshot> getSnapshotForDay(DateTime day) async {
+    await _ensureReady();
+    final source = _activeSource;
+    if (source is HealthConnectMetricsSource) {
+      return source.getSnapshotForDay(day);
+    }
+    return DailyMetricsSnapshot.empty();
   }
 
   Future<int> getTodaySteps() async {
@@ -163,8 +186,7 @@ class HealthTrackingService {
       'metrics_source': _activeSource != null,
       'health_connect_active':
           _activeSource?.kind == MetricsSourceKind.healthConnect,
-      'sensor_fallback_active':
-          _activeSource?.kind == MetricsSourceKind.deviceSensors,
+      'sensor_fallback_active': false,
     };
 
     if (_health != null) {
@@ -191,23 +213,23 @@ class HealthTrackingService {
       'active_source': activeSourceLabel,
       'active_source_kind': activeSourceKind?.name,
       'permissions': await checkPermissions(),
-      'sensor_data': <String, dynamic>{},
+      'health_data': <String, dynamic>{},
     };
 
     if (!_isInitialized || _activeSource == null) {
-      results['error'] = 'Service not initialized';
+      results['error'] = Platform.isIOS
+          ? 'Apple Health not connected'
+          : 'Health Connect not connected';
       return results;
     }
 
     try {
       final snapshot = await getTodaySnapshot();
-      results['sensor_data'] = {
+      results['health_data'] = {
         'steps': snapshot.steps,
         'calories': snapshot.activeCalories,
-        'calories_source': snapshot.caloriesSource.name,
-        'distance': snapshot.distanceKm,
-        'distance_source': snapshot.distanceSource.name,
-        'water': snapshot.waterLiters,
+        'distance_km': snapshot.distanceKm,
+        'water_liters': snapshot.waterLiters,
       };
     } catch (e) {
       results['error'] = e.toString();
@@ -217,11 +239,13 @@ class HealthTrackingService {
   }
 
   Future<void> _disposeActiveSource() async {
-    _activeSource?.dispose();
+    try {
+      _activeSource?.dispose();
+    } catch (_) {}
     _activeSource = null;
   }
 
-  /// Re-select Health Connect vs sensor fallback (e.g. after granting permissions).
+  /// Re-bind to Health Connect / Apple Health after granting permissions.
   Future<bool> reinitializeMetricsSource() async {
     await _disposeActiveSource();
     _isInitialized = false;
@@ -261,15 +285,13 @@ class HealthTrackingService {
 
     if (Platform.isAndroid) {
       sdkStatus = await _health!.getHealthConnectSdkStatus();
-      isAvailable =
-          await _health!.isHealthConnectAvailable() &&
+      isAvailable = await _health!.isHealthConnectAvailable() &&
           sdkStatus == HealthConnectSdkStatus.sdkAvailable;
     }
 
     final typePermissions = await _readTypePermissions();
     final permissionsGranted = _hasCorePermissions(typePermissions);
 
-    // Keep the active metrics source aligned with Health Connect when possible.
     if (isAvailable && permissionsGranted) {
       if (_activeSource?.kind != MetricsSourceKind.healthConnect) {
         await reinitializeMetricsSource();
@@ -293,6 +315,7 @@ class HealthTrackingService {
 
   Future<Map<String, bool>> _readTypePermissions() async {
     final typePermissions = <String, bool>{};
+    if (_health == null) return typePermissions;
     for (final type in _healthDataTypes) {
       try {
         typePermissions[_permissionLabel(type)] =
@@ -325,7 +348,8 @@ class HealthTrackingService {
         debugPrint('[Metrics] Opening permission sheet — SDK status: $status');
       }
       if (status == HealthConnectSdkStatus.sdkUnavailable ||
-          status == HealthConnectSdkStatus.sdkUnavailableProviderUpdateRequired) {
+          status ==
+              HealthConnectSdkStatus.sdkUnavailableProviderUpdateRequired) {
         return false;
       }
       if (!await _health!.isHealthConnectAvailable()) {
@@ -333,8 +357,7 @@ class HealthTrackingService {
       }
     }
 
-    // Required for steps on Android before Health Connect can grant access.
-    await Permission.activityRecognition.request();
+    await _requestOsPermissions();
 
     final readAccess = List<HealthDataAccess>.filled(
       _healthDataTypes.length,
@@ -342,7 +365,9 @@ class HealthTrackingService {
     );
 
     if (kDebugMode) {
-      debugPrint('[Metrics] Launching Health Connect permission sheet…');
+      debugPrint(
+        '[Metrics] Launching ${platformHealthLabel()} permission sheet…',
+      );
     }
 
     final granted = await _health!.requestAuthorization(
@@ -371,8 +396,10 @@ class HealthTrackingService {
       if (!canRequest && Platform.isAndroid) {
         final status = await _health?.getHealthConnectSdkStatus();
         if (status == HealthConnectSdkStatus.sdkUnavailable ||
-            status == HealthConnectSdkStatus.sdkUnavailableProviderUpdateRequired ||
-            !await (_health?.isHealthConnectAvailable() ?? Future.value(false))) {
+            status ==
+                HealthConnectSdkStatus.sdkUnavailableProviderUpdateRequired ||
+            !await (_health?.isHealthConnectAvailable() ??
+                Future.value(false))) {
           await installHealthConnectApp();
           return HealthConnectConnectResult.needsInstall;
         }
@@ -404,4 +431,3 @@ class HealthTrackingService {
     _loggedActiveSource = false;
   }
 }
-

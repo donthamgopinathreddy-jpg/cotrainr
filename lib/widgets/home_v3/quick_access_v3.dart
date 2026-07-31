@@ -34,15 +34,17 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
           .toLowerCase() ??
       'client';
 
-  String _myTrainersSubtitle(int count) {
-    if (count <= 0) return 'No trainers connected';
-    if (count == 1) return '1 trainer connected';
-    return '$count trainers connected';
+  String _providersSubtitle(int trainerCount, int nutritionistCount) {
+    final total = trainerCount + nutritionistCount;
+    if (total <= 0) return 'No coaches connected yet';
+    if (total == 1) return '1 coach connected';
+    return '$total coaches connected';
   }
 
   Map<String, _ExploreTileData> _tilesForRole(
     String userRole, {
     required int acceptedTrainerCount,
+    required int acceptedNutritionistCount,
   }) {
     final isTrainer = userRole == 'trainer';
     final isNutritionist = userRole == 'nutritionist';
@@ -77,10 +79,13 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
         icon: Icons.note_rounded,
         accent: Color(0xFFFF6B6B),
       );
-      tiles['My Trainers'] = _ExploreTileData(
-        title: 'My Trainers',
-        subtitle: _myTrainersSubtitle(acceptedTrainerCount),
-        icon: Icons.sports_rounded,
+      tiles['Trainers & Nutritionists'] = _ExploreTileData(
+        title: 'Trainers & Nutritionists',
+        subtitle: _providersSubtitle(
+          acceptedTrainerCount,
+          acceptedNutritionistCount,
+        ),
+        icon: Icons.groups_rounded,
         accent: DesignTokens.accentOrange,
       );
     }
@@ -117,6 +122,8 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
         return () => context.push('/nutrition-goals');
       case 'Subscription':
         return () => context.push('/subscription');
+      case 'Trainers & Nutritionists':
+      case 'Trainers':
       case 'My Trainers':
         return () {
           final loc = GoRouterState.of(context).matchedLocation;
@@ -132,13 +139,17 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
   Widget build(BuildContext context) {
     final isLight = Theme.of(context).brightness == Brightness.light;
     final trainerCount = ref.watch(acceptedClientTrainersCountProvider);
+    final nutritionistCount =
+        ref.watch(acceptedClientNutritionistsCountProvider);
     // Ensure realtime/list provider is warm for clients.
     if (_role != 'trainer' && _role != 'nutritionist') {
       ref.watch(acceptedClientTrainersProvider);
+      ref.watch(acceptedClientNutritionistsProvider);
     }
     final tiles = _tilesForRole(
       _role,
       acceptedTrainerCount: trainerCount,
+      acceptedNutritionistCount: nutritionistCount,
     );
     if (tiles.isEmpty) return const SizedBox.shrink();
 
@@ -182,7 +193,7 @@ class _ExploreSectionHeader extends StatelessWidget {
     final titleColor = HomePremiumTheme.primaryText(isLight);
     final headerGradient = isLight
         ? const LinearGradient(
-            colors: [Color(0xFF3BA8D4), Color(0xFF4DA3FF)],
+            colors: [Color(0xFF1FB6E8), Color(0xFF4DA3FF)],
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
           )
@@ -288,7 +299,7 @@ class _ExploreBentoGrid extends StatelessWidget {
     final nutrition = _get('Nutrition Goals')!;
     final coach = _get('Coach Notes')!;
     final video = _get('Video Sessions')!;
-    final myTrainers = _get('My Trainers')!;
+    final providers = _get('Trainers & Nutritionists')!;
     final become = _get('Become a Trainer')!;
     final subscription = _get('Subscription')!;
 
@@ -308,18 +319,18 @@ class _ExploreBentoGrid extends StatelessWidget {
           ),
         ),
         const SizedBox(height: _gap),
-        _buildPairRow(pairH, myTrainers, subscription),
-        const SizedBox(height: _gap),
         SizedBox(
           height: bannerH,
           width: double.infinity,
           child: _ExploreTile(
-            item: become,
+            item: providers,
             layout: _ExploreTileLayout.banner,
             isLight: isLight,
-            onTap: () => onTileTap(become),
+            onTap: () => onTileTap(providers),
           ),
         ),
+        const SizedBox(height: _gap),
+        _buildPairRow(pairH, subscription, become),
       ],
     );
   }
@@ -462,10 +473,11 @@ class _TileWatermark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
     return Icon(
       icon,
       size: size,
-      color: accent.withValues(alpha: 0.12),
+      color: accent.withValues(alpha: isLight ? 0.28 : 0.12),
     );
   }
 }
@@ -485,14 +497,16 @@ class _ExploreTileData {
 
   Color accentFor(bool isLight) {
     if (!isLight) return accent;
+    // Brighter light-mode accents for Explore tiles.
     return switch (title) {
-      'Nutrition Goals' => const Color(0xFF1FA876),
-      'Coach Notes' || 'Client Notes' => const Color(0xFFE85555),
-      'Video Sessions' => const Color(0xFF6D5CE6),
-      'My Trainers' => const Color(0xFFE8952E),
-      'Become a Trainer' => const Color(0xFF3A96C4),
-      'Subscription' => const Color(0xFFD4187A),
-      _ => Color.lerp(accent, HomePremiumTheme.lightCharcoalText, 0.10)!,
+      'Nutrition Goals' => const Color(0xFF12C07A),
+      'Coach Notes' || 'Client Notes' => const Color(0xFFFF4D4D),
+      'Video Sessions' => const Color(0xFF7C5CFF),
+      'My Trainers' || 'Trainers' || 'Trainers & Nutritionists' =>
+        const Color(0xFFFF8A00),
+      'Become a Trainer' => const Color(0xFF2BB0E8),
+      'Subscription' => const Color(0xFFFF2D95),
+      _ => accent,
     };
   }
 }

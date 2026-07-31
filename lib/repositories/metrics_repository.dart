@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Repository for managing daily metrics in Supabase
@@ -66,24 +67,33 @@ class MetricsRepository {
     }
   }
 
-  /// Get weekly metrics (last 7 days)
+  /// Get weekly metrics (last 7 days, inclusive of today).
   Future<List<Map<String, dynamic>>> getWeeklyMetrics() async {
     if (_currentUserId == null) return [];
 
     try {
       final today = DateTime.now();
-      final weekAgo = today.subtract(const Duration(days: 6));
-      final weekAgoDate = DateTime(weekAgo.year, weekAgo.month, weekAgo.day);
-      final weekAgoString = weekAgoDate.toIso8601String().split('T')[0];
+      final todayDate = DateTime(today.year, today.month, today.day);
+      final weekAgo = todayDate.subtract(const Duration(days: 6));
+      final weekAgoString = weekAgo.toIso8601String().split('T')[0];
+      final todayString = todayDate.toIso8601String().split('T')[0];
 
       final response = await _supabase
           .from('metrics_daily')
           .select()
           .eq('user_id', _currentUserId!)
           .gte('date', weekAgoString)
+          .lte('date', todayString)
           .order('date', ascending: true);
 
-      return (response as List).cast<Map<String, dynamic>>();
+      final rows = (response as List).cast<Map<String, dynamic>>();
+      if (kDebugMode) {
+        debugPrint(
+          'MetricsRepository.getWeeklyMetrics: ${rows.length} rows '
+          '($weekAgoString…$todayString)',
+        );
+      }
+      return rows;
     } catch (e) {
       print('Error fetching weekly metrics: $e');
       return [];
@@ -138,8 +148,9 @@ class MetricsRepository {
     }
   }
 
-  /// Update or insert today's metrics
-  Future<void> updateTodayMetrics({
+  /// Update metrics for an arbitrary calendar day (weekly HC backfill).
+  Future<void> updateMetricsForDate(
+    DateTime date, {
     int? steps,
     double? caloriesBurned,
     double? distanceKm,
@@ -149,18 +160,19 @@ class MetricsRepository {
     if (_currentUserId == null) return;
 
     try {
-      final today = DateTime.now();
-      final todayDate = DateTime(today.year, today.month, today.day);
-      final dateString = todayDate.toIso8601String().split('T')[0];
+      final dateOnly = DateTime(date.year, date.month, date.day);
+      final dateString = dateOnly.toIso8601String().split('T')[0];
 
       final updates = <String, dynamic>{};
       if (steps != null) updates['steps'] = steps;
       if (caloriesBurned != null) updates['calories_burned'] = caloriesBurned;
       if (distanceKm != null) updates['distance_km'] = distanceKm;
-      if (waterIntakeLiters != null) updates['water_intake_liters'] = waterIntakeLiters;
+      if (waterIntakeLiters != null) {
+        updates['water_intake_liters'] = waterIntakeLiters;
+      }
       if (streakDays != null) updates['streak_days'] = streakDays;
+      if (updates.isEmpty) return;
 
-      // Check if today's record exists
       final existing = await _supabase
           .from('metrics_daily')
           .select('id')
@@ -169,13 +181,11 @@ class MetricsRepository {
           .maybeSingle();
 
       if (existing != null) {
-        // Update existing record
         await _supabase
             .from('metrics_daily')
             .update(updates)
             .eq('id', existing['id'] as String);
       } else {
-        // Insert new record
         await _supabase.from('metrics_daily').insert({
           'user_id': _currentUserId!,
           'date': dateString,
@@ -183,9 +193,27 @@ class MetricsRepository {
         });
       }
     } catch (e) {
-      print('Error updating today metrics: $e');
+      print('Error updating metrics for date: $e');
       rethrow;
     }
+  }
+
+  /// Update or insert today's metrics
+  Future<void> updateTodayMetrics({
+    int? steps,
+    double? caloriesBurned,
+    double? distanceKm,
+    double? waterIntakeLiters,
+    int? streakDays,
+  }) async {
+    await updateMetricsForDate(
+      DateTime.now(),
+      steps: steps,
+      caloriesBurned: caloriesBurned,
+      distanceKm: distanceKm,
+      waterIntakeLiters: waterIntakeLiters,
+      streakDays: streakDays,
+    );
   }
 
   /// Increment water intake (add to existing value).

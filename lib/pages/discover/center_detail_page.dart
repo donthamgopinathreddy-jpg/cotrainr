@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/design_tokens.dart';
 
 class CenterDetailPage extends StatelessWidget {
   final String centerId;
@@ -52,7 +53,17 @@ class CenterDetailPage extends StatelessWidget {
           ),
         ),
       ),
-      body: SingleChildScrollView(
+      body: RefreshIndicator(
+        color: DesignTokens.accentOrange,
+        backgroundColor: DesignTokens.surfaceOf(context),
+        onRefresh: () async {
+          HapticFeedback.selectionClick();
+          await Future<void>.delayed(const Duration(milliseconds: 350));
+        },
+        child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -224,6 +235,7 @@ class CenterDetailPage extends StatelessWidget {
             ),
           ],
         ),
+      ),
       ),
     );
   }

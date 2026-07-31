@@ -13,6 +13,7 @@ import '../../repositories/provider_locations_repository.dart';
 import '../../models/subscription_plans.dart';
 import '../../repositories/subscriptions_repository.dart';
 import '../../services/leads_service.dart';
+import '../../widgets/provider/discover_provider_card.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'center_detail_page.dart';
 
@@ -82,6 +83,16 @@ class _DiscoverPageState extends State<DiscoverPage>
     );
     _fadeController.forward();
     _searchController.addListener(_onSearchChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final discoverTab =
+          GoRouterState.of(context).uri.queryParameters['discover'];
+      if (discoverTab == 'nutritionists') {
+        setState(() => _selectedTabIndex = 1);
+      } else if (discoverTab == 'centers') {
+        setState(() => _selectedTabIndex = 2);
+      }
+    });
     _loadRealData();
   }
 
@@ -278,25 +289,31 @@ class _DiscoverPageState extends State<DiscoverPage>
         subtitle = fallbackSubtitle;
       }
 
-      final String location;
-      if (distanceKm != null) {
-        location = (geo == null && locationType == 'home' && displayName != null)
-            ? displayName
-            : '${distanceKm.toStringAsFixed(1)} km away';
+      final String? locationLabel;
+      if (distanceKm != null && distanceKm > 0) {
+        locationLabel =
+            (geo == null && locationType == 'home' && displayName != null)
+                ? displayName
+                : '${distanceKm.toStringAsFixed(1)} km away';
       } else if (displayName != null && displayName.trim().isNotEmpty) {
-        location = displayName.trim();
+        locationLabel = displayName.trim();
       } else {
-        location = 'Location not set';
+        locationLabel = null;
       }
 
       final item = DiscoverItem(
         id: providerId,
         name: fullName,
         subtitle: subtitle,
+        headline: headline.isNotEmpty ? headline : null,
+        specialtyChips: specialtyLabels,
+        roleLabel: fallbackSubtitle,
         rating: rating,
         reviews: totalReviews,
-        distance: distanceKm ?? double.infinity,
-        location: location,
+        distance: (distanceKm != null && distanceKm > 0)
+            ? distanceKm
+            : double.infinity,
+        location: locationLabel ?? '',
         isVerified: verified,
         avatarUrl: avatarUrl,
         experienceYears: (experienceYears != null && experienceYears > 0)
@@ -332,14 +349,22 @@ class _DiscoverPageState extends State<DiscoverPage>
 
       _requestStatus.clear();
       _leadIdsByProvider.clear();
+      final acceptedIds = <String>{};
       for (final lead in leads.where((l) => l.clientId == uid)) {
         if (lead.status == 'requested') {
           _requestStatus[lead.providerId] = 'pending';
           _leadIdsByProvider[lead.providerId] = lead.id;
         } else if (lead.status == 'accepted') {
           _requestStatus[lead.providerId] = 'accepted';
+          acceptedIds.add(lead.providerId);
         }
       }
+
+      // Exclude accepted/active connections from Discover listings.
+      setState(() {
+        _trainers.removeWhere((i) => acceptedIds.contains(i.id));
+        _nutritionists.removeWhere((i) => acceptedIds.contains(i.id));
+      });
     } catch (e) {
       debugPrint('Discover: failed to load lead statuses: $e');
     }
@@ -485,6 +510,12 @@ class _DiscoverPageState extends State<DiscoverPage>
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      sheetAnimationStyle: const AnimationStyle(
+        duration: Duration(milliseconds: 300),
+        reverseDuration: Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      ),
       builder: (context) => DiscoverFilterSheet(
         filterType: filterType,
         accentColor: _discoverAccent,
@@ -623,50 +654,81 @@ class _DiscoverPageState extends State<DiscoverPage>
                         },
                           child: Padding(
                           padding: const EdgeInsets.only(bottom: 14),
-                          child: _DiscoverResultCard(
-                            item: item,
-                            accentColor: _discoverAccent,
-                            accentGradient: _discoverGradient,
-                            isCenter: _selectedTabIndex == 2,
-                            requestStatus: _requestStatus[item.id] ?? 'none',
-                            onTap: () {
-                              HapticFeedback.lightImpact();
-                              if (_selectedTabIndex == 2) {
-                                // Navigate to center detail page
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => CenterDetailPage(
-                                      centerId: item.id,
-                                      centerName: item.name,
-                                      subtitle: item.subtitle,
-                                      location: item.location,
-                                      rating: item.rating,
-                                      reviews: item.reviews,
-                                      distance: item.distance,
-                                    ),
-                                  ),
-                                );
-                              } else {
-                                context.push(
-                                  '/providers/${item.id}',
-                                  extra: {
-                                    'titleFallback': item.name,
-                                    'providerType': _selectedTabIndex == 0
-                                        ? 'trainer'
-                                        : 'nutritionist',
+                          child: _selectedTabIndex == 2
+                              ? _DiscoverResultCard(
+                                  item: item,
+                                  accentColor: _discoverAccent,
+                                  accentGradient: _discoverGradient,
+                                  isCenter: true,
+                                  requestStatus: 'none',
+                                  onTap: () {
+                                    HapticFeedback.lightImpact();
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => CenterDetailPage(
+                                          centerId: item.id,
+                                          centerName: item.name,
+                                          subtitle: item.subtitle,
+                                          location: item.location,
+                                          rating: item.rating,
+                                          reviews: item.reviews,
+                                          distance: item.distance,
+                                        ),
+                                      ),
+                                    );
                                   },
-                                );
-                              }
-                            },
-                            onRequest: () => _sendRequest(item),
-                            onCancelRequest: () => _cancelRequest(item),
-                            onChat: () {
-                              HapticFeedback.lightImpact();
-                              // TODO: Navigate to chat
-                              context.push('/messaging');
-                            },
-                          ),
+                                )
+                              : DiscoverProviderCard(
+                                  data: DiscoverProviderCardData(
+                                    id: item.id,
+                                    name: item.name,
+                                    roleLabel: item.roleLabel,
+                                    headline: item.headline ??
+                                        (item.specialtyChips.isEmpty
+                                            ? null
+                                            : item.specialtyChips.first),
+                                    specialtyChips: item.specialtyChips,
+                                    rating: item.rating,
+                                    reviewCount: item.reviews,
+                                    experienceYears: item.experienceYears,
+                                    sessionModeLabels: item.sessionModes
+                                        .map(
+                                          (m) => ProviderSessionModes.labelFor(
+                                            m,
+                                            role: _selectedTabIndex == 0
+                                                ? 'trainer'
+                                                : 'nutritionist',
+                                          ),
+                                        )
+                                        .toList(),
+                                    distanceOrLocation: item.location.isEmpty
+                                        ? null
+                                        : item.location,
+                                    verified: item.isVerified,
+                                    offersOnline: item.offersOnline,
+                                    avatarUrl: item.avatarUrl,
+                                    requestStatus:
+                                        _requestStatus[item.id] ?? 'none',
+                                  ),
+                                  accentColor: _discoverAccent,
+                                  submitting:
+                                      _submittingProviders.contains(item.id),
+                                  onTap: () {
+                                    HapticFeedback.lightImpact();
+                                    context.push(
+                                      '/providers/${item.id}',
+                                      extra: {
+                                        'titleFallback': item.name,
+                                        'providerType': _selectedTabIndex == 0
+                                            ? 'trainer'
+                                            : 'nutritionist',
+                                      },
+                                    );
+                                  },
+                                  onRequest: () => _sendRequest(item),
+                                  onCancelRequest: () => _cancelRequest(item),
+                                ),
                         ),
                       );
                     },
@@ -686,8 +748,12 @@ class _DiscoverPageState extends State<DiscoverPage>
   Widget _buildEmptyState() {
     final searching = _searchQuery.isNotEmpty;
     final filtered = _filters.hasActiveFilters;
+    final isNutritionists = _selectedTabIndex == 1;
+    final roleWord = isNutritionists ? 'nutritionists' : 'trainers';
     final String title;
     final String subtitle;
+    VoidCallback? connectedCta;
+    String? connectedCtaLabel;
     if (_selectedTabIndex == 2) {
       title = 'Centers coming soon';
       subtitle = 'Fitness centers will appear here in a future update.';
@@ -699,12 +765,21 @@ class _DiscoverPageState extends State<DiscoverPage>
       title = 'No matches for “$_searchQuery”';
       subtitle = 'Try another name, specialty, or clear your search.';
     } else if (filtered) {
-      title = 'No trainers match these filters';
-      subtitle = 'Clear filters to see all eligible trainers.';
-    } else {
-      title = 'No trainers available yet';
+      title = 'No $roleWord match these filters';
+      subtitle = 'Clear filters to see more results.';
+    } else if (_requestStatus.values.any((s) => s == 'accepted')) {
+      title = 'You’re connected with matching $roleWord';
       subtitle =
-          'Verified, discoverable trainers will appear here once they complete their profile.';
+          'Connected providers appear in your ${isNutritionists ? 'Nutritionists' : 'Trainers'} list.';
+      connectedCta = () => context.push(
+            isNutritionists ? '/my-nutritionists' : '/my-trainers',
+          );
+      connectedCtaLabel =
+          isNutritionists ? 'Open Nutritionists' : 'Open Trainers';
+    } else {
+      title = 'No matching $roleWord';
+      subtitle =
+          'Verified, discoverable $roleWord will appear here once they complete their profile.';
     }
 
     return Center(
@@ -737,6 +812,17 @@ class _DiscoverPageState extends State<DiscoverPage>
               ),
               textAlign: TextAlign.center,
             ),
+            if (connectedCta != null && connectedCtaLabel != null) ...[
+              const SizedBox(height: DesignTokens.spacing16),
+              FilledButton(
+                onPressed: connectedCta,
+                style: FilledButton.styleFrom(
+                  backgroundColor: _discoverAccent,
+                  foregroundColor: Colors.white,
+                ),
+                child: Text(connectedCtaLabel),
+              ),
+            ],
             if (filtered || searching) ...[
               const SizedBox(height: DesignTokens.spacing16),
               OutlinedButton.icon(
@@ -1011,11 +1097,11 @@ class _DiscoverSearchBarState extends State<_DiscoverSearchBar> {
   String get _hintText {
     switch (widget.selectedTabIndex) {
       case 1:
-        return 'Search nutritionists...';
+        return 'Search nutritionists, specialties, or goals';
       case 2:
-        return 'Search centers...';
+        return 'Search centers';
       default:
-        return 'Search trainers...';
+        return 'Search trainers, skills, or goals';
     }
   }
 
@@ -2250,6 +2336,9 @@ class DiscoverItem {
   final String id;
   final String name;
   final String subtitle;
+  final String? headline;
+  final List<String> specialtyChips;
+  final String roleLabel;
   final double rating;
   final int reviews;
   final double distance;
@@ -2264,6 +2353,9 @@ class DiscoverItem {
     required this.id,
     required this.name,
     required this.subtitle,
+    this.headline,
+    this.specialtyChips = const [],
+    this.roleLabel = 'Trainer',
     required this.rating,
     required this.reviews,
     required this.distance,

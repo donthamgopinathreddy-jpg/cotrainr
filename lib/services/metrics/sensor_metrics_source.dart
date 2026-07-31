@@ -1,14 +1,14 @@
 import '../../models/daily_metrics_snapshot.dart';
 import 'metrics_source.dart';
 
-/// Fallback when Health Connect is unavailable on device.
-/// Does not use GPS, pedometer, or accelerometer — avoids duplicate counting.
+/// Deprecated stub — Cotrainr no longer uses phone sensors for metrics.
+/// Kept so older snapshot kinds deserialize safely; never activated.
 class SensorMetricsSource implements MetricsSource {
   @override
   MetricsSourceKind get kind => MetricsSourceKind.deviceSensors;
 
   @override
-  String get debugLabel => 'Device Sensors (Fallback)';
+  String get debugLabel => 'Device Sensors (disabled)';
 
   @override
   Future<void> initialize() async {}

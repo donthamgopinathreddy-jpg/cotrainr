@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/design_tokens.dart';
 import '../../repositories/metrics_repository.dart';
 import '../../services/user_goals_service.dart';
 import '../../widgets/home_v3/metric_center_widget.dart';
@@ -61,7 +62,17 @@ class WeeklyInsightsPage extends ConsumerWidget {
     return Scaffold(
       backgroundColor: AppColors.bgOf(context),
       body: SafeArea(
-        child: SingleChildScrollView(
+        child: RefreshIndicator(
+          color: DesignTokens.accentOrange,
+          backgroundColor: DesignTokens.surfaceOf(context),
+          onRefresh: () async {
+            ref.invalidate(weeklyMetricsProvider);
+            await ref.read(weeklyMetricsProvider.future);
+          },
+          child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          ),
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -183,6 +194,7 @@ class WeeklyInsightsPage extends ConsumerWidget {
               ),
             ],
           ),
+        ),
         ),
       ),
     );

@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../data/nearby_fitness_places_data.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
 import '../../theme/text_styles.dart';
+import '../../widgets/common/pressable_card.dart';
 import '../../widgets/common/shimmer_skeleton.dart';
 import 'home_premium_theme.dart';
 
@@ -438,7 +438,12 @@ class _FitnessPlaceCard extends StatelessWidget {
     final distance = formatFitnessDistance(result.distanceKm);
     final status = place.isOpen ? 'Open now' : 'Closed';
 
-    return Container(
+    return PressableCard(
+      borderRadius: 20,
+      pressScale: 0.99,
+      enableHaptic: false,
+      onTap: () {},
+      child: Container(
       width: 188,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -521,6 +526,7 @@ class _FitnessPlaceCard extends StatelessWidget {
           ),
         ],
       ),
+    ),
     );
   }
 

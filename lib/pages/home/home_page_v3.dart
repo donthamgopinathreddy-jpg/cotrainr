@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -301,6 +302,12 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
       final metricsRepo = MetricsRepository();
       final todayMetrics = await metricsRepo.getTodayMetrics();
       final weeklyRows = await metricsRepo.getWeeklyMetrics();
+      if (kDebugMode) {
+        debugPrint(
+          'HomePageV3: weeklyRows=${weeklyRows.length} '
+          'dates=${weeklyRows.map((r) => r['date']).toList()}',
+        );
+      }
       // Same source as notification quick-actions / Insights water metric.
       final todayWater =
           await WaterIntakeService.instance.getTodayLiters();

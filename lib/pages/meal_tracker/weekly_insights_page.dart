@@ -71,25 +71,6 @@ class _WeeklyInsightsPageState extends State<WeeklyInsightsPage>
   @override
   void initState() {
     super.initState();
-    if (widget.mealRepository != null && widget.weekEndDate != null) {
-      _loading = true;
-      widget.mealRepository!
-          .getWeeklyAggregates(widget.weekEndDate!)
-          .then((data) {
-        if (mounted && data.length == 7) {
-          setState(() {
-            _caloriesData = data.map((d) => d.calories).toList();
-            _proteinData = data.map((d) => d.protein).toList();
-            _carbsData = data.map((d) => d.carbs).toList();
-            _fatsData = data.map((d) => d.fats).toList();
-            _loading = false;
-          });
-          _controller.forward();
-        }
-      });
-    } else {
-      _loading = false;
-    }
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 650),
@@ -99,7 +80,38 @@ class _WeeklyInsightsPageState extends State<WeeklyInsightsPage>
       curve: Curves.easeOutCubic,
     );
     _weekStart = _startOfWeek(_dateOnly(widget.selectedDate));
-    _controller.forward();
+    if (widget.mealRepository != null && widget.weekEndDate != null) {
+      _loading = true;
+      _loadWeekAggregates(widget.weekEndDate!);
+    } else {
+      _loading = false;
+      _controller.forward();
+    }
+  }
+
+  Future<void> _loadWeekAggregates(DateTime weekEnd) async {
+    try {
+      final data = await widget.mealRepository!.getWeeklyAggregates(weekEnd);
+      if (!mounted) return;
+      setState(() {
+        if (data.length == 7) {
+          _caloriesData = data.map((d) => d.calories).toList();
+          _proteinData = data.map((d) => d.protein).toList();
+          _carbsData = data.map((d) => d.carbs).toList();
+          _fatsData = data.map((d) => d.fats).toList();
+        }
+        _loading = false;
+      });
+      _controller
+        ..reset()
+        ..forward();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      _controller
+        ..reset()
+        ..forward();
+    }
   }
 
   @override
@@ -151,23 +163,11 @@ class _WeeklyInsightsPageState extends State<WeeklyInsightsPage>
       }
     });
     if (widget.mealRepository != null) {
-      final weekEnd = weekStart.add(const Duration(days: 6));
-      widget.mealRepository!.getWeeklyAggregates(weekEnd).then((data) {
-        if (mounted && data.length == 7) {
-          setState(() {
-            _caloriesData = data.map((d) => d.calories).toList();
-            _proteinData = data.map((d) => d.protein).toList();
-            _carbsData = data.map((d) => d.carbs).toList();
-            _fatsData = data.map((d) => d.fats).toList();
-            _loading = false;
-          });
-          _controller.reset();
-          _controller.forward();
-        }
-      });
+      _loadWeekAggregates(weekStart.add(const Duration(days: 6)));
     } else {
-      _controller.reset();
-      _controller.forward();
+      _controller
+        ..reset()
+        ..forward();
     }
   }
 
@@ -283,8 +283,24 @@ class _WeeklyInsightsPageState extends State<WeeklyInsightsPage>
               child: CircularProgressIndicator(color: textPrimary),
             )
           : SafeArea(
-        child: CustomScrollView(
-          physics: const BouncingScrollPhysics(),
+        child: RefreshIndicator(
+          color: MealTrackerTokens.accent,
+          onRefresh: () async {
+            final weekEnd =
+                widget.weekEndDate ?? _weekStart.add(const Duration(days: 6));
+            if (widget.mealRepository != null) {
+              await _loadWeekAggregates(weekEnd);
+            } else {
+              _controller
+                ..reset()
+                ..forward();
+              await Future<void>.delayed(const Duration(milliseconds: 300));
+            }
+          },
+          child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          ),
           slivers: [
             SliverToBoxAdapter(
               child: Padding(
@@ -682,6 +698,7 @@ class _WeeklyInsightsPageState extends State<WeeklyInsightsPage>
             ),
             SliverPadding(padding: const EdgeInsets.only(bottom: 90)),
           ],
+        ),
         ),
       ),
     );

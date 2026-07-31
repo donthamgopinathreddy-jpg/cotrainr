@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../theme/design_tokens.dart';
+import '../../widgets/auth/auth_screen_background.dart';
+import '../../widgets/auth/auth_ui.dart';
 
 class WelcomeAnimationPage extends StatefulWidget {
   const WelcomeAnimationPage({super.key});
@@ -23,23 +25,20 @@ class _WelcomeAnimationPageState extends State<WelcomeAnimationPage>
   void initState() {
     super.initState();
 
-    // Opening animation controller
     _openingController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     );
 
-    // Welcome message animation controller
     _welcomeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     );
 
-    // Opening animations
     _openingScale = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _openingController,
-        curve: const Interval(0.0, 0.6, curve: Curves.easeOutBack),
+        curve: const Interval(0.0, 0.6, curve: Curves.easeOutCubic),
       ),
     );
 
@@ -50,7 +49,6 @@ class _WelcomeAnimationPageState extends State<WelcomeAnimationPage>
       ),
     );
 
-    // Welcome message animations
     _welcomeFade = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
         parent: _welcomeController,
@@ -59,7 +57,7 @@ class _WelcomeAnimationPageState extends State<WelcomeAnimationPage>
     );
 
     _welcomeSlide = Tween<Offset>(
-      begin: const Offset(0, 0.3),
+      begin: const Offset(0, 0.08),
       end: Offset.zero,
     ).animate(
       CurvedAnimation(
@@ -68,13 +66,10 @@ class _WelcomeAnimationPageState extends State<WelcomeAnimationPage>
       ),
     );
 
-    // Start opening animation
     _openingController.forward().then((_) {
-      // After opening animation, start welcome animation
       Future.delayed(const Duration(milliseconds: 300), () {
         if (mounted) {
           _welcomeController.forward().then((_) {
-            // After welcome animation, navigate to home
             Future.delayed(const Duration(milliseconds: 1500), () {
               if (mounted) {
                 context.go('/home');
@@ -95,103 +90,91 @@ class _WelcomeAnimationPageState extends State<WelcomeAnimationPage>
 
   @override
   Widget build(BuildContext context) {
-    final bgColor = Theme.of(context).brightness == Brightness.dark
-        ? DesignTokens.darkBackground
-        : Colors.white;
+    final pageBg = AuthUi.pageBg(context);
     final textPrimary = DesignTokens.textPrimaryOf(context);
+    final isLight = Theme.of(context).brightness == Brightness.light;
 
-    return Scaffold(
-      backgroundColor: bgColor,
-      body: Stack(
-        children: [
-          // Opening animation
-          AnimatedBuilder(
-            animation: _openingController,
-            builder: (context, child) {
-              return Opacity(
-                opacity: _openingFade.value,
-                child: Center(
-                  child: ScaleTransition(
-                    scale: _openingScale,
-                    child: Container(
-                      width: 120,
-                      height: 120,
-                      decoration: BoxDecoration(
-                        gradient: DesignTokens.primaryGradient,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Center(
-                        child: Icon(
-                          Icons.bolt_rounded,
-                          color: Colors.white,
-                          size: 60,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-
-          // Welcome message animation
-          AnimatedBuilder(
-            animation: _welcomeController,
-            builder: (context, child) {
-              return Opacity(
-                opacity: _welcomeFade.value,
-                child: SlideTransition(
-                  position: _welcomeSlide,
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        // Welcome icon/logo
-                        Container(
-                          width: 100,
-                          height: 100,
-                          decoration: BoxDecoration(
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: (isLight ? SystemUiOverlayStyle.dark : SystemUiOverlayStyle.light)
+          .copyWith(
+        statusBarColor: Colors.transparent,
+        systemNavigationBarColor: pageBg,
+      ),
+      child: Scaffold(
+        backgroundColor: pageBg,
+        body: AuthScreenBackground(
+          scrimStrength: 0.3,
+          child: Stack(
+            children: [
+              AnimatedBuilder(
+                animation: _openingController,
+                builder: (context, child) {
+                  return Opacity(
+                    opacity: _openingFade.value,
+                    child: Center(
+                      child: ScaleTransition(
+                        scale: _openingScale,
+                        child: Container(
+                          width: 120,
+                          height: 120,
+                          decoration: const BoxDecoration(
                             gradient: DesignTokens.primaryGradient,
                             shape: BoxShape.circle,
                           ),
-                          child: Center(
+                          child: const Center(
                             child: Icon(
                               Icons.bolt_rounded,
-                              color: Colors.white,
-                              size: 50,
+                              color: DesignTokens.darkTextPrimary,
+                              size: 60,
                             ),
                           ),
                         ),
-                        const SizedBox(height: DesignTokens.spacing32),
-                        
-                        // Welcome text
-                        Text(
-                          'Welcome!',
-                          style: TextStyle(
-                            fontSize: 42,
-                            fontWeight: DesignTokens.fontWeightBold,
-                            color: textPrimary,
-                            letterSpacing: -0.5,
-                          ),
-                        ),
-                        const SizedBox(height: DesignTokens.spacing12),
-                        
-                        Text(
-                          'Let\'s start your fitness journey',
-                          style: TextStyle(
-                            fontSize: DesignTokens.fontSizeBody,
-                            color: DesignTokens.textSecondaryOf(context),
-                            fontWeight: DesignTokens.fontWeightRegular,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                ),
-              );
-            },
+                  );
+                },
+              ),
+              AnimatedBuilder(
+                animation: _welcomeController,
+                builder: (context, child) {
+                  return Opacity(
+                    opacity: _welcomeFade.value,
+                    child: SlideTransition(
+                      position: _welcomeSlide,
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const AuthBrandLogo(width: 160),
+                            const SizedBox(height: DesignTokens.spacing32),
+                            Text(
+                              'Welcome!',
+                              style: TextStyle(
+                                fontSize: 42,
+                                fontWeight: DesignTokens.fontWeightBold,
+                                color: textPrimary,
+                                letterSpacing: -0.5,
+                              ),
+                            ),
+                            const SizedBox(height: DesignTokens.spacing12),
+                            Text(
+                              "Let's start your fitness journey",
+                              style: TextStyle(
+                                fontSize: DesignTokens.fontSizeBody,
+                                color: DesignTokens.textSecondaryOf(context),
+                                fontWeight: DesignTokens.fontWeightRegular,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

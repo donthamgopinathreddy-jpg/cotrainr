@@ -51,6 +51,13 @@ class FoodPortion {
   });
 }
 
+class FoodCatalogException implements Exception {
+  final String message;
+  FoodCatalogException(this.message);
+  @override
+  String toString() => message;
+}
+
 /// Repository for food catalog: search foods, get portions.
 class FoodCatalogRepository {
   final SupabaseClient _supabase;
@@ -58,8 +65,17 @@ class FoodCatalogRepository {
   FoodCatalogRepository({SupabaseClient? supabase})
       : _supabase = supabase ?? Supabase.instance.client;
 
+  bool _isPermissionError(Object e) {
+    final s = e.toString().toLowerCase();
+    return s.contains('permission') ||
+        s.contains('42501') ||
+        s.contains('row-level security') ||
+        s.contains('rls');
+  }
+
   /// Search foods by name. Returns catalog entries with per-100g nutrition.
   /// [verifiedOnly] restricts to verified foods when true.
+  /// Throws [FoodCatalogException] on permission/schema failures (not silent empty).
   Future<List<CatalogFood>> searchFoods(String query, {bool verifiedOnly = false}) async {
     try {
       var q = _supabase
@@ -88,11 +104,16 @@ class FoodCatalogRepository {
     } catch (e) {
       // ignore: avoid_print
       print('FoodCatalogRepository.searchFoods: $e');
-      return [];
+      if (_isPermissionError(e)) {
+        throw FoodCatalogException(
+          'Permission denied reading foods. Check RLS/grants on foods table.',
+        );
+      }
+      throw FoodCatalogException('Could not load food catalog: $e');
     }
   }
 
-  /// Get saved portions for a food.
+  /// Get saved portions for a food. Returns empty on failure (portions are optional).
   Future<List<FoodPortion>> getFoodPortions(String foodId) async {
     try {
       final res = await _supabase

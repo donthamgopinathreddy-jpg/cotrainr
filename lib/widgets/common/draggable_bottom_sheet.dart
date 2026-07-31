@@ -41,6 +41,12 @@ class DraggableBottomSheet {
       useRootNavigator: useRootNavigator,
       routeSettings: routeSettings,
       anchorPoint: anchorPoint,
+      sheetAnimationStyle: const AnimationStyle(
+        duration: Duration(milliseconds: 300),
+        reverseDuration: Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      ),
     );
   }
 }

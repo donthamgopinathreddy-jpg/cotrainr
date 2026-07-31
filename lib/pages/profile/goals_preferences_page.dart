@@ -7,6 +7,7 @@ import '../../services/nutrition_goal_calculator.dart';
 import '../../services/nutrition_planner_local_storage.dart';
 import '../../services/user_goals_service.dart';
 import '../../theme/account_hub_theme.dart';
+import '../../theme/design_tokens.dart';
 import '../../widgets/profile/account_hub_widgets.dart';
 
 class GoalsPreferencesPage extends StatefulWidget {
@@ -37,8 +38,8 @@ class _GoalsPreferencesPageState extends State<GoalsPreferencesPage> {
     _load();
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  Future<void> _load({bool showLoading = true}) async {
+    if (showLoading && mounted) setState(() => _loading = true);
     final planner = await _plannerStorage.loadSavedState();
     final steps = await _goalsService.getStepsGoal();
     final water = await _goalsService.getWaterGoal();
@@ -114,7 +115,14 @@ class _GoalsPreferencesPageState extends State<GoalsPreferencesPage> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : ListView(
+          : RefreshIndicator(
+              color: DesignTokens.accentOrange,
+              backgroundColor: DesignTokens.surfaceOf(context),
+              onRefresh: () => _load(showLoading: false),
+              child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
               children: [
                 HubSectionCard(
@@ -230,6 +238,7 @@ class _GoalsPreferencesPageState extends State<GoalsPreferencesPage> {
                   onTap: _resetGoals,
                 ),
               ],
+            ),
             ),
     );
   }

@@ -1,6 +1,44 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/nutrition_planner_local_storage.dart';
+
+class MealRepositoryException implements Exception {
+  final String message;
+  MealRepositoryException(this.message);
+  @override
+  String toString() => message;
+}
+
+bool _isMissingColumnError(Object e, String column) {
+  final s = e.toString().toLowerCase();
+  return s.contains(column.toLowerCase()) &&
+      (s.contains('column') ||
+          s.contains('42703') ||
+          s.contains('does not exist') ||
+          s.contains('schema cache'));
+}
+
+bool _isPermissionError(Object e) {
+  final s = e.toString().toLowerCase();
+  return s.contains('42501') ||
+      s.contains('permission denied') ||
+      s.contains('row-level security');
+}
+
+bool _isProfilesPermissionError(Object e) {
+  final s = e.toString().toLowerCase();
+  return s.contains('profiles') &&
+      (s.contains('42501') || s.contains('permission denied'));
+}
+
+String _permissionDeniedMessage(Object e, {required String fallback}) {
+  if (_isProfilesPermissionError(e)) {
+    return 'Meal access blocked by a DB policy on profiles. '
+        'Apply supabase/migrations/20260731_fix_meal_rls_profiles_join.sql';
+  }
+  return fallback;
+}
 
 /// Day data for meal tracker: meals grouped by meal_type with items and daily totals.
 class DayMealsData {
@@ -117,72 +155,108 @@ class MealRepository {
   }
 
   /// Fetch meals + items for a given day. Returns data shaped for MealTrackerPageV2.
+  /// Throws [MealRepositoryException] on auth/schema/permission failures (not silent empty).
   Future<DayMealsData> getDayMeals(DateTime date) async {
-    if (_currentUserId == null) return DayMealsData.empty();
+    if (_currentUserId == null) {
+      throw MealRepositoryException('Sign in to load meals');
+    }
 
     try {
-      final dateStr = _dateString(date);
-      final mealsRes = await _supabase
-          .from('meals')
-          .select('id, meal_type')
-          .eq('user_id', _currentUserId!)
-          .eq('consumed_date', dateStr)
-          .order('meal_type');
-
-      final mealsList = mealsRes as List;
-      if (mealsList.isEmpty) return DayMealsData.empty();
-
-      final mealIds = mealsList.map((m) => m['id'] as String).toList();
-      final itemsRes = await _supabase
-          .from('meal_items')
-          .select('id, meal_id, food_name, quantity, unit, calories, protein, carbs, fat, fiber')
-          .inFilter('meal_id', mealIds);
-
-      final itemsList = (itemsRes as List).cast<Map<String, dynamic>>();
-      final mealIdToType = {
-        for (final m in mealsList) m['id'] as String: m['meal_type'] as String
-      };
-
-      final mealsByType = <String, List<MealItemRow>>{};
-      int totalCal = 0;
-      double totalP = 0, totalC = 0, totalF = 0, totalFi = 0;
-
-      for (final item in itemsList) {
-        final mealId = item['meal_id'] as String;
-        final mealType = mealIdToType[mealId] ?? 'Other';
-        final row = MealItemRow(
-          id: item['id'] as String,
-          foodName: item['food_name'] as String,
-          quantity: (item['quantity'] as num).toDouble(),
-          unit: item['unit'] as String,
-          calories: (item['calories'] as num?)?.toDouble() ?? 0,
-          protein: (item['protein'] as num?)?.toDouble() ?? 0,
-          carbs: (item['carbs'] as num?)?.toDouble() ?? 0,
-          fat: (item['fat'] as num?)?.toDouble() ?? 0,
-          fiber: (item['fiber'] as num?)?.toDouble() ?? 0,
-        );
-        final factor = _factorForUnit(row.unit, row.quantity);
-        totalCal += (row.calories * factor).round();
-        totalP += row.protein * factor;
-        totalC += row.carbs * factor;
-        totalF += row.fat * factor;
-        totalFi += row.fiber * factor;
-
-        mealsByType.putIfAbsent(mealType, () => []).add(row);
-      }
-
-      return DayMealsData(
-        mealsByType: mealsByType,
-        totalCalories: totalCal,
-        totalProtein: totalP,
-        totalCarbs: totalC,
-        totalFats: totalF,
-        totalFiber: totalFi,
-      );
+      return await _fetchDayMeals(date, includeFiber: true);
     } catch (e) {
-      print('MealRepository.getDayMeals: $e');
-      return DayMealsData.empty();
+      if (_isMissingColumnError(e, 'fiber')) {
+        if (kDebugMode) {
+          debugPrint('MealRepository.getDayMeals: retry without fiber — $e');
+        }
+        return _fetchDayMeals(date, includeFiber: false);
+      }
+      if (_isMissingColumnError(e, 'consumed_date')) {
+        throw MealRepositoryException(
+          'Meal tracker DB needs update (consumed_date). '
+          'Apply supabase/migrations/20250215_meal_tracker_supabase.sql',
+        );
+      }
+      if (_isPermissionError(e)) {
+        throw MealRepositoryException(
+          _permissionDeniedMessage(
+            e,
+            fallback:
+                'Permission denied reading meals. Check RLS/grants on meals & meal_items.',
+          ),
+        );
+      }
+      debugPrint('MealRepository.getDayMeals: $e');
+      throw MealRepositoryException('Could not load meals: $e');
     }
+  }
+
+  Future<DayMealsData> _fetchDayMeals(
+    DateTime date, {
+    required bool includeFiber,
+  }) async {
+    final dateStr = _dateString(date);
+    final mealsRes = await _supabase
+        .from('meals')
+        .select('id, meal_type')
+        .eq('user_id', _currentUserId!)
+        .eq('consumed_date', dateStr)
+        .order('meal_type');
+
+    final mealsList = mealsRes as List;
+    if (mealsList.isEmpty) return DayMealsData.empty();
+
+    final mealIds = mealsList.map((m) => m['id'] as String).toList();
+    final selectCols = includeFiber
+        ? 'id, meal_id, food_name, quantity, unit, calories, protein, carbs, fat, fiber'
+        : 'id, meal_id, food_name, quantity, unit, calories, protein, carbs, fat';
+    final itemsRes = await _supabase
+        .from('meal_items')
+        .select(selectCols)
+        .inFilter('meal_id', mealIds);
+
+    final itemsList = (itemsRes as List).cast<Map<String, dynamic>>();
+    final mealIdToType = {
+      for (final m in mealsList) m['id'] as String: m['meal_type'] as String
+    };
+
+    final mealsByType = <String, List<MealItemRow>>{};
+    int totalCal = 0;
+    double totalP = 0, totalC = 0, totalF = 0, totalFi = 0;
+
+    for (final item in itemsList) {
+      final mealId = item['meal_id'] as String;
+      final mealType = mealIdToType[mealId] ?? 'Other';
+      final row = MealItemRow(
+        id: item['id'] as String,
+        foodName: item['food_name'] as String,
+        quantity: (item['quantity'] as num).toDouble(),
+        unit: item['unit'] as String,
+        calories: (item['calories'] as num?)?.toDouble() ?? 0,
+        protein: (item['protein'] as num?)?.toDouble() ?? 0,
+        carbs: (item['carbs'] as num?)?.toDouble() ?? 0,
+        fat: (item['fat'] as num?)?.toDouble() ?? 0,
+        fiber: includeFiber
+            ? ((item['fiber'] as num?)?.toDouble() ?? 0)
+            : 0,
+      );
+      final factor = _factorForUnit(row.unit, row.quantity);
+      totalCal += (row.calories * factor).round();
+      totalP += row.protein * factor;
+      totalC += row.carbs * factor;
+      totalF += row.fat * factor;
+      totalFi += row.fiber * factor;
+
+      mealsByType.putIfAbsent(mealType, () => []).add(row);
+    }
+
+    return DayMealsData(
+      mealsByType: mealsByType,
+      totalCalories: totalCal,
+      totalProtein: totalP,
+      totalCarbs: totalC,
+      totalFats: totalF,
+      totalFiber: totalFi,
+    );
   }
 
   /// Fetch meals for a client (coach only - requires accepted lead, RLS enforces)
@@ -321,9 +395,10 @@ class MealRepository {
   }
 
   /// Ensure meal row exists for (user, date, meal_type). Returns meal id.
-  /// Uses upsert to avoid race: concurrent inserts become no-op update, return existing id.
   Future<String> _ensureMeal(DateTime date, String mealType) async {
-    if (_currentUserId == null) throw StateError('Not authenticated');
+    if (_currentUserId == null) {
+      throw MealRepositoryException('Not authenticated');
+    }
 
     final dateStr = _dateString(date);
     final consumedAt = DateTime(date.year, date.month, date.day, 12, 0, 0);
@@ -340,23 +415,52 @@ class MealRepository {
       ).select('id').single();
       return result['id'] as String;
     } catch (e) {
-      // Unique violation or conflict: refetch existing row
-      final existing = await _supabase
-          .from('meals')
-          .select('id')
-          .eq('user_id', _currentUserId!)
-          .eq('consumed_date', dateStr)
-          .eq('meal_type', mealType)
-          .maybeSingle();
-      if (existing != null) return existing['id'] as String;
-      rethrow;
+      if (_isMissingColumnError(e, 'consumed_date')) {
+        throw MealRepositoryException(
+          'Meal tracker DB needs update (consumed_date). '
+          'Apply supabase/migrations/20250215_meal_tracker_supabase.sql',
+        );
+      }
+      if (_isPermissionError(e)) {
+        throw MealRepositoryException(
+          _permissionDeniedMessage(
+            e,
+            fallback: 'Permission denied creating meal. Check RLS on meals.',
+          ),
+        );
+      }
+      try {
+        final existing = await _supabase
+            .from('meals')
+            .select('id')
+            .eq('user_id', _currentUserId!)
+            .eq('consumed_date', dateStr)
+            .eq('meal_type', mealType)
+            .maybeSingle();
+        if (existing != null) return existing['id'] as String;
+
+        final inserted = await _supabase.from('meals').insert({
+          'user_id': _currentUserId!,
+          'meal_type': mealType,
+          'consumed_at': consumedAt.toUtc().toIso8601String(),
+          'consumed_date': dateStr,
+        }).select('id').single();
+        return inserted['id'] as String;
+      } catch (e2) {
+        if (_isPermissionError(e2)) {
+          throw MealRepositoryException(
+            _permissionDeniedMessage(
+              e2,
+              fallback: 'Permission denied creating meal. Check RLS on meals.',
+            ),
+          );
+        }
+        throw MealRepositoryException('Could not create meal: $e2');
+      }
     }
   }
 
   /// Add food item. Ensures meal exists, inserts meal_item with fiber.
-  /// [calories, protein, carbs, fats, fiber] are per-unit values.
-  /// For catalog foods: pass unit='100g', quantity=grams, values=per-100g from catalog.
-  /// [foodId] optional; when from catalog, links meal_item to foods table.
   Future<String> addFoodItem({
     required DateTime date,
     required String mealType,
@@ -370,10 +474,23 @@ class MealRepository {
     double fiber = 0,
     String? foodId,
   }) async {
+    if (_currentUserId == null) {
+      throw MealRepositoryException('Sign in to add food');
+    }
+
     final mealId = await _ensureMeal(date, mealType);
     final normalized = normalizeUnitForStorage(unit, quantity);
 
-    final payload = <String, dynamic>{
+    Future<String> insert(Map<String, dynamic> payload) async {
+      final row = await _supabase
+          .from('meal_items')
+          .insert(payload)
+          .select('id')
+          .single();
+      return row['id'] as String;
+    }
+
+    final base = <String, dynamic>{
       'meal_id': mealId,
       'food_name': foodName,
       'quantity': normalized.quantity,
@@ -384,11 +501,39 @@ class MealRepository {
       'fat': fats,
       'fiber': fiber,
     };
-    if (foodId != null) payload['food_id'] = foodId;
+    if (foodId != null) base['food_id'] = foodId;
 
-    final insert = await _supabase.from('meal_items').insert(payload).select('id').single();
-
-    return insert['id'] as String;
+    try {
+      return await insert(base);
+    } catch (e) {
+      if (foodId != null &&
+          (_isMissingColumnError(e, 'food_id') ||
+              e.toString().toLowerCase().contains('foreign key'))) {
+        final withoutFoodId = Map<String, dynamic>.from(base)..remove('food_id');
+        try {
+          return await insert(withoutFoodId);
+        } catch (e2) {
+          if (_isMissingColumnError(e2, 'fiber')) {
+            withoutFoodId.remove('fiber');
+            return insert(withoutFoodId);
+          }
+          rethrow;
+        }
+      }
+      if (_isMissingColumnError(e, 'fiber')) {
+        final withoutFiber = Map<String, dynamic>.from(base)..remove('fiber');
+        return insert(withoutFiber);
+      }
+      if (_isPermissionError(e)) {
+        throw MealRepositoryException(
+          _permissionDeniedMessage(
+            e,
+            fallback: 'Permission denied adding food. Check RLS on meal_items.',
+          ),
+        );
+      }
+      throw MealRepositoryException('Failed to add food: $e');
+    }
   }
 
   /// Update food item amount (quantity).
@@ -438,95 +583,123 @@ class MealRepository {
     await _supabase.from('meal_items').delete().eq('id', mealItemId);
   }
 
+  List<DayAggregate> _emptyWeek(DateTime start) {
+    return List.generate(7, (i) {
+      final d = start.add(Duration(days: i));
+      return DayAggregate(
+        date: d,
+        calories: 0,
+        protein: 0,
+        carbs: 0,
+        fats: 0,
+        fiber: 0,
+      );
+    });
+  }
+
+  String _normalizeDateKey(Object? raw) {
+    final s = raw?.toString() ?? '';
+    return s.split('T').first;
+  }
+
   /// Weekly aggregates for 7 days ending on [endDate] (inclusive).
+  /// Always returns 7 entries (zeros on auth/error) so UI never hangs on length checks.
   Future<List<DayAggregate>> getWeeklyAggregates(DateTime endDate) async {
-    if (_currentUserId == null) return [];
+    final start = DateTime(endDate.year, endDate.month, endDate.day)
+        .subtract(const Duration(days: 6));
+    if (_currentUserId == null) return _emptyWeek(start);
 
     try {
-      final start = DateTime(endDate.year, endDate.month, endDate.day)
-          .subtract(const Duration(days: 6));
-      final startStr = _dateString(start);
-      final endStr = _dateString(endDate);
-
-      final mealsRes = await _supabase
-          .from('meals')
-          .select('id, consumed_date')
-          .eq('user_id', _currentUserId!)
-          .gte('consumed_date', startStr)
-          .lte('consumed_date', endStr);
-
-      final mealsList = (mealsRes as List).cast<Map<String, dynamic>>();
-      if (mealsList.isEmpty) {
-        return List.generate(7, (i) {
-          final d = start.add(Duration(days: i));
-          return DayAggregate(
-            date: d,
-            calories: 0,
-            protein: 0,
-            carbs: 0,
-            fats: 0,
-            fiber: 0,
-          );
-        });
-      }
-
-      final mealIds = mealsList.map((m) => m['id'] as String).toList();
-      final itemsRes = await _supabase
-          .from('meal_items')
-          .select('meal_id, quantity, unit, calories, protein, carbs, fat, fiber')
-          .inFilter('meal_id', mealIds);
-
-      final itemsList = (itemsRes as List).cast<Map<String, dynamic>>();
-      final mealIdToDate = {
-        for (final m in mealsList) m['id'] as String: m['consumed_date'] as String
-      };
-
-      final dateToTotals = <String, _DayTotals>{};
-      for (int i = 0; i < 7; i++) {
-        final d = start.add(Duration(days: i));
-        dateToTotals[_dateString(d)] = _DayTotals();
-      }
-
-      for (final item in itemsList) {
-        final mealId = item['meal_id'] as String;
-        final dateStr = mealIdToDate[mealId];
-        if (dateStr == null || !dateToTotals.containsKey(dateStr)) continue;
-
-        final quantity = (item['quantity'] as num).toDouble();
-        final unit = item['unit'] as String;
-        final factor = _factorForUnit(unit, quantity);
-        final cal = (item['calories'] as num?)?.toDouble() ?? 0;
-        final p = (item['protein'] as num?)?.toDouble() ?? 0;
-        final c = (item['carbs'] as num?)?.toDouble() ?? 0;
-        final f = (item['fat'] as num?)?.toDouble() ?? 0;
-        final fi = (item['fiber'] as num?)?.toDouble() ?? 0;
-
-        dateToTotals[dateStr]!.add(
-          (cal * factor).round(),
-          p * factor,
-          c * factor,
-          f * factor,
-          fi * factor,
-        );
-      }
-
-      return List.generate(7, (i) {
-        final d = start.add(Duration(days: i));
-        final ds = _dateString(d);
-        final t = dateToTotals[ds] ?? _DayTotals();
-        return DayAggregate(
-          date: d,
-          calories: t.calories,
-          protein: t.protein,
-          carbs: t.carbs,
-          fats: t.fats,
-          fiber: t.fiber,
-        );
-      });
+      return await _fetchWeeklyAggregates(start, endDate, includeFiber: true);
     } catch (e) {
+      if (_isMissingColumnError(e, 'fiber')) {
+        try {
+          return await _fetchWeeklyAggregates(start, endDate, includeFiber: false);
+        } catch (e2) {
+          print('MealRepository.getWeeklyAggregates: $e2');
+          return _emptyWeek(start);
+        }
+      }
       print('MealRepository.getWeeklyAggregates: $e');
-      return [];
+      return _emptyWeek(start);
     }
+  }
+
+  Future<List<DayAggregate>> _fetchWeeklyAggregates(
+    DateTime start,
+    DateTime endDate, {
+    required bool includeFiber,
+  }) async {
+    final startStr = _dateString(start);
+    final endStr = _dateString(endDate);
+
+    final mealsRes = await _supabase
+        .from('meals')
+        .select('id, consumed_date')
+        .eq('user_id', _currentUserId!)
+        .gte('consumed_date', startStr)
+        .lte('consumed_date', endStr);
+
+    final mealsList = (mealsRes as List).cast<Map<String, dynamic>>();
+    if (mealsList.isEmpty) return _emptyWeek(start);
+
+    final mealIds = mealsList.map((m) => m['id'] as String).toList();
+    final selectCols = includeFiber
+        ? 'meal_id, quantity, unit, calories, protein, carbs, fat, fiber'
+        : 'meal_id, quantity, unit, calories, protein, carbs, fat';
+    final itemsRes = await _supabase
+        .from('meal_items')
+        .select(selectCols)
+        .inFilter('meal_id', mealIds);
+
+    final itemsList = (itemsRes as List).cast<Map<String, dynamic>>();
+    final mealIdToDate = {
+      for (final m in mealsList)
+        m['id'] as String: _normalizeDateKey(m['consumed_date']),
+    };
+
+    final dateToTotals = <String, _DayTotals>{};
+    for (int i = 0; i < 7; i++) {
+      final d = start.add(Duration(days: i));
+      dateToTotals[_dateString(d)] = _DayTotals();
+    }
+
+    for (final item in itemsList) {
+      final mealId = item['meal_id'] as String;
+      final dateStr = mealIdToDate[mealId];
+      if (dateStr == null || !dateToTotals.containsKey(dateStr)) continue;
+
+      final quantity = (item['quantity'] as num).toDouble();
+      final unit = item['unit'] as String;
+      final factor = _factorForUnit(unit, quantity);
+      final cal = (item['calories'] as num?)?.toDouble() ?? 0;
+      final p = (item['protein'] as num?)?.toDouble() ?? 0;
+      final c = (item['carbs'] as num?)?.toDouble() ?? 0;
+      final f = (item['fat'] as num?)?.toDouble() ?? 0;
+      final fi = includeFiber ? ((item['fiber'] as num?)?.toDouble() ?? 0) : 0.0;
+
+      dateToTotals[dateStr]!.add(
+        (cal * factor).round(),
+        p * factor,
+        c * factor,
+        f * factor,
+        fi * factor,
+      );
+    }
+
+    return List.generate(7, (i) {
+      final d = start.add(Duration(days: i));
+      final ds = _dateString(d);
+      final t = dateToTotals[ds] ?? _DayTotals();
+      return DayAggregate(
+        date: d,
+        calories: t.calories,
+        protein: t.protein,
+        carbs: t.carbs,
+        fats: t.fats,
+        fiber: t.fiber,
+      );
+    });
   }
 }
 

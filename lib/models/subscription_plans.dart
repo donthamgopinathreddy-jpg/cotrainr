@@ -42,11 +42,9 @@ abstract final class SubscriptionPlans {
         _ => freeBenefits,
       };
 
-  static bool canWriteReviews(String plan) =>
-      plan.toLowerCase() == basic || plan.toLowerCase() == unlimited;
+  static bool canWriteReviews(String plan) => true;
 
-  static bool canReviewNutritionist(String plan) =>
-      plan.toLowerCase() == unlimited;
+  static bool canReviewNutritionist(String plan) => true;
 
   /// Free tier caps nearby provider results (upper bound of marketing range).
   static int? discoverResultCap(String plan) =>

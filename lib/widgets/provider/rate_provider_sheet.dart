@@ -15,6 +15,12 @@ Future<bool?> showRateProviderSheet({
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
+    sheetAnimationStyle: const AnimationStyle(
+      duration: Duration(milliseconds: 300),
+      reverseDuration: Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    ),
     builder: (ctx) => _RateProviderSheet(
       providerLabel: providerLabel,
       onSubmit: onSubmit,

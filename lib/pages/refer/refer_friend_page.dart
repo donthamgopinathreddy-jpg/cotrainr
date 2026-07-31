@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../providers/referral_provider.dart';
 import '../../theme/account_hub_theme.dart';
+import '../../theme/design_tokens.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
 import '../../widgets/profile/account_hub_widgets.dart';
 
@@ -56,7 +57,23 @@ class _ReferFriendPageState extends ConsumerState<ReferFriendPage> {
         elevation: 0,
         title: const Text('Refer a Friend'),
       ),
-      body: ListView(
+      body: RefreshIndicator(
+        color: DesignTokens.accentOrange,
+        backgroundColor: DesignTokens.surfaceOf(context),
+        onRefresh: () async {
+          ref.invalidate(referralCodeProvider);
+          ref.invalidate(referralsCountProvider);
+          ref.invalidate(referralRewardsXpProvider);
+          await Future.wait([
+            ref.read(referralCodeProvider.future),
+            ref.read(referralsCountProvider.future),
+            ref.read(referralRewardsXpProvider.future),
+          ]);
+        },
+        child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
         children: [
           _HeroCard(isLight: isLight),
@@ -225,6 +242,7 @@ class _ReferFriendPageState extends ConsumerState<ReferFriendPage> {
             ),
           ),
         ],
+      ),
       ),
     );
   }

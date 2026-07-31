@@ -34,6 +34,7 @@ import '../../pages/nutrition_goal_planner/nutrition_goal_planner_page.dart';
 import '../../pages/quest/quest_page.dart';
 import '../../pages/bmi/bmi_details_screen.dart';
 import '../../pages/client/my_trainers_page.dart';
+import '../../pages/provider/provider_review_page.dart';
 import '../../pages/profile/provider_professional_edit_page.dart';
 import '../../pages/profile/provider_certifications_page.dart';
 import '../../pages/profile/public_profile_readonly_page.dart';
@@ -133,25 +134,11 @@ final GoRouter appRouter = GoRouter(
       pageBuilder: (context, state) => CustomTransitionPage<void>(
         key: state.pageKey,
         child: const WelcomePage(),
-        transitionDuration: const Duration(milliseconds: 320),
-        reverseTransitionDuration: const Duration(milliseconds: 280),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          final curved = CurvedAnimation(
-            parent: animation,
-            curve: Curves.easeOutCubic,
-            reverseCurve: Curves.easeInCubic,
-          );
-          return FadeTransition(
-            opacity: curved,
-            child: SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(0.03, 0),
-                end: Offset.zero,
-              ).animate(curved),
-              child: child,
-            ),
-          );
-        },
+        transitionDuration: const Duration(milliseconds: 260),
+        reverseTransitionDuration: const Duration(milliseconds: 220),
+        transitionsBuilder: Motion.standardPageTransition(
+          slideOffset: const Offset(0, 0.02),
+        ),
       ),
     ),
     GoRoute(
@@ -257,6 +244,14 @@ final GoRouter appRouter = GoRouter(
       name: 'myTrainers',
       pageBuilder: (context, state) => _fadeSlidePage(
         child: const MyTrainersPage(),
+        state: state,
+      ),
+    ),
+    GoRoute(
+      path: '/my-nutritionists',
+      name: 'myNutritionists',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const MyNutritionistsPage(),
         state: state,
       ),
     ),
@@ -369,6 +364,25 @@ final GoRouter appRouter = GoRouter(
           state: state,
         );
       },
+      routes: [
+        GoRoute(
+          path: 'review',
+          name: 'providerReview',
+          pageBuilder: (context, state) {
+            final id = state.pathParameters['providerId'] ?? '';
+            final extra = state.extra as Map<String, dynamic>?;
+            return _fadeSlidePage(
+              child: ProviderReviewPage(
+                providerId: id,
+                titleFallback: extra?['titleFallback'] as String?,
+                providerType: extra?['providerType'] as String?,
+                avatarUrl: extra?['avatarUrl'] as String?,
+              ),
+              state: state,
+            );
+          },
+        ),
+      ],
     ),
     GoRoute(
       path: '/trainer/dashboard',
@@ -519,28 +533,11 @@ CustomTransitionPage<void> _authFromWelcomePage({
   return CustomTransitionPage<void>(
     key: state.pageKey,
     child: child,
-    transitionDuration: const Duration(milliseconds: 320),
-    reverseTransitionDuration: const Duration(milliseconds: 280),
-    transitionsBuilder: (context, animation, secondaryAnimation, child) {
-      final curved = CurvedAnimation(
-        parent: animation,
-        curve: Curves.easeOutCubic,
-        reverseCurve: Curves.easeInCubic,
-      );
-      return ColoredBox(
-        color: Colors.black,
-        child: FadeTransition(
-          opacity: curved,
-          child: SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0.04, 0),
-              end: Offset.zero,
-            ).animate(curved),
-            child: child,
-          ),
-        ),
-      );
-    },
+    transitionDuration: const Duration(milliseconds: 260),
+    reverseTransitionDuration: const Duration(milliseconds: 220),
+    transitionsBuilder: Motion.standardPageTransition(
+      slideOffset: const Offset(0, 0.02),
+    ),
   );
 }
 

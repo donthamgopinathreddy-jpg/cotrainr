@@ -103,7 +103,7 @@ class _SignupWizardPageState extends State<SignupWizardPage>
 
     _stepTransitionController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 480),
+      duration: const Duration(milliseconds: 260),
     );
 
     _stepTransitionController.forward();
@@ -610,20 +610,21 @@ class _SignupWizardPageState extends State<SignupWizardPage>
 
   @override
   Widget build(BuildContext context) {
-    // Auth registration uses dark athletic background artwork.
-    const bgColor = Color(0xFF000000);
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final pageBg = AuthUi.pageBg(context);
+    final cs = Theme.of(context).colorScheme;
     final isMetricStep = _step == 3 || _step == 4;
-    final h = MediaQuery.sizeOf(context).height;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.light.copyWith(
+      value: (isLight ? SystemUiOverlayStyle.dark : SystemUiOverlayStyle.light)
+          .copyWith(
         statusBarColor: Colors.transparent,
-        systemNavigationBarColor: bgColor,
+        systemNavigationBarColor: pageBg,
       ),
       child: Scaffold(
-        backgroundColor: bgColor,
+        backgroundColor: pageBg,
         body: AuthScreenBackground(
-          scrimStrength: _step == 0 ? 0.68 : 0.82,
+          scrimStrength: 0.48,
           child: SafeArea(
             child: FadeTransition(
               opacity: _fadeController,
@@ -631,17 +632,23 @@ class _SignupWizardPageState extends State<SignupWizardPage>
                 children: [
                   Container(
                     padding:
-                        EdgeInsets.fromLTRB(16, 8, 16, isMetricStep ? 8 : 12),
+                        EdgeInsets.fromLTRB(16, 4, 16, isMetricStep ? 6 : 10),
                     child: Column(
                       children: [
                         Row(
                           children: [
                             IconButton(
                               onPressed: _back,
-                              icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                                  size: 20, color: Colors.white),
+                              icon: Icon(
+                                Icons.arrow_back_ios_new_rounded,
+                                size: 20,
+                                color: cs.onSurface,
+                              ),
                               padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
+                              constraints: const BoxConstraints(
+                                minWidth: 44,
+                                minHeight: 44,
+                              ),
                             ),
                             const Spacer(),
                             Container(
@@ -664,60 +671,53 @@ class _SignupWizardPageState extends State<SignupWizardPage>
                             ),
                           ],
                         ),
-                        if (_step == 0) ...[
-                          // Artwork already includes logo — leave space to show it.
-                          SizedBox(height: (h * 0.16).clamp(72.0, 160.0)),
-                          Text(
-                            _getStepTitle(0),
-                            textAlign: TextAlign.center,
-                            style: AuthUi.pageTitle(context).copyWith(
-                              fontSize: 26,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            _getStepSubtitle(0),
-                            textAlign: TextAlign.center,
-                            style: AuthUi.pageSubtitle(context).copyWith(
-                              fontSize: 14.5,
-                              color: Colors.white.withValues(alpha: 0.72),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                        ] else ...[
-                          const SizedBox(height: 8),
-                          Row(
+                        const SizedBox(height: 8),
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 260),
+                          switchInCurve: Curves.easeOutCubic,
+                          switchOutCurve: Curves.easeInCubic,
+                          transitionBuilder: (child, anim) {
+                            return FadeTransition(
+                              opacity: anim,
+                              child: SlideTransition(
+                                position: Tween<Offset>(
+                                  begin: const Offset(0, 0.06),
+                                  end: Offset.zero,
+                                ).animate(anim),
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: Column(
+                            key: ValueKey(_step),
+                            crossAxisAlignment: _step == 0
+                                ? CrossAxisAlignment.center
+                                : CrossAxisAlignment.start,
                             children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      _getStepTitle(_step),
-                                      style: AuthUi.pageTitle(context).copyWith(
-                                        fontSize: isMetricStep ? 22 : 26,
-                                        fontWeight: FontWeight.w800,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      _getStepSubtitle(_step),
-                                      style:
-                                          AuthUi.pageSubtitle(context).copyWith(
-                                        fontSize: 16,
-                                        color: Colors.white
-                                            .withValues(alpha: 0.62),
-                                      ),
-                                    ),
-                                  ],
+                              Text(
+                                _getStepTitle(_step),
+                                textAlign: _step == 0
+                                    ? TextAlign.center
+                                    : TextAlign.start,
+                                style: AuthUi.pageTitle(context).copyWith(
+                                  fontSize: isMetricStep ? 22 : 24,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _getStepSubtitle(_step),
+                                textAlign: _step == 0
+                                    ? TextAlign.center
+                                    : TextAlign.start,
+                                style: AuthUi.pageSubtitle(context).copyWith(
+                                  fontSize: 14.5,
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 14),
-                        ],
+                        ),
+                        const SizedBox(height: 12),
                         AuthProgressBar(step: _step, totalSteps: _totalSteps),
                       ],
                     ),

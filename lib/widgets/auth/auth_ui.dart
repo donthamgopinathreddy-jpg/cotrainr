@@ -99,18 +99,124 @@ abstract final class AuthUi {
 /// Official Cotrainr mark for auth screens — always from master SVG.
 class AuthBrandLogo extends StatelessWidget {
   final double width;
+  final bool useHero;
 
   const AuthBrandLogo({
     super.key,
     this.width = 200,
+    this.useHero = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    return CotrainrBrandLockup(
+    final logo = CotrainrBrandLockup(
       logoWidth: width * 0.42,
       showTagline: false,
       variant: CotrainrLogoVariant.color,
+    );
+    if (!useHero) return logo;
+    return Hero(
+      tag: 'auth-cotrainr-logo',
+      flightShuttleBuilder: (
+        flightContext,
+        animation,
+        direction,
+        fromContext,
+        toContext,
+      ) {
+        return FadeTransition(opacity: animation, child: logo);
+      },
+      child: Material(type: MaterialType.transparency, child: logo),
+    );
+  }
+}
+
+/// Fade + slight slide-up entrance for titles / cards.
+class AuthFadeSlide extends StatelessWidget {
+  final Widget child;
+  final Animation<double> animation;
+  final Offset begin;
+  final double beginScale;
+
+  const AuthFadeSlide({
+    super.key,
+    required this.child,
+    required this.animation,
+    this.begin = const Offset(0, 0.04),
+    this.beginScale = 0.985,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final curved = CurvedAnimation(
+      parent: animation,
+      curve: Curves.easeOutCubic,
+    );
+    return FadeTransition(
+      opacity: curved,
+      child: SlideTransition(
+        position: Tween<Offset>(begin: begin, end: Offset.zero).animate(curved),
+        child: ScaleTransition(
+          scale: Tween<double>(begin: beginScale, end: 1).animate(curved),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+class AuthTextLink extends StatefulWidget {
+  final String label;
+  final VoidCallback? onTap;
+  final Color? color;
+  final double fontSize;
+
+  const AuthTextLink({
+    super.key,
+    required this.label,
+    this.onTap,
+    this.color,
+    this.fontSize = 14,
+  });
+
+  @override
+  State<AuthTextLink> createState() => _AuthTextLinkState();
+}
+
+class _AuthTextLinkState extends State<AuthTextLink> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = widget.color ?? AuthUi.accent;
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTap: () {
+        HapticFeedback.selectionClick();
+        widget.onTap?.call();
+      },
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 120),
+        opacity: _pressed ? 0.55 : 1,
+        child: AnimatedScale(
+          duration: const Duration(milliseconds: 120),
+          scale: _pressed ? 0.98 : 1,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+            child: Text(
+              widget.label,
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.w700,
+                fontSize: widget.fontSize,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -228,10 +334,11 @@ class AuthProgressBar extends StatelessWidget {
   }
 }
 
-class AuthPrimaryButton extends StatelessWidget {
+class AuthPrimaryButton extends StatefulWidget {
   final String label;
   final VoidCallback? onPressed;
   final bool isLoading;
+  final bool showSuccess;
   final IconData? trailingIcon;
 
   const AuthPrimaryButton({
@@ -239,58 +346,94 @@ class AuthPrimaryButton extends StatelessWidget {
     required this.label,
     this.onPressed,
     this.isLoading = false,
+    this.showSuccess = false,
     this.trailingIcon,
   });
 
   @override
+  State<AuthPrimaryButton> createState() => _AuthPrimaryButtonState();
+}
+
+class _AuthPrimaryButtonState extends State<AuthPrimaryButton> {
+  bool _pressed = false;
+
+  @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      height: 56,
-      child: FilledButton(
-        onPressed: isLoading ? null : onPressed,
-        style: FilledButton.styleFrom(
-          backgroundColor: AuthUi.accent,
-          disabledBackgroundColor: AuthUi.accent.withValues(alpha: 0.45),
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          elevation: 0,
-        ),
-        child: isLoading
-            ? const SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  color: Colors.white,
-                ),
-              )
-            : Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.1,
-                    ),
-                  ),
-                  if (trailingIcon != null) ...[
-                    const SizedBox(width: 8),
-                    Icon(trailingIcon, size: 18),
-                  ],
-                ],
+    final disabled = widget.isLoading ||
+        widget.showSuccess ||
+        widget.onPressed == null;
+
+    return GestureDetector(
+      onTapDown: disabled ? null : (_) => setState(() => _pressed = true),
+      onTapUp: disabled ? null : (_) => setState(() => _pressed = false),
+      onTapCancel: disabled ? null : () => setState(() => _pressed = false),
+      child: AnimatedScale(
+        duration: const Duration(milliseconds: 130),
+        curve: Curves.easeOut,
+        scale: _pressed ? 0.98 : 1,
+        child: SizedBox(
+          width: double.infinity,
+          height: 56,
+          child: FilledButton(
+            onPressed: disabled ? null : widget.onPressed,
+            style: FilledButton.styleFrom(
+              backgroundColor: AuthUi.accent,
+              disabledBackgroundColor: AuthUi.accent.withValues(alpha: 0.45),
+              foregroundColor: DesignTokens.darkTextPrimary,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
               ),
+              elevation: 0,
+            ),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              child: widget.showSuccess
+                  ? const Icon(
+                      Icons.check_rounded,
+                      key: ValueKey('ok'),
+                      size: 26,
+                      color: DesignTokens.darkTextPrimary,
+                    )
+                  : widget.isLoading
+                      ? const SizedBox(
+                          key: ValueKey('load'),
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: DesignTokens.darkTextPrimary,
+                          ),
+                        )
+                      : Row(
+                          key: ValueKey(widget.label),
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              widget.label,
+                              style: const TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.1,
+                              ),
+                            ),
+                            if (widget.trailingIcon != null) ...[
+                              const SizedBox(width: 8),
+                              Icon(widget.trailingIcon, size: 18),
+                            ],
+                          ],
+                        ),
+            ),
+          ),
+        ),
       ),
     );
   }
 }
 
-class AuthOutlinedButton extends StatelessWidget {
+class AuthOutlinedButton extends StatefulWidget {
   final String label;
   final VoidCallback onPressed;
 
@@ -301,37 +444,51 @@ class AuthOutlinedButton extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final border = Theme.of(context)
-        .colorScheme
-        .onSurface
-        .withValues(alpha: 0.12);
+  State<AuthOutlinedButton> createState() => _AuthOutlinedButtonState();
+}
 
-    return SizedBox(
-      width: double.infinity,
-      height: 56,
-      child: OutlinedButton(
-        onPressed: () {
-          HapticFeedback.lightImpact();
-          onPressed();
-        },
-        style: OutlinedButton.styleFrom(
-          foregroundColor: Theme.of(context).colorScheme.onSurface,
-          side: BorderSide(color: border),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+class _AuthOutlinedButtonState extends State<AuthOutlinedButton> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final border = cs.onSurface.withValues(alpha: 0.12);
+
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      child: AnimatedScale(
+        duration: const Duration(milliseconds: 130),
+        scale: _pressed ? 0.98 : 1,
+        child: SizedBox(
+          width: double.infinity,
+          height: 56,
+          child: OutlinedButton(
+            onPressed: () {
+              HapticFeedback.lightImpact();
+              widget.onPressed();
+            },
+            style: OutlinedButton.styleFrom(
+              foregroundColor: cs.onSurface,
+              side: BorderSide(color: border),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+            child: Text(
+              widget.label,
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+            ),
           ),
-        ),
-        child: Text(
-          label,
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
         ),
       ),
     );
   }
 }
 
-class AuthSocialButton extends StatelessWidget {
+class AuthSocialButton extends StatefulWidget {
   final Widget icon;
   final VoidCallback? onTap;
   final bool isLoading;
@@ -344,30 +501,52 @@ class AuthSocialButton extends StatelessWidget {
   });
 
   @override
+  State<AuthSocialButton> createState() => _AuthSocialButtonState();
+}
+
+class _AuthSocialButtonState extends State<AuthSocialButton> {
+  bool _pressed = false;
+
+  @override
   Widget build(BuildContext context) {
-    return Material(
-      color: AccountHubTheme.cardBg(context),
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: isLoading ? null : () {
-          HapticFeedback.lightImpact();
-          onTap?.call();
-        },
+    final cs = Theme.of(context).colorScheme;
+    return AnimatedScale(
+      duration: const Duration(milliseconds: 120),
+      scale: _pressed ? 0.96 : 1,
+      child: Material(
+        color: AccountHubTheme.cardBg(context),
         borderRadius: BorderRadius.circular(16),
-        child: Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: Theme.of(context)
-                  .colorScheme
-                  .onSurface
-                  .withValues(alpha: 0.1),
+        child: InkWell(
+          onTapDown: widget.isLoading
+              ? null
+              : (_) => setState(() => _pressed = true),
+          onTapUp: (_) => setState(() => _pressed = false),
+          onTapCancel: () => setState(() => _pressed = false),
+          onTap: widget.isLoading
+              ? null
+              : () {
+                  HapticFeedback.lightImpact();
+                  widget.onTap?.call();
+                },
+          borderRadius: BorderRadius.circular(16),
+          splashColor: AuthUi.accent.withValues(alpha: 0.12),
+          highlightColor: AuthUi.accent.withValues(alpha: 0.06),
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 160),
+            opacity: widget.isLoading ? 0.45 : 1,
+            child: Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: cs.onSurface.withValues(alpha: 0.1),
+                ),
+                boxShadow: AccountHubTheme.cardShadow(context),
+              ),
+              child: Center(child: widget.icon),
             ),
-            boxShadow: AccountHubTheme.cardShadow(context),
           ),
-          child: Center(child: icon),
         ),
       ),
     );
@@ -388,12 +567,20 @@ class AuthSectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final cs = Theme.of(context).colorScheme;
+
     return Container(
       width: double.infinity,
       padding: EdgeInsets.all(compact ? 14 : 16),
       decoration: BoxDecoration(
-        color: AccountHubTheme.cardBg(context),
+        color: isLight
+            ? DesignTokens.lightCardBackground
+            : DesignTokens.darkSurfaceElevated.withValues(alpha: 0.92),
         borderRadius: BorderRadius.circular(AccountHubTheme.sectionRadius),
+        border: Border.all(
+          color: cs.onSurface.withValues(alpha: isLight ? 0.06 : 0.08),
+        ),
         boxShadow: AccountHubTheme.cardShadow(context),
       ),
       child: Column(
@@ -804,19 +991,25 @@ class AuthStepTransition extends StatelessWidget {
   Widget build(BuildContext context) {
     final fade = CurvedAnimation(
       parent: animation,
-      curve: const Interval(0.0, 1.0, curve: Curves.easeOutCubic),
+      curve: Curves.easeOutCubic,
     );
     final slide = Tween<Offset>(
-      begin: const Offset(0.04, 0.03),
+      begin: const Offset(0.03, 0.025),
       end: Offset.zero,
     ).animate(CurvedAnimation(
       parent: animation,
       curve: Curves.easeOutCubic,
     ));
+    final scale = Tween<double>(begin: 0.985, end: 1).animate(
+      CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+    );
 
     return FadeTransition(
       opacity: fade,
-      child: SlideTransition(position: slide, child: child),
+      child: SlideTransition(
+        position: slide,
+        child: ScaleTransition(scale: scale, child: child),
+      ),
     );
   }
 }

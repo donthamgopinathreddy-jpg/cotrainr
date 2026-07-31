@@ -4,6 +4,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:health/health.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../theme/design_tokens.dart';
+import '../../widgets/auth/auth_screen_background.dart';
+import '../../widgets/auth/auth_ui.dart';
 import '../../widgets/provider/provider_professional_form_validation.dart';
 import 'package:flutter/services.dart';
 
@@ -261,212 +263,240 @@ class _PermissionsPageState extends State<PermissionsPage> {
     final textSecondary = DesignTokens.textSecondaryOf(context);
     final surfaceColor = DesignTokens.surfaceOf(context);
     final borderColor = DesignTokens.borderColorOf(context);
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final pageBg = DesignTokens.backgroundOf(context);
 
-    return Scaffold(
-      backgroundColor: DesignTokens.backgroundOf(context),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 20),
-              // Header
-              Text(
-                'Enable Permissions',
-                style: TextStyle(
-                  color: textPrimary,
-                  fontSize: DesignTokens.fontSizeH1,
-                  fontWeight: DesignTokens.fontWeightBold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Grant permissions to track your health data and enhance your experience',
-                style: TextStyle(
-                  color: textSecondary,
-                  fontSize: DesignTokens.fontSizeBody,
-                ),
-              ),
-              const SizedBox(height: 32),
-              
-              // Permissions List
-              Expanded(
-                child: ListView.builder(
-                  itemCount: _permissions.length,
-                  itemBuilder: (context, index) {
-                    final item = _permissions[index];
-                    final status = _permissionStatuses[item.permission] ?? PermissionStatus.denied;
-                    final isGranted = status.isGranted;
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: (isLight ? SystemUiOverlayStyle.dark : SystemUiOverlayStyle.light)
+          .copyWith(
+        statusBarColor: Colors.transparent,
+        systemNavigationBarColor: pageBg,
+      ),
+      child: Scaffold(
+        backgroundColor: pageBg,
+        body: AuthScreenBackground(
+          scrimStrength: 0.4,
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const AuthBrandLogo(width: 120),
+                  const SizedBox(height: 18),
+                  Text(
+                    'Enable Permissions',
+                    style: TextStyle(
+                      color: textPrimary,
+                      fontSize: DesignTokens.fontSizeH1,
+                      fontWeight: DesignTokens.fontWeightBold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Grant permissions to track your health data and enhance your experience',
+                    style: TextStyle(
+                      color: textSecondary,
+                      fontSize: DesignTokens.fontSizeBody,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
 
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: surfaceColor,
-                        borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
-                        border: Border.all(
-                          color: isGranted 
-                              ? DesignTokens.accentGreen 
-                              : borderColor,
-                          width: isGranted ? 2 : 1,
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(12),
+                  // Permissions List
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: _permissions.length,
+                      itemBuilder: (context, index) {
+                        final item = _permissions[index];
+                        final status = _permissionStatuses[item.permission] ??
+                            PermissionStatus.denied;
+                        final isGranted = status.isGranted;
+
+                        return TweenAnimationBuilder<double>(
+                          tween: Tween(begin: 0, end: 1),
+                          duration: Duration(milliseconds: 280 + index * 40),
+                          curve: Curves.easeOutCubic,
+                          builder: (context, value, child) {
+                            return Opacity(
+                              opacity: value,
+                              child: Transform.translate(
+                                offset: Offset(0, 10 * (1 - value)),
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
-                              color: isGranted
-                                  ? DesignTokens.accentGreen.withOpacity(0.1)
-                                  : DesignTokens.accentOrange.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(DesignTokens.radiusSmall),
+                              color: surfaceColor.withValues(
+                                alpha: isLight ? 1 : 0.92,
+                              ),
+                              borderRadius: BorderRadius.circular(
+                                DesignTokens.radiusCard,
+                              ),
+                              border: Border.all(
+                                color: isGranted
+                                    ? DesignTokens.accentGreen
+                                        .withValues(alpha: 0.7)
+                                    : borderColor,
+                                width: isGranted ? 1.5 : 1,
+                              ),
                             ),
-                            child: Icon(
-                              item.icon,
-                              color: isGranted
-                                  ? DesignTokens.accentGreen
-                                  : DesignTokens.accentOrange,
-                              size: 24,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                            child: Row(
                               children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        item.title,
-                                        style: TextStyle(
-                                          color: textPrimary,
-                                          fontSize: DesignTokens.fontSizeBody,
-                                          fontWeight: DesignTokens.fontWeightSemiBold,
-                                        ),
-                                      ),
+                                AnimatedContainer(
+                                  duration: const Duration(milliseconds: 220),
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: isGranted
+                                        ? DesignTokens.accentGreen
+                                            .withValues(alpha: 0.12)
+                                        : DesignTokens.accentOrange
+                                            .withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(
+                                      DesignTokens.radiusSmall,
                                     ),
-                                    if (item.isRequired)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 4,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: DesignTokens.accentRed.withOpacity(0.1),
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: Text(
-                                          'Required',
-                                          style: TextStyle(
-                                            color: DesignTokens.accentRed,
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  item.description,
-                                  style: TextStyle(
-                                    color: textSecondary,
-                                    fontSize: DesignTokens.fontSizeBodySmall,
+                                  ),
+                                  child: Icon(
+                                    item.icon,
+                                    color: isGranted
+                                        ? DesignTokens.accentGreen
+                                        : DesignTokens.accentOrange,
+                                    size: 22,
                                   ),
                                 ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              item.title,
+                                              style: TextStyle(
+                                                color: textPrimary,
+                                                fontSize:
+                                                    DesignTokens.fontSizeBody,
+                                                fontWeight: DesignTokens
+                                                    .fontWeightSemiBold,
+                                              ),
+                                            ),
+                                          ),
+                                          if (item.isRequired)
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 8,
+                                                vertical: 4,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: DesignTokens.accentRed
+                                                    .withValues(alpha: 0.1),
+                                                borderRadius:
+                                                    BorderRadius.circular(4),
+                                              ),
+                                              child: Text(
+                                                'Required',
+                                                style: TextStyle(
+                                                  color:
+                                                      DesignTokens.accentRed,
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        item.description,
+                                        style: TextStyle(
+                                          color: textSecondary,
+                                          fontSize:
+                                              DesignTokens.fontSizeBodySmall,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                if (isGranted)
+                                  const Icon(
+                                    Icons.check_circle_rounded,
+                                    color: DesignTokens.accentGreen,
+                                    size: 24,
+                                  )
+                                else
+                                  TextButton(
+                                    onPressed: _isRequesting
+                                        ? null
+                                        : () => _requestPermission(item),
+                                    child: const Text(
+                                      'Grant',
+                                      style: TextStyle(
+                                        color: DesignTokens.accentOrange,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
                               ],
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          if (isGranted)
-                            Icon(
-                              Icons.check_circle,
-                              color: DesignTokens.accentGreen,
-                              size: 24,
-                            )
-                          else
-                            TextButton(
-                              onPressed: _isRequesting
-                                  ? null
-                                  : () => _requestPermission(item),
-                              child: Text(
-                                'Grant',
-                                style: TextStyle(color: DesignTokens.accentOrange),
-                              ),
-                            ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-              
-              const SizedBox(height: 24),
-              
-              // Action Buttons
-              Row(
-                children: [
-                  Expanded(
-                    child: TextButton(
-                      onPressed: () {
-                        HapticFeedback.lightImpact();
-                        _navigateAfterOnboarding();
+                        );
                       },
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-                          side: BorderSide(color: borderColor),
-                        ),
-                      ),
-                      child: Text(
-                        'Skip',
-                        style: TextStyle(
-                          color: textSecondary,
-                          fontSize: DesignTokens.fontSizeBody,
-                          fontWeight: DesignTokens.fontWeightSemiBold,
-                        ),
-                      ),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 2,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: DesignTokens.primaryGradient,
-                        borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-                      ),
-                      child: TextButton(
-                        onPressed: _isRequesting ? null : _requestAllPermissions,
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                        ),
-                        child: _isRequesting
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                ),
-                              )
-                            : const Text(
-                                'Grant All Permissions',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: DesignTokens.fontSizeBody,
-                                  fontWeight: DesignTokens.fontWeightSemiBold,
-                                ),
+
+                  const SizedBox(height: 16),
+
+                  // Action Buttons
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextButton(
+                          onPressed: () {
+                            HapticFeedback.lightImpact();
+                            _navigateAfterOnboarding();
+                          },
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                DesignTokens.radiusButton,
                               ),
+                              side: BorderSide(color: borderColor),
+                            ),
+                          ),
+                          child: Text(
+                            'Skip',
+                            style: TextStyle(
+                              color: textSecondary,
+                              fontSize: DesignTokens.fontSizeBody,
+                              fontWeight: DesignTokens.fontWeightSemiBold,
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 2,
+                        child: AuthPrimaryButton(
+                          label: 'Allow All',
+                          isLoading: _isRequesting,
+                          onPressed:
+                              _isRequesting ? null : _requestAllPermissions,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
-            ],
+            ),
           ),
         ),
       ),

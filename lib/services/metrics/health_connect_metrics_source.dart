@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:health/health.dart';
 
@@ -25,7 +27,8 @@ class HealthConnectMetricsSource implements MetricsSource {
   MetricsSourceKind get kind => MetricsSourceKind.healthConnect;
 
   @override
-  String get debugLabel => 'Health Connect';
+  String get debugLabel =>
+      Platform.isIOS ? 'Apple Health' : 'Health Connect';
 
   @override
   void setUserHeightCm(double? heightCm) => _heightCm = heightCm;

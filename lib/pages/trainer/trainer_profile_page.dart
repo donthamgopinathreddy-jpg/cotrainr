@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../theme/app_colors.dart';
+import '../../theme/design_tokens.dart';
 import '../../repositories/profile_repository.dart';
 import '../../repositories/verification_repository.dart';
 import '../../utils/page_transitions.dart';
@@ -88,8 +89,14 @@ class _TrainerProfilePageState extends ConsumerState<TrainerProfilePage>
       backgroundColor: isLight ? Colors.grey.shade200 : colorScheme.background,
       body: FadeTransition(
         opacity: _fadeAnimation,
-        child: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
+        child: RefreshIndicator(
+          color: DesignTokens.accentOrange,
+          backgroundColor: DesignTokens.surfaceOf(context),
+          onRefresh: _loadProfile,
+          child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
         slivers: [
           SliverToBoxAdapter(
             child: Column(
@@ -246,6 +253,7 @@ class _TrainerProfilePageState extends ConsumerState<TrainerProfilePage>
         ],
       ),
         ),
+      ),
     );
   }
 }
