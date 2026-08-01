@@ -251,14 +251,22 @@ class _SignupWizardPageState extends State<SignupWizardPage>
       _userIdAvailabilityStatus = 'checking';
     });
 
-    await Future.delayed(const Duration(milliseconds: 800));
-
-    // Simulate availability check - in production, call your API
-    // Database requirement: 3-20 chars, A-Za-z0-9_ only
-    final isAvailable = userId.length >= 3 && userId.length <= 20;
-    if (mounted) {
+    try {
+      final available = await Supabase.instance.client.rpc(
+        'is_username_available',
+        params: {'p_username': userId},
+      );
+      if (!mounted) return;
       setState(() {
-        _userIdAvailabilityStatus = isAvailable ? 'available' : 'taken';
+        _userIdAvailabilityStatus =
+            (available == true) ? 'available' : 'taken';
+        _isCheckingUserId = false;
+      });
+    } catch (_) {
+      // If RPC not applied yet, allow format-valid usernames through.
+      if (!mounted) return;
+      setState(() {
+        _userIdAvailabilityStatus = 'available';
         _isCheckingUserId = false;
       });
     }
@@ -266,7 +274,7 @@ class _SignupWizardPageState extends State<SignupWizardPage>
 
   Future<void> _checkEmailValidation(String email) async {
     final emailTrimmed = email.trim();
-    
+
     if (emailTrimmed.isEmpty) {
       setState(() {
         _emailValidationStatus = null;
@@ -275,9 +283,9 @@ class _SignupWizardPageState extends State<SignupWizardPage>
       return;
     }
 
-    // Check email format first
-    final isValidFormat = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(emailTrimmed);
-    
+    final isValidFormat =
+        RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(emailTrimmed);
+
     if (!isValidFormat) {
       setState(() {
         _emailValidationStatus = 'invalid';
@@ -286,21 +294,10 @@ class _SignupWizardPageState extends State<SignupWizardPage>
       return;
     }
 
-    setState(() {
-      _isCheckingEmail = true;
-      _emailValidationStatus = 'checking';
-    });
-
-    // Simulate API call to check if email is already used
-    await Future.delayed(const Duration(milliseconds: 800));
-
-    // For now, simulate: email is available if it doesn't contain "taken" or "used"
-    final isAvailable = !emailTrimmed.toLowerCase().contains('taken') && 
-                        !emailTrimmed.toLowerCase().contains('used');
-    
+    // Format-valid is enough pre-signup; Auth returns a clear error if taken.
     if (mounted) {
       setState(() {
-        _emailValidationStatus = isAvailable ? 'valid' : 'taken';
+        _emailValidationStatus = 'valid';
         _isCheckingEmail = false;
       });
     }
@@ -390,6 +387,38 @@ class _SignupWizardPageState extends State<SignupWizardPage>
     }
   }
 
+  String _formatDob(DateTime d) {
+    final y = d.year.toString().padLeft(4, '0');
+    final m = d.month.toString().padLeft(2, '0');
+    final day = d.day.toString().padLeft(2, '0');
+    return '$y-$m-$day';
+  }
+
+  String _friendlySignupError(Object e) {
+    final raw = e.toString();
+    final lower = raw.toLowerCase();
+    if (lower.contains('username already exists') ||
+        (lower.contains('duplicate key') && lower.contains('username'))) {
+      return 'That username is already taken. Pick another User ID.';
+    }
+    if (lower.contains('user already registered') ||
+        lower.contains('already been registered') ||
+        lower.contains('email address is already')) {
+      return 'An account with this email already exists. Try logging in.';
+    }
+    if (lower.contains('database error saving new user')) {
+      return 'Could not create your profile. Try a different User ID. If it keeps failing, apply the latest signup database migration.';
+    }
+    if (lower.contains('password')) {
+      return 'Password does not meet requirements.';
+    }
+    return raw
+        .replaceFirst(RegExp(r'^Exception:\s*'), '')
+        .replaceFirst(RegExp(r'^AuthException\(message:\s*'), '')
+        .replaceFirst(RegExp(r',\s*statusCode:.*\)\s*$'), '')
+        .replaceFirst(RegExp(r'^Signup failed:\s*'), '');
+  }
+
   Future<void> _submit() async {
     HapticFeedback.mediumImpact();
     setState(() => _isSubmitting = true);
@@ -397,25 +426,35 @@ class _SignupWizardPageState extends State<SignupWizardPage>
     try {
       final supabase = Supabase.instance.client;
 
-      final heightCm = _heightInCm ? _heightCm : ((_feet * 30.48) + (_inch * 2.54));
-      final weightKg = _weightInKg ? _weightKg : (_weightLbs * 0.45359237);
+      final heightCmRaw =
+          _heightInCm ? _heightCm : ((_feet * 30.48) + (_inch * 2.54));
+      final weightKgRaw =
+          _weightInKg ? _weightKg : (_weightLbs * 0.45359237);
+      // Integer/rounded — Postgres trigger casts height to INTEGER
+      final heightCm = heightCmRaw.round();
+      final weightKg =
+          double.parse(weightKgRaw.clamp(20.0, 400.0).toStringAsFixed(2));
 
       final username = _userId.text.trim();
       if (username.isEmpty) {
         throw Exception('Username is required');
       }
 
+      final phoneDigits = _phone.text.trim();
+      final phone =
+          phoneDigits.isEmpty ? null : '${_phoneCountryCode}$phoneDigits';
+
       final signUpData = <String, dynamic>{
         'username': username,
         'full_name': '${_first.text.trim()} ${_last.text.trim()}'.trim(),
         'first_name': _first.text.trim(),
         'last_name': _last.text.trim(),
-        'phone': '${_phoneCountryCode}${_phone.text.trim()}',
-        'dob': _dob.toIso8601String(),
+        if (phone != null) 'phone': phone,
+        'dob': _formatDob(_dob),
         'gender': _gender,
         'height_cm': heightCm,
         'weight_kg': weightKg,
-        'bmi': _bmi,
+        'bmi': double.parse(_bmi.toStringAsFixed(2)),
         'goals': _selectedGoals.toList(),
         'role': _role.toLowerCase(),
       };
@@ -461,7 +500,7 @@ class _SignupWizardPageState extends State<SignupWizardPage>
         if (session != null) {
           // Initialize user goals (calculate water goal from weight)
           final goalsService = UserGoalsService();
-          await goalsService.initializeGoals(weightKg: weightKg);
+          await goalsService.initializeGoals(weightKg: weightKgRaw);
 
           // Referral: apply code AFTER signup, once only, then generate code for new user
           final referralRepo = ReferralRepository();
@@ -551,7 +590,7 @@ class _SignupWizardPageState extends State<SignupWizardPage>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Signup failed: ${e.toString()}'),
+          content: Text('Signup failed: ${_friendlySignupError(e)}'),
           backgroundColor: DesignTokens.accentRed,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
@@ -939,8 +978,17 @@ class _Step1ContentState extends State<_Step1Content> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+          Text(
+            '* Required  ·  (optional) can be skipped',
+            style: TextStyle(
+              color: textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 14),
           _TextFieldCard(
-            label: 'User ID',
+            label: 'User ID *',
             controller: widget.userId,
             hint: 'lowercase, numbers, _ only',
             prefixIcon: Icons.alternate_email_rounded,
@@ -968,18 +1016,18 @@ class _Step1ContentState extends State<_Step1Content> {
                 : widget.userIdAvailabilityStatus == 'taken'
                   ? Icon(Icons.cancel, color: DesignTokens.accentRed, size: 20)
                   : null,
-            helperText: widget.userId.text.isNotEmpty && (widget.userId.text.length < 3 || widget.userId.text.length > 20)
+            helperText: widget.userIdAvailabilityStatus == 'taken'
+              ? 'Username already taken'
+              : widget.userId.text.isNotEmpty && (widget.userId.text.length < 3 || widget.userId.text.length > 20)
               ? 'Must be 3-20 characters'
               : null,
-            helperColor: widget.userId.text.isNotEmpty && (widget.userId.text.length < 3 || widget.userId.text.length > 20)
-              ? DesignTokens.accentRed
-              : null,
+            helperColor: DesignTokens.accentRed,
           ),
 
           const SizedBox(height: 16),
 
           _TextFieldCard(
-            label: 'Email',
+            label: 'Email *',
             controller: widget.email,
             hint: 'your.email@example.com',
             prefixIcon: Icons.mail_outline_rounded,
@@ -1017,7 +1065,7 @@ class _Step1ContentState extends State<_Step1Content> {
           const SizedBox(height: 16),
 
           _TextFieldCard(
-            label: 'Password',
+            label: 'Password *',
             controller: widget.pass,
             hint: 'Create a strong password',
             prefixIcon: Icons.lock_outline_rounded,
@@ -1070,7 +1118,7 @@ class _Step1ContentState extends State<_Step1Content> {
           const SizedBox(height: 20),
 
           _TextFieldCard(
-            label: 'Confirm Password',
+            label: 'Confirm Password *',
             controller: widget.confirmPass,
             hint: 'Re-enter your password',
             prefixIcon: Icons.lock_outline_rounded,
@@ -1098,7 +1146,7 @@ class _Step1ContentState extends State<_Step1Content> {
           _TextFieldCard(
             label: 'Referral Code (optional)',
             controller: widget.referralCode,
-            hint: 'Enter a friend\'s code',
+            hint: 'Enter a friend\'s code (optional)',
             prefixIcon: Icons.card_giftcard_outlined,
             inputFormatters: [
               FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
@@ -1144,7 +1192,7 @@ class _Step2Content extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
           _TextFieldCard(
-            label: 'First Name',
+            label: 'First Name (optional)',
             controller: first,
             hint: 'Enter your first name',
             prefixIcon: Icons.person_outline_rounded,
@@ -1153,7 +1201,7 @@ class _Step2Content extends StatelessWidget {
           const SizedBox(height: 16),
 
           _TextFieldCard(
-            label: 'Last Name',
+            label: 'Last Name (optional)',
             controller: last,
             hint: 'Enter your last name',
             prefixIcon: Icons.person_outline_rounded,
@@ -1162,7 +1210,7 @@ class _Step2Content extends StatelessWidget {
           const SizedBox(height: 16),
 
           _TextFieldCard(
-            label: 'Phone Number',
+            label: 'Phone Number (optional)',
             controller: phone,
             hint: 'Enter your phone number',
             keyboardType: TextInputType.phone,
@@ -1282,7 +1330,7 @@ class _StepAgeGenderContent extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Date of birth', style: sectionLabel),
+          Text('Date of birth *', style: sectionLabel),
           const SizedBox(height: 14),
           SizedBox(
             height: 260,
@@ -1325,7 +1373,7 @@ class _StepAgeGenderContent extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 36),
-          Text('Gender', style: sectionLabel),
+          Text('Gender *', style: sectionLabel),
           const SizedBox(height: 16),
           AuthPickerFadeMask(
             child: AuthSidewaysWheelPicker(
@@ -1510,6 +1558,18 @@ class _StepHeightContentState extends State<_StepHeightContent> {
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
       child: Column(
         children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Height *',
+              style: TextStyle(
+                color: textSecondary,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
           Align(
             alignment: Alignment.centerRight,
             child: _UnitToggle(
@@ -1849,6 +1909,18 @@ class _StepWeightContentState extends State<_StepWeightContent> {
       child: Column(
         children: [
           Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Weight *',
+              style: TextStyle(
+                color: textSecondary,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Align(
             alignment: Alignment.centerRight,
             child: _UnitToggle(
               left: 'kg',
@@ -2025,6 +2097,15 @@ class _StepRoleContent extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          Text(
+            'Choose your role *',
+            style: TextStyle(
+              color: DesignTokens.textPrimaryOf(context),
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 12),
           _RoleCard(
             icon: Icons.person_outline_rounded,
             title: 'Client',
@@ -2056,15 +2137,15 @@ class _StepRoleContent extends StatelessWidget {
                     padding: const EdgeInsets.only(top: 20),
                     child: AuthSectionCard(
                       title: role == 'Trainer'
-                          ? 'Your specialties'
-                          : 'Your focus areas',
+                          ? 'Your specialties *'
+                          : 'Your focus areas *',
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             role == 'Trainer'
-                                ? 'What do you train in? Pick all that apply.'
-                                : 'What nutrition areas do you cover?',
+                                ? 'Required — pick at least one specialty.'
+                                : 'Required — pick at least one focus area.',
                             style: TextStyle(
                               color: textSecondary,
                               fontSize: 14,
@@ -2241,7 +2322,7 @@ class _StepGoalsContent extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Pick your goals',
+                        'Pick your goals *',
                         style: TextStyle(
                           color: DesignTokens.textPrimaryOf(context),
                           fontSize: 18,
@@ -2250,7 +2331,7 @@ class _StepGoalsContent extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Choose one or more — you can change these later.',
+                        'Required — choose at least one. You can change these later.',
                         style: TextStyle(
                           color: textSecondary,
                           fontSize: 14,

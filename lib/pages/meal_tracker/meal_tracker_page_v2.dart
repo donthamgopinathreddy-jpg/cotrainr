@@ -2486,10 +2486,23 @@ class _AddFoodSheet extends StatefulWidget {
   State<_AddFoodSheet> createState() => _AddFoodSheetState();
 }
 
+/// Portions like "100g" stay grams-only; "1 egg" / "1 medium" are countable.
+bool _isGramOnlyPortionLabel(String label) {
+  return RegExp(r'^\d+(\.\d+)?\s*g(rams?)?$', caseSensitive: false)
+      .hasMatch(label.trim());
+}
+
+bool _isCountablePortion(FoodPortion p) => !_isGramOnlyPortionLabel(p.label);
+
 class _AddFoodSheetState extends State<_AddFoodSheet> {
   int _step = 0; // 0 = search, 1 = catalog details, 2 = custom food
   CatalogFood? _selectedCatalogFood;
   double _grams = 100;
+  /// Count of selected portion (eggs, bananas, etc.). Used when [_useGrams] is false.
+  double _quantity = 1;
+  FoodPortion? _selectedPortion;
+  /// When true, amount UI is grams; when false (countable foods), quantity 1/2/3.
+  bool _useGrams = true;
   String _selectedMeal = 'Breakfast';
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _gramsController = TextEditingController(text: '100');
@@ -2504,6 +2517,27 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
   bool _saving = false;
   String? _catalogError;
   Timer? _searchDebounce;
+
+  List<FoodPortion> get _countablePortions =>
+      _portions.where(_isCountablePortion).toList();
+
+  bool get _supportsQuantity => _countablePortions.isNotEmpty;
+
+  void _syncGramsFromQuantity() {
+    final portion = _selectedPortion;
+    if (portion == null) return;
+    _grams = (portion.grams * _quantity).clamp(1.0, 2000.0);
+    _gramsController.text = _grams == _grams.roundToDouble()
+        ? _grams.round().toString()
+        : _grams.toStringAsFixed(1);
+  }
+
+  void _setGrams(double v) {
+    _grams = v.clamp(1.0, 2000.0);
+    _gramsController.text = _grams == _grams.roundToDouble()
+        ? _grams.round().toString()
+        : _grams.toStringAsFixed(1);
+  }
 
   @override
   void initState() {
@@ -2587,6 +2621,9 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
       _selectedCatalogFood = food;
       _grams = 100;
       _gramsController.text = '100';
+      _quantity = 1;
+      _selectedPortion = null;
+      _useGrams = true;
       _step = 1;
       _portions = [];
     });
@@ -2594,12 +2631,21 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
     if (!mounted) return;
     setState(() {
       _portions = portions;
-      final defaultPortion = portions.where((p) => p.isDefault).firstOrNull;
-      if (defaultPortion != null) {
-        _grams = defaultPortion.grams;
-        _gramsController.text = _grams == _grams.roundToDouble()
-            ? _grams.round().toString()
-            : _grams.toStringAsFixed(1);
+      final countable = portions.where(_isCountablePortion).toList();
+      final defaultPortion = portions.where((p) => p.isDefault).firstOrNull ??
+          countable.firstOrNull ??
+          portions.firstOrNull;
+      _selectedPortion = defaultPortion;
+      _quantity = 1;
+      if (countable.isNotEmpty && defaultPortion != null) {
+        _useGrams = false;
+        _syncGramsFromQuantity();
+      } else if (defaultPortion != null) {
+        _useGrams = true;
+        _setGrams(defaultPortion.grams);
+      } else {
+        _useGrams = true;
+        _setGrams(100);
       }
     });
   }
@@ -2754,11 +2800,42 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
                             grams: _grams,
                             gramsController: _gramsController,
                             portions: _portions,
+                            supportsQuantity: _supportsQuantity,
+                            useGrams: _useGrams,
+                            quantity: _quantity,
+                            selectedPortion: _selectedPortion,
+                            onUseGramsChanged: (useGrams) {
+                              setState(() {
+                                _useGrams = useGrams;
+                                if (!useGrams && _supportsQuantity) {
+                                  final portion = _selectedPortion ??
+                                      _countablePortions.first;
+                                  _selectedPortion = portion;
+                                  final approx =
+                                      (_grams / portion.grams).roundToDouble();
+                                  _quantity = approx.clamp(1.0, 20.0);
+                                  _syncGramsFromQuantity();
+                                }
+                              });
+                            },
+                            onQuantityChanged: (q) {
+                              setState(() {
+                                _quantity = q.clamp(1.0, 20.0);
+                                _syncGramsFromQuantity();
+                              });
+                            },
+                            onPortionChanged: (p) {
+                              setState(() {
+                                _selectedPortion = p;
+                                if (!_useGrams) {
+                                  _syncGramsFromQuantity();
+                                } else {
+                                  _setGrams(p.grams);
+                                }
+                              });
+                            },
                             onGramsChanged: (v) {
-                              setState(() => _grams = v);
-                              _gramsController.text = v == v.roundToDouble()
-                                  ? v.round().toString()
-                                  : v.toStringAsFixed(1);
+                              setState(() => _setGrams(v));
                             },
                             mealOptions: widget.mealOptions,
                             selectedMeal: _selectedMeal,
@@ -3326,6 +3403,13 @@ class _CatalogDetailsStep extends StatelessWidget {
   final double grams;
   final TextEditingController gramsController;
   final List<FoodPortion> portions;
+  final bool supportsQuantity;
+  final bool useGrams;
+  final double quantity;
+  final FoodPortion? selectedPortion;
+  final ValueChanged<bool> onUseGramsChanged;
+  final ValueChanged<double> onQuantityChanged;
+  final ValueChanged<FoodPortion> onPortionChanged;
   final ValueChanged<double> onGramsChanged;
   final List<String> mealOptions;
   final String selectedMeal;
@@ -3342,6 +3426,13 @@ class _CatalogDetailsStep extends StatelessWidget {
     required this.grams,
     required this.gramsController,
     required this.portions,
+    required this.supportsQuantity,
+    required this.useGrams,
+    required this.quantity,
+    required this.selectedPortion,
+    required this.onUseGramsChanged,
+    required this.onQuantityChanged,
+    required this.onPortionChanged,
     required this.onGramsChanged,
     required this.mealOptions,
     required this.selectedMeal,
@@ -3353,230 +3444,378 @@ class _CatalogDetailsStep extends StatelessWidget {
     required this.surface,
   });
 
+  List<FoodPortion> get _countablePortions =>
+      portions.where(_isCountablePortion).toList();
+
+  Color _panel(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return isDark ? const Color(0xFF111111) : MealTrackerTokens.lightMutedSurface;
+  }
+
+  IconData _mealIcon(String meal) {
+    switch (meal.toLowerCase()) {
+      case 'breakfast':
+        return Icons.wb_sunny_rounded;
+      case 'lunch':
+        return Icons.lunch_dining_rounded;
+      case 'dinner':
+        return Icons.nightlight_round;
+      case 'snacks':
+      case 'snack':
+        return Icons.cookie_rounded;
+      default:
+        return Icons.restaurant_rounded;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final m = food.macrosForGrams(grams);
+    final showQuantity = supportsQuantity && !useGrams;
+    final countable = _countablePortions;
+    final panel = _panel(context);
+    final qtyLabel = quantity == quantity.roundToDouble()
+        ? '${quantity.round()}'
+        : quantity.toStringAsFixed(1);
+    final summary = showQuantity
+        ? '$qtyLabel × ${selectedPortion?.label ?? 'serving'}  ·  ${grams.round()} g'
+        : '${grams.round()} g';
+
+    final portionChips = showQuantity
+        ? countable
+        : (portions.isNotEmpty
+            ? portions
+            : <FoodPortion>[]);
 
     return ListView(
       controller: controller,
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+      padding: const EdgeInsets.fromLTRB(18, 2, 18, 28),
       children: [
-        Text(
-          'Amount (grams)',
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w900,
-            color: textPrimary,
-          ),
-        ),
-        const SizedBox(height: 10),
+        // Calorie hero + mode switch
         Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(18, 18, 16, 18),
           decoration: BoxDecoration(
-            color: surface,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: textPrimary.withValues(alpha: 0.08)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Text(
-                    'Grams',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      color: textSecondary,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    '${grams.round()} g',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w900,
-                      color: textPrimary,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  _PressScale(
-                    onTap: () => onGramsChanged((grams - 5).clamp(5.0, 2000.0)),
-                    child: _CircleIcon(
-                      icon: Icons.remove_rounded,
-                      surface: surface,
-                      textPrimary: textPrimary,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      controller: gramsController,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      textInputAction: TextInputAction.done,
-                      decoration: InputDecoration(
-                        hintText: 'e.g. 175',
-                        filled: true,
-                        fillColor: surface,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide.none,
-                        ),
-                        suffixText: 'g',
-                      ),
-                      onChanged: (v) {
-                        final parsed = double.tryParse(v.replaceAll(',', '.'));
-                        if (parsed != null && parsed > 0) onGramsChanged(parsed);
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  _PressScale(
-                    onTap: () => onGramsChanged((grams + 5).clamp(5.0, 2000.0)),
-                    child: _CircleIcon(
-                      icon: Icons.add_rounded,
-                      surface: surface,
-                      textPrimary: textPrimary,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  _QuickServingChip(
-                    label: '50g',
-                    onTap: () => onGramsChanged(50),
-                    surface: surface,
-                    textPrimary: textPrimary,
-                  ),
-                  const SizedBox(width: 8),
-                  _QuickServingChip(
-                    label: '100g',
-                    onTap: () => onGramsChanged(100),
-                    surface: surface,
-                    textPrimary: textPrimary,
-                  ),
-                  const SizedBox(width: 8),
-                  _QuickServingChip(
-                    label: '150g',
-                    onTap: () => onGramsChanged(150),
-                    surface: surface,
-                    textPrimary: textPrimary,
-                  ),
-                  const SizedBox(width: 8),
-                  _QuickServingChip(
-                    label: '200g',
-                    onTap: () => onGramsChanged(200),
-                    surface: surface,
-                    textPrimary: textPrimary,
-                  ),
-                ],
-              ),
-              if (portions.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: portions.map((p) => _QuickServingChip(
-                    label: p.label,
-                    onTap: () => onGramsChanged(p.grams),
-                    surface: surface,
-                    textPrimary: textPrimary,
-                  )).toList(),
-                ),
+            borderRadius: BorderRadius.circular(26),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                MealTrackerTokens.accent.withValues(alpha: 0.22),
+                panel,
               ],
-            ],
-          ),
-        ),
-        const SizedBox(height: 14),
-        Text(
-          'Macros (preview)',
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w900,
-            color: textPrimary,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: surface,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: textPrimary.withValues(alpha: 0.08)),
+            ),
+            border: Border.all(
+              color: MealTrackerTokens.accent.withValues(alpha: 0.18),
+            ),
           ),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _MacroStat(label: 'Calories', value: '${m.calories}', color: textPrimary),
-              _MacroStat(
-                label: 'P',
-                value: '${m.protein.toStringAsFixed(1)}g',
-                color: MealTrackerTokens.macroProtein,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${m.calories}',
+                      style: TextStyle(
+                        fontSize: 44,
+                        height: 1,
+                        fontWeight: FontWeight.w900,
+                        color: textPrimary,
+                        letterSpacing: -1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'kcal',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: MealTrackerTokens.accent,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      summary,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              _MacroStat(
-                label: 'C',
-                value: '${m.carbs.toStringAsFixed(1)}g',
-                color: MealTrackerTokens.macroCarbs,
+              if (supportsQuantity)
+                _PcsGramsSwitch(
+                  useGrams: useGrams,
+                  onChanged: onUseGramsChanged,
+                  textSecondary: textSecondary,
+                  trackColor: Colors.black.withValues(alpha: 0.18),
+                ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 20),
+
+        // Amount stepper
+        Text(
+          showQuantity ? 'How many?' : 'How much?',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+            color: textSecondary,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          decoration: BoxDecoration(
+            color: panel,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: textPrimary.withValues(alpha: 0.06)),
+          ),
+          child: Row(
+            children: [
+              _RoundStepBtn(
+                icon: Icons.remove_rounded,
+                onTap: () {
+                  if (showQuantity) {
+                    onQuantityChanged((quantity - 1).clamp(1.0, 20.0));
+                  } else {
+                    onGramsChanged((grams - 5).clamp(5.0, 2000.0));
+                  }
+                },
+                textPrimary: textPrimary,
               ),
-              _MacroStat(
-                label: 'F',
-                value: '${m.fats.toStringAsFixed(1)}g',
-                color: MealTrackerTokens.macroFats,
+              Expanded(
+                child: showQuantity
+                    ? Column(
+                        children: [
+                          Text(
+                            qtyLabel,
+                            style: TextStyle(
+                              fontSize: 40,
+                              height: 1,
+                              fontWeight: FontWeight.w900,
+                              color: textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            selectedPortion?.label ?? 'serving',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: textSecondary,
+                            ),
+                          ),
+                        ],
+                      )
+                    : TextField(
+                        controller: gramsController,
+                        textAlign: TextAlign.center,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        textInputAction: TextInputAction.done,
+                        style: TextStyle(
+                          fontSize: 36,
+                          height: 1.1,
+                          fontWeight: FontWeight.w900,
+                          color: textPrimary,
+                        ),
+                        decoration: InputDecoration(
+                          border: InputBorder.none,
+                          isDense: true,
+                          suffixText: 'g',
+                          suffixStyle: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: textSecondary,
+                          ),
+                        ),
+                        onChanged: (v) {
+                          final parsed =
+                              double.tryParse(v.replaceAll(',', '.'));
+                          if (parsed != null && parsed > 0) {
+                            onGramsChanged(parsed);
+                          }
+                        },
+                      ),
               ),
-              _MacroStat(
-                label: 'Fi',
-                value: '${m.fiber.toStringAsFixed(1)}g',
-                color: MealTrackerTokens.accent2,
+              _RoundStepBtn(
+                icon: Icons.add_rounded,
+                onTap: () {
+                  if (showQuantity) {
+                    onQuantityChanged((quantity + 1).clamp(1.0, 20.0));
+                  } else {
+                    onGramsChanged((grams + 5).clamp(5.0, 2000.0));
+                  }
+                },
+                textPrimary: textPrimary,
+                accent: true,
               ),
             ],
           ),
         ),
-        const SizedBox(height: 14),
+
+        if (showQuantity) ...[
+          const SizedBox(height: 14),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              for (final n in [1, 2, 3, 4, 5])
+                _CircleQty(
+                  value: n,
+                  selected: quantity.round() == n,
+                  onTap: () => onQuantityChanged(n.toDouble()),
+                  textPrimary: textPrimary,
+                  panel: panel,
+                ),
+            ],
+          ),
+        ],
+
+        // Portions / quick grams
+        if (portionChips.isNotEmpty || (!showQuantity && portions.isEmpty)) ...[
+          const SizedBox(height: 18),
+          Text(
+            showQuantity ? 'Serving size' : 'Quick pick',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: textSecondary,
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 40,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                if (!showQuantity && portions.isEmpty)
+                  for (final g in [50.0, 100.0, 150.0, 200.0]) ...[
+                    _PortionChip(
+                      label: '${g.round()}g',
+                      selected: (grams - g).abs() < 0.5,
+                      onTap: () => onGramsChanged(g),
+                      textPrimary: textPrimary,
+                      panel: panel,
+                    ),
+                    const SizedBox(width: 8),
+                  ]
+                else
+                  for (final p in portionChips) ...[
+                    _PortionChip(
+                      label: p.label,
+                      selected: showQuantity
+                          ? selectedPortion?.id == p.id
+                          : selectedPortion?.id == p.id &&
+                              (grams - p.grams).abs() < 0.5,
+                      onTap: () {
+                        onPortionChanged(p);
+                        if (!showQuantity) onGramsChanged(p.grams);
+                      },
+                      textPrimary: textPrimary,
+                      panel: panel,
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+              ],
+            ),
+          ),
+        ],
+
+        const SizedBox(height: 20),
+
+        // Macros 2x2
+        Text(
+          'Nutrition',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+            color: textSecondary,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            _MacroCell(
+              label: 'Protein',
+              value: '${m.protein.toStringAsFixed(1)}g',
+              color: MealTrackerTokens.macroProtein,
+              panel: panel,
+            ),
+            const SizedBox(width: 10),
+            _MacroCell(
+              label: 'Carbs',
+              value: '${m.carbs.toStringAsFixed(1)}g',
+              color: MealTrackerTokens.macroCarbs,
+              panel: panel,
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            _MacroCell(
+              label: 'Fat',
+              value: '${m.fats.toStringAsFixed(1)}g',
+              color: MealTrackerTokens.macroFats,
+              panel: panel,
+            ),
+            const SizedBox(width: 10),
+            _MacroCell(
+              label: 'Fiber',
+              value: '${m.fiber.toStringAsFixed(1)}g',
+              color: MealTrackerTokens.accent2,
+              panel: panel,
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 20),
+
         Text(
           'Meal',
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w800,
-            color: textPrimary,
+            color: textSecondary,
           ),
         ),
         const SizedBox(height: 10),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: mealOptions.map((meal) {
-            final selected = meal == selectedMeal;
-            return _PressScale(
-              onTap: () => onMealChanged(meal),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  gradient: selected ? MealTrackerTokens.primaryGradient : null,
-                  color: selected ? null : surface,
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: textPrimary.withOpacity(0.08)),
-                ),
-                child: Text(
-                  meal,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: selected ? Colors.white : textPrimary,
+        Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: panel,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: textPrimary.withValues(alpha: 0.06)),
+          ),
+          child: Row(
+            children: [
+              for (final meal in mealOptions)
+                Expanded(
+                  child: _MealSegment(
+                    label: meal,
+                    icon: _mealIcon(meal),
+                    selected: meal == selectedMeal,
+                    onTap: () => onMealChanged(meal),
+                    textPrimary: textPrimary,
+                    textSecondary: textSecondary,
                   ),
                 ),
-              ),
-            );
-          }).toList(),
+            ],
+          ),
         ),
-        const SizedBox(height: 16),
+
+        const SizedBox(height: 22),
+
         IgnorePointer(
           ignoring: saving,
           child: _PressScale(
@@ -3584,45 +3823,420 @@ class _CatalogDetailsStep extends StatelessWidget {
             child: Opacity(
               opacity: saving ? 0.6 : 1,
               child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              decoration: BoxDecoration(
-                gradient: MealTrackerTokens.primaryGradient,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: MealTrackerTokens.accent.withValues(alpha: 0.30),
-                    blurRadius: 22,
-                    offset: const Offset(0, 12),
-                  ),
-                ],
-              ),
-              child: saving
-                  ? const Center(
-                      child: SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      ),
-                    )
-                  : Text(
-                      'Add to $selectedMeal',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
-                      ),
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 18),
+                decoration: BoxDecoration(
+                  gradient: MealTrackerTokens.primaryGradient,
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: [
+                    BoxShadow(
+                      color: MealTrackerTokens.accent.withValues(alpha: 0.30),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
                     ),
+                  ],
+                ),
+                child: saving
+                    ? const Center(
+                        child: SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        ),
+                      )
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            'Add ${m.calories} kcal',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            width: 4,
+                            height: 4,
+                            decoration: const BoxDecoration(
+                              color: Colors.white70,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            selectedMeal,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
               ),
             ),
           ),
         ),
-        const SizedBox(height: 18),
       ],
+    );
+  }
+}
+
+/// Tiny Pcs / Grams switch — one thumb, easy to tap.
+class _PcsGramsSwitch extends StatelessWidget {
+  final bool useGrams;
+  final ValueChanged<bool> onChanged;
+  final Color textSecondary;
+  final Color trackColor;
+
+  const _PcsGramsSwitch({
+    required this.useGrams,
+    required this.onChanged,
+    required this.textSecondary,
+    required this.trackColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Text(
+          'Unit',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: textSecondary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        GestureDetector(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            onChanged(!useGrams);
+          },
+          child: Container(
+            width: 118,
+            height: 36,
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              color: trackColor,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Stack(
+              children: [
+                AnimatedAlign(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                  alignment:
+                      useGrams ? Alignment.centerRight : Alignment.centerLeft,
+                  child: Container(
+                    width: 56,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Center(
+                        child: Text(
+                          'Pcs',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w900,
+                            color: useGrams
+                                ? Colors.white70
+                                : const Color(0xFF111111),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Center(
+                        child: Text(
+                          'g',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w900,
+                            color: useGrams
+                                ? const Color(0xFF111111)
+                                : Colors.white70,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _RoundStepBtn extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final Color textPrimary;
+  final bool accent;
+
+  const _RoundStepBtn({
+    required this.icon,
+    required this.onTap,
+    required this.textPrimary,
+    this.accent = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _PressScale(
+      onTap: onTap,
+      child: Container(
+        width: 46,
+        height: 46,
+        decoration: BoxDecoration(
+          color: accent ? MealTrackerTokens.accent : textPrimary.withValues(alpha: 0.06),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(
+          icon,
+          size: 22,
+          color: accent ? Colors.white : textPrimary,
+        ),
+      ),
+    );
+  }
+}
+
+class _CircleQty extends StatelessWidget {
+  final int value;
+  final bool selected;
+  final VoidCallback onTap;
+  final Color textPrimary;
+  final Color panel;
+
+  const _CircleQty({
+    required this.value,
+    required this.selected,
+    required this.onTap,
+    required this.textPrimary,
+    required this.panel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _PressScale(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        width: 48,
+        height: 48,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: selected ? MealTrackerTokens.accent : panel,
+          border: Border.all(
+            color: selected
+                ? Colors.transparent
+                : textPrimary.withValues(alpha: 0.08),
+          ),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: MealTrackerTokens.accent.withValues(alpha: 0.35),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
+        ),
+        child: Text(
+          '$value',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w900,
+            color: selected ? Colors.white : textPrimary,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PortionChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final Color textPrimary;
+  final Color panel;
+
+  const _PortionChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    required this.textPrimary,
+    required this.panel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _PressScale(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? MealTrackerTokens.accent : panel,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: selected
+                ? Colors.transparent
+                : textPrimary.withValues(alpha: 0.08),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+            color: selected ? Colors.white : textPrimary,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MacroCell extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+  final Color panel;
+
+  const _MacroCell({
+    required this.label,
+    required this.value,
+    required this.color,
+    required this.panel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(
+          color: panel,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withValues(alpha: 0.18)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    value,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                      color: color,
+                    ),
+                  ),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: color.withValues(alpha: 0.75),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MealSegment extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+  final Color textPrimary;
+  final Color textSecondary;
+
+  const _MealSegment({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+    required this.textPrimary,
+    required this.textSecondary,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _PressScale(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        margin: const EdgeInsets.all(2),
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? MealTrackerTokens.accent : Colors.transparent,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Column(
+          children: [
+            Icon(
+              icon,
+              size: 18,
+              color: selected ? Colors.white : textSecondary,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label.length > 8 ? label.substring(0, 6) : label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                color: selected ? Colors.white : textPrimary,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -3658,12 +4272,14 @@ class _QuickServingChip extends StatelessWidget {
   final VoidCallback onTap;
   final Color surface;
   final Color textPrimary;
+  final bool selected;
 
   const _QuickServingChip({
     required this.label,
     required this.onTap,
     required this.surface,
     required this.textPrimary,
+    this.selected = false,
   });
 
   @override
@@ -3676,16 +4292,21 @@ class _QuickServingChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: surface,
+          gradient: selected ? MealTrackerTokens.primaryGradient : null,
+          color: selected ? null : surface,
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: textPrimary.withOpacity(0.08)),
+          border: Border.all(
+            color: selected
+                ? Colors.transparent
+                : textPrimary.withOpacity(0.08),
+          ),
         ),
         child: Text(
           label,
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w800,
-            color: textPrimary,
+            color: selected ? Colors.white : textPrimary,
           ),
         ),
       ),
