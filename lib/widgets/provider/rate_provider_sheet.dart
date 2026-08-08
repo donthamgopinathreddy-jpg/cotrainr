@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../theme/account_hub_theme.dart';
+import '../../theme/design_tokens.dart';
+import '../common/app_form_fields.dart';
 
 Future<bool?> showRateProviderSheet({
   required BuildContext context,
@@ -93,7 +95,7 @@ class _RateProviderSheetState extends State<_RateProviderSheet> {
           ),
           const SizedBox(height: 16),
           Text(
-            'Rate ${widget.providerLabel}',
+            'Review ${widget.providerLabel}',
             style: AccountHubTheme.rowTitle(context).copyWith(fontSize: 18),
           ),
           const SizedBox(height: 16),
@@ -121,26 +123,57 @@ class _RateProviderSheetState extends State<_RateProviderSheet> {
           TextField(
             controller: _notesController,
             maxLines: 3,
+            minLines: 3,
             enabled: !_submitting,
-            decoration: InputDecoration(
+            textAlignVertical: TextAlignVertical.top,
+            decoration: AppFormFields.decoration(
+              context,
               hintText: 'Optional feedback (visible on profile)',
-              filled: true,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(16),
-                borderSide: BorderSide.none,
-              ),
+              alignLabelWithHint: true,
             ),
           ),
           const SizedBox(height: 16),
-          FilledButton(
-            onPressed: (_rating < 1 || _submitting) ? null : _submit,
-            child: _submitting
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Text('Submit review'),
+          SizedBox(
+            height: 48,
+            child: Material(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(14),
+              clipBehavior: Clip.antiAlias,
+              child: Ink(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  gradient: (_rating < 1 || _submitting)
+                      ? LinearGradient(
+                          colors: [
+                            DesignTokens.accentOrange.withValues(alpha: 0.35),
+                            DesignTokens.accentAmber.withValues(alpha: 0.25),
+                          ],
+                        )
+                      : DesignTokens.primaryGradient,
+                ),
+                child: InkWell(
+                  onTap: (_rating < 1 || _submitting) ? null : _submit,
+                  child: Center(
+                    child: _submitting
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text(
+                            'Submit review',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                  ),
+                ),
+              ),
+            ),
           ),
         ],
       ),

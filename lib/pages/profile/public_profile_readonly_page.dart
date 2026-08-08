@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -11,15 +10,21 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/provider_professional_profile.dart';
 import '../../models/provider_specialty_taxonomy.dart';
+import '../../models/subscription_plans.dart';
 import '../../providers/accepted_client_trainers_provider.dart';
 import '../../providers/provider_professional_provider.dart';
 import '../../repositories/messages_repository.dart';
 import '../../repositories/provider_reviews_repository.dart';
+import '../../repositories/subscriptions_repository.dart';
 import '../../services/leads_service.dart';
 import '../../services/messaging_policy_service.dart';
 import '../../theme/design_tokens.dart';
+import '../../theme/app_colors.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
 import '../../widgets/provider/provider_avatar.dart';
+import '../../widgets/provider/inline_provider_review_editor.dart';
+import '../../widgets/subscription/nutritionist_upgrade_sheet.dart';
+import '../../widgets/subscription/connection_limit_sheet.dart';
 
 /// Public provider profile — Cotrainr dark UI (hero + stats + Request + tabs).
 ///
@@ -60,19 +65,29 @@ class _PublicProfileReadonlyPageState
   bool _bioExpanded = false;
   List<ProviderReview> _reviews = [];
   bool _canRate = false;
+  bool _reviewEditorOpen = false;
+  ProviderReview? _myReview;
   late ProviderProfessionalProfile _profile;
   List<ProviderCertification> _certs = [];
   String _relationship = 'none';
   String? _pendingLeadId;
   bool _canMessage = false;
   bool _actionBusy = false;
+  String _clientPlan = SubscriptionPlans.free;
+
+  bool get _isNutritionist =>
+      (_profile.providerType).toLowerCase() == 'nutritionist' ||
+      (widget.providerType ?? '').toLowerCase() == 'nutritionist';
+
+  bool get _canConnectNutritionist =>
+      !_isNutritionist ||
+      SubscriptionPlans.canConnectToNutritionist(_clientPlan);
 
   static const _tabs = [
     'About',
     'Expertise',
     'Services',
     'Reviews',
-    'Gallery',
   ];
 
   @override
@@ -198,24 +213,49 @@ class _PublicProfileReadonlyPageState
 
       var clientCount = 0;
       try {
-        final rows = await _withTimeout(
-          _supabase
-              .from('leads')
-              .select('id')
-              .eq('provider_id', widget.userId)
-              .eq('status', 'accepted'),
+        final raw = await _withTimeout(
+          _supabase.rpc(
+            'get_provider_accepted_client_count',
+            params: {'p_provider_id': widget.userId},
+          ),
           label: 'clientCount',
         );
-        if (rows is List) {
-          clientCount = (rows as List).length;
+        if (raw is int) {
+          clientCount = raw;
+        } else if (raw != null) {
+          clientCount = int.tryParse(raw.toString()) ?? 0;
         }
-      } catch (_) {}
+      } catch (_) {
+        // Fallback (may be RLS-limited for non-participants).
+        try {
+          final rows = await _withTimeout(
+            _supabase
+                .from('leads')
+                .select('id')
+                .eq('provider_id', widget.userId)
+                .eq('status', 'accepted'),
+            label: 'clientCountFallback',
+          );
+          if (rows is List) clientCount = (rows as List).length;
+        } catch (_) {}
+      }
 
       final canRate = await _withTimeout(
             _resolveCanRate(resolved.providerType),
             label: 'canRate',
           ) ??
           false;
+
+      ProviderReview? myReview;
+      if (canRate) {
+        try {
+          myReview = await _reviewsRepo
+              .getMyReviewForProvider(widget.userId)
+              .timeout(_timeout);
+        } catch (_) {
+          myReview = null;
+        }
+      }
 
       var relationship = 'none';
       String? pendingLeadId;
@@ -253,20 +293,31 @@ class _PublicProfileReadonlyPageState
         }
       }
 
+      var clientPlan = SubscriptionPlans.free;
+      try {
+        final sub = await _withTimeout(
+          SubscriptionsRepository().fetchMine(),
+          label: 'subscription',
+        );
+        clientPlan = sub?.plan ?? SubscriptionPlans.free;
+      } catch (_) {}
+
       if (!mounted) return;
       setState(() {
         _profile = resolved;
         _certs = certs;
         _username = username;
         _coverUrl = (coverUrl != null && coverUrl.trim().isNotEmpty)
-            ? coverUrl
-            : resolved.avatarUrl;
+            ? coverUrl.trim()
+            : null;
         _clientCount = clientCount;
         _reviews = reviews;
         _canRate = canRate;
+        _myReview = myReview;
         _relationship = relationship;
         _pendingLeadId = pendingLeadId;
         _canMessage = canMessage;
+        _clientPlan = clientPlan;
         _refreshing = false;
       });
     } catch (e, st) {
@@ -290,6 +341,10 @@ class _PublicProfileReadonlyPageState
 
   Future<void> _sendRequest() async {
     if (_actionBusy) return;
+    if (!_canConnectNutritionist) {
+      await showNutritionistUpgradeSheet(context);
+      return;
+    }
     setState(() => _actionBusy = true);
     try {
       final result = await _leadsService.createLead(providerId: widget.userId);
@@ -303,9 +358,23 @@ class _PublicProfileReadonlyPageState
       );
     } catch (e) {
       if (!mounted) return;
+      final err = e.toString();
+      if (err.contains('Nutritionist requests require')) {
+        await showNutritionistUpgradeSheet(context);
+        return;
+      }
+      if (err.contains('Request limit reached') ||
+          err.contains('limit reached')) {
+        await showConnectionLimitSheet(
+          context,
+          plan: _clientPlan,
+          limit: SubscriptionPlans.monthlyConnectionRequestLimit(_clientPlan),
+        );
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          content: Text(err.replaceFirst('Exception: ', '')),
         ),
       );
     } finally {
@@ -335,7 +404,15 @@ class _PublicProfileReadonlyPageState
   }
 
   Future<void> _openMessage() async {
+    if (_isNutritionist && !_canConnectNutritionist) {
+      await showNutritionistUpgradeSheet(context);
+      return;
+    }
     if (_relationship != 'accepted') {
+      if (_isNutritionist && !_canConnectNutritionist) {
+        await showNutritionistUpgradeSheet(context);
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Connect to message and work together.'),
@@ -372,20 +449,46 @@ class _PublicProfileReadonlyPageState
     });
   }
 
-  Future<void> _openRate() async {
-    final result = await context.push<bool>(
-      '/providers/${widget.userId}/review',
-      extra: {
-        'titleFallback': _profile.fullName ?? widget.titleFallback,
-        'providerType': _profile.providerType,
-        'avatarUrl': _profile.avatarUrl,
-      },
-    );
-    if (result == true && mounted) {
-      await _load();
-      ref.invalidate(acceptedClientTrainersProvider);
-      ref.invalidate(acceptedClientNutritionistsProvider);
+  Future<void> _openUpgrade() async {
+    await showNutritionistUpgradeSheet(context);
+  }
+
+  Future<void> _toggleReviewEditor() async {
+    if (!_canRate) return;
+    if (!_reviewEditorOpen && _myReview == null) {
+      ProviderReview? mine;
+      try {
+        mine = await _reviewsRepo
+            .getMyReviewForProvider(widget.userId)
+            .timeout(_timeout);
+      } catch (_) {
+        mine = null;
+      }
+      if (!mounted) return;
+      setState(() {
+        _myReview = mine;
+        _reviewEditorOpen = true;
+      });
+      return;
     }
+    setState(() => _reviewEditorOpen = !_reviewEditorOpen);
+  }
+
+  Future<void> _onReviewSaved() async {
+    if (!mounted) return;
+    final wasUpdate = _myReview != null;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          wasUpdate ? 'Review updated' : 'Thank you for your review',
+        ),
+      ),
+    );
+    setState(() => _reviewEditorOpen = false);
+    await _load();
+    if (!mounted) return;
+    ref.invalidate(acceptedClientTrainersProvider);
+    ref.invalidate(acceptedClientNutritionistsProvider);
   }
 
   @override
@@ -404,9 +507,10 @@ class _PublicProfileReadonlyPageState
     final p = _profile;
     final title =
         p.fullName ?? _username ?? widget.titleFallback ?? 'Provider';
+    // Real cover only — never reuse avatar. Null → branded default asset.
     final heroUrl = (_coverUrl != null && _coverUrl!.trim().isNotEmpty)
         ? _coverUrl
-        : p.avatarUrl;
+        : null;
 
     return Scaffold(
       backgroundColor: bg,
@@ -451,17 +555,6 @@ class _PublicProfileReadonlyPageState
                       ),
                       child: Row(
                         children: [
-                          _RoundIcon(
-                            Icons.arrow_back_rounded,
-                            onTap: () {
-                              HapticFeedback.lightImpact();
-                              if (context.canPop()) {
-                                context.pop();
-                              } else {
-                                context.go('/home');
-                              }
-                            },
-                          ),
                           const Spacer(),
                           if (_refreshing)
                             const Padding(
@@ -475,8 +568,6 @@ class _PublicProfileReadonlyPageState
                                 ),
                               ),
                             ),
-                          _RoundIcon(Icons.ios_share_rounded, onTap: () {}),
-                          _RoundIcon(Icons.more_horiz_rounded, onTap: () {}),
                         ],
                       ),
                     ),
@@ -498,7 +589,7 @@ class _PublicProfileReadonlyPageState
                       name: title,
                       size: 72,
                       borderRadius: 16,
-                      verified: p.verified,
+                      verified: false,
                     ),
                     const SizedBox(width: 14),
                     Expanded(
@@ -507,16 +598,30 @@ class _PublicProfileReadonlyPageState
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.montserrat(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w800,
-                                color: textPrimary,
-                                letterSpacing: -0.4,
-                              ),
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: GoogleFonts.montserrat(
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w800,
+                                      color: textPrimary,
+                                      letterSpacing: -0.4,
+                                    ),
+                                  ),
+                                ),
+                                if (p.verified) ...[
+                                  const SizedBox(width: 6),
+                                  Icon(
+                                    Icons.verified_rounded,
+                                    size: 20,
+                                    color: DesignTokens.accentOrange,
+                                  ),
+                                ],
+                              ],
                             ),
                             const SizedBox(height: 2),
                             Text(
@@ -577,7 +682,7 @@ class _PublicProfileReadonlyPageState
                   ),
                   _StatCell(
                     icon: Icons.groups_rounded,
-                    value: _clientCount > 0 ? '$_clientCount' : '—',
+                    value: '$_clientCount',
                     label: 'Clients',
                     textPrimary: textPrimary,
                     textSecondary: textSecondary,
@@ -603,11 +708,34 @@ class _PublicProfileReadonlyPageState
                 canMessage: _canMessage,
                 canRate: _canRate,
                 roleLabel: p.roleLabel,
+                isNutritionist: _isNutritionist,
+                requiresUpgrade: !_canConnectNutritionist,
                 onRequest: _sendRequest,
                 onCancel: _cancelRequest,
                 onMessage: _openMessage,
-                onRate: _openRate,
+                onRate: _toggleReviewEditor,
+                onUpgrade: _openUpgrade,
               ),
+            ),
+
+            AnimatedSize(
+              duration: const Duration(milliseconds: 230),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topCenter,
+              child: _reviewEditorOpen
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      child: AnimatedOpacity(
+                        opacity: _reviewEditorOpen ? 1 : 0,
+                        duration: const Duration(milliseconds: 200),
+                        child: InlineProviderReviewEditor(
+                          providerId: widget.userId,
+                          initialReview: _myReview,
+                          onSaved: _onReviewSaved,
+                        ),
+                      ),
+                    )
+                  : const SizedBox.shrink(),
             ),
 
             const SizedBox(height: 12),
@@ -692,15 +820,8 @@ class _PublicProfileReadonlyPageState
           rating: p.rating,
           total: p.totalReviews,
           canRate: _canRate,
-          onRate: _openRate,
+          onRate: _toggleReviewEditor,
           textPrimary: textPrimary,
-          textSecondary: textSecondary,
-          cardBg: cardBg,
-        );
-      case 4:
-        return _GalleryBody(
-          coverUrl: _coverUrl,
-          avatarUrl: p.avatarUrl,
           textSecondary: textSecondary,
           cardBg: cardBg,
         );
@@ -738,6 +859,8 @@ class _PublicProfileReadonlyPageState
 // —— Small shared pieces ——
 
 class _HeroImage extends StatelessWidget {
+  static const defaultCoverAsset = 'assets/images/cotrainr_default_cover.png';
+
   final String? url;
   const _HeroImage({this.url});
 
@@ -748,53 +871,28 @@ class _HeroImage extends StatelessWidget {
       return CachedNetworkImage(
         imageUrl: u,
         fit: BoxFit.cover,
-        placeholder: (_, _) => _fallback(),
-        errorWidget: (_, _, _) => _fallback(),
+        width: double.infinity,
+        height: double.infinity,
+        placeholder: (_, _) => _defaultCover(),
+        errorWidget: (_, _, _) => _defaultCover(),
       );
     }
-    return _fallback();
+    return _defaultCover();
   }
 
-  Widget _fallback() {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF2A1808), Color(0xFF000000), Color(0xFF111111)],
-        ),
-      ),
-      child: Center(
+  Widget _defaultCover() {
+    return Image.asset(
+      defaultCoverAsset,
+      fit: BoxFit.cover,
+      width: double.infinity,
+      height: double.infinity,
+      errorBuilder: (_, _, _) => Container(
+        color: const Color(0xFF0A0A0A),
+        alignment: Alignment.center,
         child: Icon(
           Icons.fitness_center_rounded,
-          size: 64,
-          color: DesignTokens.accentOrange.withValues(alpha: 0.4),
-        ),
-      ),
-    );
-  }
-}
-
-class _RoundIcon extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-  const _RoundIcon(this.icon, {required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(4),
-      child: Material(
-        color: Colors.black.withValues(alpha: 0.45),
-        shape: const CircleBorder(),
-        child: InkWell(
-          customBorder: const CircleBorder(),
-          onTap: onTap,
-          child: SizedBox(
-            width: 40,
-            height: 40,
-            child: Icon(icon, color: Colors.white, size: 20),
-          ),
+          size: 48,
+          color: DesignTokens.accentOrange.withValues(alpha: 0.35),
         ),
       ),
     );
@@ -857,10 +955,13 @@ class _ActionRow extends StatelessWidget {
   final bool canMessage;
   final bool canRate;
   final String roleLabel;
+  final bool isNutritionist;
+  final bool requiresUpgrade;
   final VoidCallback onRequest;
   final VoidCallback onCancel;
   final VoidCallback onMessage;
   final VoidCallback onRate;
+  final VoidCallback onUpgrade;
 
   const _ActionRow({
     required this.relationship,
@@ -869,31 +970,41 @@ class _ActionRow extends StatelessWidget {
     required this.canMessage,
     required this.canRate,
     required this.roleLabel,
+    required this.isNutritionist,
+    required this.requiresUpgrade,
     required this.onRequest,
     required this.onCancel,
     required this.onMessage,
     required this.onRate,
+    required this.onUpgrade,
   });
 
   @override
   Widget build(BuildContext context) {
     final isLight = Theme.of(context).brightness == Brightness.light;
-    // Metric palette: 0 steps (Request), 1 calories (Pending), 2 water (Message), 3 distance (Rate)
     final requestPal = HomePremiumTheme.metricPalette(0, isLight);
     final pendingPal = HomePremiumTheme.metricPalette(1, isLight);
     final messagePal = HomePremiumTheme.metricPalette(2, isLight);
-    final ratePal = HomePremiumTheme.metricPalette(3, isLight);
+    final textPrimary = DesignTokens.textPrimaryOf(context);
+    final textSecondary = DesignTokens.textSecondaryOf(context);
     final shape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(14),
     );
 
+    final showUpgradeCta =
+        isNutritionist && requiresUpgrade && relationship == 'none';
+
     Widget primary;
     if (relationship == 'accepted') {
-      primary = _MetricFilledButton(
-        onPressed: busy ? null : onMessage,
-        icon: Icons.chat_bubble_outline_rounded,
-        label: 'Message',
-        palette: messagePal,
+      primary = _TranslucentActionButton(
+        onPressed: busy
+            ? null
+            : (requiresUpgrade ? onUpgrade : onMessage),
+        icon: requiresUpgrade
+            ? Icons.lock_outline_rounded
+            : Icons.chat_bubble_outline_rounded,
+        label: requiresUpgrade ? 'Upgrade to Message' : 'Message',
+        accent: messagePal.accent,
         shape: shape,
       );
     } else if (relationship == 'pending') {
@@ -911,6 +1022,14 @@ class _ActionRow extends StatelessWidget {
           style: const TextStyle(fontWeight: FontWeight.w800),
         ),
       );
+    } else if (showUpgradeCta) {
+      primary = _MetricFilledButton(
+        onPressed: busy ? null : onUpgrade,
+        icon: Icons.lock_outline_rounded,
+        label: 'Upgrade Plan',
+        palette: requestPal,
+        shape: shape,
+      );
     } else {
       primary = _MetricFilledButton(
         onPressed: (!accepting || busy) ? null : onRequest,
@@ -927,7 +1046,45 @@ class _ActionRow extends StatelessWidget {
     }
 
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (showUpgradeCta) ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+            decoration: BoxDecoration(
+              color: DesignTokens.accentOrange.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: DesignTokens.accentOrange.withValues(alpha: 0.22),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Connect with this Nutritionist',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    color: textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Available with ${SubscriptionPlans.nutritionistAccessPlansLabel} plans.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: textSecondary,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         Row(
           children: [
             Expanded(child: primary),
@@ -937,27 +1094,17 @@ class _ActionRow extends StatelessWidget {
                 width: 50,
                 height: 50,
                 child: Material(
+                  color: messagePal.accent.withValues(alpha: 0.14),
                   borderRadius: BorderRadius.circular(14),
-                  child: Ink(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(14),
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          messagePal.accent,
-                          messagePal.accentSoft,
-                        ],
-                      ),
-                    ),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(14),
-                      onTap: onMessage,
-                      child: const Icon(
-                        Icons.chat_bubble_outline_rounded,
-                        color: Colors.black,
-                        size: 20,
-                      ),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: onMessage,
+                    child: Icon(
+                      requiresUpgrade && relationship == 'none'
+                          ? Icons.lock_outline_rounded
+                          : Icons.chat_bubble_outline_rounded,
+                      color: messagePal.accent,
+                      size: 20,
                     ),
                   ),
                 ),
@@ -965,7 +1112,19 @@ class _ActionRow extends StatelessWidget {
             ],
           ],
         ),
-        if (relationship == 'none') ...[
+        if (showUpgradeCta) ...[
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: () => Navigator.of(context).maybePop(),
+            child: Text(
+              'Continue Browsing',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: textSecondary,
+              ),
+            ),
+          ),
+        ] else if (relationship == 'none') ...[
           const SizedBox(height: 10),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -991,11 +1150,16 @@ class _ActionRow extends StatelessWidget {
           const SizedBox(height: 8),
           TextButton(
             onPressed: onRate,
-            child: Text(
-              'Rate $roleLabel',
-              style: TextStyle(
-                color: ratePal.accent,
-                fontWeight: FontWeight.w700,
+            child: ShaderMask(
+              blendMode: BlendMode.srcIn,
+              shaderCallback: (bounds) =>
+                  AppColors.stepsGradient.createShader(bounds),
+              child: Text(
+                'Review $roleLabel',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ),
@@ -1064,6 +1228,56 @@ class _MetricFilledButton extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Soft translucent CTA (used for Message on provider profiles).
+class _TranslucentActionButton extends StatelessWidget {
+  final VoidCallback? onPressed;
+  final IconData icon;
+  final String label;
+  final Color accent;
+  final OutlinedBorder shape;
+
+  const _TranslucentActionButton({
+    required this.onPressed,
+    required this.icon,
+    required this.label,
+    required this.accent,
+    required this.shape,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    final fg = enabled ? accent : accent.withValues(alpha: 0.45);
+    return SizedBox(
+      height: 50,
+      width: double.infinity,
+      child: Material(
+        color: accent.withValues(alpha: enabled ? 0.14 : 0.08),
+        shape: shape,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onPressed,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 18, color: fg),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                  color: fg,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -1204,8 +1418,8 @@ class _AboutBody extends StatelessWidget {
             ),
             _HighlightTile(
               icon: Icons.person_outline_rounded,
-              title: clientCount > 0 ? '$clientCount+' : '—',
-              subtitle: 'Clients Trained',
+              title: '$clientCount',
+              subtitle: 'Clients',
               cardBg: cardBg,
               textPrimary: textPrimary,
               textSecondary: textSecondary,
@@ -1609,9 +1823,6 @@ class _ReviewsBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isLight = Theme.of(context).brightness == Brightness.light;
-    final ratePal = HomePremiumTheme.metricPalette(3, isLight);
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1634,11 +1845,16 @@ class _ReviewsBody extends StatelessWidget {
             if (canRate)
               TextButton(
                 onPressed: onRate,
-                child: Text(
-                  'Rate',
-                  style: TextStyle(
-                    color: ratePal.accent,
-                    fontWeight: FontWeight.w800,
+                child: ShaderMask(
+                  blendMode: BlendMode.srcIn,
+                  shaderCallback: (bounds) =>
+                      AppColors.stepsGradient.createShader(bounds),
+                  child: const Text(
+                    'Review',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
               ),
@@ -1688,64 +1904,3 @@ class _ReviewsBody extends StatelessWidget {
   }
 }
 
-class _GalleryBody extends StatelessWidget {
-  final String? coverUrl;
-  final String? avatarUrl;
-  final Color textSecondary;
-  final Color cardBg;
-
-  const _GalleryBody({
-    this.coverUrl,
-    this.avatarUrl,
-    required this.textSecondary,
-    required this.cardBg,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final images = <String>[
-      if (coverUrl != null && coverUrl!.trim().isNotEmpty) coverUrl!,
-      if (avatarUrl != null &&
-          avatarUrl!.trim().isNotEmpty &&
-          avatarUrl != coverUrl)
-        avatarUrl!,
-    ];
-
-    if (images.isEmpty) {
-      return Text(
-        'No gallery photos yet.',
-        style: TextStyle(
-          color: textSecondary,
-          fontWeight: FontWeight.w600,
-        ),
-      );
-    }
-
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 10,
-        crossAxisSpacing: 10,
-      ),
-      itemCount: images.length,
-      itemBuilder: (context, i) {
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: CachedNetworkImage(
-            imageUrl: images[i],
-            fit: BoxFit.cover,
-            errorWidget: (_, _, _) => Container(
-              color: cardBg,
-              child: Icon(
-                Icons.image_not_supported_outlined,
-                color: textSecondary,
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}

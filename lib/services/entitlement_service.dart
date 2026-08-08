@@ -28,7 +28,8 @@ class EntitlementService {
 class Entitlements {
   final String plan;
   final String status;
-  final String weekStart;
+  /// Calendar month start (yyyy-MM-dd). Legacy field name `weekStart` may mirror this.
+  final String monthStart;
   final EntitlementLimits limits;
   final EntitlementUsed used;
   final EntitlementRemaining remaining;
@@ -36,74 +37,85 @@ class Entitlements {
   Entitlements({
     required this.plan,
     required this.status,
-    required this.weekStart,
+    required this.monthStart,
     required this.limits,
     required this.used,
     required this.remaining,
   });
 
+  /// Backward-compatible alias.
+  String get weekStart => monthStart;
+
   factory Entitlements.fromJson(Map<String, dynamic> json) {
+    final month = (json['month_start'] ?? json['week_start']) as String? ?? '';
     return Entitlements(
       plan: json['plan'] as String,
       status: json['status'] as String,
-      weekStart: json['week_start'] as String,
-      limits: EntitlementLimits.fromJson(json['limits'] as Map<String, dynamic>),
-      used: EntitlementUsed.fromJson(json['used'] as Map<String, dynamic>),
-      remaining: EntitlementRemaining.fromJson(json['remaining'] as Map<String, dynamic>),
+      monthStart: month,
+      limits: EntitlementLimits.fromJson(
+        Map<String, dynamic>.from(json['limits'] as Map),
+      ),
+      used: EntitlementUsed.fromJson(
+        Map<String, dynamic>.from(json['used'] as Map),
+      ),
+      remaining: EntitlementRemaining.fromJson(
+        Map<String, dynamic>.from(json['remaining'] as Map),
+      ),
     );
   }
 }
 
 class EntitlementLimits {
-  final int requests;
-  final int nutritionistRequests;
+  /// Null when [requestsUnlimited] is true (Ultimate).
+  final int? requests;
+  final bool requestsUnlimited;
   final bool nutritionistAllowed;
 
   EntitlementLimits({
     required this.requests,
-    required this.nutritionistRequests,
+    required this.requestsUnlimited,
     required this.nutritionistAllowed,
   });
 
   factory EntitlementLimits.fromJson(Map<String, dynamic> json) {
+    final unlimited = json['requests_unlimited'] == true;
+    final raw = json['requests'];
     return EntitlementLimits(
-      requests: json['requests'] as int,
-      nutritionistRequests: json['nutritionist_requests'] as int,
-      nutritionistAllowed: json['nutritionist_allowed'] as bool,
+      requests: unlimited ? null : (raw as num?)?.toInt(),
+      requestsUnlimited: unlimited,
+      nutritionistAllowed: json['nutritionist_allowed'] as bool? ?? false,
     );
   }
 }
 
 class EntitlementUsed {
   final int requests;
-  final int nutritionistRequests;
 
-  EntitlementUsed({
-    required this.requests,
-    required this.nutritionistRequests,
-  });
+  EntitlementUsed({required this.requests});
 
   factory EntitlementUsed.fromJson(Map<String, dynamic> json) {
     return EntitlementUsed(
-      requests: json['requests'] as int,
-      nutritionistRequests: json['nutritionist_requests'] as int,
+      requests: (json['requests'] as num?)?.toInt() ?? 0,
     );
   }
 }
 
 class EntitlementRemaining {
-  final int requests;
-  final int nutritionistRequests;
+  /// Null when unlimited.
+  final int? requests;
+  final bool requestsUnlimited;
 
   EntitlementRemaining({
     required this.requests,
-    required this.nutritionistRequests,
+    required this.requestsUnlimited,
   });
 
   factory EntitlementRemaining.fromJson(Map<String, dynamic> json) {
+    final unlimited = json['requests_unlimited'] == true;
+    final raw = json['requests'];
     return EntitlementRemaining(
-      requests: json['requests'] as int,
-      nutritionistRequests: json['nutritionist_requests'] as int,
+      requests: unlimited ? null : (raw as num?)?.toInt(),
+      requestsUnlimited: unlimited,
     );
   }
 }

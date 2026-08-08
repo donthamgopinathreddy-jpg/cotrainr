@@ -39,22 +39,28 @@ class Lead {
 class CreateLeadResult {
   final String leadId;
   final String status;
-  final int remaining;
-  final int limit;
+  /// Null when plan has unlimited connection requests (Ultimate / premium).
+  final int? remaining;
+  /// Null when unlimited.
+  final int? limit;
+  final bool unlimited;
 
   CreateLeadResult({
     required this.leadId,
     required this.status,
     required this.remaining,
     required this.limit,
+    this.unlimited = false,
   });
 
   factory CreateLeadResult.fromJson(Map<String, dynamic> json) {
+    final unlimited = json['unlimited'] == true;
     return CreateLeadResult(
       leadId: json['lead_id'] as String,
-      status: json['status'] as String,
-      remaining: json['remaining'] as int,
-      limit: json['limit'] as int,
+      status: (json['status'] as String?) ?? 'requested',
+      remaining: unlimited ? null : (json['remaining'] as num?)?.toInt(),
+      limit: unlimited ? null : (json['limit'] as num?)?.toInt(),
+      unlimited: unlimited,
     );
   }
 }

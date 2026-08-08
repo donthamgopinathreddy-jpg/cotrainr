@@ -48,6 +48,10 @@ class DiscoverProviderCard extends StatefulWidget {
   final VoidCallback? onRequest;
   final VoidCallback? onCancelRequest;
   final bool submitting;
+  /// Subtle premium-access chip (e.g. nutritionists for Free browsers).
+  final String? planBadge;
+  /// When true, Request still shows but calls [onRequest] which should open upgrade.
+  final bool requestRequiresUpgrade;
 
   const DiscoverProviderCard({
     super.key,
@@ -57,6 +61,8 @@ class DiscoverProviderCard extends StatefulWidget {
     this.onRequest,
     this.onCancelRequest,
     this.submitting = false,
+    this.planBadge,
+    this.requestRequiresUpgrade = false,
   });
 
   @override
@@ -116,7 +122,7 @@ class _DiscoverProviderCardState extends State<DiscoverProviderCard> {
                       name: d.name,
                       size: 68,
                       borderRadius: 16,
-                      verified: d.verified,
+                      verified: false,
                       roleIcon: d.roleLabel.toLowerCase().contains('nutrition')
                           ? Icons.restaurant_rounded
                           : Icons.fitness_center_rounded,
@@ -126,25 +132,51 @@ class _DiscoverProviderCardState extends State<DiscoverProviderCard> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            d.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                              color: cs.onSurface,
-                              letterSpacing: -0.2,
-                            ),
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  d.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                    color: cs.onSurface,
+                                    letterSpacing: -0.2,
+                                  ),
+                                ),
+                              ),
+                              if (d.verified) ...[
+                                const SizedBox(width: 4),
+                                const Icon(
+                                  Icons.verified_rounded,
+                                  size: 18,
+                                  color: DesignTokens.accentOrange,
+                                ),
+                              ],
+                            ],
                           ),
                           const SizedBox(height: 2),
-                          Text(
-                            d.roleLabel,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: widget.accentColor,
-                            ),
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  d.roleLabel,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: widget.accentColor,
+                                  ),
+                                ),
+                              ),
+                              if ((widget.planBadge ?? '').isNotEmpty) ...[
+                                const SizedBox(width: 8),
+                                _PlanAccessBadge(label: widget.planBadge!),
+                              ],
+                            ],
                           ),
                           if ((d.headline ?? '').trim().isNotEmpty) ...[
                             const SizedBox(height: 4),
@@ -289,18 +321,80 @@ class _DiscoverProviderCardState extends State<DiscoverProviderCard> {
                             ),
                             minimumSize: const Size.fromHeight(46),
                           ),
-                          child: Text(
-                            widget.submitting
-                                ? 'Sending…'
-                                : 'Request',
-                            style: const TextStyle(fontWeight: FontWeight.w800),
-                          ),
+                          child: widget.submitting
+                              ? const Text(
+                                  'Sending…',
+                                  style: TextStyle(fontWeight: FontWeight.w800),
+                                )
+                              : widget.requestRequiresUpgrade
+                                  ? const Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.lock_outline_rounded,
+                                            size: 18),
+                                        SizedBox(width: 6),
+                                        Text(
+                                          'Upgrade to Connect',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                      ],
+                                    )
+                                  : const Text(
+                                      'Request',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
                         ),
                 ),
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _PlanAccessBadge extends StatelessWidget {
+  final String label;
+
+  const _PlanAccessBadge({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: cs.onSurface.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: cs.onSurface.withValues(alpha: 0.10),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.lock_outline_rounded,
+            size: 11,
+            color: cs.onSurface.withValues(alpha: 0.55),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: cs.onSurface.withValues(alpha: 0.6),
+            ),
+          ),
+        ],
       ),
     );
   }

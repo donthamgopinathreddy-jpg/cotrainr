@@ -107,7 +107,7 @@ class AppTheme {
         ),
       ),
       
-      // Input Fields - Rounded, soft
+      // Input Fields — rounded rectangle (not pill)
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: DesignTokens.lightSurface,
@@ -116,25 +116,25 @@ class AppTheme {
           vertical: DesignTokens.spacing16,
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+          borderRadius: BorderRadius.circular(DesignTokens.radiusInput),
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+          borderRadius: BorderRadius.circular(DesignTokens.radiusInput),
           borderSide: BorderSide(
             color: DesignTokens.borderColorLight,
             width: 1,
           ),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+          borderRadius: BorderRadius.circular(DesignTokens.radiusInput),
           borderSide: const BorderSide(
             color: DesignTokens.accentOrange,
             width: 2,
           ),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+          borderRadius: BorderRadius.circular(DesignTokens.radiusInput),
           borderSide: const BorderSide(
             color: DesignTokens.accentRed,
             width: 1,
@@ -297,7 +297,7 @@ class AppTheme {
         ),
       ),
       
-      // Input Fields - Rounded, soft
+      // Input Fields — rounded rectangle (not pill)
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: DesignTokens.darkSurface,
@@ -306,25 +306,25 @@ class AppTheme {
           vertical: DesignTokens.spacing16,
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+          borderRadius: BorderRadius.circular(DesignTokens.radiusInput),
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+          borderRadius: BorderRadius.circular(DesignTokens.radiusInput),
           borderSide: BorderSide(
             color: Colors.white.withValues(alpha: 0.12),
             width: 1,
           ),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+          borderRadius: BorderRadius.circular(DesignTokens.radiusInput),
           borderSide: const BorderSide(
             color: DesignTokens.accentOrange,
             width: 2,
           ),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+          borderRadius: BorderRadius.circular(DesignTokens.radiusInput),
           borderSide: const BorderSide(
             color: DesignTokens.accentRed,
             width: 1,

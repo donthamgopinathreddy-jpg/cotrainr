@@ -3,13 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../providers/accepted_client_trainers_provider.dart';
-import '../../repositories/messages_repository.dart';
 import '../../repositories/provider_reviews_repository.dart';
 import '../../services/leads_models.dart' show AcceptedProvider;
-import '../../services/messaging_policy_service.dart';
 import '../../theme/design_tokens.dart';
 import '../../widgets/common/fade_slide_in.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
@@ -32,8 +29,6 @@ class ConnectedProvidersPage extends ConsumerStatefulWidget {
 
 class _ConnectedProvidersPageState
     extends ConsumerState<ConnectedProvidersPage> {
-  final Map<String, bool> _canMessageByProvider = {};
-  final Set<String> _messagingCheckInFlight = {};
   final Map<String, int?> _myRatings = {};
   final _reviewsRepo = ProviderReviewsRepository();
 
@@ -188,7 +183,6 @@ class _ConnectedProvidersPageState
                     );
                   }
                   for (final p in providers) {
-                    _ensureMessagingPermission(p.providerId);
                     _ensureMyRating(p.providerId);
                   }
                   return RefreshIndicator(
@@ -222,13 +216,7 @@ class _ConnectedProvidersPageState
                               myRating: _myRatings[provider.providerId],
                             ),
                             isLight: isLight,
-                            canMessage: _canMessageByProvider[
-                                    provider.providerId] ==
-                                true,
-                            messagingChecked: _canMessageByProvider
-                                .containsKey(provider.providerId),
                             onViewProfile: () => _openProfile(provider),
-                            onMessage: () => _openMessage(provider),
                             onRate: () => _openRate(provider),
                           ),
                         );
@@ -242,29 +230,6 @@ class _ConnectedProvidersPageState
         ),
       ),
     );
-  }
-
-  Future<void> _ensureMessagingPermission(String providerId) async {
-    if (_canMessageByProvider.containsKey(providerId) ||
-        _messagingCheckInFlight.contains(providerId)) {
-      return;
-    }
-    _messagingCheckInFlight.add(providerId);
-    final me = Supabase.instance.client.auth.currentUser?.id;
-    if (me == null) {
-      _messagingCheckInFlight.remove(providerId);
-      return;
-    }
-    final ok = await MessagingPolicyService.clientMayUseMessagingWithProvider(
-      supabase: Supabase.instance.client,
-      clientId: me,
-      providerId: providerId,
-    );
-    if (!mounted) return;
-    setState(() {
-      _canMessageByProvider[providerId] = ok;
-      _messagingCheckInFlight.remove(providerId);
-    });
   }
 
   Future<void> _ensureMyRating(String providerId) async {
@@ -305,43 +270,6 @@ class _ConnectedProvidersPageState
       await _ensureMyRating(provider.providerId);
       await _refreshQuiet();
     }
-  }
-
-  Future<void> _openMessage(AcceptedProvider provider) async {
-    HapticFeedback.lightImpact();
-    final canMessage = _canMessageByProvider[provider.providerId] == true;
-    if (!canMessage) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Messaging requires an active subscription with this ${provider.roleLabel.toLowerCase()}.',
-          ),
-          action: SnackBarAction(
-            label: 'Plans',
-            onPressed: () => context.push('/subscription'),
-          ),
-        ),
-      );
-      return;
-    }
-
-    final convId = await MessagesRepository()
-        .createOrFindConversation(provider.providerId);
-    if (!mounted) return;
-    if (convId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Unable to open chat. Please try again.'),
-        ),
-      );
-      return;
-    }
-    context.push('/messaging/chat/$convId', extra: {
-      'userName': provider.fullName,
-      'isOnline': false,
-      'avatarUrl': provider.avatarUrl,
-    });
   }
 }
 

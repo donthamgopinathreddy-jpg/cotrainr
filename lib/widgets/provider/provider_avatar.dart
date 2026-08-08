@@ -84,33 +84,30 @@ class ProviderAvatar extends StatelessWidget {
           ),
           if (verified)
             Positioned(
-              right: -2,
-              bottom: -2,
+              right: -1,
+              bottom: -1,
               child: Container(
-                width: size * 0.28,
-                height: size * 0.28,
+                width: size * 0.32,
+                height: size * 0.32,
                 decoration: BoxDecoration(
-                  color: Colors.white,
                   shape: BoxShape.circle,
+                  color: Colors.white,
+                  border: Border.all(
+                    color: Colors.white,
+                    width: size * 0.028,
+                  ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.18),
-                      blurRadius: 3,
+                      color: Colors.black.withValues(alpha: 0.22),
+                      blurRadius: 4,
                       offset: const Offset(0, 1),
                     ),
                   ],
                 ),
-                child: Container(
-                  margin: const EdgeInsets.all(1.5),
-                  decoration: const BoxDecoration(
-                    color: DesignTokens.accentOrange,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.check_rounded,
-                    size: size * 0.16,
-                    color: Colors.white,
-                  ),
+                child: Icon(
+                  Icons.verified_rounded,
+                  size: size * 0.30,
+                  color: DesignTokens.accentOrange,
                 ),
               ),
             ),

@@ -1,21 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
 import '../../widgets/common/app_tab_page_header.dart';
 import '../../widgets/common/fade_slide_in.dart';
+import '../../widgets/provider/provider_avatar.dart';
 import '../../repositories/messages_repository.dart';
+import '../../providers/unread_messages_count_provider.dart';
 import 'chat_screen.dart';
 
-class MessagingPage extends StatefulWidget {
+class MessagingPage extends ConsumerStatefulWidget {
   const MessagingPage({super.key});
 
   @override
-  State<MessagingPage> createState() => _MessagingPageState();
+  ConsumerState<MessagingPage> createState() => _MessagingPageState();
 }
 
-class _MessagingPageState extends State<MessagingPage> {
+class _MessagingPageState extends ConsumerState<MessagingPage> {
   final TextEditingController _searchController = TextEditingController();
   final MessagesRepository _messagesRepo = MessagesRepository();
   final List<_ConversationItem> _allConversations = [];
@@ -24,6 +27,7 @@ class _MessagingPageState extends State<MessagingPage> {
   int? _deletedIndex;
   bool _isLoading = true;
   RealtimeChannel? _conversationsChannel;
+  RealtimeChannel? _messagesUnreadChannel;
 
   @override
   void initState() {
@@ -39,6 +43,7 @@ class _MessagingPageState extends State<MessagingPage> {
     _searchController.removeListener(_filterConversations);
     _searchController.dispose();
     _conversationsChannel?.unsubscribe();
+    _messagesUnreadChannel?.unsubscribe();
     super.dispose();
   }
 
@@ -106,8 +111,34 @@ class _MessagingPageState extends State<MessagingPage> {
   void _setupRealtimeSubscription() {
     _conversationsChannel = _messagesRepo.subscribeToConversations((update) {
       if (!mounted) return;
-      _loadConversations();
+      _loadConversations(showLoading: false);
+      ref.invalidate(unreadMessagesCountProvider);
     });
+
+    // Message inserts/updates (read_at) should refresh the nav badge + list.
+    _messagesUnreadChannel = Supabase.instance.client
+        .channel('messaging-page-unread')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'messages',
+          callback: (_) {
+            if (!mounted) return;
+            _loadConversations(showLoading: false);
+            ref.invalidate(unreadMessagesCountProvider);
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'messages',
+          callback: (_) {
+            if (!mounted) return;
+            _loadConversations(showLoading: false);
+            ref.invalidate(unreadMessagesCountProvider);
+          },
+        )
+        .subscribe();
   }
 
   String _formatTime(String? timestamp) {
@@ -360,7 +391,7 @@ class _MessagingPageState extends State<MessagingPage> {
                     child: _ConversationTile(
                             item: item,
                             onTap: () async {
-                              // Mark messages as read when opening chat
+                              // Optimistic local clear; ChatScreen marks DB read_at.
                               final originalIndex = _allConversations.indexOf(item);
                               if (originalIndex != -1 && _allConversations[originalIndex].unreadCount > 0) {
                                 setState(() {
@@ -412,6 +443,10 @@ class _MessagingPageState extends State<MessagingPage> {
                                       const Duration(milliseconds: 220),
                                 ),
                               );
+
+                              if (!mounted) return;
+                              await _loadConversations(showLoading: false);
+                              ref.invalidate(unreadMessagesCountProvider);
                             },
                             onLongPress: () => _deleteConversation(index),
                           ),
@@ -452,54 +487,13 @@ class _ConversationTile extends StatelessWidget {
           children: [
             Stack(
               children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    gradient: item.avatarUrl == null
-                        ? const LinearGradient(
-                            colors: [AppColors.blue, AppColors.cyan],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          )
-                        : null,
-                    shape: BoxShape.circle,
-                  ),
-                  child: item.avatarUrl != null
-                      ? ClipOval(
-                          child: Image.network(
-                            item.avatarUrl!,
-                            width: 56,
-                            height: 56,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
-                                decoration: BoxDecoration(
-                                  gradient: const LinearGradient(
-                                    colors: [AppColors.blue, AppColors.cyan],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  ),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Center(
-                                  child: Icon(
-                                    Icons.person_rounded,
-                                    color: Colors.white,
-                                    size: 28,
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        )
-                      : const Center(
-                          child: Icon(
-                            Icons.person_rounded,
-                            color: Colors.white,
-                            size: 28,
-                          ),
-                        ),
+                ProviderAvatar(
+                  imageUrl: item.avatarUrl,
+                  name: item.name,
+                  size: 56,
+                  borderRadius: 20,
+                  backgroundColor: AppColors.blue,
+                  foregroundColor: Colors.white,
                 ),
                 if (item.isOnline)
                   Positioned(

@@ -412,30 +412,16 @@ class _ProfileCoverHeader extends StatelessWidget {
                   if (isVerified) ...[
                     const SizedBox(width: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: AccountHubTheme.goalsGreen.withValues(alpha: 0.22),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.25),
-                          width: 1,
-                        ),
+                      width: 22,
+                      height: 22,
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
                       ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.verified_rounded, size: 12, color: Colors.white),
-                          SizedBox(width: 4),
-                          Text(
-                            'VERIFIED',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
-                              letterSpacing: 0.3,
-                            ),
-                          ),
-                        ],
+                      child: const Icon(
+                        Icons.verified_rounded,
+                        size: 20,
+                        color: DesignTokens.accentOrange,
                       ),
                     ),
                   ],

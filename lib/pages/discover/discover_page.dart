@@ -12,8 +12,11 @@ import '../../widgets/discover/discover_filter_sheet.dart';
 import '../../repositories/provider_locations_repository.dart';
 import '../../models/subscription_plans.dart';
 import '../../repositories/subscriptions_repository.dart';
+import '../../services/entitlement_service.dart';
 import '../../services/leads_service.dart';
 import '../../widgets/provider/discover_provider_card.dart';
+import '../../widgets/subscription/nutritionist_upgrade_sheet.dart';
+import '../../widgets/subscription/connection_limit_sheet.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'center_detail_page.dart';
 
@@ -49,7 +52,10 @@ class _DiscoverPageState extends State<DiscoverPage>
   /// Soft banner when browsing without GPS (list still loads).
   String? _locationNotice;
   bool _browseWithoutLocation = false;
-  bool _nutritionistsLockedByPlan = false;
+  /// Cached client plan (DB ids: free / basic / premium).
+  String _clientPlan = SubscriptionPlans.free;
+  /// From get-entitlements / create_lead_tx; null = unlimited.
+  int? _requestLimit;
   Position? _userPosition;
   DiscoverLocationState _locationState = DiscoverLocationState.granted;
   double? _manualLat;
@@ -120,7 +126,6 @@ class _DiscoverPageState extends State<DiscoverPage>
       _errorMessage = null;
       _locationNotice = null;
       _browseWithoutLocation = false;
-      _nutritionistsLockedByPlan = false;
       _trainers.clear();
       _nutritionists.clear();
       _centers.clear();
@@ -144,23 +149,23 @@ class _DiscoverPageState extends State<DiscoverPage>
         trainerResults = await _repo.fetchNearbyProviders(
           userLat: location.latitude,
           userLng: location.longitude,
-          filters: _filters.copyWith(providerTypes: ['trainer']),
+          filters: _filtersForProviderType('trainer'),
         );
         nutritionistResults = await _repo.fetchNearbyProviders(
           userLat: location.latitude,
           userLng: location.longitude,
-          filters: _filters.copyWith(providerTypes: ['nutritionist']),
+          filters: _filtersForProviderType('nutritionist'),
         );
       } else {
         _browseWithoutLocation = true;
         _locationState = DiscoverLocationState.browse;
         _locationNotice =
-            'Location unavailable — showing all eligible trainers.';
+            'Location unavailable — showing all eligible providers.';
         trainerResults = await _repo.fetchDiscoverableProviders(
-          filters: _filters.copyWith(providerTypes: ['trainer']),
+          filters: _filtersForProviderType('trainer'),
         );
         nutritionistResults = await _repo.fetchDiscoverableProviders(
-          filters: _filters.copyWith(providerTypes: ['nutritionist']),
+          filters: _filtersForProviderType('nutritionist'),
         );
       }
       if (!mounted) return;
@@ -179,16 +184,21 @@ class _DiscoverPageState extends State<DiscoverPage>
 
       final sub = await SubscriptionsRepository().fetchMine();
       final plan = sub?.plan ?? SubscriptionPlans.free;
+      _clientPlan = plan;
+      // Authoritative monthly allowance (server); used before Connect.
+      try {
+        final ents = await EntitlementService().getEntitlements();
+        _requestLimit = ents.limits.requestsUnlimited
+            ? null
+            : ents.limits.requests;
+      } catch (_) {
+        _requestLimit =
+            SubscriptionPlans.monthlyConnectionRequestLimit(plan);
+      }
       final cap = SubscriptionPlans.discoverResultCap(plan);
-      if (cap != null) {
-        if (_trainers.length > cap) {
-          _trainers.removeRange(cap, _trainers.length);
-        }
-        // Free plan: trainers only (product rule). Keep flag for empty copy.
-        if (_nutritionists.isNotEmpty) {
-          _nutritionistsLockedByPlan = true;
-        }
-        _nutritionists.clear();
+      // Cap trainers only — nutritionists stay fully browsable for Free.
+      if (cap != null && _trainers.length > cap) {
+        _trainers.removeRange(cap, _trainers.length);
       }
 
       if (kDebugMode) {
@@ -214,6 +224,19 @@ class _DiscoverPageState extends State<DiscoverPage>
         _isLoading = false;
       });
     }
+  }
+
+  /// Scope specialty chips to the role being queried so trainer filters
+  /// (e.g. yoga) do not wipe the nutritionist RPC results.
+  DiscoverFilters _filtersForProviderType(String providerType) {
+    final allowed = ProviderSpecialtyTaxonomy.forRole(providerType)
+        .map((s) => s.id)
+        .toSet();
+    final scoped = _filters.categories.where(allowed.contains).toSet();
+    return _filters.copyWith(
+      providerTypes: [providerType],
+      categories: scoped,
+    );
   }
 
   Future<Position?> _resolveClientLocation() async {
@@ -371,6 +394,16 @@ class _DiscoverPageState extends State<DiscoverPage>
   }
 
   Future<void> _sendRequest(DiscoverItem item) async {
+    final isNutritionist = _selectedTabIndex == 1;
+    if (isNutritionist &&
+        !SubscriptionPlans.canConnectToNutritionist(_clientPlan)) {
+      await showNutritionistUpgradeSheet(context);
+      return;
+    }
+
+    // Do not client-block solely on remaining==0: same-provider re-request
+    // in-month must still reach create_lead_tx (no second unique quota unit).
+
     if (_submittingProviders.contains(item.id)) return;
     HapticFeedback.mediumImpact();
     setState(() => _submittingProviders.add(item.id));
@@ -381,10 +414,20 @@ class _DiscoverPageState extends State<DiscoverPage>
       setState(() {
         _requestStatus[item.id] = 'pending';
         _leadIdsByProvider[item.id] = result.leadId;
+        if (!result.unlimited && result.limit != null) {
+          _requestLimit = result.limit;
+        }
       });
+      final remainingHint = result.unlimited
+          ? null
+          : (result.remaining != null
+              ? ' · ${result.remaining} connection request${result.remaining == 1 ? '' : 's'} remaining this month'
+              : null);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Request sent to ${item.name}'),
+          content: Text(
+            'Request sent to ${item.name}${remainingHint ?? ''}',
+          ),
           duration: const Duration(seconds: 2),
           behavior: SnackBarBehavior.floating,
         ),
@@ -393,6 +436,20 @@ class _DiscoverPageState extends State<DiscoverPage>
       if (!mounted) return;
       debugPrint('Discover: send request failed: $e');
       final err = e.toString();
+      if (err.contains('Nutritionist requests require')) {
+        await showNutritionistUpgradeSheet(context);
+        return;
+      }
+      if (err.contains('Request limit reached') ||
+          err.contains('limit reached')) {
+        await showConnectionLimitSheet(
+          context,
+          plan: _clientPlan,
+          limit: _requestLimit ??
+              SubscriptionPlans.monthlyConnectionRequestLimit(_clientPlan),
+        );
+        return;
+      }
       final String message;
       if (err.contains('Lead already exists')) {
         message = 'You already have a pending or active request with ${item.name}';
@@ -400,10 +457,6 @@ class _DiscoverPageState extends State<DiscoverPage>
         message = 'Only client accounts can send coaching requests.';
       } else if (err.contains('Provider not found')) {
         message = 'This provider is no longer available.';
-      } else if (err.contains('limit reached')) {
-        message = 'Weekly request limit reached. Upgrade your plan for more requests.';
-      } else if (err.contains('Nutritionist requests require')) {
-        message = 'Nutritionist requests require a Basic or Premium plan.';
       } else {
         final match = RegExp(r'Exception:\s*(.+)$').firstMatch(err);
         message = match?.group(1)?.trim() ?? 'Could not send request. Please try again.';
@@ -714,6 +767,20 @@ class _DiscoverPageState extends State<DiscoverPage>
                                   accentColor: _discoverAccent,
                                   submitting:
                                       _submittingProviders.contains(item.id),
+                                  planBadge: _selectedTabIndex == 1 &&
+                                          !SubscriptionPlans
+                                              .canConnectToNutritionist(
+                                            _clientPlan,
+                                          )
+                                      ? SubscriptionPlans
+                                          .nutritionistAccessPlansLabel
+                                      : null,
+                                  requestRequiresUpgrade:
+                                      _selectedTabIndex == 1 &&
+                                          !SubscriptionPlans
+                                              .canConnectToNutritionist(
+                                            _clientPlan,
+                                          ),
                                   onTap: () {
                                     HapticFeedback.lightImpact();
                                     context.push(
@@ -757,10 +824,6 @@ class _DiscoverPageState extends State<DiscoverPage>
     if (_selectedTabIndex == 2) {
       title = 'Centers coming soon';
       subtitle = 'Fitness centers will appear here in a future update.';
-    } else if (_selectedTabIndex == 1 && _nutritionistsLockedByPlan) {
-      title = 'Nutritionists on Basic & Unlimited';
-      subtitle =
-          'Upgrade your plan to discover and connect with nutritionists.';
     } else if (searching) {
       title = 'No matches for “$_searchQuery”';
       subtitle = 'Try another name, specialty, or clear your search.';

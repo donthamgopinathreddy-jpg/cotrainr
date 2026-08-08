@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../utils/launch_utils.dart';
-
 import '../../../theme/design_tokens.dart';
+import '../../../widgets/common/app_form_fields.dart';
 
 Color _settingsBg(BuildContext context) {
   return DesignTokens.backgroundOf(context);
@@ -454,20 +454,21 @@ class _FeedbackFormPageState extends State<_FeedbackFormPage> {
                 const SizedBox(height: 10),
                 TextField(
                   controller: _subject,
-                  decoration: const InputDecoration(
+                  decoration: AppFormFields.decoration(
+                    context,
                     labelText: 'Subject (optional)',
-                    filled: true,
-                    border: OutlineInputBorder(borderSide: BorderSide.none),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 TextField(
                   controller: _message,
                   maxLines: 7,
-                  decoration: const InputDecoration(
+                  minLines: 4,
+                  textAlignVertical: TextAlignVertical.top,
+                  decoration: AppFormFields.decoration(
+                    context,
                     labelText: 'Message',
-                    filled: true,
-                    border: OutlineInputBorder(borderSide: BorderSide.none),
+                    alignLabelWithHint: true,
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -574,40 +575,45 @@ class _ReportProblemFormPageState extends State<_ReportProblemFormPage> {
                 const SizedBox(height: 10),
                 TextField(
                   controller: _title,
-                  decoration: const InputDecoration(
+                  decoration: AppFormFields.decoration(
+                    context,
                     labelText: 'Title',
-                    filled: true,
-                    border: OutlineInputBorder(borderSide: BorderSide.none),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 TextField(
                   controller: _steps,
                   maxLines: 4,
-                  decoration: const InputDecoration(
+                  minLines: 3,
+                  textAlignVertical: TextAlignVertical.top,
+                  decoration: AppFormFields.decoration(
+                    context,
                     labelText: 'Steps to reproduce',
-                    filled: true,
-                    border: OutlineInputBorder(borderSide: BorderSide.none),
+                    alignLabelWithHint: true,
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 TextField(
                   controller: _expected,
                   maxLines: 2,
-                  decoration: const InputDecoration(
+                  minLines: 2,
+                  textAlignVertical: TextAlignVertical.top,
+                  decoration: AppFormFields.decoration(
+                    context,
                     labelText: 'Expected behavior',
-                    filled: true,
-                    border: OutlineInputBorder(borderSide: BorderSide.none),
+                    alignLabelWithHint: true,
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 TextField(
                   controller: _actual,
                   maxLines: 2,
-                  decoration: const InputDecoration(
+                  minLines: 2,
+                  textAlignVertical: TextAlignVertical.top,
+                  decoration: AppFormFields.decoration(
+                    context,
                     labelText: 'Actual behavior',
-                    filled: true,
-                    border: OutlineInputBorder(borderSide: BorderSide.none),
+                    alignLabelWithHint: true,
                   ),
                 ),
                 const SizedBox(height: 14),

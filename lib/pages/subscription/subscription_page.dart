@@ -46,8 +46,12 @@ class _SubscriptionPageState extends ConsumerState<SubscriptionPage> {
     final isLight = Theme.of(context).brightness == Brightness.light;
     final bg = AccountHubTheme.pageBg(context);
     final entitlements = ref.watch(entitlementsProvider).valueOrNull;
-    final remainingMsgs = entitlements?.remaining.requests;
-    final usedMsgs = entitlements?.used.requests;
+    final remainingRequests = entitlements?.remaining.requests;
+    final usedRequests = entitlements?.used.requests;
+    final requestLimit = entitlements?.limits.requests ??
+        SubscriptionPlans.monthlyConnectionRequestLimit(_plan);
+    final requestsUnlimited = entitlements?.limits.requestsUnlimited == true ||
+        SubscriptionPlans.hasUnlimitedConnectionRequests(_plan);
 
     return Scaffold(
       backgroundColor: bg,
@@ -95,27 +99,27 @@ class _SubscriptionPageState extends ConsumerState<SubscriptionPage> {
                       ),
                       Expanded(
                         child: _StatTile(
-                          label: _plan == SubscriptionPlans.free
-                              ? 'Chats left'
-                              : 'Messaging',
-                          value: _plan == SubscriptionPlans.free
-                              ? (remainingMsgs != null
-                                  ? '$remainingMsgs / 5'
-                                  : '—')
-                              : 'Unlimited',
-                          icon: Icons.chat_bubble_outline_rounded,
+                          label: 'Connection requests',
+                          value: requestsUnlimited
+                              ? 'Unlimited'
+                              : (remainingRequests != null && requestLimit != null
+                                  ? '$remainingRequests / $requestLimit'
+                                  : '—'),
+                          icon: Icons.person_add_alt_1_rounded,
                           accent: _accent,
                         ),
                       ),
                     ],
                   ),
                 ),
-                if (_plan == SubscriptionPlans.free && usedMsgs != null) ...[
+                if (!requestsUnlimited &&
+                    usedRequests != null &&
+                    requestLimit != null) ...[
                   const SizedBox(height: 8),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
                     child: Text(
-                      '${usedMsgs.clamp(0, 5)} of 5 trainer chats used this month',
+                      '$usedRequests of $requestLimit connection requests used this month',
                       style: AccountHubTheme.rowSubtitle(context),
                     ),
                   ),
@@ -130,7 +134,7 @@ class _SubscriptionPageState extends ConsumerState<SubscriptionPage> {
                 ),
                 _PlanCard(
                   title: 'Free',
-                  tagline: 'Discover trainers near you',
+                  tagline: 'Browse providers · 5 requests / month',
                   icon: Icons.explore_outlined,
                   accent: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55),
                   isLight: isLight,
@@ -141,7 +145,7 @@ class _SubscriptionPageState extends ConsumerState<SubscriptionPage> {
                 const SizedBox(height: 10),
                 _PlanCard(
                   title: 'Basic',
-                  tagline: 'Unlimited trainer access',
+                  tagline: '15 connection requests / month',
                   icon: Icons.fitness_center_outlined,
                   accent: AccountHubTheme.subscriptionAmber,
                   isLight: isLight,
@@ -151,8 +155,8 @@ class _SubscriptionPageState extends ConsumerState<SubscriptionPage> {
                 ),
                 const SizedBox(height: 10),
                 _PlanCard(
-                  title: 'Unlimited',
-                  tagline: 'Trainers & nutritionists',
+                  title: 'Ultimate',
+                  tagline: 'Unlimited connection requests',
                   icon: Icons.workspace_premium_rounded,
                   accent: _accent,
                   isLight: isLight,

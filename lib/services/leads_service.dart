@@ -182,6 +182,30 @@ class LeadsService {
   }
 
   /// Accepted trainers for the signed-in client (`leads.status = accepted`).
+  /// Fetch lead status map for notification action UI. Keys are lead ids.
+  Future<Map<String, String>> getLeadStatusesByIds(List<String> leadIds) async {
+    if (leadIds.isEmpty) return {};
+    try {
+      final unique = leadIds.toSet().toList();
+      final response = await _supabase
+          .from('leads')
+          .select('id, status')
+          .inFilter('id', unique);
+      final map = <String, String>{};
+      for (final row in (response as List).cast<Map<String, dynamic>>()) {
+        final id = row['id'] as String?;
+        final status = row['status'] as String?;
+        if (id != null && status != null) {
+          map[id] = status;
+        }
+      }
+      return map;
+    } catch (e) {
+      debugPrint('LeadsService.getLeadStatusesByIds error: $e');
+      return {};
+    }
+  }
+
   /// Accepted providers for the signed-in client.
   /// [providerType] when set filters to `trainer` or `nutritionist`.
   Future<List<AcceptedProvider>> getAcceptedProvidersAsClient({

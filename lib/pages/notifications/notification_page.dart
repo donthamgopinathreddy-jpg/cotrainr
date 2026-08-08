@@ -11,6 +11,12 @@ import '../../repositories/notifications_repository.dart';
 import '../../repositories/profile_repository.dart';
 import '../../config/feature_flags.dart';
 import '../../providers/accepted_client_trainers_provider.dart';
+import '../../providers/leads_provider.dart';
+import '../../providers/profile_role_provider.dart';
+import '../../providers/unread_notifications_count_provider.dart';
+import '../../services/leads_service.dart';
+import '../../utils/lead_request_ui_state.dart';
+import '../../widgets/notifications/lead_request_notification_actions.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 enum NotificationType {
@@ -30,32 +36,35 @@ enum NotificationType {
   leadDeclined,
 }
 
-class NotificationPage extends StatefulWidget {
+class NotificationPage extends ConsumerStatefulWidget {
   const NotificationPage({super.key});
 
   @override
-  State<NotificationPage> createState() => _NotificationPageState();
+  ConsumerState<NotificationPage> createState() => _NotificationPageState();
 }
 
-class _NotificationPageState extends State<NotificationPage> {
+class _NotificationPageState extends ConsumerState<NotificationPage> {
   final NotificationService _notificationService = NotificationService();
   final NotificationsRepository _notificationsRepo = NotificationsRepository();
   final ProfileRepository _profileRepo = ProfileRepository();
+  final LeadsService _leadsService = LeadsService();
   List<NotificationData> _notifications = [];
   final Map<String, NotificationData> _deletedNotifications = {};
   final Map<String, DateTime> _deletedTimestamps = {};
+  final Set<String> _busyLeadIds = {};
   bool _isLoading = false;
+  bool _didMarkReadThisOpen = false;
 
   @override
   void initState() {
     super.initState();
-    _markAllAsReadAndLoad();
+    _loadThenMarkRead();
     _notificationService.addListener(_loadNotifications);
   }
 
-  Future<void> _markAllAsReadAndLoad() async {
-    await _notificationsRepo.markAllAsRead();
-    if (mounted) _loadRealNotifications();
+  /// Load first; only mark read after a successful fetch (DB remains source of truth).
+  Future<void> _loadThenMarkRead() async {
+    await _loadRealNotifications(markReadOnSuccess: true);
   }
 
   @override
@@ -64,7 +73,7 @@ class _NotificationPageState extends State<NotificationPage> {
     super.dispose();
   }
 
-  Future<void> _loadRealNotifications() async {
+  Future<void> _loadRealNotifications({bool markReadOnSuccess = false}) async {
     if (!mounted) return;
     setState(() => _isLoading = true);
 
@@ -110,6 +119,9 @@ class _NotificationPageState extends State<NotificationPage> {
         final createdAt = DateTime.parse(notif['created_at'] as String);
         final timeStr = NotificationsRepository.formatRelativeTime(createdAt);
 
+        final leadId = data?['lead_id'] as String?;
+        final clientId = data?['client_id'] as String? ??
+            (type == NotificationType.leadRequest ? actorId : null);
         notifications.add(NotificationData(
           id: notif['id'] as String,
           type: type,
@@ -124,21 +136,58 @@ class _NotificationPageState extends State<NotificationPage> {
           postContentPreview: postContentPreview,
           postMediaUrl: postMediaUrl,
           action: data?['action'] as String?,
-          leadId: data?['lead_id'] as String?,
+          leadId: leadId,
+          clientId: clientId,
+          providerType: data?['provider_type'] as String?,
         ));
       }
 
-      if (mounted) {
+      // Resolve live lead status for actionable request cards.
+      final leadIds = notifications
+          .where((n) => n.type == NotificationType.leadRequest && n.leadId != null)
+          .map((n) => n.leadId!)
+          .toList();
+      if (leadIds.isNotEmpty) {
+        final statusMap = await _leadsService.getLeadStatusesByIds(leadIds);
+        // Empty map means fetch failed — leave status null (no stale Accept).
+        // Partial map: missing ids are treated as cancelled/unavailable.
+        if (statusMap.isNotEmpty) {
+          for (var i = 0; i < notifications.length; i++) {
+            final n = notifications[i];
+            if (n.type != NotificationType.leadRequest || n.leadId == null) {
+              continue;
+            }
+            notifications[i] = n.copyWith(
+              leadStatus: statusMap[n.leadId!] ?? 'cancelled',
+            );
+          }
+        }
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _notifications = notifications;
+        _isLoading = false;
+      });
+
+      if (markReadOnSuccess && !_didMarkReadThisOpen) {
+        _didMarkReadThisOpen = true;
+        await _notificationsRepo.markAllAsRead();
+        if (!mounted) return;
         setState(() {
-          _notifications = notifications;
-          _isLoading = false;
+          _notifications = _notifications
+              .map((n) => n.copyWith(hasUnread: false))
+              .toList();
         });
+        ref.invalidate(unreadNotificationsCountProvider);
       }
     } catch (e) {
       print('Error loading notifications: $e');
       if (mounted) {
         setState(() => _isLoading = false);
       }
+      // Do not mark read on failed load.
     }
   }
 
@@ -275,6 +324,91 @@ class _NotificationPageState extends State<NotificationPage> {
     }
   }
 
+  void _openClientProfile(NotificationData notification) {
+    final clientId = notification.clientId;
+    if (clientId == null || clientId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Client profile unavailable')),
+      );
+      return;
+    }
+    final role = ref.read(currentUserProvider).value;
+    if (role?.isNutritionist == true) {
+      context.push('/nutritionist/clients/$clientId');
+    } else {
+      // Trainer (and fallback) use trainer client detail route.
+      context.push('/clients/$clientId');
+    }
+  }
+
+  Future<void> _acceptLeadFromNotification(NotificationData notification) async {
+    final leadId = notification.leadId;
+    if (leadId == null || _busyLeadIds.contains(leadId)) return;
+
+    setState(() => _busyLeadIds.add(leadId));
+    try {
+      await _leadsService.updateLeadStatus(leadId: leadId, status: 'accepted');
+      if (!mounted) return;
+      setState(() {
+        final idx = _notifications.indexWhere((n) => n.id == notification.id);
+        if (idx != -1) {
+          _notifications[idx] = _notifications[idx].copyWith(leadStatus: 'accepted');
+        }
+        _busyLeadIds.remove(leadId);
+      });
+      ref.invalidate(leadsProvider);
+      ref.invalidate(incomingLeadsProvider);
+      ref.invalidate(acceptedClientTrainersProvider);
+      ref.invalidate(unreadNotificationsCountProvider);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Connection accepted')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busyLeadIds.remove(leadId));
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg)),
+      );
+      await _loadRealNotifications();
+    }
+  }
+
+  Future<void> _declineLeadFromNotification(NotificationData notification) async {
+    final leadId = notification.leadId;
+    if (leadId == null || _busyLeadIds.contains(leadId)) return;
+
+    final confirmed = await confirmDeclineLeadRequest(context);
+    if (!confirmed || !mounted) return;
+
+    setState(() => _busyLeadIds.add(leadId));
+    try {
+      await _leadsService.updateLeadStatus(leadId: leadId, status: 'declined');
+      if (!mounted) return;
+      setState(() {
+        final idx = _notifications.indexWhere((n) => n.id == notification.id);
+        if (idx != -1) {
+          _notifications[idx] = _notifications[idx].copyWith(leadStatus: 'declined');
+        }
+        _busyLeadIds.remove(leadId);
+      });
+      ref.invalidate(leadsProvider);
+      ref.invalidate(incomingLeadsProvider);
+      ref.invalidate(unreadNotificationsCountProvider);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Request declined')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busyLeadIds.remove(leadId));
+      final msg = e.toString().replaceFirst('Exception: ', '');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg)),
+      );
+      await _loadRealNotifications();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -368,7 +502,8 @@ class _NotificationPageState extends State<NotificationPage> {
             RefreshIndicator(
               onRefresh: () async {
                 HapticFeedback.lightImpact();
-                await _loadRealNotifications();
+                _didMarkReadThisOpen = false;
+                await _loadRealNotifications(markReadOnSuccess: true);
               },
               color: AppColors.orange,
               child: _isLoading
@@ -441,8 +576,23 @@ class _NotificationPageState extends State<NotificationPage> {
                             },
                             child: _NotificationItem(
                               notification: notification,
+                              isLeadActionBusy: notification.leadId != null &&
+                                  _busyLeadIds.contains(notification.leadId),
+                              onViewProfile: notification.type == NotificationType.leadRequest
+                                  ? () => _openClientProfile(notification)
+                                  : null,
+                              onAcceptLead: notification.type == NotificationType.leadRequest
+                                  ? () => _acceptLeadFromNotification(notification)
+                                  : null,
+                              onDeclineLead: notification.type == NotificationType.leadRequest
+                                  ? () => _declineLeadFromNotification(notification)
+                                  : null,
                               onTap: () async {
                                 HapticFeedback.selectionClick();
+                                if (notification.type == NotificationType.leadRequest) {
+                                  _openClientProfile(notification);
+                                  return;
+                                }
                                 if (notification.type == NotificationType.meeting && notification.meetingId != null) {
                                   final meetingStorage = MeetingStorageService();
                                   final meeting = meetingStorage.getMeetingById(notification.meetingId!);
@@ -451,8 +601,7 @@ class _NotificationPageState extends State<NotificationPage> {
                                   }
                                 } else if (notification.type == NotificationType.leadAccepted) {
                                   try {
-                                    ProviderScope.containerOf(context)
-                                        .invalidate(acceptedClientTrainersProvider);
+                                    ref.invalidate(acceptedClientTrainersProvider);
                                   } catch (_) {}
                                   context.push('/my-trainers');
                                 } else if (notification.action == 'open_pending_requests') {
@@ -461,12 +610,6 @@ class _NotificationPageState extends State<NotificationPage> {
                                   context.go('/home?tab=2');
                                 } else if (notification.action == 'open_discover') {
                                   context.go('/home?tab=1');
-                                }
-                                if (notification.hasUnread) {
-                                  await _notificationsRepo.markAsRead(notification.id);
-                                  if (mounted) {
-                                    _loadRealNotifications();
-                                  }
                                 }
                               },
                               onFollow: null,
@@ -545,6 +688,9 @@ class NotificationData {
   final String? postMediaUrl;
   final String? action;
   final String? leadId;
+  final String? clientId;
+  final String? providerType;
+  final String? leadStatus;
 
   NotificationData({
     required this.id,
@@ -563,7 +709,41 @@ class NotificationData {
     this.postMediaUrl,
     this.action,
     this.leadId,
+    this.clientId,
+    this.providerType,
+    this.leadStatus,
   });
+
+  LeadRequestUiState get leadRequestUiState =>
+      leadRequestUiStateFromStatus(leadStatus);
+
+  NotificationData copyWith({
+    bool? hasUnread,
+    String? leadStatus,
+    String? clientId,
+  }) {
+    return NotificationData(
+      id: id,
+      type: type,
+      userName: userName,
+      title: title,
+      message: message,
+      time: time,
+      hasUnread: hasUnread ?? this.hasUnread,
+      hasImage: hasImage,
+      canFollow: canFollow,
+      meetingId: meetingId,
+      userAvatarUrl: userAvatarUrl,
+      postId: postId,
+      postContentPreview: postContentPreview,
+      postMediaUrl: postMediaUrl,
+      action: action,
+      leadId: leadId,
+      clientId: clientId ?? this.clientId,
+      providerType: providerType,
+      leadStatus: leadStatus ?? this.leadStatus,
+    );
+  }
 }
 
 class _PostPreviewThumbnail extends StatelessWidget {
@@ -685,11 +865,19 @@ class _NotificationItem extends StatefulWidget {
   final NotificationData notification;
   final VoidCallback onTap;
   final VoidCallback? onFollow;
+  final VoidCallback? onViewProfile;
+  final VoidCallback? onAcceptLead;
+  final VoidCallback? onDeclineLead;
+  final bool isLeadActionBusy;
 
   const _NotificationItem({
     required this.notification,
     required this.onTap,
     this.onFollow,
+    this.onViewProfile,
+    this.onAcceptLead,
+    this.onDeclineLead,
+    this.isLeadActionBusy = false,
   });
 
   @override
@@ -875,21 +1063,30 @@ class _NotificationItemState extends State<_NotificationItem>
                              widget.notification.canFollow && 
                              widget.onFollow != null;
 
+    final isLeadRequest =
+        widget.notification.type == NotificationType.leadRequest;
+
     return ScaleTransition(
       scale: _scaleAnimation,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: widget.onTap,
-          onTapDown: (_) {
-            _animationController.forward();
-          },
-          onTapUp: (_) {
-            _animationController.reverse();
-          },
-          onTapCancel: () {
-            _animationController.reverse();
-          },
+          onTap: isLeadRequest ? null : widget.onTap,
+          onTapDown: isLeadRequest
+              ? null
+              : (_) {
+                  _animationController.forward();
+                },
+          onTapUp: isLeadRequest
+              ? null
+              : (_) {
+                  _animationController.reverse();
+                },
+          onTapCancel: isLeadRequest
+              ? null
+              : () {
+                  _animationController.reverse();
+                },
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             decoration: BoxDecoration(
@@ -916,7 +1113,10 @@ class _NotificationItemState extends State<_NotificationItem>
                 ] else
                   const SizedBox(width: 20),
                 // Avatar/Icon
-                _buildAvatar(context, widget.notification.type),
+                GestureDetector(
+                  onTap: isLeadRequest ? widget.onViewProfile : null,
+                  child: _buildAvatar(context, widget.notification.type),
+                ),
                 const SizedBox(width: 12),
                 // Content
                 Expanded(
@@ -924,38 +1124,97 @@ class _NotificationItemState extends State<_NotificationItem>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        widget.notification.title,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: cs.onSurface,
-                          height: 1.3,
+                      if (isLeadRequest) ...[
+                        GestureDetector(
+                          onTap: widget.onViewProfile,
+                          behavior: HitTestBehavior.opaque,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                widget.notification.userName ??
+                                    widget.notification.title,
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600,
+                                  color: cs.onSurface,
+                                  height: 1.3,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                'wants to connect with you',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w400,
+                                  color: cs.onSurfaceVariant,
+                                  height: 1.3,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Client',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: cs.onSurfaceVariant.withValues(alpha: 0.85),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        widget.notification.message,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w400,
-                          color: cs.onSurfaceVariant,
-                          height: 1.3,
+                        const SizedBox(height: 4),
+                        Text(
+                          widget.notification.time,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w400,
+                            color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+                          ),
                         ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        widget.notification.time,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w400,
-                          color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+                        LeadRequestNotificationActions(
+                          uiState: widget.notification.leadRequestUiState,
+                          isBusy: widget.isLeadActionBusy,
+                          onViewProfile: widget.onViewProfile,
+                          onAccept: widget.onAcceptLead,
+                          onDecline: widget.onDeclineLead,
                         ),
-                      ),
+                      ] else ...[
+                        Text(
+                          widget.notification.title,
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: cs.onSurface,
+                            height: 1.3,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          widget.notification.message,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w400,
+                            color: cs.onSurfaceVariant,
+                            height: 1.3,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          widget.notification.time,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w400,
+                            color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

@@ -190,28 +190,28 @@ class _JoinMeetingPageState extends State<JoinMeetingPage>
                     filled: true,
                     fillColor: colorScheme.surface,
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+                      borderRadius: BorderRadius.circular(DesignTokens.radiusInput),
                       borderSide: BorderSide(
                         color: DesignTokens.borderColorOf(context),
                         width: 1,
                       ),
                     ),
                     enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+                      borderRadius: BorderRadius.circular(DesignTokens.radiusInput),
                       borderSide: BorderSide(
                         color: DesignTokens.borderColorOf(context),
                         width: 1,
                       ),
                     ),
                     focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+                      borderRadius: BorderRadius.circular(DesignTokens.radiusInput),
                       borderSide: const BorderSide(
                         color: AppColors.purple,
                         width: 2,
                       ),
                     ),
                     errorBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+                      borderRadius: BorderRadius.circular(DesignTokens.radiusInput),
                       borderSide: const BorderSide(
                         color: AppColors.red,
                         width: 1,
@@ -260,28 +260,28 @@ class _JoinMeetingPageState extends State<JoinMeetingPage>
                     filled: true,
                     fillColor: colorScheme.surface,
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+                      borderRadius: BorderRadius.circular(DesignTokens.radiusInput),
                       borderSide: BorderSide(
                         color: DesignTokens.borderColorOf(context),
                         width: 1,
                       ),
                     ),
                     enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+                      borderRadius: BorderRadius.circular(DesignTokens.radiusInput),
                       borderSide: BorderSide(
                         color: DesignTokens.borderColorOf(context),
                         width: 1,
                       ),
                     ),
                     focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+                      borderRadius: BorderRadius.circular(DesignTokens.radiusInput),
                       borderSide: const BorderSide(
                         color: AppColors.purple,
                         width: 2,
                       ),
                     ),
                     errorBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+                      borderRadius: BorderRadius.circular(DesignTokens.radiusInput),
                       borderSide: const BorderSide(
                         color: AppColors.red,
                         width: 1,
@@ -307,21 +307,21 @@ class _JoinMeetingPageState extends State<JoinMeetingPage>
                   filled: true,
                   fillColor: colorScheme.surface,
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+                    borderRadius: BorderRadius.circular(DesignTokens.radiusInput),
                     borderSide: BorderSide(
                       color: DesignTokens.borderColorOf(context),
                       width: 1,
                     ),
                   ),
                   enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+                    borderRadius: BorderRadius.circular(DesignTokens.radiusInput),
                     borderSide: BorderSide(
                       color: DesignTokens.borderColorOf(context),
                       width: 1,
                     ),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+                    borderRadius: BorderRadius.circular(DesignTokens.radiusInput),
                     borderSide: const BorderSide(
                       color: AppColors.purple,
                       width: 2,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/design_tokens.dart';
 import '../../providers/profile_role_provider.dart';
 import 'home_page_v3.dart';
@@ -12,6 +13,7 @@ import '../profile/profile_page.dart';
 import '../trainer/trainer_my_clients_page.dart';
 import '../nutritionist/nutritionist_my_clients_page.dart';
 import '../../providers/unread_messages_count_provider.dart';
+import '../../providers/unread_notifications_count_provider.dart';
 
 class HomeShellPage extends ConsumerStatefulWidget {
   final bool showWelcome;
@@ -28,7 +30,7 @@ class HomeShellPage extends ConsumerStatefulWidget {
 }
 
 class _HomeShellPageState extends ConsumerState<HomeShellPage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   static const double _navBarRadius = 20;
 
   int _currentIndex = 0;
@@ -38,6 +40,7 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
   late final Animation<double> _welcomeFade;
   late final Animation<Offset> _welcomeSlide;
   bool _showWelcomeBubble = false;
+  RealtimeChannel? _badgeChannel;
 
   /// 0 Home, 1 Discover/My Clients, 2 Messages, 3 Meals, 4 Profile
   List<NavigationItem> get _navigationItems {
@@ -102,6 +105,7 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     final tab = widget.initialTabIndex;
     if (tab > 0 && tab < 5) {
       _currentIndex = tab;
@@ -146,6 +150,57 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
         }
       });
     }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _subscribeBadgeRealtime();
+    });
+  }
+
+  void _subscribeBadgeRealtime() {
+    _badgeChannel?.unsubscribe();
+    _badgeChannel = Supabase.instance.client
+        .channel('home-shell-badges')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'messages',
+          callback: (_) {
+            if (mounted) ref.invalidate(unreadMessagesCountProvider);
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'messages',
+          callback: (_) {
+            if (mounted) ref.invalidate(unreadMessagesCountProvider);
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'notifications',
+          callback: (_) {
+            if (mounted) ref.invalidate(unreadNotificationsCountProvider);
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'notifications',
+          callback: (_) {
+            if (mounted) ref.invalidate(unreadNotificationsCountProvider);
+          },
+        )
+        .subscribe();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      ref.invalidate(unreadMessagesCountProvider);
+      ref.invalidate(unreadNotificationsCountProvider);
+    }
   }
 
   @override
@@ -159,6 +214,8 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _badgeChannel?.unsubscribe();
     _welcomeController.dispose();
     super.dispose();
   }

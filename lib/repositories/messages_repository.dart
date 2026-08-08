@@ -161,6 +161,9 @@ class MessagesRepository {
     required String content,
     String? mediaUrl,
     String? mediaKind,
+    String? mediaFileName,
+    String? mediaMimeType,
+    int? mediaSizeBytes,
   }) async {
     if (_currentUserId == null) return null;
 
@@ -184,38 +187,92 @@ class MessagesRepository {
       if (mediaUrl != null) {
         insertData['media_url'] = mediaUrl;
         if (mediaKind != null) insertData['media_kind'] = mediaKind;
+        if (mediaFileName != null) {
+          insertData['media_file_name'] = mediaFileName;
+        }
+        if (mediaMimeType != null) {
+          insertData['media_mime_type'] = mediaMimeType;
+        }
+        if (mediaSizeBytes != null) {
+          insertData['media_size_bytes'] = mediaSizeBytes;
+        }
       }
-      final response = await _supabase.from('messages').insert(insertData).select().single();
 
-      // Update conversation updated_at
-      await _supabase
-          .from('conversations')
-          .update({'updated_at': DateTime.now().toIso8601String()})
-          .eq('id', conversationId);
+      try {
+        final response = await _supabase
+            .from('messages')
+            .insert(insertData)
+            .select()
+            .single();
 
-      return response;
+        await _supabase
+            .from('conversations')
+            .update({'updated_at': DateTime.now().toIso8601String()})
+            .eq('id', conversationId);
+
+        return response;
+      } catch (e) {
+        // Fallback when document enum/metadata columns are not migrated yet.
+        if (mediaKind == 'document' && mediaUrl != null) {
+          final fallback = <String, dynamic>{
+            'conversation_id': conversationId,
+            'sender_id': _currentUserId!,
+            'content': content.isNotEmpty ? content : (mediaFileName ?? 'Document'),
+            'media_url': mediaUrl,
+          };
+          try {
+            final response = await _supabase
+                .from('messages')
+                .insert(fallback)
+                .select()
+                .single();
+            await _supabase
+                .from('conversations')
+                .update({'updated_at': DateTime.now().toIso8601String()})
+                .eq('id', conversationId);
+            return {
+              ...response,
+              'media_kind': 'document',
+              'media_file_name': mediaFileName,
+              'media_mime_type': mediaMimeType,
+              'media_size_bytes': mediaSizeBytes,
+            };
+          } catch (e2) {
+            print('Error sending document fallback: $e2');
+            rethrow;
+          }
+        }
+        rethrow;
+      }
     } catch (e) {
       print('Error sending message: $e');
+      // Attachments need the real error in the UI; text keeps soft-fail.
+      if (mediaUrl != null) rethrow;
       return null;
     }
   }
 
-  /// Mark messages as read
-  Future<void> markMessagesAsRead(String conversationId) async {
-    if (_currentUserId == null) return;
+  /// Mark messages from the other participant as read (`read_at`).
+  /// Returns how many rows were updated (0 if none / blocked by RLS).
+  Future<int> markMessagesAsRead(String conversationId) async {
+    if (_currentUserId == null) return 0;
 
     try {
       final conv = await fetchConversationById(conversationId);
-      if (conv == null) return;
+      if (conv == null) return 0;
 
-      await _supabase
+      final updated = await _supabase
           .from('messages')
           .update({'read_at': DateTime.now().toIso8601String()})
           .eq('conversation_id', conversationId)
           .isFilter('read_at', null)
-          .neq('sender_id', _currentUserId!);
+          .neq('sender_id', _currentUserId!)
+          .select('id');
+
+      return (updated as List).length;
     } catch (e) {
       print('Error marking messages as read: $e');
+      rethrow;
     }
   }
 

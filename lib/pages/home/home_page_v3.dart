@@ -24,8 +24,8 @@ import '../insights/insights_detail_page.dart';
 import '../../services/streak_service.dart';
 import '../../services/user_goals_service.dart';
 import '../../services/water_intake_service.dart';
+import '../../providers/unread_notifications_count_provider.dart';
 import '../../repositories/profile_repository.dart';
-import '../../repositories/notifications_repository.dart';
 import '../../services/metrics_sync_service.dart';
 import '../../repositories/metrics_repository.dart';
 import '../../providers/quest_provider.dart';
@@ -54,7 +54,6 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
   String _username = 'Loading...';
   String? _avatarUrl;
   String? _coverImageUrl;
-  int _notificationCount = 0;
   int _streakDays = 0;
   int _goalSteps = 10000;
   int _goalCalories = 2000;
@@ -96,7 +95,6 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
     
     // Load profile data first
     _loadProfileData();
-    _loadNotificationsCount();
     _loadStreak();
     _loadGoals();
     _loadCoachingData();
@@ -219,22 +217,8 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
     }
   }
   
-  Future<void> _loadNotificationsCount() async {
-    try {
-      final notificationsRepo = NotificationsRepository();
-      final profileRepo = ProfileRepository();
-      final prefs = await profileRepo.fetchNotificationPreferences();
-      final count = await notificationsRepo.fetchUnreadCount(
-        community: prefs['community'] ?? true,
-        reminders: prefs['reminders'] ?? true,
-        achievements: prefs['achievements'] ?? true,
-      );
-      if (mounted) {
-        setState(() => _notificationCount = count);
-      }
-    } catch (e) {
-      print('HOME_V3: Error loading notifications: $e');
-    }
+  Future<void> _refreshNotificationBadge() async {
+    ref.invalidate(unreadNotificationsCountProvider);
   }
 
   Future<void> _loadGoals() async {
@@ -492,7 +476,10 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
             child: _animated(
               HeroHeaderV3(
                 username: _username,
-                notificationCount: _notificationCount,
+                notificationCount: ref.watch(unreadNotificationsCountProvider).maybeWhen(
+                      data: (c) => c,
+                      orElse: () => 0,
+                    ),
                 // Prefer provider: it updates immediately on edit profile (crop + upload).
                 // `_coverImageUrl` / `_avatarUrl` are one-shot RPC cache and would stay stale.
                 coverImageUrl: ref.watch(profileImagesProvider).coverImagePath ??
@@ -503,7 +490,7 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                 coachingInsights: coachingInsights,
                 onNotificationTap: () async {
                   await context.push('/notifications');
-                  if (mounted) _loadNotificationsCount();
+                  if (mounted) _refreshNotificationBadge();
                 },
               ),
               0,
@@ -772,7 +759,7 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
     // Reload all data
     await Future.wait([
       _loadProfileData(),
-      _loadNotificationsCount(),
+      _refreshNotificationBadge(),
       _loadStreak(),
       _loadGoals(),
       _loadMetrics(),

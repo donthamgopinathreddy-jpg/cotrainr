@@ -231,6 +231,8 @@ class DesignTokens {
   static const double radiusChipSmall = 18.0; // Compact chips
   static const double radiusChip = 999.0; // Pill shape (fully rounded)
   static const double radiusButton = 999.0; // Buttons (fully rounded)
+  /// Standard text / multiline form fields (rounded rectangle, not pill).
+  static const double radiusInput = 16.0;
   static const double radiusSecondary = 16.0; // Secondary elements
   static const double radiusSmall = 12.0; // Small elements
 

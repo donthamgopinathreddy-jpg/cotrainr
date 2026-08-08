@@ -37,20 +37,14 @@ class ConnectedProviderCardData {
 class ConnectedProviderCard extends StatelessWidget {
   final ConnectedProviderCardData data;
   final bool isLight;
-  final bool canMessage;
-  final bool messagingChecked;
   final VoidCallback onViewProfile;
-  final VoidCallback onMessage;
   final VoidCallback onRate;
 
   const ConnectedProviderCard({
     super.key,
     required this.data,
     required this.isLight,
-    required this.canMessage,
-    required this.messagingChecked,
     required this.onViewProfile,
-    required this.onMessage,
     required this.onRate,
   });
 
@@ -83,22 +77,36 @@ class ConnectedProviderCard extends StatelessWidget {
                   name: data.fullName,
                   size: 56,
                   borderRadius: 14,
-                  verified: data.verified,
+                  verified: false,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        data.fullName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.montserrat(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: textPrimary,
-                        ),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              data.fullName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.montserrat(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: textPrimary,
+                              ),
+                            ),
+                          ),
+                          if (data.verified) ...[
+                            const SizedBox(width: 4),
+                            const Icon(
+                              Icons.verified_rounded,
+                              size: 18,
+                              color: DesignTokens.accentOrange,
+                            ),
+                          ],
+                        ],
                       ),
                       const SizedBox(height: 2),
                       Text(
@@ -172,62 +180,6 @@ class ConnectedProviderCard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () {
-                      HapticFeedback.selectionClick();
-                      onViewProfile();
-                    },
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: textPrimary,
-                      side: BorderSide.none,
-                      backgroundColor: isLight
-                          ? const Color(0xFFEEEEF0)
-                          : Colors.white.withValues(alpha: 0.08),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      minimumSize: const Size.fromHeight(44),
-                    ),
-                    child: const Text(
-                      'View Profile',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: (!messagingChecked || !canMessage)
-                        ? null
-                        : () {
-                            HapticFeedback.lightImpact();
-                            onMessage();
-                          },
-                    style: FilledButton.styleFrom(
-                      backgroundColor:
-                          HomePremiumTheme.metricPalette(2, isLight).accent,
-                      foregroundColor: Colors.black,
-                      disabledBackgroundColor:
-                          HomePremiumTheme.metricPalette(2, isLight)
-                              .accent
-                              .withValues(alpha: 0.35),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      minimumSize: const Size.fromHeight(44),
-                    ),
-                    child: const Text(
-                      'Message',
-                      style: TextStyle(fontWeight: FontWeight.w800),
-                    ),
-                  ),
-                ),
-              ],
-            ),
             const SizedBox(height: 8),
             InkWell(
               onTap: () {
@@ -251,7 +203,7 @@ class ConnectedProviderCard extends StatelessWidget {
                       child: Text(
                         data.myRating != null
                             ? 'Your rating: ${data.myRating} ★  ·  Edit review'
-                            : 'Rate provider',
+                            : 'Review provider',
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,

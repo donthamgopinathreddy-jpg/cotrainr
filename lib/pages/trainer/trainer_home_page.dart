@@ -8,8 +8,8 @@ import '../../theme/design_tokens.dart';
 import '../../providers/profile_images_provider.dart';
 import '../../providers/health_tracking_provider.dart';
 import '../../providers/quest_provider.dart';
+import '../../providers/unread_notifications_count_provider.dart';
 import '../../repositories/profile_repository.dart';
-import '../../repositories/notifications_repository.dart';
 import '../../repositories/metrics_repository.dart';
 import '../../services/leads_service.dart';
 import '../../services/leads_models.dart' show Lead;
@@ -55,7 +55,6 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
   late Animation<double> _fadeAnimation;
 
   String _trainerName = 'Trainer';
-  int _notificationCount = 0;
   int _streakDays = 0;
   int _totalClients = 0;
   int _pendingRequests = 0;
@@ -92,7 +91,6 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
     );
     _fadeAnimation = CurvedAnimation(parent: _fadeController, curve: Curves.easeOut);
     _fadeController.forward();
-    _loadNotificationsCount();
     _loadStreak();
     _loadGoals();
     _loadData();
@@ -266,18 +264,8 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
     );
   }
 
-  Future<void> _loadNotificationsCount() async {
-    try {
-      final notificationsRepo = NotificationsRepository();
-      final profileRepo = ProfileRepository();
-      final prefs = await profileRepo.fetchNotificationPreferences();
-      final count = await notificationsRepo.fetchUnreadCount(
-        community: prefs['community'] ?? true,
-        reminders: prefs['reminders'] ?? true,
-        achievements: prefs['achievements'] ?? true,
-      );
-      if (mounted) setState(() => _notificationCount = count);
-    } catch (_) {}
+  Future<void> _refreshNotificationBadge() async {
+    ref.invalidate(unreadNotificationsCountProvider);
   }
 
   @override
@@ -317,7 +305,7 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
     await ref.read(metricsSyncServiceProvider).syncNow();
     await Future.wait([
       _loadData(),
-      _loadNotificationsCount(),
+      _refreshNotificationBadge(),
       _loadStreak(),
       _loadGoals(),
       _loadCoachingData(),
@@ -359,14 +347,17 @@ class _TrainerHomePageState extends ConsumerState<TrainerHomePage>
                 child: _animated(
                   HeroHeaderV3(
                     username: _trainerName,
-                    notificationCount: _notificationCount,
+                    notificationCount: ref.watch(unreadNotificationsCountProvider).maybeWhen(
+                      data: (c) => c,
+                      orElse: () => 0,
+                    ),
                     coverImageUrl: ref.watch(profileImagesProvider).coverImagePath,
                     avatarUrl: ref.watch(profileImagesProvider).profileImagePath,
                     streakDays: _streakDays,
                     coachingInsights: coachingInsights,
                     onNotificationTap: () async {
                       await context.push('/notifications');
-                      if (mounted) _loadNotificationsCount();
+                      if (mounted) _refreshNotificationBadge();
                     },
                   ),
                   0,

@@ -59,7 +59,6 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
   int _streakDays = 0;
   int _weeklySteps = 0;
   double _waterProgress = 0;
-  double? _nutritionProgress;
 
   late AnimationController _headerCtrl;
   late Animation<double> _headerAnim;
@@ -153,11 +152,6 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
         status = ProfileRepository.getBMIStatus(bmi);
       }
 
-      double? nutritionPct;
-      if (planner != null && planner.goalCalories > 0) {
-        nutritionPct = 0;
-      }
-
       if (mounted) {
         setState(() {
           _weightKg = weightKg ?? planner?.currentWeightKg;
@@ -173,7 +167,6 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
           _weeklySteps = stepsTotal;
           _waterProgress =
               waterGoal > 0 ? (waterToday / waterGoal).clamp(0.0, 1.0) : 0;
-          _nutritionProgress = nutritionPct;
         });
       }
     } catch (_) {}
@@ -325,15 +318,6 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                             progress: _waterProgress,
                             color: const Color(0xFF2FC8FF),
                           ),
-                          if (_nutritionProgress != null) ...[
-                            const SizedBox(height: 10),
-                            _ProgressLine(
-                              label: 'Nutrition goals',
-                              value: 'Set in planner',
-                              progress: 0,
-                              color: AccountHubTheme.goalsGreen,
-                            ),
-                          ],
                         ],
                       ),
                     ),
@@ -449,13 +433,6 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                             ),
                           ),
                         ),
-                        if (_role == 'client')
-                          _ProfileActionRow(
-                            label: 'Become a Trainer',
-                            icon: Icons.school_rounded,
-                            delayMs: 320,
-                            onTap: () => context.push('/trainer/become'),
-                          ),
                         if (_role == 'trainer' || _role == 'nutritionist')
                           _ProfileActionRow(
                             label: 'My Clients',

@@ -97,12 +97,6 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
         icon: Icons.workspace_premium_rounded,
         accent: Color(0xFFE91E8C),
       );
-      tiles['Become a Trainer'] = const _ExploreTileData(
-        title: 'Become a Trainer',
-        subtitle: 'Share your knowledge and grow with us.',
-        icon: Icons.school_rounded,
-        accent: AppColors.becomeTrainerAccent,
-      );
     }
 
     return tiles;
@@ -110,8 +104,6 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
 
   VoidCallback? _routeFor(BuildContext context, String title) {
     switch (title) {
-      case 'Become a Trainer':
-        return () => context.push('/trainer/become');
       case 'Coach Notes':
         return () => context.push('/coach-notes');
       case 'Client Notes':
@@ -300,7 +292,6 @@ class _ExploreBentoGrid extends StatelessWidget {
     final coach = _get('Coach Notes')!;
     final video = _get('Video Sessions')!;
     final providers = _get('Trainers & Nutritionists')!;
-    final become = _get('Become a Trainer')!;
     final subscription = _get('Subscription')!;
 
     return Column(
@@ -330,7 +321,16 @@ class _ExploreBentoGrid extends StatelessWidget {
           ),
         ),
         const SizedBox(height: _gap),
-        _buildPairRow(pairH, subscription, become),
+        SizedBox(
+          height: bannerH,
+          width: double.infinity,
+          child: _ExploreTile(
+            item: subscription,
+            layout: _ExploreTileLayout.banner,
+            isLight: isLight,
+            onTap: () => onTileTap(subscription),
+          ),
+        ),
       ],
     );
   }
@@ -504,7 +504,6 @@ class _ExploreTileData {
       'Video Sessions' => const Color(0xFF7C5CFF),
       'My Trainers' || 'Trainers' || 'Trainers & Nutritionists' =>
         const Color(0xFFFF8A00),
-      'Become a Trainer' => const Color(0xFF2BB0E8),
       'Subscription' => const Color(0xFFFF2D95),
       _ => accent,
     };

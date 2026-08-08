@@ -49,62 +49,50 @@ serve(async (req) => {
     const plan = subscription?.plan || 'free'
     const status = subscription?.status || 'active'
 
-    // Calculate week start (ISO Monday - same formula as RPC)
-    // Formula: current_date - ((dow + 6) % 7)
+    // Calendar month (matches create_lead_tx date_trunc('month', now()))
     const now = new Date()
-    const dayOfWeek = now.getDay() // 0=Sunday, 1=Monday, ..., 6=Saturday
-    const daysToMonday = (dayOfWeek + 6) % 7
-    const weekStart = new Date(now)
-    weekStart.setDate(now.getDate() - daysToMonday)
-    weekStart.setHours(0, 0, 0, 0)
-    const weekStartStr = weekStart.toISOString().split('T')[0]
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+    const monthStartStr = monthStart.toISOString().slice(0, 10)
 
     const { data: usage } = await supabaseAdmin
-      .from('weekly_usage')
+      .from('monthly_usage')
       .select('*')
       .eq('user_id', userId)
-      .eq('week_start', weekStartStr)
+      .eq('month_start', monthStartStr)
       .maybeSingle()
 
-    interface PlanLimits {
-      requests: number
-      nutritionist_requests?: number
-      nutritionist_allowed?: boolean
-    }
-
-    const limits: Record<string, PlanLimits> = {
-      free: { requests: 5, nutritionist_allowed: false },
-      basic: { requests: 999999, nutritionist_requests: 0, nutritionist_allowed: false },
-      premium: { requests: 999999, nutritionist_requests: 999999, nutritionist_allowed: true },
-    }
-
-    const planLimits = limits[plan] || limits.free
+    const requestsUnlimited = plan === 'premium'
+    const requestsLimit = plan === 'free' ? 5 : plan === 'basic' ? 15 : null
+    const nutritionistAllowed = plan === 'basic' || plan === 'premium'
 
     const requestsUsed = usage?.requests_used || 0
-    const nutritionistRequestsUsed = usage?.nutritionist_requests_used || 0
-
-    const remaining = {
-      requests: Math.max(0, planLimits.requests - requestsUsed),
-      nutritionist_requests: planLimits.nutritionist_requests 
-        ? Math.max(0, planLimits.nutritionist_requests - nutritionistRequestsUsed)
-        : 0,
-    }
+    const remainingRequests = requestsUnlimited
+      ? null
+      : Math.max(0, (requestsLimit as number) - requestsUsed)
 
     return new Response(
       JSON.stringify({
         plan,
         status,
-        week_start: weekStartStr,
+        month_start: monthStartStr,
+        // legacy alias for older clients
+        week_start: monthStartStr,
         limits: {
-          requests: planLimits.requests,
-          nutritionist_requests: planLimits.nutritionist_requests || 0,
-          nutritionist_allowed: planLimits.nutritionist_allowed !== false,
+          requests: requestsLimit,
+          requests_unlimited: requestsUnlimited,
+          nutritionist_allowed: nutritionistAllowed,
+          // legacy field — sub-cap removed; keep 0 for parsers
+          nutritionist_requests: 0,
         },
         used: {
           requests: requestsUsed,
-          nutritionist_requests: nutritionistRequestsUsed,
+          nutritionist_requests: 0,
         },
-        remaining,
+        remaining: {
+          requests: remainingRequests,
+          requests_unlimited: requestsUnlimited,
+          nutritionist_requests: 0,
+        },
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )

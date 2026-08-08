@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../repositories/provider_reviews_repository.dart';
 import '../../theme/design_tokens.dart';
+import '../../widgets/common/app_form_fields.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
 import '../../widgets/provider/provider_avatar.dart';
 
@@ -112,7 +113,7 @@ class _ProviderReviewPageState extends State<ProviderReviewPage> {
       backgroundColor: bg,
       appBar: AppBar(
         backgroundColor: bg,
-        title: Text(_isUpdate ? 'Edit review' : 'Rate $_roleLabel'),
+        title: Text(_isUpdate ? 'Edit review' : 'Review $_roleLabel'),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => context.pop(false),
@@ -194,14 +195,13 @@ class _ProviderReviewPageState extends State<ProviderReviewPage> {
                   controller: _notesController,
                   maxLength: 500,
                   maxLines: 4,
+                  minLines: 3,
                   enabled: !_submitting,
-                  decoration: InputDecoration(
+                  textAlignVertical: TextAlignVertical.top,
+                  decoration: AppFormFields.decoration(
+                    context,
                     hintText: 'Optional written review',
-                    filled: true,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide.none,
-                    ),
+                    alignLabelWithHint: true,
                   ),
                 ),
                 if (_error != null) ...[
@@ -215,22 +215,48 @@ class _ProviderReviewPageState extends State<ProviderReviewPage> {
                   ),
                 ],
                 const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: (_rating < 1 || _submitting) ? null : _submit,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: DesignTokens.accentOrange,
-                    minimumSize: const Size.fromHeight(48),
+                SizedBox(
+                  height: 48,
+                  width: double.infinity,
+                  child: Material(
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.circular(14),
+                    clipBehavior: Clip.antiAlias,
+                    child: Ink(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(14),
+                        gradient: (_rating < 1 || _submitting)
+                            ? LinearGradient(
+                                colors: [
+                                  DesignTokens.accentOrange.withValues(alpha: 0.35),
+                                  DesignTokens.accentAmber.withValues(alpha: 0.25),
+                                ],
+                              )
+                            : DesignTokens.primaryGradient,
+                      ),
+                      child: InkWell(
+                        onTap: (_rating < 1 || _submitting) ? null : _submit,
+                        child: Center(
+                          child: _submitting
+                              ? const SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : Text(
+                                  _isUpdate ? 'Update review' : 'Submit review',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ),
                   ),
-                  child: _submitting
-                      ? const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : Text(_isUpdate ? 'Update review' : 'Submit review'),
                 ),
               ],
             ),

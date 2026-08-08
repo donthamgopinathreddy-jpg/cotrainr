@@ -124,42 +124,116 @@ class StorageService {
     }
   }
 
-  /// Upload chat media (image or video) to Supabase Storage
-  /// Returns the public URL of the uploaded media
-  Future<String?> uploadChatMedia(File mediaFile, {required bool isVideo}) async {
+  /// Upload chat media (image, video, or document) to the existing `posts` bucket.
+  /// Path: `{userId}/chat/{conversationId}/{timestamp}_{safeName}`
+  /// Returns the public URL of the uploaded media.
+  Future<String?> uploadChatMedia(
+    File mediaFile, {
+    required String mediaKind,
+    String? conversationId,
+    String? originalFileName,
+    String? contentType,
+    void Function(double progress)? onProgress,
+  }) async {
     if (_currentUserId == null) {
       throw Exception('User not authenticated');
     }
 
     try {
-      final extension = path.extension(mediaFile.path);
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}$extension';
-      final filePath = '$_currentUserId/chat/$fileName';
+      final original = originalFileName ?? path.basename(mediaFile.path);
+      final extension = path.extension(original).isNotEmpty
+          ? path.extension(original)
+          : path.extension(mediaFile.path);
+      final safeBase = path
+          .basenameWithoutExtension(original)
+          .replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+      final fileName =
+          '${DateTime.now().millisecondsSinceEpoch}_${safeBase.isEmpty ? 'file' : safeBase}$extension';
+      final conv = (conversationId != null && conversationId.isNotEmpty)
+          ? conversationId
+          : 'general';
+      final filePath = '$_currentUserId/chat/$conv/$fileName';
 
       final bytes = await mediaFile.readAsBytes();
-      final ext = extension.toLowerCase();
-      final contentType = isVideo
-          ? 'video/mp4'
-          : (ext == '.png'
-              ? 'image/png'
-              : ext == '.gif'
-                  ? 'image/gif'
-                  : 'image/jpeg');
+      onProgress?.call(0.15);
 
-      await _supabase.storage.from('posts').uploadBinary(
-        filePath,
-        bytes,
-        fileOptions: FileOptions(
-          upsert: true,
-          contentType: contentType,
-        ),
-      );
+      final mime = contentType ??
+          _guessChatContentType(extension: extension, mediaKind: mediaKind);
+
+      try {
+        await _supabase.storage.from('posts').uploadBinary(
+              filePath,
+              bytes,
+              fileOptions: FileOptions(
+                upsert: true,
+                contentType: mime,
+              ),
+            );
+      } catch (e) {
+        final msg = e.toString().toLowerCase();
+        if (mediaKind == 'document' &&
+            (msg.contains('mime') ||
+                msg.contains('not allowed') ||
+                msg.contains('invalid') ||
+                msg.contains('403') ||
+                msg.contains('400'))) {
+          throw Exception(
+            'Document upload is blocked by storage settings. '
+            'In Supabase SQL editor, run 20260808_chat_docs_storage_fix.sql '
+            '(posts bucket must allow PDF/Office MIME types).',
+          );
+        }
+        rethrow;
+      }
+      onProgress?.call(1.0);
 
       return _supabase.storage.from('posts').getPublicUrl(filePath);
     } catch (e) {
       print('Error uploading chat media: $e');
       rethrow;
     }
+  }
+
+  String _guessChatContentType({
+    required String extension,
+    required String mediaKind,
+  }) {
+    final ext = extension.toLowerCase();
+    if (mediaKind == 'video') return 'video/mp4';
+    if (mediaKind == 'image') {
+      return switch (ext) {
+        '.png' => 'image/png',
+        '.gif' => 'image/gif',
+        '.webp' => 'image/webp',
+        _ => 'image/jpeg',
+      };
+    }
+    return switch (ext) {
+      '.pdf' => 'application/pdf',
+      '.doc' => 'application/msword',
+      '.docx' =>
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      '.xls' => 'application/vnd.ms-excel',
+      '.xlsx' =>
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      '.ppt' => 'application/vnd.ms-powerpoint',
+      '.pptx' =>
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      '.txt' => 'text/plain',
+      '.csv' => 'text/csv',
+      _ => 'application/octet-stream',
+    };
+  }
+
+  /// Backward-compatible wrapper used by older call sites.
+  Future<String?> uploadChatMediaLegacy(
+    File mediaFile, {
+    required bool isVideo,
+  }) {
+    return uploadChatMedia(
+      mediaFile,
+      mediaKind: isVideo ? 'video' : 'image',
+    );
   }
 
   /// Remove existing verification doc variants to avoid orphans when extension changes
