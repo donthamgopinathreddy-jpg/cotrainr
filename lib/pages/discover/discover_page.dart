@@ -10,6 +10,7 @@ import '../../models/discover_filters.dart';
 import '../../models/provider_specialty_taxonomy.dart';
 import '../../widgets/discover/discover_filter_sheet.dart';
 import '../../repositories/provider_locations_repository.dart';
+import '../../repositories/partner_centers_repository.dart';
 import '../../models/subscription_plans.dart';
 import '../../repositories/subscriptions_repository.dart';
 import '../../services/entitlement_service.dart';
@@ -74,6 +75,8 @@ class _DiscoverPageState extends State<DiscoverPage>
   final List<DiscoverItem> _centers = [];
 
   final ProviderLocationsRepository _repo = ProviderLocationsRepository();
+  final PartnerCentersRepository _partnerCentersRepo =
+      PartnerCentersRepository();
   final LeadsService _leadsService = LeadsService();
 
   @override
@@ -182,6 +185,17 @@ class _DiscoverPageState extends State<DiscoverPage>
       _trainers.sort(_compareDiscoverItems);
       _nutritionists.sort(_compareDiscoverItems);
 
+      try {
+        final partnerCenters = await _partnerCentersRepo.listForDiscover();
+        _centers
+          ..clear()
+          ..addAll(_mapPartnerCenters(partnerCenters));
+        _centers.sort(_compareDiscoverItems);
+      } catch (e) {
+        if (kDebugMode) debugPrint('Discover partner centres: $e');
+        // Centres tab stays empty if partner RPC/migration not applied yet.
+      }
+
       final sub = await SubscriptionsRepository().fetchMine();
       final plan = sub?.plan ?? SubscriptionPlans.free;
       _clientPlan = plan;
@@ -224,6 +238,44 @@ class _DiscoverPageState extends State<DiscoverPage>
         _isLoading = false;
       });
     }
+  }
+
+  List<DiscoverItem> _mapPartnerCenters(
+    List<PartnerCenterDiscoverItem> centres,
+  ) {
+    return centres.map((c) {
+      double distance = double.infinity;
+      if (_userPosition != null &&
+          c.latitude != null &&
+          c.longitude != null) {
+        distance = Geolocator.distanceBetween(
+              _userPosition!.latitude,
+              _userPosition!.longitude,
+              c.latitude!,
+              c.longitude!,
+            ) /
+            1000.0;
+      }
+      final facilities = c.facilities.take(3).join(', ');
+      final subtitle = facilities.isNotEmpty
+          ? '${c.businessType} · $facilities'
+          : c.businessType;
+      return DiscoverItem(
+        id: c.id,
+        name: c.name,
+        subtitle: subtitle,
+        roleLabel: 'Centre',
+        rating: 0,
+        reviews: 0,
+        distance: distance,
+        location: c.locationLabel,
+        isVerified: true,
+        avatarUrl: c.logoUrl,
+        isCotrainrPartner: true,
+        activeOfferTitle: c.offerTitle,
+        googlePlaceId: c.googlePlaceId,
+      );
+    }).toList();
   }
 
   /// Scope specialty chips to the role being queried so trainer filters
@@ -727,6 +779,10 @@ class _DiscoverPageState extends State<DiscoverPage>
                                           rating: item.rating,
                                           reviews: item.reviews,
                                           distance: item.distance,
+                                          isCotrainrPartner:
+                                              item.isCotrainrPartner,
+                                          activeOfferTitle:
+                                              item.activeOfferTitle,
                                         ),
                                       ),
                                     );
@@ -822,8 +878,12 @@ class _DiscoverPageState extends State<DiscoverPage>
     VoidCallback? connectedCta;
     String? connectedCtaLabel;
     if (_selectedTabIndex == 2) {
-      title = 'Centers coming soon';
-      subtitle = 'Fitness centers will appear here in a future update.';
+      title = searching
+          ? 'No partner centres match “$_searchQuery”'
+          : 'No Partner Centres yet';
+      subtitle = searching
+          ? 'Try another name or city.'
+          : 'Approved Cotrainr Partner Centres will appear here. Tap Become a Partner from Cotrainr Pass to apply.';
     } else if (searching) {
       title = 'No matches for “$_searchQuery”';
       subtitle = 'Try another name, specialty, or clear your search.';
@@ -1774,6 +1834,27 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                   letterSpacing: -0.3,
                 ),
               ),
+              if (widget.item.isCotrainrPartner) ...[
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.verified_rounded,
+                      size: 14,
+                      color: DesignTokens.accentOrange,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Cotrainr Partner',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: DesignTokens.accentOrange,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 4),
               Text(
                 widget.item.subtitle,
@@ -1785,6 +1866,28 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                   color: colorScheme.onSurface.withOpacity(0.7),
                 ),
               ),
+              if (widget.item.activeOfferTitle != null &&
+                  widget.item.activeOfferTitle!.trim().isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: DesignTokens.accentOrange.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    'Cotrainr Member Offer · ${widget.item.activeOfferTitle}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: DesignTokens.accentOrange,
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 8),
               Text(
                 _formatDiscoverRating(widget.item),
@@ -2411,6 +2514,9 @@ class DiscoverItem {
   final int? experienceYears;
   final List<String> sessionModes;
   final bool offersOnline;
+  final bool isCotrainrPartner;
+  final String? activeOfferTitle;
+  final String? googlePlaceId;
 
   DiscoverItem({
     required this.id,
@@ -2428,5 +2534,8 @@ class DiscoverItem {
     this.experienceYears,
     this.sessionModes = const [],
     this.offersOnline = false,
+    this.isCotrainrPartner = false,
+    this.activeOfferTitle,
+    this.googlePlaceId,
   });
 }

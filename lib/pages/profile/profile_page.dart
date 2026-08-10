@@ -366,6 +366,14 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                               ),
                             ),
                           ),
+                        _ProfileActionRow(
+                          label: 'Cotrainr Pass',
+                          subtitle: 'Member ID',
+                          icon: Icons.badge_outlined,
+                          iconColor: DesignTokens.accentOrange,
+                          delayMs: 130,
+                          onTap: () => context.push('/profile/cotrainr-pass'),
+                        ),
                         if (_role == 'trainer' || _role == 'nutritionist') ...[
                           _ProfileActionRow(
                             label: 'Professional profile',
@@ -508,6 +516,7 @@ class _ProgressLine extends StatelessWidget {
 
 class _ProfileActionRow extends StatelessWidget {
   final String label;
+  final String? subtitle;
   final IconData icon;
   final Color? iconColor;
   final int delayMs;
@@ -516,6 +525,7 @@ class _ProfileActionRow extends StatelessWidget {
 
   const _ProfileActionRow({
     required this.label,
+    this.subtitle,
     required this.icon,
     this.iconColor,
     required this.delayMs,
@@ -556,7 +566,19 @@ class _ProfileActionRow extends StatelessWidget {
                     Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.75)),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Text(label, style: AccountHubTheme.rowTitle(context)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(label, style: AccountHubTheme.rowTitle(context)),
+                      if (subtitle != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle!,
+                          style: AccountHubTheme.rowSubtitle(context),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
                 if (trailing != null) trailing!,
                 if (trailing == null)

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../services/nutrition_planner_local_storage.dart';
+import '../services/recent_foods_logic.dart';
 
 class MealRepositoryException implements Exception {
   final String message;
@@ -98,6 +99,36 @@ class MealItemRow {
   int get caloriesInt => calories.round();
 }
 
+/// One Recent food derived from the user's meal history (deduped).
+class RecentFoodItem {
+  final String? foodId;
+  final String foodName;
+  final double quantity;
+  final String unit;
+  final double calories;
+  final double protein;
+  final double carbs;
+  final double fat;
+  final double fiber;
+  final DateTime lastUsedAt;
+
+  const RecentFoodItem({
+    this.foodId,
+    required this.foodName,
+    required this.quantity,
+    required this.unit,
+    required this.calories,
+    required this.protein,
+    required this.carbs,
+    required this.fat,
+    this.fiber = 0,
+    required this.lastUsedAt,
+  });
+
+  double get fats => fat;
+  int get caloriesInt => calories.round();
+}
+
 /// Nutrition goals for current user.
 class NutritionGoals {
   final int goalCalories;
@@ -152,6 +183,83 @@ class MealRepository {
   /// Format date as YYYY-MM-DD (user's local date for day bucketing).
   static String _dateString(DateTime date) {
     return '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  }
+
+  /// Recent foods derived from this user's meal_items (newest first, deduped).
+  /// No dedicated recent table — uses historical logs only.
+  Future<List<RecentFoodItem>> getRecentFoods({int limit = 30}) async {
+    if (_currentUserId == null) {
+      throw MealRepositoryException('Sign in to load recent foods');
+    }
+    try {
+      return await _fetchRecentFoods(limit: limit, includeFiber: true);
+    } catch (e) {
+      if (_isMissingColumnError(e, 'fiber')) {
+        return _fetchRecentFoods(limit: limit, includeFiber: false);
+      }
+      if (_isMissingColumnError(e, 'food_id')) {
+        return _fetchRecentFoods(
+          limit: limit,
+          includeFiber: true,
+          includeFoodId: false,
+        );
+      }
+      if (_isPermissionError(e)) {
+        throw MealRepositoryException(
+          _permissionDeniedMessage(
+            e,
+            fallback: 'Permission denied reading recent foods.',
+          ),
+        );
+      }
+      throw MealRepositoryException('Could not load recent foods: $e');
+    }
+  }
+
+  Future<List<RecentFoodItem>> _fetchRecentFoods({
+    required int limit,
+    required bool includeFiber,
+    bool includeFoodId = true,
+  }) async {
+    final foodIdCol = includeFoodId ? ', food_id' : '';
+    final fiberCol = includeFiber ? ', fiber' : '';
+    final select =
+        'food_name, quantity, unit, calories, protein, carbs, fat$fiberCol$foodIdCol, created_at, meals!inner(user_id)';
+
+    final res = await _supabase
+        .from('meal_items')
+        .select(select)
+        .eq('meals.user_id', _currentUserId!)
+        .order('created_at', ascending: false)
+        .limit(200);
+
+    final rows = (res as List).cast<Map<String, dynamic>>();
+    final mapped = rows.map((row) {
+      final created = row['created_at'];
+      return RecentFoodItem(
+        foodId: includeFoodId ? row['food_id'] as String? : null,
+        foodName: row['food_name'] as String,
+        quantity: (row['quantity'] as num).toDouble(),
+        unit: row['unit'] as String,
+        calories: (row['calories'] as num?)?.toDouble() ?? 0,
+        protein: (row['protein'] as num?)?.toDouble() ?? 0,
+        carbs: (row['carbs'] as num?)?.toDouble() ?? 0,
+        fat: (row['fat'] as num?)?.toDouble() ?? 0,
+        fiber: includeFiber ? ((row['fiber'] as num?)?.toDouble() ?? 0) : 0,
+        lastUsedAt: created is String
+            ? DateTime.tryParse(created) ?? DateTime.now()
+            : (created is DateTime ? created : DateTime.now()),
+      );
+    });
+
+    return dedupeRecentFoodsByKey(
+      newestFirst: mapped,
+      dedupeKey: (item) => recentFoodDedupeKey(
+        foodId: item.foodId,
+        foodName: item.foodName,
+      ),
+      limit: limit,
+    );
   }
 
   /// Fetch meals + items for a given day. Returns data shaped for MealTrackerPageV2.

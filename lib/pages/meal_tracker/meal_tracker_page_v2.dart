@@ -5,12 +5,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'weekly_insights_page.dart';
+import 'add_food_recent_saved_tabs.dart';
 import '../../theme/design_tokens.dart';
 import '../../theme/meal_tracker_tokens.dart';
 import '../../widgets/common/app_tab_page_header.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
 import '../../repositories/meal_repository.dart';
 import '../../repositories/food_catalog_repository.dart';
+import '../../repositories/saved_meals_repository.dart';
+import '../../services/recent_foods_logic.dart';
 
 class MealTrackerPageV2 extends StatefulWidget {
   const MealTrackerPageV2({super.key});
@@ -25,6 +28,7 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
   final ScrollController _scrollController = ScrollController();
   final MealRepository _mealRepo = MealRepository();
   final FoodCatalogRepository _foodCatalogRepo = FoodCatalogRepository();
+  final SavedMealsRepository _savedMealsRepo = SavedMealsRepository();
   late AnimationController _fadeController;
   late AnimationController _ringController;
   late Animation<double> _fadeAnimation;
@@ -67,8 +71,6 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
     'Snacks',
   ];
 
-  // Recent foods for quick add (from catalog or manual)
-  final List<FoodItem> _recentFoods = [];
   // Common foods: empty; catalog search replaces hardcoded list
   final List<FoodItem> _commonFoods = [];
 
@@ -420,98 +422,265 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
         mealType: mealType,
         mealOptions: List<String>.from(_mealOrder),
         foodCatalogRepo: _foodCatalogRepo,
-        onFoodAdded: (food, meal, {String? catalogFoodId}) async {
-          try {
-            final newId = await _mealRepo.addFoodItem(
-              date: _selectedDate,
-              mealType: meal,
-              foodName: food.name,
-              quantity: food.amount,
-              unit: food.unit,
+        mealRepo: _mealRepo,
+        savedMealsRepo: _savedMealsRepo,
+        onFoodAdded: (food, meal, {String? catalogFoodId, bool closeSheet = true}) async {
+          await _persistAddedFood(
+            food: food,
+            meal: meal,
+            catalogFoodId: catalogFoodId,
+            sheetContext: sheetContext,
+            closeSheet: closeSheet,
+          );
+        },
+        onFoodsBatchAdded: (foods, meal, {List<String?>? catalogFoodIds}) async {
+          await _persistAddedFoodsBatch(
+            foods: foods,
+            meal: meal,
+            catalogFoodIds: catalogFoodIds,
+            sheetContext: sheetContext,
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _persistAddedFood({
+    required FoodItem food,
+    required String meal,
+    String? catalogFoodId,
+    required BuildContext sheetContext,
+    bool closeSheet = true,
+  }) async {
+    try {
+      final newId = await _mealRepo.addFoodItem(
+        date: _selectedDate,
+        mealType: meal,
+        foodName: food.name,
+        quantity: food.amount,
+        unit: food.unit,
+        calories: food.calories,
+        protein: food.protein,
+        carbs: food.carbs,
+        fats: food.fats,
+        fiber: food.fiber,
+        foodId: catalogFoodId,
+      );
+      if (!mounted) return;
+
+      setState(() {
+        _meals.putIfAbsent(meal, () => []);
+        _meals[meal]!.add(
+          FoodItem(
+            id: newId,
+            name: food.name,
+            calories: food.calories,
+            protein: food.protein,
+            carbs: food.carbs,
+            fats: food.fats,
+            fiber: food.fiber,
+            unit: food.unit,
+            amount: food.amount,
+          ),
+        );
+        if (!_mealOrder.contains(meal)) {
+          _mealOrder.add(meal);
+        }
+        _recomputeTotals();
+      });
+
+      await _refreshDayQuietly();
+
+      _ringController.reset();
+      _ringController.forward();
+      HapticFeedback.mediumImpact();
+      if (closeSheet && sheetContext.mounted) {
+        Navigator.pop(sheetContext);
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Added to $meal'),
+          duration: const Duration(seconds: 1),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceFirst('Exception: ', '')),
+          ),
+        );
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> _persistAddedFoodsBatch({
+    required List<FoodItem> foods,
+    required String meal,
+    List<String?>? catalogFoodIds,
+    required BuildContext sheetContext,
+  }) async {
+    try {
+      for (var i = 0; i < foods.length; i++) {
+        final food = foods[i];
+        final catalogFoodId =
+            catalogFoodIds != null && i < catalogFoodIds.length
+                ? catalogFoodIds[i]
+                : null;
+        final newId = await _mealRepo.addFoodItem(
+          date: _selectedDate,
+          mealType: meal,
+          foodName: food.name,
+          quantity: food.amount,
+          unit: food.unit,
+          calories: food.calories,
+          protein: food.protein,
+          carbs: food.carbs,
+          fats: food.fats,
+          fiber: food.fiber,
+          foodId: catalogFoodId,
+        );
+        if (!mounted) return;
+        setState(() {
+          _meals.putIfAbsent(meal, () => []);
+          _meals[meal]!.add(
+            FoodItem(
+              id: newId,
+              name: food.name,
               calories: food.calories,
               protein: food.protein,
               carbs: food.carbs,
               fats: food.fats,
               fiber: food.fiber,
-              foodId: catalogFoodId,
-            );
-            if (!mounted) return;
-
-            // Optimistic local update so UI stays populated even if refetch fails.
-            setState(() {
-              _meals.putIfAbsent(meal, () => []);
-              _meals[meal]!.add(
-                FoodItem(
-                  id: newId,
-                  name: food.name,
-                  calories: food.calories,
-                  protein: food.protein,
-                  carbs: food.carbs,
-                  fats: food.fats,
-                  fiber: food.fiber,
-                  unit: food.unit,
-                  amount: food.amount,
-                ),
-              );
-              if (!_mealOrder.contains(meal)) {
-                _mealOrder.add(meal);
-              }
-              _recomputeTotals();
-              if (!_recentFoods.any((f) => f.name == food.name)) {
-                _recentFoods.insert(0, food);
-                if (_recentFoods.length > 5) _recentFoods.removeLast();
-              }
-            });
-
-            try {
-              final data = await _mealRepo.getDayMeals(_selectedDate);
-              if (!mounted) return;
-              setState(() {
-                const defaultOrder = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
-                final customFromData = data.mealsByType.keys
-                    .where((k) => !defaultOrder.contains(k))
-                    .toList();
-                _mealOrder = [...defaultOrder, ...customFromData];
-                _meals.clear();
-                for (final k in _mealOrder) {
-                  _meals[k] =
-                      data.mealsByType[k]?.map(_foodItemFromRow).toList() ??
-                          [];
-                }
-                _recomputeTotals();
-              });
-            } catch (_) {
-              // Keep optimistic row; day already shows the added food.
-            }
-
-            _ringController.reset();
-            _ringController.forward();
-            HapticFeedback.mediumImpact();
-            Navigator.pop(sheetContext);
-            if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Added to $meal'),
-                duration: const Duration(seconds: 1),
-                behavior: SnackBarBehavior.floating,
-              ),
-            );
-          } catch (e) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    e.toString().replaceFirst('Exception: ', ''),
-                  ),
-                ),
-              );
-            }
-            rethrow;
+              unit: food.unit,
+              amount: food.amount,
+            ),
+          );
+          if (!_mealOrder.contains(meal)) {
+            _mealOrder.add(meal);
           }
-        },
-        recentFoods: _recentFoods,
-      ),
+          _recomputeTotals();
+        });
+      }
+
+      await _refreshDayQuietly();
+      _ringController.reset();
+      _ringController.forward();
+      HapticFeedback.mediumImpact();
+      if (sheetContext.mounted) Navigator.pop(sheetContext);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Added ${foods.length} foods to $meal'),
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceFirst('Exception: ', '')),
+          ),
+        );
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> _refreshDayQuietly() async {
+    try {
+      final data = await _mealRepo.getDayMeals(_selectedDate);
+      if (!mounted) return;
+      setState(() {
+        const defaultOrder = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
+        final customFromData = data.mealsByType.keys
+            .where((k) => !defaultOrder.contains(k))
+            .toList();
+        _mealOrder = [...defaultOrder, ...customFromData];
+        _meals.clear();
+        for (final k in _mealOrder) {
+          _meals[k] =
+              data.mealsByType[k]?.map(_foodItemFromRow).toList() ?? [];
+        }
+        _recomputeTotals();
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _saveCurrentMealAsTemplate(String mealType) async {
+    final foods = _meals[mealType] ?? const <FoodItem>[];
+    if (foods.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add foods before saving a meal')),
+      );
+      return;
+    }
+    final controller = TextEditingController(text: 'My $mealType');
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Save as meal'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(
+              labelText: 'Meal name',
+              hintText: 'My Breakfast',
+            ),
+            onSubmitted: (_) => Navigator.pop(context, controller.text),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, controller.text),
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
     );
+    if (name == null || name.trim().isEmpty) return;
+    try {
+      await _savedMealsRepo.createSavedMeal(
+        name: name.trim(),
+        items: foods
+            .map(
+              (f) => SavedMealItemDraft(
+                foodName: f.name,
+                quantity: f.amount,
+                unit: f.unit,
+                calories: f.calories,
+                protein: f.protein,
+                carbs: f.carbs,
+                fat: f.fats,
+                fiber: f.fiber,
+              ),
+            )
+            .toList(),
+      );
+      if (!mounted) return;
+      HapticFeedback.mediumImpact();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Saved “${name.trim()}”'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    }
   }
 
   Future<void> _openMealDetail(String mealType) async {
@@ -598,6 +767,7 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
           return true;
         },
         onAddFood: () => _openAddFood(mealType: mealType),
+        onSaveAsMeal: () => _saveCurrentMealAsTemplate(mealType),
       ),
     );
   }
@@ -630,18 +800,7 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
                     ),
                   )
                   .toList(growable: false),
-              recentFoods: _recentFoods
-                  .map(
-                    (f) => WeeklyFood(
-                      name: f.name,
-                      calories: f.calories,
-                      protein: f.protein,
-                      carbs: f.carbs,
-                      fats: f.fats,
-                      unit: f.unit,
-                    ),
-                  )
-                  .toList(growable: false),
+              recentFoods: const <WeeklyFood>[],
             ),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return FadeTransition(
@@ -2470,16 +2629,29 @@ class _PressScaleState extends State<_PressScale> {
 class _AddFoodSheet extends StatefulWidget {
   final String? mealType;
   final List<String> mealOptions;
-  final Future<void> Function(FoodItem food, String meal, {String? catalogFoodId}) onFoodAdded;
+  final Future<void> Function(
+    FoodItem food,
+    String meal, {
+    String? catalogFoodId,
+    bool closeSheet,
+  }) onFoodAdded;
+  final Future<void> Function(
+    List<FoodItem> foods,
+    String meal, {
+    List<String?>? catalogFoodIds,
+  }) onFoodsBatchAdded;
   final FoodCatalogRepository foodCatalogRepo;
-  final List<FoodItem> recentFoods;
+  final MealRepository mealRepo;
+  final SavedMealsRepository savedMealsRepo;
 
   const _AddFoodSheet({
     this.mealType,
     required this.mealOptions,
     required this.onFoodAdded,
+    required this.onFoodsBatchAdded,
     required this.foodCatalogRepo,
-    required this.recentFoods,
+    required this.mealRepo,
+    required this.savedMealsRepo,
   });
 
   @override
@@ -2495,8 +2667,10 @@ bool _isGramOnlyPortionLabel(String label) {
 bool _isCountablePortion(FoodPortion p) => !_isGramOnlyPortionLabel(p.label);
 
 class _AddFoodSheetState extends State<_AddFoodSheet> {
-  int _step = 0; // 0 = search, 1 = catalog details, 2 = custom food
+  int _step = 0; // 0 = browse (search/recent/saved), 1 = catalog details, 2 = custom food, 3 = recent non-catalog edit
+  int _browseTab = 0; // 0 search, 1 recent, 2 saved
   CatalogFood? _selectedCatalogFood;
+  RecentFoodItem? _editingRecent;
   double _grams = 100;
   /// Count of selected portion (eggs, bananas, etc.). Used when [_useGrams] is false.
   double _quantity = 1;
@@ -2511,11 +2685,20 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
   final TextEditingController _customProteinController = TextEditingController(text: '0');
   final TextEditingController _customCarbsController = TextEditingController(text: '0');
   final TextEditingController _customFatsController = TextEditingController(text: '0');
+  final TextEditingController _recentAmountController = TextEditingController();
   List<CatalogFood> _searchResults = [];
   List<FoodPortion> _portions = [];
+  List<RecentFoodItem> _recentItems = [];
+  List<SavedMeal> _savedMeals = [];
   bool _searching = false;
   bool _saving = false;
+  bool _loadingRecent = false;
+  bool _loadingSaved = false;
   String? _catalogError;
+  String? _recentError;
+  String? _savedError;
+  String? _addingRecentKey;
+  String? _addingSavedId;
   Timer? _searchDebounce;
 
   List<FoodPortion> get _countablePortions =>
@@ -2547,6 +2730,50 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
     _searchController.addListener(_onSearchChanged);
     // Browse catalog immediately so add sheet is not empty until typing.
     _loadCatalogBrowse();
+    _loadRecent();
+    _loadSavedMeals();
+  }
+
+  Future<void> _loadRecent() async {
+    setState(() {
+      _loadingRecent = true;
+      _recentError = null;
+    });
+    try {
+      final items = await widget.mealRepo.getRecentFoods();
+      if (!mounted) return;
+      setState(() {
+        _recentItems = items;
+        _loadingRecent = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadingRecent = false;
+        _recentError = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  Future<void> _loadSavedMeals() async {
+    setState(() {
+      _loadingSaved = true;
+      _savedError = null;
+    });
+    try {
+      final meals = await widget.savedMealsRepo.listSavedMeals();
+      if (!mounted) return;
+      setState(() {
+        _savedMeals = meals;
+        _loadingSaved = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadingSaved = false;
+        _savedError = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
   }
 
   Future<void> _loadCatalogBrowse() async {
@@ -2612,10 +2839,11 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
     _customProteinController.dispose();
     _customCarbsController.dispose();
     _customFatsController.dispose();
+    _recentAmountController.dispose();
     super.dispose();
   }
 
-  void _selectFood(CatalogFood food) async {
+  Future<void> _selectFood(CatalogFood food) async {
     HapticFeedback.selectionClick();
     setState(() {
       _selectedCatalogFood = food;
@@ -2668,9 +2896,205 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
       amount: _grams,
     );
     try {
-      await widget.onFoodAdded(foodItem, _selectedMeal, catalogFoodId: food.id);
+      await widget.onFoodAdded(
+        foodItem,
+        _selectedMeal,
+        catalogFoodId: food.id,
+        closeSheet: true,
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  FoodItem _foodItemFromRecent(RecentFoodItem recent) {
+    return FoodItem(
+      name: recent.foodName,
+      calories: recent.caloriesInt,
+      protein: recent.protein,
+      carbs: recent.carbs,
+      fats: recent.fat,
+      fiber: recent.fiber,
+      unit: recent.unit,
+      amount: recent.quantity,
+    );
+  }
+
+  Future<void> _quickAddRecent(RecentFoodItem recent) async {
+    final key = recentFoodDedupeKey(
+      foodId: recent.foodId,
+      foodName: recent.foodName,
+    );
+    if (_addingRecentKey != null || _saving) return;
+    setState(() => _addingRecentKey = key);
+    HapticFeedback.mediumImpact();
+    try {
+      await widget.onFoodAdded(
+        _foodItemFromRecent(recent),
+        _selectedMeal,
+        catalogFoodId: recent.foodId,
+        closeSheet: true,
+      );
+    } finally {
+      if (mounted) setState(() => _addingRecentKey = null);
+    }
+  }
+
+  Future<void> _openRecentEditor(RecentFoodItem recent) async {
+    HapticFeedback.selectionClick();
+    if (recent.foodId != null) {
+      final catalog = await widget.foodCatalogRepo.getFoodById(recent.foodId!);
+      if (!mounted) return;
+      if (catalog != null) {
+        await _selectFood(catalog);
+        if (!mounted) return;
+        // Prefill last-used amount when unit is grams-based.
+        if (recent.unit.toLowerCase().contains('g')) {
+          setState(() {
+            _useGrams = true;
+            _setGrams(recent.quantity);
+          });
+        }
+        return;
+      }
+    }
+    setState(() {
+      _editingRecent = recent;
+      _recentAmountController.text = recent.quantity == recent.quantity.roundToDouble()
+          ? recent.quantity.round().toString()
+          : recent.quantity.toStringAsFixed(1);
+      _step = 3;
+    });
+  }
+
+  Future<void> _addEditedRecent() async {
+    final recent = _editingRecent;
+    if (recent == null || _saving) return;
+    final amount = double.tryParse(_recentAmountController.text.trim());
+    if (amount == null || amount <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enter a valid amount'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await widget.onFoodAdded(
+        FoodItem(
+          name: recent.foodName,
+          calories: recent.caloriesInt,
+          protein: recent.protein,
+          carbs: recent.carbs,
+          fats: recent.fat,
+          fiber: recent.fiber,
+          unit: recent.unit,
+          amount: amount,
+        ),
+        _selectedMeal,
+        catalogFoodId: recent.foodId,
+        closeSheet: true,
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _addSavedMeal(SavedMeal meal) async {
+    if (_addingSavedId != null || _saving) return;
+    if (meal.items.isEmpty) return;
+    setState(() => _addingSavedId = meal.id);
+    HapticFeedback.mediumImpact();
+    try {
+      final foods = meal.items
+          .map(
+            (it) => FoodItem(
+              name: it.foodName,
+              calories: it.calories,
+              protein: it.protein,
+              carbs: it.carbs,
+              fats: it.fat,
+              fiber: it.fiber,
+              unit: it.unit,
+              amount: it.quantity,
+            ),
+          )
+          .toList();
+      final ids = meal.items.map((it) => it.foodId).toList();
+      await widget.onFoodsBatchAdded(
+        foods,
+        _selectedMeal,
+        catalogFoodIds: ids,
+      );
+    } finally {
+      if (mounted) setState(() => _addingSavedId = null);
+    }
+  }
+
+  Future<void> _deleteSavedMeal(SavedMeal meal) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete saved meal?'),
+        content: Text('Remove “${meal.name}”? This does not change today’s log.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await widget.savedMealsRepo.deleteSavedMeal(meal.id);
+      await _loadSavedMeals();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
+    }
+  }
+
+  Future<void> _editSavedMeal(SavedMeal meal) async {
+    final controller = TextEditingController(text: meal.name);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename saved meal'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Meal name'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (name == null || name.trim().isEmpty) return;
+    try {
+      await widget.savedMealsRepo.renameSavedMeal(meal.id, name.trim());
+      await _loadSavedMeals();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
     }
   }
 
@@ -2705,7 +3129,7 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
       amount: 1,
     );
     try {
-      await widget.onFoodAdded(foodItem, _selectedMeal);
+      await widget.onFoodAdded(foodItem, _selectedMeal, closeSheet: true);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -2717,6 +3141,8 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
         return _selectedCatalogFood?.name ?? 'Food Details';
       case 2:
         return 'Custom food';
+      case 3:
+        return _editingRecent?.foodName ?? 'Edit amount';
       default:
         return 'Add Food';
     }
@@ -2792,6 +3218,13 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
                       ),
                     ),
                     const SizedBox(height: 12),
+                    if (_step == 0)
+                      AddFoodBrowseTabs(
+                        selectedIndex: _browseTab,
+                        onChanged: (i) => setState(() => _browseTab = i),
+                        textPrimary: textPrimary,
+                        surface: surface,
+                      ),
                     Expanded(
                       child: switch (_step) {
                         1 => _CatalogDetailsStep(
@@ -2868,22 +3301,104 @@ class _AddFoodSheetState extends State<_AddFoodSheet> {
                             textSecondary: textSecondary,
                             surface: surface,
                           ),
-                        _ => _CatalogSearchStep(
+                        3 => ListView(
                             controller: scrollController,
-                            searchController: _searchController,
-                            searchResults: _searchResults,
-                            searching: _searching,
-                            catalogError: _catalogError,
-                            recentFoods: widget.recentFoods,
-                            onSelectCatalog: _selectFood,
-                            onAddCustom: () {
-                              HapticFeedback.selectionClick();
-                              setState(() => _step = 2);
-                            },
-                            textPrimary: textPrimary,
-                            textSecondary: textSecondary,
-                            surface: surface,
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                            children: [
+                              Text(
+                                'Adjust amount before adding',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: textSecondary,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              TextField(
+                                controller: _recentAmountController,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                  decimal: true,
+                                ),
+                                decoration: InputDecoration(
+                                  labelText: 'Amount',
+                                  helperText: _editingRecent?.unit,
+                                  filled: true,
+                                  fillColor: surface,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                    borderSide: BorderSide.none,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              FilledButton(
+                                onPressed: _saving ? null : _addEditedRecent,
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: MealTrackerTokens.accent,
+                                  foregroundColor: Colors.white,
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 14),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                ),
+                                child: _saving
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : Text('Add to $_selectedMeal'),
+                              ),
+                            ],
                           ),
+                        _ => switch (_browseTab) {
+                            1 => RecentFoodsList(
+                                controller: scrollController,
+                                items: _recentItems,
+                                loading: _loadingRecent,
+                                error: _recentError,
+                                addingKey: _addingRecentKey,
+                                onTapRow: _openRecentEditor,
+                                onQuickAdd: _quickAddRecent,
+                                textPrimary: textPrimary,
+                                textSecondary: textSecondary,
+                                surface: surface,
+                              ),
+                            2 => SavedMealsList(
+                                controller: scrollController,
+                                meals: _savedMeals,
+                                loading: _loadingSaved,
+                                error: _savedError,
+                                addingId: _addingSavedId,
+                                onRefresh: _loadSavedMeals,
+                                onAdd: _addSavedMeal,
+                                onEdit: _editSavedMeal,
+                                onDelete: _deleteSavedMeal,
+                                textPrimary: textPrimary,
+                                textSecondary: textSecondary,
+                                surface: surface,
+                              ),
+                            _ => _CatalogSearchStep(
+                                controller: scrollController,
+                                searchController: _searchController,
+                                searchResults: _searchResults,
+                                searching: _searching,
+                                catalogError: _catalogError,
+                                recentFoods: const [],
+                                onSelectCatalog: _selectFood,
+                                onAddCustom: () {
+                                  HapticFeedback.selectionClick();
+                                  setState(() => _step = 2);
+                                },
+                                textPrimary: textPrimary,
+                                textSecondary: textSecondary,
+                                surface: surface,
+                              ),
+                          },
                       },
                     ),
                   ],
@@ -4360,6 +4875,7 @@ class _MealDetailSheet extends StatefulWidget {
   final Future<bool> Function(FoodItem oldFood, FoodItem updatedFood)
       onFoodUpdated;
   final VoidCallback onAddFood;
+  final VoidCallback onSaveAsMeal;
 
   const _MealDetailSheet({
     required this.mealType,
@@ -4367,6 +4883,7 @@ class _MealDetailSheet extends StatefulWidget {
     required this.onFoodDeleted,
     required this.onFoodUpdated,
     required this.onAddFood,
+    required this.onSaveAsMeal,
   });
 
   @override
@@ -4454,6 +4971,20 @@ class _MealDetailSheetState extends State<_MealDetailSheet> {
                     ),
                   ),
                   const Spacer(),
+                  if (_foods.isNotEmpty)
+                    TextButton(
+                      onPressed: () {
+                        HapticFeedback.selectionClick();
+                        widget.onSaveAsMeal();
+                      },
+                      child: Text(
+                        'Save as meal',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: MealTrackerTokens.accent,
+                        ),
+                      ),
+                    ),
                   Text(
                     '$totalCalories kcal',
                     style: TextStyle(

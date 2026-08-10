@@ -12,6 +12,8 @@ class CenterDetailPage extends StatelessWidget {
   final double rating;
   final int reviews;
   final double distance;
+  final bool isCotrainrPartner;
+  final String? activeOfferTitle;
 
   const CenterDetailPage({
     super.key,
@@ -22,6 +24,8 @@ class CenterDetailPage extends StatelessWidget {
     required this.rating,
     required this.reviews,
     required this.distance,
+    this.isCotrainrPartner = false,
+    this.activeOfferTitle,
   });
 
   @override
@@ -131,6 +135,61 @@ class CenterDetailPage extends StatelessWidget {
                       letterSpacing: -0.5,
                     ),
                   ),
+                  if (isCotrainrPartner) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.verified_rounded,
+                          size: 18,
+                          color: DesignTokens.accentOrange,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Cotrainr Partner',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: DesignTokens.accentOrange,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  if (activeOfferTitle != null &&
+                      activeOfferTitle!.trim().isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: DesignTokens.accentOrange.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Cotrainr Member Offer',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: DesignTokens.accentOrange,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            activeOfferTitle!,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              color: colorScheme.onSurface,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 8),
                   Text(
                     subtitle,
@@ -150,7 +209,7 @@ class CenterDetailPage extends StatelessWidget {
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        rating.toStringAsFixed(1),
+                        rating > 0 ? rating.toStringAsFixed(1) : '—',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w700,
@@ -159,7 +218,7 @@ class CenterDetailPage extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        '($reviews reviews)',
+                        rating > 0 ? '($reviews reviews)' : 'New partner',
                         style: TextStyle(
                           fontSize: 14,
                           color: colorScheme.onSurfaceVariant,

@@ -39,6 +39,8 @@ import '../../pages/profile/provider_professional_edit_page.dart';
 import '../../pages/profile/provider_certifications_page.dart';
 import '../../pages/profile/public_profile_readonly_page.dart';
 import '../../pages/profile/settings/service_locations_page.dart';
+import '../../pages/profile/cotrainr_pass_page.dart';
+import '../../pages/profile/partner_center_application_page.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: '/splash',
@@ -346,6 +348,22 @@ final GoRouter appRouter = GoRouter(
       name: 'providerServiceLocations',
       pageBuilder: (context, state) => _fadeSlidePage(
         child: const ServiceLocationsPage(),
+        state: state,
+      ),
+    ),
+    GoRoute(
+      path: '/profile/cotrainr-pass',
+      name: 'cotrainrPass',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const CotrainrPassPage(),
+        state: state,
+      ),
+    ),
+    GoRoute(
+      path: '/profile/partner-application',
+      name: 'partnerApplication',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const PartnerCenterApplicationPage(),
         state: state,
       ),
     ),

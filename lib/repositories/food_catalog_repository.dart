@@ -113,6 +113,35 @@ class FoodCatalogRepository {
     }
   }
 
+  /// Load a single catalog food by id.
+  Future<CatalogFood?> getFoodById(String foodId) async {
+    try {
+      final res = await _supabase
+          .from('foods')
+          .select(
+            'id, name, kcal_100g, protein_100g, carbs_100g, fat_100g, fiber_100g, verified',
+          )
+          .eq('id', foodId)
+          .maybeSingle();
+      if (res == null) return null;
+      final r = Map<String, dynamic>.from(res);
+      return CatalogFood(
+        id: r['id'] as String,
+        name: r['name'] as String,
+        kcal100g: (r['kcal_100g'] as num?)?.toDouble() ?? 0,
+        protein100g: (r['protein_100g'] as num?)?.toDouble() ?? 0,
+        carbs100g: (r['carbs_100g'] as num?)?.toDouble() ?? 0,
+        fat100g: (r['fat_100g'] as num?)?.toDouble() ?? 0,
+        fiber100g: (r['fiber_100g'] as num?)?.toDouble() ?? 0,
+        verified: (r['verified'] as bool?) ?? false,
+      );
+    } catch (e) {
+      // ignore: avoid_print
+      print('FoodCatalogRepository.getFoodById: $e');
+      return null;
+    }
+  }
+
   /// Get saved portions for a food. Returns empty on failure (portions are optional).
   Future<List<FoodPortion>> getFoodPortions(String foodId) async {
     try {
