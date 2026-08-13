@@ -6,21 +6,33 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../core/auth/auth_deep_link.dart';
 import '../../core/auth/signup_error_mapper.dart';
+import '../../core/auth/signup_mode.dart';
+import '../../core/auth/username_availability.dart';
+import '../../theme/auth_theme.dart';
 import '../../theme/design_tokens.dart';
-import '../../theme/account_hub_theme.dart';
 import '../../widgets/auth/auth_ui.dart';
 import '../../widgets/auth/auth_screen_background.dart';
+import '../../widgets/auth/onboarding_role_goals.dart';
+import '../../widgets/auth/onboarding_shell.dart';
+import '../../widgets/auth/onboarding_success.dart';
 import '../../services/user_goals_service.dart';
 import '../../services/pending_referral_service.dart';
 import '../../repositories/referral_repository.dart';
-import '../../models/provider_specialty_taxonomy.dart';
+import '../../models/fitness_goal_taxonomy.dart';
+import '../../models/onboarding_specialty_options.dart';
 import '../../pages/profile/settings/info_pages.dart';
 
 class SignupWizardPage extends StatefulWidget {
-  const SignupWizardPage({super.key, this.initialReferralCode});
+  const SignupWizardPage({
+    super.key,
+    this.initialReferralCode,
+    this.mode = SignupMode.email,
+  });
 
   final String? initialReferralCode;
+  final SignupMode mode;
 
   @override
   State<SignupWizardPage> createState() => _SignupWizardPageState();
@@ -41,11 +53,16 @@ class _SignupWizardPageState extends State<SignupWizardPage>
   final _pass = TextEditingController();
   final _confirmPass = TextEditingController();
   final _referralCode = TextEditingController();
-  String? _userIdAvailabilityStatus;
+  UsernameAvailabilityStatus _userIdAvailabilityStatus =
+      UsernameAvailabilityStatus.empty;
   bool _isCheckingUserId = false;
-  String? _emailValidationStatus; // 'valid', 'invalid', 'taken', null
-  bool _isCheckingEmail = false;
+  String? _lastAvailableNormalized;
+  Timer? _userIdDebounce;
+  String? _emailValidationStatus; // 'valid', 'invalid', null — never live-available
+  bool _emailConflict = false;
   bool _agreedLegal = false;
+  bool _showAllSet = false;
+  bool _transitionForward = true;
   bool _showSlowHint = false;
   String _termsVersion = '2026-08-01';
   String _privacyVersion = '2026-08-01';
@@ -73,29 +90,15 @@ class _SignupWizardPageState extends State<SignupWizardPage>
   double _weightLbs = 154;
 
   // Step 6 — goals, role, provider specialties
-  final List<String> _goals = [
-    'Weight Loss',
-    'Muscle Gain',
-    'Strength',
-    'Yoga',
-    'Cardio Fitness',
-    'Boxing',
-    'Pilates',
-    'Zumba',
-    'Calisthenics',
-    'Nutrition',
-  ];
-  final Set<String> _selectedGoals = {'Weight Loss'};
+  final Set<String> _selectedGoalIds = {'lose_weight'};
   String _role = 'Client';
-  final Set<String> _selectedSpecializations = {};
+  final Set<String> _selectedSpecialtyIds = {};
   final _customSpecialty = TextEditingController();
-
-  static const _trainerSpecialties = ProviderSpecialtyTaxonomy.trainer;
-  static const _nutritionistSpecialties =
-      ProviderSpecialtyTaxonomy.nutritionist;
 
   bool _isSubmitting = false;
   bool _referralApplied = false; // Guard: prevent double apply_referral_code
+
+  bool get _isSocial => widget.mode == SignupMode.social;
 
   late final AnimationController _fadeController;
   late final AnimationController _stepTransitionController;
@@ -104,6 +107,7 @@ class _SignupWizardPageState extends State<SignupWizardPage>
   void initState() {
     super.initState();
     _initReferralCode();
+    if (_isSocial) unawaited(_prefillSocialIdentity());
     unawaited(_loadLegalVersions());
     _fadeController = AnimationController(
       vsync: this,
@@ -112,7 +116,7 @@ class _SignupWizardPageState extends State<SignupWizardPage>
 
     _stepTransitionController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 260),
+      duration: const Duration(milliseconds: 300),
     );
 
     _stepTransitionController.forward();
@@ -141,6 +145,48 @@ class _SignupWizardPageState extends State<SignupWizardPage>
     } catch (_) {}
   }
 
+  Future<void> _prefillSocialIdentity() async {
+    final supabase = Supabase.instance.client;
+    final user = supabase.auth.currentUser;
+    final email = user?.email?.trim() ?? '';
+    if (email.isNotEmpty) {
+      _email.text = email;
+      _emailValidationStatus = 'valid';
+    }
+    final meta = user?.userMetadata ?? {};
+    final given = meta['given_name']?.toString().trim() ?? '';
+    final family = meta['family_name']?.toString().trim() ?? '';
+    if (given.isNotEmpty) _first.text = given;
+    if (family.isNotEmpty) _last.text = family;
+    if (_first.text.isEmpty && _last.text.isEmpty) {
+      final full = (meta['full_name'] ?? meta['name'])?.toString().trim() ?? '';
+      if (full.isNotEmpty) {
+        final parts = full.split(RegExp(r'\s+'));
+        _first.text = parts.first;
+        if (parts.length > 1) _last.text = parts.sublist(1).join(' ');
+      }
+    }
+    try {
+      final raw = await supabase
+          .rpc('get_my_profile')
+          .timeout(const Duration(seconds: 15));
+      Map<String, dynamic>? profile;
+      if (raw is List && raw.isNotEmpty) {
+        profile = Map<String, dynamic>.from(raw.first as Map);
+      } else if (raw is Map) {
+        profile = Map<String, dynamic>.from(raw);
+      }
+      final existing = profile?['username']?.toString().trim() ?? '';
+      if (existing.isNotEmpty && mounted) {
+        _userId.text = existing;
+        _userIdAvailabilityStatus = UsernameAvailabilityStatus.available;
+        _lastAvailableNormalized =
+            UsernameAvailability.normalize(_userId.text).toLowerCase();
+      }
+    } catch (_) {}
+    if (mounted) setState(() {});
+  }
+
   Future<void> _initReferralCode() async {
     final fromRoute = widget.initialReferralCode;
     final fromDeepLink = await PendingReferralService.getPendingCode();
@@ -153,6 +199,7 @@ class _SignupWizardPageState extends State<SignupWizardPage>
   @override
   void dispose() {
     _slowHintTimer?.cancel();
+    _userIdDebounce?.cancel();
     _page.dispose();
     _userId.dispose();
     _referralCode.dispose();
@@ -183,62 +230,42 @@ class _SignupWizardPageState extends State<SignupWizardPage>
     return _weightKgResolved / (h * h);
   }
 
-  bool _validateStep1() {
-    final userIdText = _userId.text.trim();
+  Future<bool> _validateStep1() async {
+    final userIdText = UsernameAvailability.normalize(_userId.text);
     if (userIdText.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Username is required')),
-      );
+      setState(() => _userIdAvailabilityStatus = UsernameAvailabilityStatus.invalid);
       return false;
     }
-    // Database requirement: 3-20 chars, A-Za-z0-9_ only
-    if (userIdText.length < 3 || userIdText.length > 20) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Username must be 3-20 characters')),
-      );
+    if (!UsernameAvailability.isValidFormat(userIdText)) {
+      setState(() => _userIdAvailabilityStatus = UsernameAvailabilityStatus.invalid);
       return false;
     }
-    if (!RegExp(r'^[A-Za-z0-9_]{3,20}$').hasMatch(userIdText)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Username can only contain letters, numbers, and underscore')),
-      );
+    final changedSinceCheck =
+        _lastAvailableNormalized != userIdText.toLowerCase();
+    if (changedSinceCheck ||
+        _userIdAvailabilityStatus != UsernameAvailabilityStatus.available) {
+      await _checkUserIdAvailability(userIdText);
+    }
+    if (_userIdAvailabilityStatus == UsernameAvailabilityStatus.error) {
       return false;
     }
-    if (_userIdAvailabilityStatus == 'error') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(SignupErrorMapper.usernameCheckFailed.display)),
-      );
-      return false;
-    }
-    if (_userIdAvailabilityStatus != 'available') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please ensure User ID is available')),
-      );
+    if (_userIdAvailabilityStatus != UsernameAvailabilityStatus.available) {
       return false;
     }
 
+    if (_isSocial) {
+      return true;
+    }
+
     if (_email.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Email is required')),
-      );
+      setState(() => _emailValidationStatus = 'invalid');
       return false;
     }
     if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(_email.text.trim())) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a valid email')),
-      );
+      setState(() => _emailValidationStatus = 'invalid');
       return false;
     }
-    if (_emailValidationStatus == 'taken') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('This email is already used')),
-      );
-      return false;
-    }
-    if (_emailValidationStatus != 'valid') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please ensure email is valid')),
-      );
+    if (_emailConflict) {
       return false;
     }
 
@@ -275,11 +302,37 @@ class _SignupWizardPageState extends State<SignupWizardPage>
     return hasUpper && hasLower && hasNumber && hasSpecial;
   }
 
+  void _onUserIdChanged(String raw) {
+    final normalized = UsernameAvailability.normalize(raw);
+    _userIdDebounce?.cancel();
+    setState(() {
+      if (normalized.isEmpty) {
+        _userIdAvailabilityStatus = UsernameAvailabilityStatus.empty;
+        _isCheckingUserId = false;
+        return;
+      }
+      if (!UsernameAvailability.isValidFormat(normalized)) {
+        _userIdAvailabilityStatus = UsernameAvailabilityStatus.invalid;
+        _isCheckingUserId = false;
+        return;
+      }
+      _userIdAvailabilityStatus = UsernameAvailabilityStatus.checking;
+      _isCheckingUserId = true;
+    });
+    if (!UsernameAvailability.isValidFormat(normalized)) return;
+    _userIdDebounce = Timer(const Duration(milliseconds: 400), () {
+      unawaited(_checkUserIdAvailability(normalized));
+    });
+  }
+
   Future<void> _checkUserIdAvailability(String userId) async {
-    // Database requirement: 3-20 chars, A-Za-z0-9_ only
-    if (userId.isEmpty || !RegExp(r'^[A-Za-z0-9_]{3,20}$').hasMatch(userId)) {
+    final normalized = UsernameAvailability.normalize(userId);
+    if (normalized.isEmpty || !UsernameAvailability.isValidFormat(normalized)) {
+      if (!mounted) return;
       setState(() {
-        _userIdAvailabilityStatus = null;
+        _userIdAvailabilityStatus = normalized.isEmpty
+            ? UsernameAvailabilityStatus.empty
+            : UsernameAvailabilityStatus.invalid;
         _isCheckingUserId = false;
       });
       return;
@@ -287,66 +340,56 @@ class _SignupWizardPageState extends State<SignupWizardPage>
 
     setState(() {
       _isCheckingUserId = true;
-      _userIdAvailabilityStatus = 'checking';
+      _userIdAvailabilityStatus = UsernameAvailabilityStatus.checking;
     });
 
     try {
       final available = await Supabase.instance.client
           .rpc(
             'is_username_available',
-            params: {'p_username': userId},
+            params: {'p_username': normalized},
           )
           .timeout(const Duration(seconds: 15));
       if (!mounted) return;
+      final status = UsernameAvailability.fromRpc(available);
       setState(() {
-        _userIdAvailabilityStatus =
-            (available == true) ? 'available' : 'taken';
+        _userIdAvailabilityStatus = status;
         _isCheckingUserId = false;
+        _lastAvailableNormalized =
+            status == UsernameAvailabilityStatus.available
+                ? normalized.toLowerCase()
+                : null;
       });
     } catch (_) {
       // Fail closed: never treat RPC failure as available.
       if (!mounted) return;
       setState(() {
-        _userIdAvailabilityStatus = 'error';
+        _userIdAvailabilityStatus = UsernameAvailabilityStatus.error;
         _isCheckingUserId = false;
+        _lastAvailableNormalized = null;
       });
     }
   }
 
-  Future<void> _checkEmailValidation(String email) async {
+  void _onEmailChanged(String email) {
     final emailTrimmed = email.trim();
+    setState(() => _emailConflict = false);
 
     if (emailTrimmed.isEmpty) {
-      setState(() {
-        _emailValidationStatus = null;
-        _isCheckingEmail = false;
-      });
+      setState(() => _emailValidationStatus = null);
       return;
     }
 
     final isValidFormat =
         RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(emailTrimmed);
-
-    if (!isValidFormat) {
-      setState(() {
-        _emailValidationStatus = 'invalid';
-        _isCheckingEmail = false;
-      });
-      return;
-    }
-
-    // Format-valid is enough pre-signup; Auth returns a clear error if taken.
-    if (mounted) {
-      setState(() {
-        _emailValidationStatus = 'valid';
-        _isCheckingEmail = false;
-      });
-    }
+    setState(() {
+      _emailValidationStatus = isValidFormat ? 'valid' : 'invalid';
+    });
   }
 
   bool _validateRoleStep() {
     if (_role == 'Trainer' || _role == 'Nutritionist') {
-      if (_selectedSpecializations.isEmpty) {
+      if (_selectedSpecialtyIds.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -358,12 +401,20 @@ class _SignupWizardPageState extends State<SignupWizardPage>
         );
         return false;
       }
+      if (OnboardingSpecialtyOptions.otherSelected(_selectedSpecialtyIds) &&
+          _customSpecialty.text.trim().isEmpty &&
+          _selectedSpecialtyIds.length == 1) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Enter your specialty')),
+        );
+        return false;
+      }
     }
     return true;
   }
 
   bool _validateGoalsStep() {
-    if (_selectedGoals.isEmpty) {
+    if (_selectedGoalIds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Select at least one fitness goal')),
       );
@@ -378,24 +429,14 @@ class _SignupWizardPageState extends State<SignupWizardPage>
     return true;
   }
 
-  void _addCustomSpecialty() {
-    final value = _customSpecialty.text.trim();
-    if (value.isEmpty) return;
-    HapticFeedback.selectionClick();
-    setState(() {
-      _selectedSpecializations.add(value);
-      _customSpecialty.clear();
-    });
-  }
-
   void _dismissKeyboard() {
     FocusManager.instance.primaryFocus?.unfocus();
   }
 
-  void _next() {
+  Future<void> _next() async {
     if (_isSubmitting) return;
 
-    if (_step == 0 && !_validateStep1()) {
+    if (_step == 0 && !await _validateStep1()) {
       return;
     }
 
@@ -409,29 +450,29 @@ class _SignupWizardPageState extends State<SignupWizardPage>
 
     if (_step < _lastStepIndex) {
       _dismissKeyboard();
-      _stepTransitionController.reset();
-      setState(() => _step++);
-      _page.nextPage(
-        duration: const Duration(milliseconds: 450),
-        curve: Curves.easeOutCubic,
-      );
-      _stepTransitionController.forward();
+      _stepTransitionController.value = 0;
+      setState(() {
+        _transitionForward = true;
+        _step++;
+      });
+      _page.jumpToPage(_step);
+      await _stepTransitionController.forward();
     } else {
-      _submit();
+      await _submit();
     }
   }
 
   void _back() {
     if (_step > 0) {
       _dismissKeyboard();
-      _stepTransitionController.reset();
-      setState(() => _step--);
-      _page.previousPage(
-        duration: const Duration(milliseconds: 450),
-        curve: Curves.easeOutCubic,
-      );
+      _stepTransitionController.value = 0;
+      setState(() {
+        _transitionForward = false;
+        _step--;
+      });
+      _page.jumpToPage(_step);
       _stepTransitionController.forward();
-    } else {
+    } else if (context.canPop()) {
       context.pop();
     }
   }
@@ -474,18 +515,52 @@ class _SignupWizardPageState extends State<SignupWizardPage>
       final weightKg =
           double.parse(weightKgRaw.clamp(20.0, 400.0).toStringAsFixed(2));
 
-      final username = _userId.text.trim();
+      final username = UsernameAvailability.normalize(_userId.text);
       if (username.isEmpty) {
         throw Exception('Username is required');
+      }
+      if (_lastAvailableNormalized != username.toLowerCase()) {
+        await _checkUserIdAvailability(username);
+        if (_userIdAvailabilityStatus !=
+            UsernameAvailabilityStatus.available) {
+          return;
+        }
       }
 
       final phoneDigits = _phone.text.trim();
       final phone =
           phoneDigits.isEmpty ? null : '${_phoneCountryCode}$phoneDigits';
 
+      final fullName = '${_first.text.trim()} ${_last.text.trim()}'.trim();
+      final goals = FitnessGoalTaxonomy.toStorage(_selectedGoalIds);
+      final role = _role.toLowerCase();
+      final specialization = (_role == 'Trainer' || _role == 'Nutritionist')
+          ? OnboardingSpecialtyOptions.persistSelection(
+              role: _role,
+              selectedIds: _selectedSpecialtyIds,
+              otherText: _customSpecialty.text,
+            )
+          : <String>[];
+
+      if (_isSocial) {
+        await _finalizeSocial(
+          supabase: supabase,
+          username: username,
+          fullName: fullName,
+          phone: phone,
+          heightCm: heightCm,
+          weightKg: weightKg,
+          weightKgRaw: weightKgRaw,
+          role: role,
+          goals: goals,
+          specialization: specialization,
+        );
+        return;
+      }
+
       final signUpData = <String, dynamic>{
         'username': username,
-        'full_name': '${_first.text.trim()} ${_last.text.trim()}'.trim(),
+        'full_name': fullName,
         'first_name': _first.text.trim(),
         'last_name': _last.text.trim(),
         if (phone != null) 'phone': phone,
@@ -494,13 +569,14 @@ class _SignupWizardPageState extends State<SignupWizardPage>
         'height_cm': heightCm,
         'weight_kg': weightKg,
         'bmi': double.parse(_bmi.toStringAsFixed(2)),
-        'goals': _selectedGoals.toList(),
-        'role': _role.toLowerCase(),
+        'goals': goals,
+        'role': role,
+        'terms_version': _termsVersion,
+        'privacy_version': _privacyVersion,
       };
 
-      if (_role == 'Trainer' || _role == 'Nutritionist') {
-        signUpData['specialization'] =
-            ProviderSpecialtyTaxonomy.normalizeList(_selectedSpecializations);
+      if (specialization.isNotEmpty) {
+        signUpData['specialization'] = specialization;
       }
 
       final response = await supabase.auth
@@ -508,6 +584,7 @@ class _SignupWizardPageState extends State<SignupWizardPage>
             email: _email.text.trim(),
             password: _pass.text,
             data: signUpData,
+            emailRedirectTo: AuthDeepLink.callback,
           )
           .timeout(const Duration(seconds: 15));
 
@@ -629,9 +706,7 @@ class _SignupWizardPageState extends State<SignupWizardPage>
                   .upsert({
                     'user_id': response.user!.id,
                     'provider_type': _role.toLowerCase(),
-                    'specialization': ProviderSpecialtyTaxonomy.normalizeList(
-                      _selectedSpecializations,
-                    ),
+                    'specialization': specialization,
                   })
                   .timeout(const Duration(seconds: 15));
             } catch (_) {
@@ -639,11 +714,8 @@ class _SignupWizardPageState extends State<SignupWizardPage>
             }
           }
 
-          final role = _role.toLowerCase();
           if (!mounted) return;
-
-          // Redirect to permissions page first
-          context.go('/auth/permissions', extra: {'role': role});
+          setState(() => _showAllSet = true);
         } else {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
@@ -674,9 +746,27 @@ class _SignupWizardPageState extends State<SignupWizardPage>
       );
     } catch (e) {
       if (!mounted) return;
+      final mapped = SignupErrorMapper.map(e);
+      if (mapped == SignupErrorMapper.emailConflict) {
+        setState(() {
+          _emailConflict = true;
+          _step = 0;
+        });
+        _page.jumpToPage(0);
+        return;
+      }
+      if (mapped == SignupErrorMapper.usernameTaken) {
+        setState(() {
+          _userIdAvailabilityStatus = UsernameAvailabilityStatus.taken;
+          _lastAvailableNormalized = null;
+          _step = 0;
+        });
+        _page.jumpToPage(0);
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(SignupErrorMapper.map(e).display),
+          content: Text(mapped.display),
           backgroundColor: DesignTokens.accentRed,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
@@ -695,6 +785,86 @@ class _SignupWizardPageState extends State<SignupWizardPage>
     }
   }
 
+  Future<void> _finalizeSocial({
+    required SupabaseClient supabase,
+    required String username,
+    required String fullName,
+    required String? phone,
+    required int heightCm,
+    required double weightKg,
+    required double weightKgRaw,
+    required String role,
+    required List<String> goals,
+    required List<String> specialization,
+  }) async {
+    if (supabase.auth.currentSession == null) {
+      throw Exception('Not authenticated');
+    }
+
+    await supabase
+        .rpc(
+          'complete_cotrainr_profile',
+          params: {
+            'p_username': username,
+            'p_role': role,
+            'p_full_name': fullName.isEmpty ? null : fullName,
+            'p_phone': phone,
+            'p_dob': _formatDob(_dob),
+            'p_gender': _gender,
+            'p_height_cm': heightCm,
+            'p_weight_kg': weightKg,
+            'p_specialization':
+                specialization.isEmpty ? null : specialization,
+            'p_terms_version': _termsVersion,
+            'p_privacy_version': _privacyVersion,
+            'p_goals': goals,
+          },
+        )
+        .timeout(const Duration(seconds: 15));
+
+    if (!mounted) return;
+
+    try {
+      final goalsService = UserGoalsService();
+      await goalsService.initializeGoals(weightKg: weightKgRaw);
+    } catch (_) {}
+
+    final referralRepo = ReferralRepository();
+    try {
+      final codeToApply = _referralCode.text.trim().toUpperCase();
+      if (codeToApply.isNotEmpty && !_referralApplied) {
+        final result = await referralRepo.applyReferralCode(codeToApply);
+        _referralApplied = true;
+        final status = result['status'] as String?;
+        final msg = result['message'] as String? ?? '';
+        if (mounted) {
+          if (status == 'success' || status == 'already_used') {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(msg.isNotEmpty ? msg : 'Referral applied!'),
+                backgroundColor: DesignTokens.accentGreen,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
+                ),
+              ),
+            );
+          }
+        }
+      }
+      await referralRepo.generateReferralCode();
+      await PendingReferralService.clearPendingCode();
+    } catch (_) {}
+
+    if (!mounted) return;
+    setState(() => _showAllSet = true);
+  }
+
+  Future<void> _leaveAllSet() async {
+    if (!mounted) return;
+    context.go('/auth/permissions', extra: {'role': _role.toLowerCase()});
+  }
+
   String _getStepTitle(int step) {
     switch (step) {
       case 0:
@@ -710,7 +880,7 @@ class _SignupWizardPageState extends State<SignupWizardPage>
       case 5:
         return 'Your Role';
       case 6:
-        return 'Fitness Goals';
+        return 'Your Goal';
       default:
         return 'Create Account';
     }
@@ -721,17 +891,17 @@ class _SignupWizardPageState extends State<SignupWizardPage>
       case 0:
         return 'Start training, tracking and transforming.';
       case 1:
-        return 'Tell us about yourself';
+        return "Let's make this yours.";
       case 2:
-        return 'Your age and gender';
+        return 'A few details help us personalise Cotrainr.';
       case 3:
-        return 'Enter or scroll your height';
+        return 'Set your height.';
       case 4:
-        return 'Enter or scroll your weight';
+        return 'Set your current weight.';
       case 5:
         return 'How will you use Cotrainr?';
       case 6:
-        return 'What are you working toward?';
+        return 'What are you training toward?';
       default:
         return '';
     }
@@ -739,123 +909,41 @@ class _SignupWizardPageState extends State<SignupWizardPage>
 
   @override
   Widget build(BuildContext context) {
-    final isLight = Theme.of(context).brightness == Brightness.light;
     final pageBg = AuthUi.pageBg(context);
-    final cs = Theme.of(context).colorScheme;
-    final isMetricStep = _step == 3 || _step == 4;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: (isLight ? SystemUiOverlayStyle.dark : SystemUiOverlayStyle.light)
-          .copyWith(
-        statusBarColor: Colors.transparent,
-        systemNavigationBarColor: pageBg,
-      ),
-      child: Scaffold(
+      value: AuthTheme.overlay(context),
+      child: PopScope(
+        canPop: _step == 0,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _back();
+        },
+        child: Scaffold(
         backgroundColor: pageBg,
-        body: AuthScreenBackground(
-          scrimStrength: 0.48,
+        resizeToAvoidBottomInset: true,
+        body: _showAllSet
+            ? OnboardingAllSetView(onContinue: () => unawaited(_leaveAllSet()))
+            : AuthScreenBackground.onboarding(
           child: SafeArea(
             child: FadeTransition(
               opacity: _fadeController,
               child: Column(
                 children: [
-                  Container(
-                    padding:
-                        EdgeInsets.fromLTRB(16, 4, 16, isMetricStep ? 6 : 10),
-                    child: Column(
-                      children: [
-                        Row(
-                          children: [
-                            IconButton(
-                              onPressed: _back,
-                              icon: Icon(
-                                Icons.arrow_back_ios_new_rounded,
-                                size: 20,
-                                color: cs.onSurface,
-                              ),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(
-                                minWidth: 44,
-                                minHeight: 44,
-                              ),
-                            ),
-                            const Spacer(),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 5,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AuthUi.accent.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                '${_step + 1}/$_totalSteps',
-                                style: const TextStyle(
-                                  color: AuthUi.accent,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 260),
-                          switchInCurve: Curves.easeOutCubic,
-                          switchOutCurve: Curves.easeInCubic,
-                          transitionBuilder: (child, anim) {
-                            return FadeTransition(
-                              opacity: anim,
-                              child: SlideTransition(
-                                position: Tween<Offset>(
-                                  begin: const Offset(0, 0.06),
-                                  end: Offset.zero,
-                                ).animate(anim),
-                                child: child,
-                              ),
-                            );
-                          },
-                          child: Column(
-                            key: ValueKey(_step),
-                            crossAxisAlignment: _step == 0
-                                ? CrossAxisAlignment.center
-                                : CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                _getStepTitle(_step),
-                                textAlign: _step == 0
-                                    ? TextAlign.center
-                                    : TextAlign.start,
-                                style: AuthUi.pageTitle(context).copyWith(
-                                  fontSize: isMetricStep ? 22 : 24,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                _getStepSubtitle(_step),
-                                textAlign: _step == 0
-                                    ? TextAlign.center
-                                    : TextAlign.start,
-                                style: AuthUi.pageSubtitle(context).copyWith(
-                                  fontSize: 14.5,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        AuthProgressBar(step: _step, totalSteps: _totalSteps),
-                      ],
-                    ),
+                  OnboardingHeader(
+                    title: _getStepTitle(_step),
+                    subtitle: _getStepSubtitle(_step),
+                    step: _step,
+                    totalSteps: _totalSteps,
+                    centerAlign: _step == 0,
+                    afterProgress: (_step == 3 || _step == 4)
+                        ? onboardingMeasureControlGap(context)
+                        : (_step == 0 ? 12 : 8),
                   ),
 
-              // Content Section with better spacing
               Expanded(
                 child: AuthStepTransition(
                   animation: _stepTransitionController,
+                  forward: _transitionForward,
                   child: PageView(
                     controller: _page,
                     physics: const NeverScrollableScrollPhysics(),
@@ -868,10 +956,12 @@ class _SignupWizardPageState extends State<SignupWizardPage>
                       referralCode: _referralCode,
                       userIdAvailabilityStatus: _userIdAvailabilityStatus,
                       isCheckingUserId: _isCheckingUserId,
-                      onUserIdChanged: _checkUserIdAvailability,
+                      onUserIdChanged: _onUserIdChanged,
                       emailValidationStatus: _emailValidationStatus,
-                      isCheckingEmail: _isCheckingEmail,
-                      onEmailChanged: _checkEmailValidation,
+                      emailConflict: _emailConflict,
+                      onEmailChanged: _onEmailChanged,
+                      onSignInInstead: () => context.go('/auth/login'),
+                      isSocial: _isSocial,
                     ),
                     _Step2Content(
                       first: _first,
@@ -918,93 +1008,78 @@ class _SignupWizardPageState extends State<SignupWizardPage>
                       onWeightKg: (v) => setState(() => _weightKg = v),
                       onWeightLbs: (v) => setState(() => _weightLbs = v),
                     ),
-                    _StepRoleContent(
+                    OnboardingRoleStep(
                       role: _role,
-                      trainerSpecialties: _trainerSpecialties,
-                      nutritionistSpecialties: _nutritionistSpecialties,
-                      selectedSpecializations: _selectedSpecializations,
+                      selectedSpecialtyIds: _selectedSpecialtyIds,
                       customSpecialty: _customSpecialty,
                       onRoleChanged: (r) {
-                        HapticFeedback.selectionClick();
                         setState(() {
                           if (r != _role) {
-                            _selectedSpecializations.clear();
+                            _selectedSpecialtyIds.clear();
+                            _customSpecialty.clear();
                           }
                           _role = r;
                         });
                       },
-                      onToggleSpecialization: (s) {
-                        HapticFeedback.selectionClick();
+                      onToggleSpecialty: (id) {
                         setState(() {
-                          if (_selectedSpecializations.contains(s)) {
-                            _selectedSpecializations.remove(s);
+                          if (_selectedSpecialtyIds.contains(id)) {
+                            _selectedSpecialtyIds.remove(id);
+                            if (id == 'other') _customSpecialty.clear();
                           } else {
-                            _selectedSpecializations.add(s);
+                            _selectedSpecialtyIds.add(id);
                           }
                         });
                       },
-                      onAddCustomSpecialty: _addCustomSpecialty,
                     ),
-                    _StepGoalsContent(
-                      goals: _goals,
-                      selectedGoals: _selectedGoals,
+                    OnboardingGoalsStep(
+                      selectedGoalIds: _selectedGoalIds,
                       agreedLegal: _agreedLegal,
                       onAgreedLegalChanged: (v) {
                         setState(() => _agreedLegal = v);
                       },
-                      onToggleGoal: (g) {
-                        HapticFeedback.selectionClick();
+                      onToggleGoal: (id) {
                         setState(() {
-                          if (_selectedGoals.contains(g) &&
-                              _selectedGoals.length > 1) {
-                            _selectedGoals.remove(g);
+                          if (_selectedGoalIds.contains(id) &&
+                              _selectedGoalIds.length > 1) {
+                            _selectedGoalIds.remove(id);
                           } else {
-                            _selectedGoals.add(g);
+                            _selectedGoalIds.add(id);
                           }
                         });
                       },
+                      onOpenTerms: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const TermsOfServicePage(),
+                        ),
+                      ),
+                      onOpenPrivacy: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const PrivacyPolicyPage(),
+                        ),
+                      ),
                     ),
                   ],
                   ),
                 ),
               ),
 
-              Container(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                child: SafeArea(
-                  top: false,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (_showSlowHint) ...[
-                        Text(
-                          'Taking a little longer than usual…',
-                          style: TextStyle(
-                            color: DesignTokens.textSecondaryOf(context),
-                            fontSize: 12,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                      ],
-                      AuthPrimaryButton(
-                        label:
-                            _step == _lastStepIndex ? 'Create Account' : 'Next',
-                        isLoading: _isSubmitting,
-                        trailingIcon: _isSubmitting
-                            ? null
-                            : Icons.arrow_forward_rounded,
-                        onPressed: _isSubmitting ? null : _next,
-                      ),
-                    ],
-                  ),
-                ),
+              OnboardingBottomActions(
+                step: _step,
+                isLast: _step == _lastStepIndex,
+                isLoading: _isSubmitting,
+                slowHint: _showSlowHint,
+                onNext: _isSubmitting ? null : _next,
+                onBack: _back,
+                finishLabel: 'Finish',
               ),
             ],
           ),
         ),
       ),
     ),
-  ),
+        ),
+      ),
     );
   }
 }
@@ -1016,12 +1091,14 @@ class _Step1Content extends StatefulWidget {
   final TextEditingController pass;
   final TextEditingController confirmPass;
   final TextEditingController referralCode;
-  final String? userIdAvailabilityStatus;
+  final UsernameAvailabilityStatus userIdAvailabilityStatus;
   final bool isCheckingUserId;
   final ValueChanged<String> onUserIdChanged;
   final String? emailValidationStatus;
-  final bool isCheckingEmail;
+  final bool emailConflict;
   final ValueChanged<String> onEmailChanged;
+  final VoidCallback onSignInInstead;
+  final bool isSocial;
 
   const _Step1Content({
     required this.userId,
@@ -1033,8 +1110,10 @@ class _Step1Content extends StatefulWidget {
     required this.isCheckingUserId,
     required this.onUserIdChanged,
     required this.emailValidationStatus,
-    required this.isCheckingEmail,
+    required this.emailConflict,
     required this.onEmailChanged,
+    required this.onSignInInstead,
+    this.isSocial = false,
   });
 
   @override
@@ -1077,15 +1156,16 @@ class _Step1ContentState extends State<_Step1Content> {
 
   @override
   Widget build(BuildContext context) {
-    final textPrimary = DesignTokens.textPrimaryOf(context);
-    final textSecondary = DesignTokens.textSecondaryOf(context);
+    final textSecondary = AuthTheme.secondaryText(context);
     final pass = widget.pass.text;
     final passwordsMatch = widget.pass.text == widget.confirmPass.text && widget.confirmPass.text.isNotEmpty;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
       child: AuthSectionCard(
         title: 'Account credentials',
+        compact: true,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1101,80 +1181,92 @@ class _Step1ContentState extends State<_Step1Content> {
           _TextFieldCard(
             label: 'User ID *',
             controller: widget.userId,
-            hint: 'lowercase, numbers, _ only',
+            hint: 'gopi_26',
             prefixIcon: Icons.alternate_email_rounded,
             keyboardType: TextInputType.text,
-            onChanged: (value) {
-              Future.delayed(const Duration(milliseconds: 500), () {
-                if (widget.userId.text == value) {
-                  widget.onUserIdChanged(value);
-                }
-              });
-            },
+            onChanged: widget.onUserIdChanged,
             inputFormatters: [
-              // Database requirement: A-Za-z0-9_ only, 3-20 chars
-              FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9_]')),
-              LengthLimitingTextInputFormatter(20), // Max 20 chars
+              FilteringTextInputFormatter.allow(RegExp(r'@?[A-Za-z0-9_]')),
+              LengthLimitingTextInputFormatter(21),
             ],
-            suffix: widget.isCheckingUserId
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : widget.userIdAvailabilityStatus == 'available'
-                ? Icon(Icons.check_circle, color: DesignTokens.accentGreen, size: 20)
-                : widget.userIdAvailabilityStatus == 'taken'
-                  ? Icon(Icons.cancel, color: DesignTokens.accentRed, size: 20)
-                  : null,
-            helperText: widget.userIdAvailabilityStatus == 'taken'
-              ? 'Username already taken'
-              : widget.userIdAvailabilityStatus == 'error'
-              ? 'Unable to check User ID right now. Try again.'
-              : widget.userId.text.isNotEmpty && (widget.userId.text.length < 3 || widget.userId.text.length > 20)
-              ? 'Must be 3-20 characters'
-              : null,
-            helperColor: DesignTokens.accentRed,
+            suffix: widget.userIdAvailabilityStatus ==
+                    UsernameAvailabilityStatus.checking
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : widget.userIdAvailabilityStatus ==
+                        UsernameAvailabilityStatus.available
+                    ? Icon(Icons.check_rounded,
+                        color: AuthTheme.success(context), size: 20)
+                    : widget.userIdAvailabilityStatus ==
+                            UsernameAvailabilityStatus.taken
+                        ? Icon(Icons.error_outline_rounded,
+                            color: AuthTheme.error(context), size: 20)
+                        : widget.userIdAvailabilityStatus ==
+                                UsernameAvailabilityStatus.error
+                            ? Icon(Icons.error_outline_rounded,
+                                color: DesignTokens.accentYellow, size: 20)
+                            : null,
+            helperText: UsernameAvailability.helperText(
+              widget.userIdAvailabilityStatus,
+            ),
+            helperColor: widget.userIdAvailabilityStatus ==
+                    UsernameAvailabilityStatus.available
+                ? AuthTheme.success(context)
+                : widget.userIdAvailabilityStatus ==
+                        UsernameAvailabilityStatus.checking
+                    ? textSecondary
+                    : AuthTheme.error(context),
           ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
 
-          _TextFieldCard(
+          IgnorePointer(
+            ignoring: widget.isSocial,
+            child: _TextFieldCard(
             label: 'Email *',
             controller: widget.email,
             hint: 'your.email@example.com',
             prefixIcon: Icons.mail_outline_rounded,
             keyboardType: TextInputType.emailAddress,
-            onChanged: (value) {
-              Future.delayed(const Duration(milliseconds: 500), () {
-                if (widget.email.text == value) {
-                  widget.onEmailChanged(value);
-                }
-              });
-            },
-            suffix: widget.isCheckingEmail
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : widget.emailValidationStatus == 'valid'
-                ? Icon(Icons.check_circle, color: DesignTokens.accentGreen, size: 20)
-                : widget.emailValidationStatus == 'taken'
-                  ? Icon(Icons.cancel, color: DesignTokens.accentRed, size: 20)
-                  : widget.emailValidationStatus == 'invalid'
-                    ? Icon(Icons.error_outline, color: DesignTokens.accentRed, size: 20)
-                    : null,
-            helperText: widget.emailValidationStatus == 'invalid'
-              ? 'Invalid email'
-              : widget.emailValidationStatus == 'taken'
-                ? 'Already used'
+            onChanged: widget.onEmailChanged,
+            suffix: widget.emailValidationStatus == 'invalid' ||
+                    widget.emailConflict
+                ? Icon(Icons.error_outline,
+                    color: AuthTheme.error(context), size: 20)
                 : null,
-            helperColor: widget.emailValidationStatus == 'invalid' || widget.emailValidationStatus == 'taken'
-              ? DesignTokens.accentRed
-              : null,
+            helperText: widget.emailConflict
+                ? 'An account already exists with this email.'
+                : widget.emailValidationStatus == 'invalid'
+                    ? 'Enter a valid email address.'
+                    : null,
+            helperColor: AuthTheme.error(context),
           ),
+          ),
+          if (widget.emailConflict && !widget.isSocial)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Semantics(
+                button: true,
+                label: 'Sign in instead',
+                child: GestureDetector(
+                  onTap: widget.onSignInInstead,
+                  child: const Text(
+                    'Sign in instead',
+                    style: TextStyle(
+                      color: CotrainrGradients.focus,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ),
+              ),
+            ),
 
+          if (!widget.isSocial) ...[
           const SizedBox(height: 16),
 
           _TextFieldCard(
@@ -1251,8 +1343,9 @@ class _Step1ContentState extends State<_Step1Content> {
               : passwordsMatch
                 ? 'Passwords match'
                 : 'Passwords do not match',
-            helperColor: passwordsMatch ? DesignTokens.accentGreen : DesignTokens.accentRed,
+            helperColor: passwordsMatch ? AuthTheme.success(context) : AuthTheme.error(context),
           ),
+          ],
 
           const SizedBox(height: 20),
 
@@ -1298,29 +1391,27 @@ class _Step2Content extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-      child: AuthSectionCard(
-        title: 'Personal details',
-        child: Column(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+      child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
           _TextFieldCard(
-            label: 'First Name (optional)',
+            label: 'First Name',
             controller: first,
             hint: 'Enter your first name',
             prefixIcon: Icons.person_outline_rounded,
           ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
 
           _TextFieldCard(
-            label: 'Last Name (optional)',
+            label: 'Last Name',
             controller: last,
             hint: 'Enter your last name',
             prefixIcon: Icons.person_outline_rounded,
           ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
 
           _TextFieldCard(
             label: 'Phone Number (optional)',
@@ -1340,7 +1431,7 @@ class _Step2Content extends StatelessWidget {
                   child: Text(
                     phoneCountryCode,
                     style: TextStyle(
-                      color: DesignTokens.textPrimaryOf(context),
+                      color: AuthTheme.primaryText(context),
                       fontWeight: FontWeight.w600,
                       fontSize: 16,
                     ),
@@ -1349,14 +1440,13 @@ class _Step2Content extends StatelessWidget {
                 Container(
                   width: 1,
                   height: 20,
-                  color: DesignTokens.borderColorOf(context),
+                  color: AuthTheme.fieldBorder(context),
                 ),
                 const SizedBox(width: 8),
               ],
             ),
           ),
         ],
-        ),
       ),
     );
   }
@@ -1364,8 +1454,6 @@ class _Step2Content extends StatelessWidget {
 
 // Step 3: Age & Gender
 class _StepAgeGenderContent extends StatelessWidget {
-  static const _genderLabels = ['Male', 'Female', 'Other'];
-
   final DateTime dob;
   final String gender;
   final ValueChanged<DateTime> onDobChanged;
@@ -1377,28 +1465,6 @@ class _StepAgeGenderContent extends StatelessWidget {
     required this.onDobChanged,
     required this.onGenderChanged,
   });
-
-  int _genderIndex(String value) {
-    switch (value) {
-      case 'Female':
-        return 1;
-      case 'Other':
-        return 2;
-      default:
-        return 0;
-    }
-  }
-
-  String _genderFromIndex(int index) {
-    switch (index) {
-      case 1:
-        return 'Female';
-      case 2:
-        return 'Other';
-      default:
-        return 'Male';
-    }
-  }
 
   String _calculateAge(DateTime birthDate) {
     final now = DateTime.now();
@@ -1420,16 +1486,13 @@ class _StepAgeGenderContent extends StatelessWidget {
 
     if (years == 0) {
       return '$months ${months == 1 ? 'month' : 'months'}';
-    } else if (months == 0) {
-      return '$years ${years == 1 ? 'year' : 'years'}';
-    } else {
-      return '$years ${years == 1 ? 'year' : 'years'} $months ${months == 1 ? 'month' : 'months'}';
     }
+    return '$years';
   }
 
   @override
   Widget build(BuildContext context) {
-    final textSecondary = DesignTokens.textSecondaryOf(context);
+    final textSecondary = AuthTheme.secondaryText(context);
     final ageText = _calculateAge(dob);
     final sectionLabel = TextStyle(
       color: textSecondary,
@@ -1444,14 +1507,14 @@ class _StepAgeGenderContent extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Date of birth *', style: sectionLabel),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
           SizedBox(
-            height: 260,
+            height: 268,
             child: AuthPickerFadeMask(
               child: CupertinoTheme(
                 data: CupertinoThemeData(
                   brightness: Theme.of(context).brightness,
-                  primaryColor: DesignTokens.accentOrange,
+                  primaryColor: CotrainrGradients.focus,
                 ),
                 child: _CustomDatePicker(
                   initialDate: dob,
@@ -1462,44 +1525,39 @@ class _StepAgeGenderContent extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 8),
           Center(
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 320),
-              curve: Curves.easeOutCubic,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              decoration: BoxDecoration(
-                color: DesignTokens.accentOrange.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(
-                  color: DesignTokens.accentOrange.withValues(alpha: 0.28),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              transitionBuilder: (child, anim) => FadeTransition(
+                opacity: anim,
+                child: SlideTransition(
+                  position: Tween<Offset>(
+                    begin: const Offset(0, 0.15),
+                    end: Offset.zero,
+                  ).animate(anim),
+                  child: child,
                 ),
               ),
               child: Text(
-                'Age: $ageText',
+                'Age $ageText',
+                key: ValueKey(ageText),
                 style: TextStyle(
-                  color: DesignTokens.accentOrange,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
+                  color: textSecondary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
           ),
-          const SizedBox(height: 36),
+          const SizedBox(height: 28),
           Text('Gender *', style: sectionLabel),
-          const SizedBox(height: 16),
-          AuthPickerFadeMask(
-            child: AuthSidewaysWheelPicker(
-              items: _genderLabels,
-              selectedIndex: _genderIndex(gender),
-              height: 100,
-              itemExtent: 96,
-              selectedFontSize: 20,
-              unselectedFontSize: 16,
-              onSelected: (index) => onGenderChanged(_genderFromIndex(index)),
-            ),
+          const SizedBox(height: 10),
+          AuthGenderSelector(
+            value: gender,
+            onChanged: onGenderChanged,
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
         ],
       ),
     );
@@ -1663,82 +1721,30 @@ class _StepHeightContentState extends State<_StepHeightContent> {
 
   @override
   Widget build(BuildContext context) {
-    final textPrimary = DesignTokens.textPrimaryOf(context);
-    final textSecondary = DesignTokens.textSecondaryOf(context);
-    final borderColor = DesignTokens.borderColorOf(context);
+    final textPrimary = AuthTheme.secondaryText(context);
+    final borderColor = AuthTheme.fieldBorder(context);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
       child: Column(
         children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'Height *',
-              style: TextStyle(
-                color: textSecondary,
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerRight,
-            child: _UnitToggle(
-              left: 'cm',
-              right: 'ft/in',
-              isLeft: widget.heightInCm,
-              onChanged: widget.onToggleHeightUnit,
-            ),
+          _ValueUnitBar(
+            value: widget.heightInCm
+                ? '${widget.heightCm.round()}'
+                : "${widget.feet}' ${widget.inch}\"",
+            left: 'cm',
+            right: 'ft/in',
+            isLeft: widget.heightInCm,
+            onToggle: widget.onToggleHeightUnit,
           ),
           const SizedBox(height: 20),
-          if (widget.heightInCm)
-            _MetricTextField(
-              controller: _cmTextController,
-              suffix: 'cm',
-              hint: '170',
-              allowDecimal: true,
-              onSubmitted: _applyCmFromText,
-              onChanged: _applyCmFromText,
-            )
-          else
-            Row(
-              children: [
-                Expanded(
-                  child: _MetricTextField(
-                    controller: _feetTextController,
-                    suffix: 'ft',
-                    hint: '5',
-                    onSubmitted: (_) => _applyImperialFromText(),
-                    onChanged: (_) => _applyImperialFromText(),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _MetricTextField(
-                    controller: _inchTextController,
-                    suffix: 'in',
-                    hint: '7',
-                    onSubmitted: (_) => _applyImperialFromText(),
-                    onChanged: (_) => _applyImperialFromText(),
-                  ),
-                ),
-              ],
-            ),
-          const SizedBox(height: 8),
-          Text(
-            'Type a value or scroll below',
-            style: TextStyle(color: textSecondary, fontSize: 13),
-          ),
-          const SizedBox(height: 12),
           Expanded(
             child: widget.heightInCm
                 ? _PickerFadeWrapper(
                     child: CupertinoTheme(
                       data: CupertinoThemeData(
                         brightness: Theme.of(context).brightness,
-                        primaryColor: DesignTokens.accentOrange,
+                        primaryColor: CotrainrGradients.focus,
                         textTheme: CupertinoTextThemeData(
                           pickerTextStyle: TextStyle(
                             color: textPrimary,
@@ -1762,21 +1768,12 @@ class _StepHeightContentState extends State<_StepHeightContent> {
                           widget.onFeet((totalInches / 12).floor().clamp(3, 8));
                           widget.onInch((totalInches % 12).clamp(0, 11));
                         },
-                        builder: (context, index) {
+                        builder: (context, index, distance) {
                           final value = 80 + (index % 151);
-                          final isSelected = value == widget.heightCm.round();
-                          return Center(
-                            child: Text(
-                              '$value cm',
-                              style: TextStyle(
-                                color: isSelected
-                                    ? DesignTokens.accentOrange
-                                    : textPrimary.withValues(alpha: 0.55),
-                                fontSize: isSelected ? 24 : 18,
-                                fontWeight:
-                                    isSelected ? FontWeight.w800 : FontWeight.w500,
-                              ),
-                            ),
+                          return _RotorLabel(
+                            text: '$value cm',
+                            distance: distance,
+                            neutral: textPrimary,
                           );
                         },
                       ),
@@ -1789,7 +1786,7 @@ class _StepHeightContentState extends State<_StepHeightContent> {
                           child: CupertinoTheme(
                             data: CupertinoThemeData(
                               brightness: Theme.of(context).brightness,
-                              primaryColor: DesignTokens.accentOrange,
+                              primaryColor: CotrainrGradients.focus,
                               textTheme: CupertinoTextThemeData(
                                 pickerTextStyle: TextStyle(
                                   color: textPrimary,
@@ -1810,22 +1807,12 @@ class _StepHeightContentState extends State<_StepHeightContent> {
                                 _feetTextController.text = '${3 + (index % 6)}';
                                 _applyImperialFromText();
                               },
-                              builder: (context, index) {
+                              builder: (context, index, distance) {
                                 final value = 3 + (index % 6);
-                                final isSelected = value == widget.feet;
-                                return Center(
-                                  child: Text(
-                                    '$value ft',
-                                    style: TextStyle(
-                                      color: isSelected
-                                          ? DesignTokens.accentOrange
-                                          : textPrimary.withValues(alpha: 0.55),
-                                      fontSize: isSelected ? 24 : 18,
-                                      fontWeight: isSelected
-                                          ? FontWeight.w800
-                                          : FontWeight.w500,
-                                    ),
-                                  ),
+                                return _RotorLabel(
+                                  text: '$value ft',
+                                  distance: distance,
+                                  neutral: textPrimary,
                                 );
                               },
                             ),
@@ -1838,7 +1825,7 @@ class _StepHeightContentState extends State<_StepHeightContent> {
                           child: CupertinoTheme(
                             data: CupertinoThemeData(
                               brightness: Theme.of(context).brightness,
-                              primaryColor: DesignTokens.accentOrange,
+                              primaryColor: CotrainrGradients.focus,
                               textTheme: CupertinoTextThemeData(
                                 pickerTextStyle: TextStyle(
                                   color: textPrimary,
@@ -1859,22 +1846,12 @@ class _StepHeightContentState extends State<_StepHeightContent> {
                                 _inchTextController.text = '${index % 12}';
                                 _applyImperialFromText();
                               },
-                              builder: (context, index) {
-                                final value = index % 12;
-                                final isSelected = value == widget.inch;
-                                return Center(
-                                  child: Text(
-                                    '$value in',
-                                    style: TextStyle(
-                                      color: isSelected
-                                          ? DesignTokens.accentOrange
-                                          : textPrimary.withValues(alpha: 0.55),
-                                      fontSize: isSelected ? 24 : 18,
-                                      fontWeight: isSelected
-                                          ? FontWeight.w800
-                                          : FontWeight.w500,
-                                    ),
-                                  ),
+                              builder: (context, index, distance) {
+                                final actual = index % 12;
+                                return _RotorLabel(
+                                  text: '$actual in',
+                                  distance: distance,
+                                  neutral: textPrimary,
                                 );
                               },
                             ),
@@ -2014,63 +1991,36 @@ class _StepWeightContentState extends State<_StepWeightContent> {
 
   @override
   Widget build(BuildContext context) {
-    final textPrimary = DesignTokens.textPrimaryOf(context);
-    final textSecondary = DesignTokens.textSecondaryOf(context);
+    final textPrimary = AuthTheme.secondaryText(context);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
       child: Column(
         children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'Weight *',
-              style: TextStyle(
-                color: textSecondary,
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Align(
-            alignment: Alignment.centerRight,
-            child: _UnitToggle(
-              left: 'kg',
-              right: 'lbs',
-              isLeft: widget.weightInKg,
-              onChanged: (isKg) {
-                widget.onToggleWeightUnit(isKg);
-                _syncWeightTextFromValue();
-                if (isKg) {
-                  _syncKgPicker(widget.weightKg);
-                } else {
-                  _syncLbsPicker(widget.weightLbs);
-                }
-              },
-            ),
+          _ValueUnitBar(
+            value: widget.weightInKg
+                ? widget.weightKg.toStringAsFixed(1)
+                : widget.weightLbs.toStringAsFixed(1),
+            left: 'kg',
+            right: 'lb',
+            isLeft: widget.weightInKg,
+            onToggle: (isKg) {
+              widget.onToggleWeightUnit(isKg);
+              _syncWeightTextFromValue();
+              if (isKg) {
+                _syncKgPicker(widget.weightKg);
+              } else {
+                _syncLbsPicker(widget.weightLbs);
+              }
+            },
           ),
           const SizedBox(height: 20),
-          _MetricTextField(
-            controller: _weightTextController,
-            suffix: widget.weightInKg ? 'kg' : 'lbs',
-            hint: widget.weightInKg ? '70.0' : '154.0',
-            allowDecimal: true,
-            onSubmitted: _applyWeightFromText,
-            onChanged: _applyWeightFromText,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Type a value or scroll below',
-            style: TextStyle(color: textSecondary, fontSize: 13),
-          ),
-          const SizedBox(height: 12),
           Expanded(
             child: _PickerFadeWrapper(
               child: CupertinoTheme(
                 data: CupertinoThemeData(
                   brightness: Theme.of(context).brightness,
-                  primaryColor: DesignTokens.accentOrange,
+                  primaryColor: CotrainrGradients.focus,
                   textTheme: CupertinoTextThemeData(
                     pickerTextStyle: TextStyle(
                       color: textPrimary,
@@ -2101,25 +2051,14 @@ class _StepWeightContentState extends State<_StepWeightContent> {
                           _weightTextController.text =
                               newWeightKg.toStringAsFixed(1);
                         },
-                        builder: (context, index) {
+                        builder: (context, index, distance) {
                           final actualIndex = index % 1151;
                           final value =
                               (35 + actualIndex * 0.1).toStringAsFixed(1);
-                          final isSelected =
-                              actualIndex == _selectedWeightKgIndex;
-                          return Center(
-                            child: Text(
-                              '$value kg',
-                              style: TextStyle(
-                                color: isSelected
-                                    ? DesignTokens.accentOrange
-                                    : textPrimary.withValues(alpha: 0.55),
-                                fontSize: isSelected ? 24 : 18,
-                                fontWeight: isSelected
-                                    ? FontWeight.w800
-                                    : FontWeight.w500,
-                              ),
-                            ),
+                          return _RotorLabel(
+                            text: '$value kg',
+                            distance: distance,
+                            neutral: textPrimary,
                           );
                         },
                       )
@@ -2144,25 +2083,14 @@ class _StepWeightContentState extends State<_StepWeightContent> {
                           _weightTextController.text =
                               newWeightLbs.toStringAsFixed(1);
                         },
-                        builder: (context, index) {
+                        builder: (context, index, distance) {
                           final actualIndex = index % 2531;
                           final value =
                               (77 + actualIndex * 0.1).toStringAsFixed(1);
-                          final isSelected =
-                              actualIndex == _selectedWeightLbsIndex;
-                          return Center(
-                            child: Text(
-                              '$value lbs',
-                              style: TextStyle(
-                                color: isSelected
-                                    ? DesignTokens.accentOrange
-                                    : textPrimary.withValues(alpha: 0.55),
-                                fontSize: isSelected ? 24 : 18,
-                                fontWeight: isSelected
-                                    ? FontWeight.w800
-                                    : FontWeight.w500,
-                              ),
-                            ),
+                          return _RotorLabel(
+                            text: '$value lbs',
+                            distance: distance,
+                            neutral: textPrimary,
                           );
                         },
                       ),
@@ -2176,468 +2104,6 @@ class _StepWeightContentState extends State<_StepWeightContent> {
 }
 
 // Step 6: Role & provider specialties
-class _StepRoleContent extends StatelessWidget {
-  final String role;
-  final List<ProviderSpecialty> trainerSpecialties;
-  final List<ProviderSpecialty> nutritionistSpecialties;
-  final Set<String> selectedSpecializations;
-  final TextEditingController customSpecialty;
-  final ValueChanged<String> onRoleChanged;
-  final ValueChanged<String> onToggleSpecialization;
-  final VoidCallback onAddCustomSpecialty;
-
-  const _StepRoleContent({
-    required this.role,
-    required this.trainerSpecialties,
-    required this.nutritionistSpecialties,
-    required this.selectedSpecializations,
-    required this.customSpecialty,
-    required this.onRoleChanged,
-    required this.onToggleSpecialization,
-    required this.onAddCustomSpecialty,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isProvider = role == 'Trainer' || role == 'Nutritionist';
-    final specialtyOptions =
-        role == 'Trainer' ? trainerSpecialties : nutritionistSpecialties;
-    final textSecondary = DesignTokens.textSecondaryOf(context);
-    final borderColor = DesignTokens.borderColorOf(context);
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            'Choose your role *',
-            style: TextStyle(
-              color: DesignTokens.textPrimaryOf(context),
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 12),
-          _RoleCard(
-            icon: Icons.person_outline_rounded,
-            title: 'Client',
-            subtitle: 'Find trainers, log workouts, and track nutrition',
-            isSelected: role == 'Client',
-            onTap: () => onRoleChanged('Client'),
-          ),
-          const SizedBox(height: 12),
-          _RoleCard(
-            icon: Icons.fitness_center_rounded,
-            title: 'Trainer',
-            subtitle: 'Coach clients, schedule sessions, and grow your brand',
-            isSelected: role == 'Trainer',
-            onTap: () => onRoleChanged('Trainer'),
-          ),
-          const SizedBox(height: 12),
-          _RoleCard(
-            icon: Icons.restaurant_rounded,
-            title: 'Nutritionist',
-            subtitle: 'Create meal plans and guide clients on nutrition',
-            isSelected: role == 'Nutritionist',
-            onTap: () => onRoleChanged('Nutritionist'),
-          ),
-          AnimatedSize(
-            duration: const Duration(milliseconds: 420),
-            curve: Curves.easeOutCubic,
-            child: isProvider
-                ? Padding(
-                    padding: const EdgeInsets.only(top: 20),
-                    child: AuthSectionCard(
-                      title: role == 'Trainer'
-                          ? 'Your specialties *'
-                          : 'Your focus areas *',
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            role == 'Trainer'
-                                ? 'Required — pick at least one specialty.'
-                                : 'Required — pick at least one focus area.',
-                            style: TextStyle(
-                              color: textSecondary,
-                              fontSize: 14,
-                              height: 1.4,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              ...specialtyOptions.map((item) {
-                                final isSelected =
-                                    selectedSpecializations.contains(item.id);
-                                return _GoalChip(
-                                  label: item.label,
-                                  isSelected: isSelected,
-                                  onTap: () => onToggleSpecialization(item.id),
-                                );
-                              }),
-                              ...selectedSpecializations
-                                  .where(
-                                    (s) => !specialtyOptions
-                                        .any((opt) => opt.id == s),
-                                  )
-                                  .map(
-                                    (item) => _GoalChip(
-                                      label: ProviderSpecialtyTaxonomy
-                                          .labelFor(item),
-                                      isSelected: true,
-                                      onTap: () =>
-                                          onToggleSpecialization(item),
-                                    ),
-                                  ),
-                            ],
-                          ),
-                          const SizedBox(height: 14),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: AuthTapToTypeField(
-                                  controller: customSpecialty,
-                                  style: AuthUi.fieldTextStyle(
-                                    context,
-                                    large: true,
-                                  ).copyWith(
-                                    color: DesignTokens.textPrimaryOf(context),
-                                  ),
-                                  decoration: InputDecoration(
-                                    hintText: role == 'Trainer'
-                                        ? 'Add custom (e.g. CrossFit)'
-                                        : 'Add custom (e.g. Gut Health)',
-                                    hintStyle: TextStyle(
-                                      color: textSecondary,
-                                      fontSize: 15,
-                                    ),
-                                    filled: true,
-                                    fillColor: Theme.of(context)
-                                        .colorScheme
-                                        .onSurface
-                                        .withValues(alpha: 0.04),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(18),
-                                      borderSide:
-                                          BorderSide(color: borderColor),
-                                    ),
-                                    enabledBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(18),
-                                      borderSide:
-                                          BorderSide(color: borderColor),
-                                    ),
-                                    focusedBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(18),
-                                      borderSide: const BorderSide(
-                                        color: DesignTokens.accentOrange,
-                                        width: 2,
-                                      ),
-                                    ),
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 18,
-                                    ),
-                                  ),
-                                  onChanged: (_) {},
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Material(
-                                color: DesignTokens.accentOrange,
-                                borderRadius: BorderRadius.circular(14),
-                                child: InkWell(
-                                  onTap: onAddCustomSpecialty,
-                                  borderRadius: BorderRadius.circular(14),
-                                  child: const SizedBox(
-                                    width: 52,
-                                    height: 52,
-                                    child: Icon(
-                                      Icons.add_rounded,
-                                      color: Colors.black,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                : const SizedBox.shrink(),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// Step 7: Fitness goals
-class _StepGoalsContent extends StatelessWidget {
-  final List<String> goals;
-  final Set<String> selectedGoals;
-  final ValueChanged<String> onToggleGoal;
-  final bool agreedLegal;
-  final ValueChanged<bool> onAgreedLegalChanged;
-
-  const _StepGoalsContent({
-    required this.goals,
-    required this.selectedGoals,
-    required this.onToggleGoal,
-    required this.agreedLegal,
-    required this.onAgreedLegalChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final textSecondary = DesignTokens.textSecondaryOf(context);
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  DesignTokens.accentOrange.withValues(alpha: 0.16),
-                  AccountHubTheme.cardBg(context),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: DesignTokens.accentOrange.withValues(alpha: 0.28),
-              ),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 52,
-                  height: 52,
-                  decoration: BoxDecoration(
-                    gradient: DesignTokens.primaryGradient,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: const Icon(
-                    Icons.flag_rounded,
-                    color: Colors.white,
-                    size: 26,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Pick your goals *',
-                        style: TextStyle(
-                          color: DesignTokens.textPrimaryOf(context),
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Required — choose at least one. You can change these later.',
-                        style: TextStyle(
-                          color: textSecondary,
-                          fontSize: 14,
-                          height: 1.35,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Text(
-                'Selected',
-                style: TextStyle(
-                  color: textSecondary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: DesignTokens.accentOrange.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  '${selectedGoals.length}',
-                  style: const TextStyle(
-                    color: DesignTokens.accentOrange,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          AuthSectionCard(
-            child: GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-                childAspectRatio: 2.35,
-              ),
-              itemCount: goals.length,
-              itemBuilder: (context, index) {
-                final goal = goals[index];
-                final isSelected = selectedGoals.contains(goal);
-                return _GoalTile(
-                  label: goal,
-                  isSelected: isSelected,
-                  onTap: () => onToggleGoal(goal),
-                );
-              },
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Checkbox(
-                value: agreedLegal,
-                activeColor: DesignTokens.accentOrange,
-                onChanged: (v) => onAgreedLegalChanged(v ?? false),
-              ),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: Wrap(
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Text(
-                        'I agree to the ',
-                        style: TextStyle(color: textSecondary, fontSize: 13),
-                      ),
-                      GestureDetector(
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const TermsOfServicePage(),
-                          ),
-                        ),
-                        child: Text(
-                          'Terms of Service',
-                          style: TextStyle(
-                            color: DesignTokens.accentOrange,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            decoration: TextDecoration.underline,
-                          ),
-                        ),
-                      ),
-                      Text(
-                        ' and ',
-                        style: TextStyle(color: textSecondary, fontSize: 13),
-                      ),
-                      GestureDetector(
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const PrivacyPolicyPage(),
-                          ),
-                        ),
-                        child: Text(
-                          'Privacy Policy',
-                          style: TextStyle(
-                            color: DesignTokens.accentOrange,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            decoration: TextDecoration.underline,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _GoalTile extends StatelessWidget {
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _GoalTile({
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final textPrimary = DesignTokens.textPrimaryOf(context);
-
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          gradient: isSelected ? DesignTokens.primaryGradient : null,
-          color: isSelected ? null : DesignTokens.surfaceOf(context),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected
-                ? Colors.transparent
-                : DesignTokens.borderColorOf(context),
-            width: 1.5,
-          ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: DesignTokens.accentOrange.withValues(alpha: 0.2),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : null,
-        ),
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: isSelected ? Colors.white : textPrimary,
-            fontSize: 14,
-            fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-
 // Reusable Components
 class _TextFieldCard extends StatefulWidget {
   final String label;
@@ -2675,8 +2141,8 @@ class _TextFieldCard extends StatefulWidget {
 class _TextFieldCardState extends State<_TextFieldCard> {
   @override
   Widget build(BuildContext context) {
-    final textPrimary = DesignTokens.textPrimaryOf(context);
-    final textSecondary = DesignTokens.textSecondaryOf(context);
+    final textPrimary = AuthTheme.primaryText(context);
+    final textSecondary = AuthTheme.secondaryText(context);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2741,13 +2207,13 @@ class _PasswordChip extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           color: isValid
-            ? DesignTokens.accentGreen.withOpacity(0.15)
-            : DesignTokens.surfaceOf(context),
+            ? AuthTheme.success(context).withValues(alpha: 0.14)
+            : AuthTheme.mutedSurface(context),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: isValid
-              ? DesignTokens.accentGreen
-              : DesignTokens.borderColorOf(context),
+              ? AuthTheme.success(context)
+              : AuthTheme.fieldBorder(context),
             width: isValid ? 1.5 : 1,
           ),
         ),
@@ -2775,8 +2241,8 @@ class _PasswordChip extends StatelessWidget {
                 key: ValueKey(isValid),
                 size: 14,
                 color: isValid
-                  ? DesignTokens.accentGreen
-                  : DesignTokens.textSecondaryOf(context),
+                  ? AuthTheme.success(context)
+                  : AuthTheme.mutedText(context),
               ),
             ),
             const SizedBox(width: 4),
@@ -2786,8 +2252,8 @@ class _PasswordChip extends StatelessWidget {
                 fontSize: 12,
                 fontWeight: isValid ? FontWeight.w600 : FontWeight.w500,
                 color: isValid
-                  ? DesignTokens.accentGreen
-                  : DesignTokens.textSecondaryOf(context),
+                  ? AuthTheme.success(context)
+                  : AuthTheme.mutedText(context),
               ),
               child: Text(label),
             ),
@@ -2837,8 +2303,8 @@ class _MetricTextFieldState extends State<_MetricTextField> {
 
   @override
   Widget build(BuildContext context) {
-    final textPrimary = DesignTokens.textPrimaryOf(context);
-    final borderColor = DesignTokens.borderColorOf(context);
+    final textPrimary = AuthTheme.primaryText(context);
+    final borderColor = AuthTheme.fieldBorder(context);
     final hintText =
         _keyboardEnabled ? widget.hint : '${widget.hint} · tap';
 
@@ -2872,12 +2338,12 @@ class _MetricTextFieldState extends State<_MetricTextField> {
         ),
         suffixText: widget.suffix,
         suffixStyle: TextStyle(
-          color: DesignTokens.accentOrange,
+          color: CotrainrGradients.focus,
           fontSize: 22,
           fontWeight: FontWeight.w700,
         ),
         filled: true,
-        fillColor: DesignTokens.surfaceOf(context),
+        fillColor: AuthTheme.fieldSurface(context),
         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(20),
@@ -2890,7 +2356,7 @@ class _MetricTextFieldState extends State<_MetricTextField> {
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(20),
           borderSide: const BorderSide(
-            color: DesignTokens.accentOrange,
+            color: CotrainrGradients.focus,
             width: 2,
           ),
         ),
@@ -2927,231 +2393,114 @@ class _PickerFadeWrapper extends StatelessWidget {
   }
 }
 
-class _RoleCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _RoleCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.isSelected,
-    required this.onTap,
+class _RotorLabel extends StatelessWidget {
+  const _RotorLabel({
+    required this.text,
+    required this.distance,
+    required this.neutral,
   });
+
+  final String text;
+  final int distance;
+  final Color neutral;
 
   @override
   Widget build(BuildContext context) {
-    final surfaceColor = DesignTokens.surfaceOf(context);
-    final borderColor = DesignTokens.borderColorOf(context);
-    final textPrimary = DesignTokens.textPrimaryOf(context);
-    final textSecondary = DesignTokens.textSecondaryOf(context);
-
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? DesignTokens.accentOrange.withValues(alpha: 0.1)
-              : surfaceColor,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: isSelected ? DesignTokens.accentOrange : borderColor,
-            width: isSelected ? 2 : 1.5,
+    final selected = distance == 0;
+    if (selected) {
+      return Center(
+        child: ShaderMask(
+          blendMode: BlendMode.srcIn,
+          shaderCallback: (bounds) =>
+              CotrainrGradients.primary.createShader(bounds),
+          child: Text(
+            text,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+            ),
           ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: DesignTokens.accentOrange.withValues(alpha: 0.16),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : null,
         ),
-        child: Row(
-          children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                gradient: isSelected ? DesignTokens.primaryGradient : null,
-                color: isSelected
-                    ? null
-                    : textPrimary.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Icon(
-                icon,
-                size: 26,
-                color: isSelected ? Colors.white : textSecondary,
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      color: textPrimary,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.2,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      color: textSecondary,
-                      fontSize: 13,
-                      height: 1.3,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 26,
-              height: 26,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: isSelected ? DesignTokens.primaryGradient : null,
-                color: isSelected ? null : Colors.transparent,
-                border: isSelected
-                    ? null
-                    : Border.all(color: borderColor, width: 2),
-              ),
-              child: isSelected
-                  ? const Icon(Icons.check_rounded, size: 16, color: Colors.white)
-                  : null,
-            ),
-          ],
+      );
+    }
+
+    final alpha = switch (distance) {
+      1 => 0.92,
+      2 => 0.62,
+      _ => (0.38 - (distance - 3) * 0.06).clamp(0.22, 0.38),
+    };
+    return Center(
+      child: Text(
+        text,
+        style: TextStyle(
+          color: neutral.withValues(alpha: alpha),
+          fontSize: 18,
+          fontWeight: FontWeight.w500,
         ),
       ),
     );
   }
 }
 
-class _GenderCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _GenderCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.isSelected,
-    required this.onTap,
+class _ValueUnitBar extends StatelessWidget {
+  const _ValueUnitBar({
+    required this.value,
+    required this.left,
+    required this.right,
+    required this.isLeft,
+    required this.onToggle,
   });
+
+  final String value;
+  final String left;
+  final String right;
+  final bool isLeft;
+  final ValueChanged<bool> onToggle;
 
   @override
   Widget build(BuildContext context) {
-    final surfaceColor = DesignTokens.surfaceOf(context);
-    final borderColor = DesignTokens.borderColorOf(context);
-    final textPrimary = DesignTokens.textPrimaryOf(context);
-    final textSecondary = DesignTokens.textSecondaryOf(context);
-
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? DesignTokens.accentOrange.withValues(alpha: 0.12)
-              : surfaceColor,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: isSelected ? DesignTokens.accentOrange : borderColor,
-            width: isSelected ? 2 : 1.5,
-          ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: DesignTokens.accentOrange.withValues(alpha: 0.18),
-                    blurRadius: 14,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : null,
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: isSelected
-                    ? DesignTokens.accentOrange.withValues(alpha: 0.18)
-                    : textPrimary.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Icon(
-                icon,
-                size: 26,
-                color: isSelected ? DesignTokens.accentOrange : textSecondary,
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      color: textPrimary,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      color: textSecondary,
-                      fontSize: 13,
-                      height: 1.2,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            AnimatedContainer(
+    final textPrimary = AuthTheme.primaryText(context);
+    return Container(
+      constraints: const BoxConstraints(minHeight: 64),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: AuthTheme.valueControlSurface(context),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AuthTheme.fieldBorder(context)),
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 58),
+            child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 200),
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: isSelected
-                    ? DesignTokens.accentOrange
-                    : Colors.transparent,
-                border: Border.all(
-                  color: isSelected
-                      ? DesignTokens.accentOrange
-                      : borderColor,
-                  width: 2,
+              child: Text(
+                value,
+                key: ValueKey(value),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: textPrimary,
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.6,
                 ),
               ),
-              child: isSelected
-                  ? const Icon(Icons.check_rounded, size: 16, color: Colors.black)
-                  : null,
             ),
-          ],
-        ),
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: _UnitToggle(
+              left: left,
+              right: right,
+              isLeft: isLeft,
+              onChanged: onToggle,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -3172,123 +2521,79 @@ class _UnitToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final surfaceColor = DesignTokens.surfaceOf(context);
-    final borderColor = DesignTokens.borderColorOf(context);
-    final textPrimary = DesignTokens.textPrimaryOf(context);
+    final textPrimary = AuthTheme.primaryText(context);
 
-    return SizedBox(
-      width: 100, // Fixed width to ensure both toggles are same size
+    return Semantics(
+      label: 'Unit, ${isLeft ? left : right}',
       child: Container(
+        width: 96,
+        height: 30,
         padding: const EdgeInsets.all(2),
         decoration: BoxDecoration(
-          color: surfaceColor,
-          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-          border: Border.all(color: borderColor, width: 1),
+          color: AuthTheme.mutedSurface(context),
+          borderRadius: BorderRadius.circular(15),
         ),
-        child: Row(
+        child: Stack(
           children: [
-            Expanded(
-              child: GestureDetector(
-                onTap: () => onChanged(true),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  decoration: BoxDecoration(
-                    gradient: isLeft
-                      ? const LinearGradient(
-                          colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
-                        )
-                      : null,
-                    color: isLeft ? null : Colors.transparent,
-                    borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-                  ),
-                  child: Center(
-                    child: Text(
-                      left,
-                      style: TextStyle(
-                        color: isLeft ? Colors.white : textPrimary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
+            AnimatedAlign(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOutCubic,
+              alignment: isLeft ? Alignment.centerLeft : Alignment.centerRight,
+              child: Container(
+                width: 46,
+                decoration: BoxDecoration(
+                  gradient: CotrainrGradients.primary,
+                  borderRadius: BorderRadius.circular(13),
                 ),
               ),
             ),
-            Expanded(
-              child: GestureDetector(
-                onTap: () => onChanged(false),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  decoration: BoxDecoration(
-                    gradient: !isLeft
-                      ? const LinearGradient(
-                          colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
-                        )
-                      : null,
-                    color: !isLeft ? null : Colors.transparent,
-                    borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-                  ),
-                  child: Center(
-                    child: Text(
-                      right,
-                      style: TextStyle(
-                        color: !isLeft ? Colors.white : textPrimary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
+            Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      onChanged(true);
+                    },
+                    behavior: HitTestBehavior.opaque,
+                    child: Center(
+                      child: Text(
+                        left,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: isLeft ? Colors.black : textPrimary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      HapticFeedback.selectionClick();
+                      onChanged(false);
+                    },
+                    behavior: HitTestBehavior.opaque,
+                    child: Center(
+                      child: Text(
+                        right,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: !isLeft ? Colors.black : textPrimary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _GoalChip extends StatelessWidget {
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _GoalChip({
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          gradient: isSelected
-            ? DesignTokens.primaryGradient
-            : null,
-          color: isSelected
-            ? null
-            : DesignTokens.surfaceOf(context),
-          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-          border: Border.all(
-            color: isSelected
-              ? Colors.transparent
-              : DesignTokens.borderColorOf(context),
-            width: 1.5,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: isSelected
-              ? Colors.white
-              : DesignTokens.textPrimaryOf(context),
-            fontSize: 12,
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-          ),
         ),
       ),
     );
@@ -3351,7 +2656,6 @@ class _CustomDatePickerState extends State<_CustomDatePicker> {
 
   @override
   Widget build(BuildContext context) {
-    final textPrimary = DesignTokens.textPrimaryOf(context);
     final minYear = widget.minimumDate.year;
     final maxYear = widget.maximumDate.year;
     
@@ -3460,7 +2764,7 @@ class _GradientPickerState extends State<_GradientPicker> {
 
   @override
   Widget build(BuildContext context) {
-    final textPrimary = DesignTokens.textPrimaryOf(context);
+    final textPrimary = AuthTheme.secondaryText(context);
 
     return CupertinoPicker(
       scrollController: widget.scrollController,
@@ -3479,13 +2783,13 @@ class _GradientPickerState extends State<_GradientPicker> {
         return Center(
           child: isSelected
             ? ShaderMask(
-                shaderCallback: (bounds) => const LinearGradient(
-                  colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
-                ).createShader(bounds),
+                blendMode: BlendMode.srcIn,
+                shaderCallback: (bounds) =>
+                    CotrainrGradients.primary.createShader(bounds),
                 child: Text(
                   text,
-                  style: TextStyle(
-                    color: Colors.white, // This will be masked by the gradient
+                  style: const TextStyle(
+                    color: Colors.white,
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                   ),
@@ -3494,7 +2798,9 @@ class _GradientPickerState extends State<_GradientPicker> {
             : Text(
                 text,
                 style: TextStyle(
-                  color: textPrimary.withOpacity(0.5),
+                  color: textPrimary.withValues(
+                    alpha: (index - _currentIndex).abs() == 1 ? 0.90 : 0.55,
+                  ),
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                 ),
@@ -3511,7 +2817,8 @@ class _LoopingPicker extends StatefulWidget {
   final int itemCount;
   final int initialIndex;
   final ValueChanged<int> onSelectedItemChanged;
-  final Widget Function(BuildContext, int) builder;
+  final Widget Function(BuildContext, int loopingIndex, int visualDistance)
+      builder;
 
   const _LoopingPicker({
     required this.scrollController,
@@ -3556,7 +2863,7 @@ class _LoopingPickerState extends State<_LoopingPicker> {
     
     if (currentIndex != _lastSelectedIndex) {
       widget.onSelectedItemChanged(actualIndex);
-      _lastSelectedIndex = currentIndex;
+      setState(() => _lastSelectedIndex = currentIndex);
     }
 
     // Reset to middle when near edges for continuous looping
@@ -3568,8 +2875,11 @@ class _LoopingPickerState extends State<_LoopingPicker> {
         if (_controller.hasClients && mounted) {
           final newIndex = (widget.itemCount * _multiplier / 2).round() + actualIndex;
           _controller.jumpToItem(newIndex);
+          _lastSelectedIndex = newIndex;
           Future.delayed(const Duration(milliseconds: 50), () {
-            if (mounted) _isJumping = false;
+            if (mounted) {
+              setState(() => _isJumping = false);
+            }
           });
         }
       });
@@ -3580,8 +2890,11 @@ class _LoopingPickerState extends State<_LoopingPicker> {
         if (_controller.hasClients && mounted) {
           final newIndex = (widget.itemCount * _multiplier / 2).round() + actualIndex;
           _controller.jumpToItem(newIndex);
+          _lastSelectedIndex = newIndex;
           Future.delayed(const Duration(milliseconds: 50), () {
-            if (mounted) _isJumping = false;
+            if (mounted) {
+              setState(() => _isJumping = false);
+            }
           });
         }
       });
@@ -3596,13 +2909,18 @@ class _LoopingPickerState extends State<_LoopingPicker> {
       scrollController: _controller,
       itemExtent: widget.itemExtent,
       onSelectedItemChanged: (index) {
+        setState(() => _lastSelectedIndex = index);
         if (!_isJumping) {
           final actualIndex = index % widget.itemCount;
           widget.onSelectedItemChanged(actualIndex);
         }
       },
       children: List.generate(totalItems, (index) {
-        return widget.builder(context, index);
+        return widget.builder(
+          context,
+          index,
+          (index - _lastSelectedIndex).abs(),
+        );
       }),
     );
   }

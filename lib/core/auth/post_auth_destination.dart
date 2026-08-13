@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../repositories/verification_repository.dart';
+import 'onboarding_state_service.dart';
 
 /// Authoritative post-auth destination for Login / OAuth / cold start / signup.
 class PostAuthDestination {
@@ -23,14 +24,15 @@ class PostAuthDestination {
     if (session == null) return '/welcome';
 
     try {
-      final profile = await _fetchMyProfile(supabase)
+      final onboarding = await OnboardingStateService.fetch(client: supabase)
           .timeout(networkTimeout);
 
-      if (profile == null || !_hasUsername(profile)) {
+      if (!onboarding.isComplete) {
         return '/auth/complete-profile';
       }
 
-      final role = (profile['role'] as String?)?.toLowerCase() ?? '';
+      final profile = await _fetchMyProfile(supabase).timeout(networkTimeout);
+      final role = (profile?['role'] as String?)?.toLowerCase() ?? '';
       if (role == 'trainer' || role == 'nutritionist') {
         final status = await (verificationRepo ?? VerificationRepository())
             .getProviderVerificationStatus()
@@ -42,17 +44,10 @@ class PostAuthDestination {
 
       return '/home';
     } on TimeoutException {
-      // Fail closed to complete-profile only when we cannot prove completeness;
-      // prefer verification-safe home shell error over wrong Home for providers.
       return '/auth/continue';
     } catch (_) {
       return '/auth/continue';
     }
-  }
-
-  static bool _hasUsername(Map<String, dynamic> profile) {
-    final u = profile['username']?.toString().trim() ?? '';
-    return u.isNotEmpty;
   }
 
   static Future<Map<String, dynamic>?> _fetchMyProfile(
@@ -70,11 +65,10 @@ class PostAuthDestination {
     return null;
   }
 
-  /// Whether profile is incomplete (authenticated social stub).
   static Future<bool> isProfileIncomplete({SupabaseClient? client}) async {
     final supabase = client ?? Supabase.instance.client;
     if (supabase.auth.currentSession == null) return false;
-    final profile = await _fetchMyProfile(supabase);
-    return profile == null || !_hasUsername(profile);
+    final state = await OnboardingStateService.fetch(client: supabase);
+    return !state.isComplete;
   }
 }

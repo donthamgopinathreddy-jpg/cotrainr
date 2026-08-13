@@ -34,8 +34,8 @@ class SignupErrorMapper {
 
   static const emailConflict = AuthUserMessage(
     kind: AuthUserErrorKind.unknown,
-    title: 'An account with this email already exists.',
-    detail: 'Try logging in instead.',
+    title: 'An account already exists with this email.',
+    detail: 'Sign in instead',
   );
 
   static const passwordRejected = AuthUserMessage(
@@ -65,6 +65,16 @@ class SignupErrorMapper {
     title: 'Please agree to the Terms of Service and Privacy Policy.',
   );
 
+  static const invalidRole = AuthUserMessage(
+    kind: AuthUserErrorKind.unknown,
+    title: 'Please choose a valid role.',
+  );
+
+  static const missingRequired = AuthUserMessage(
+    kind: AuthUserErrorKind.unknown,
+    title: 'Please complete all required onboarding fields.',
+  );
+
   static AuthUserMessage map(Object error) {
     if (error is TimeoutException) return AuthErrorMapper.timeout;
     if (error is SocketException || error is HandshakeException) {
@@ -81,6 +91,18 @@ class SignupErrorMapper {
     if (text.contains('username must be') ||
         text.contains('alphanumeric and underscore')) {
       return invalidUsername;
+    }
+    if (text.contains('invalid role')) {
+      return invalidRole;
+    }
+    if (text.contains('date of birth') ||
+        text.contains('gender is required') ||
+        text.contains('height is required') ||
+        text.contains('weight is required') ||
+        text.contains('fitness goal') ||
+        text.contains('specialty is required') ||
+        text.contains('missing required')) {
+      return missingRequired;
     }
     if (text.contains('user already registered') ||
         text.contains('already been registered') ||

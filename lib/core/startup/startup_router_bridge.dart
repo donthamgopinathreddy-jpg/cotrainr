@@ -6,7 +6,14 @@ class StartupRouterBridge {
 
   static StartupState state = StartupState.initial;
 
+  /// Survives splash / warm deep-link races (e.g. password recovery).
+  static String? pendingDeepLinkRoute;
+
   static void update(StartupState next) {
     state = next;
+  }
+
+  static void setPendingDeepLinkRoute(String? route) {
+    pendingDeepLinkRoute = route;
   }
 }

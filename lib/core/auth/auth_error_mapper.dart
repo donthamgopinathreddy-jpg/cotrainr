@@ -75,6 +75,40 @@ class AuthErrorMapper {
     title: 'If an account exists for that email, a reset link will be sent.',
   );
 
+  static const passwordResetFailed = AuthUserMessage(
+    kind: AuthUserErrorKind.unknown,
+    title: 'Something went wrong. Please try again.',
+  );
+
+  static const passwordResetNetwork = AuthUserMessage(
+    kind: AuthUserErrorKind.network,
+    title: 'Check your connection and try again.',
+  );
+
+  static const passwordResetRateLimited = AuthUserMessage(
+    kind: AuthUserErrorKind.rateLimited,
+    title: 'Too many requests. Please wait a moment and try again.',
+  );
+
+  /// Safe Forgot Password failure copy (never enumerates accounts).
+  static AuthUserMessage mapPasswordResetFailure(Object error) {
+    final mapped = map(error);
+    switch (mapped.kind) {
+      case AuthUserErrorKind.network:
+        return passwordResetNetwork;
+      case AuthUserErrorKind.timeout:
+        return timeout;
+      case AuthUserErrorKind.rateLimited:
+        return passwordResetRateLimited;
+      case AuthUserErrorKind.cancelled:
+        return cancelled;
+      case AuthUserErrorKind.invalidCredentials:
+      case AuthUserErrorKind.serviceUnavailable:
+      case AuthUserErrorKind.unknown:
+        return passwordResetFailed;
+    }
+  }
+
   static AuthUserMessage map(Object error) {
     if (error is TimeoutException) return timeout;
     if (error is SocketException) return network;

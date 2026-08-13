@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../theme/auth_theme.dart';
 import '../../theme/design_tokens.dart';
 import '../../widgets/auth/auth_screen_background.dart';
 import '../../widgets/auth/auth_ui.dart';
@@ -112,20 +113,14 @@ class _WelcomePageState extends State<WelcomePage>
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
     final pad = MediaQuery.paddingOf(context);
-    final isLight = Theme.of(context).brightness == Brightness.light;
     final pageBg = AuthUi.pageBg(context);
     final logoW = (size.width * 0.28).clamp(96.0, 140.0);
-    final cs = Theme.of(context).colorScheme;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: (isLight ? SystemUiOverlayStyle.dark : SystemUiOverlayStyle.light)
-          .copyWith(
-        statusBarColor: Colors.transparent,
-        systemNavigationBarColor: pageBg,
-      ),
+      value: AuthTheme.overlay(context),
       child: Scaffold(
         backgroundColor: pageBg,
-        body: AuthScreenBackground(
+        body: AuthScreenBackground.login(
           scrimStrength: 0.35,
           child: SafeArea(
             child: Padding(
@@ -156,9 +151,8 @@ class _WelcomePageState extends State<WelcomePage>
                     opacity: _loginFade,
                     child: SlideTransition(
                       position: _loginSlide,
-                      child: _WelcomeButton(
+                      child: AuthPrimaryButton(
                         label: 'Login',
-                        filled: true,
                         onPressed: _busy ? null : _goLogin,
                       ),
                     ),
@@ -182,7 +176,7 @@ class _WelcomePageState extends State<WelcomePage>
                       'Free to join · No credit card required',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        color: cs.onSurface.withValues(alpha: 0.55),
+                        color: AuthTheme.secondaryText(context),
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
                       ),
@@ -219,13 +213,12 @@ class _WelcomeButtonState extends State<_WelcomeButton> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final onAccent = DesignTokens.darkTextPrimary;
 
     final child = Text(
       widget.label,
       style: TextStyle(
-        color: widget.filled ? onAccent : cs.onSurface,
+        color: widget.filled ? onAccent : AuthTheme.primaryText(context),
         fontSize: 16.5,
         fontWeight: FontWeight.w700,
         letterSpacing: 0.2,
@@ -263,12 +256,9 @@ class _WelcomeButtonState extends State<_WelcomeButton> {
               : OutlinedButton(
                   onPressed: widget.onPressed,
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: cs.onSurface,
-                    side: BorderSide(
-                      color: DesignTokens.accentOrange.withValues(alpha: 0.85),
-                      width: 1.5,
-                    ),
-                    backgroundColor: cs.onSurface.withValues(alpha: 0.04),
+                    foregroundColor: AuthTheme.primaryText(context),
+                    side: BorderSide(color: AuthTheme.fieldBorder(context)),
+                    backgroundColor: AuthTheme.backSurface(context),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),

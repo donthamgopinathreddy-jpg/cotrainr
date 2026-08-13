@@ -78,6 +78,8 @@ void main() {
         SignupErrorMapper.profileFailed,
         SignupErrorMapper.providerFailed,
         SignupErrorMapper.legalRequired,
+        SignupErrorMapper.invalidRole,
+        SignupErrorMapper.missingRequired,
       ]) {
         expect(looksRaw(msg.display), isFalse);
       }

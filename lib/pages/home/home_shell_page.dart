@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../core/auth/post_auth_destination.dart';
 import '../../theme/design_tokens.dart';
 import '../../providers/profile_role_provider.dart';
 import 'home_page_v3.dart';
@@ -154,6 +158,18 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _subscribeBadgeRealtime();
     });
+    unawaited(_guardIncompleteOnboarding());
+  }
+
+  Future<void> _guardIncompleteOnboarding() async {
+    try {
+      final incomplete = await PostAuthDestination.isProfileIncomplete()
+          .timeout(PostAuthDestination.networkTimeout);
+      if (!mounted) return;
+      if (incomplete) context.go('/auth/complete-profile');
+    } catch (_) {
+      // Lookup failure: do not bounce a possibly-complete user.
+    }
   }
 
   void _subscribeBadgeRealtime() {

@@ -3,32 +3,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../theme/account_hub_theme.dart';
+import '../../theme/auth_theme.dart';
 import '../../theme/design_tokens.dart';
 import '../../widgets/branding/cotrainr_logo.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
 
 /// Shared auth flow styling aligned with account hub pages.
 abstract final class AuthUi {
-  static const accent = DesignTokens.accentOrange;
+  static const accent = CotrainrGradients.focus;
 
-  static Color pageBg(BuildContext context) => AccountHubTheme.pageBg(context);
+  static Color pageBg(BuildContext context) => AuthTheme.background(context);
 
-  static TextStyle pageTitle(BuildContext context) =>
-      AccountHubTheme.rowTitle(context).copyWith(
-        fontSize: 26,
-        fontWeight: FontWeight.w800,
-        letterSpacing: -0.5,
-      );
+  static TextStyle pageTitle(BuildContext context) => AuthTheme.title(context);
 
   static TextStyle pageSubtitle(BuildContext context) =>
-      AccountHubTheme.rowSubtitle(context).copyWith(
-        fontSize: 16,
-        height: 1.4,
-        color: Theme.of(context)
-            .colorScheme
-            .onSurface
-            .withValues(alpha: 0.65),
-      );
+      AuthTheme.subtitle(context);
 
   static TextStyle heroTitle(BuildContext context) =>
       pageTitle(context).copyWith(fontSize: 32);
@@ -37,10 +26,7 @@ abstract final class AuthUi {
       pageSubtitle(context).copyWith(fontSize: 17);
 
   static TextStyle fieldTextStyle(BuildContext context, {bool large = false}) =>
-      AccountHubTheme.rowTitle(context).copyWith(
-        fontSize: large ? 18 : 16,
-        fontWeight: FontWeight.w500,
-      );
+      AuthTheme.field(context, large: large);
 
   static InputDecoration fieldDecoration(
     BuildContext context, {
@@ -52,25 +38,25 @@ abstract final class AuthUi {
     bool compact = false,
     bool large = false,
   }) {
-    final cs = Theme.of(context).colorScheme;
-    final border = cs.onSurface.withValues(alpha: 0.1);
-    final labelStyle = AccountHubTheme.rowSubtitle(context).copyWith(
+    final labelStyle = TextStyle(
       fontSize: large ? 15 : (compact ? 13 : 14),
       fontWeight: large ? FontWeight.w600 : FontWeight.w500,
+      color: AuthTheme.secondaryText(context),
     );
     final radius = large ? 18.0 : (compact ? 14.0 : 16.0);
     final verticalPadding = large ? 18.0 : (compact ? 11.0 : 14.0);
+    final border = AuthTheme.fieldBorder(context);
 
     return InputDecoration(
       labelText: label,
       hintText: hint,
       labelStyle: labelStyle,
-      hintStyle: labelStyle,
+      hintStyle: labelStyle.copyWith(color: AuthTheme.mutedText(context)),
       prefixIcon: prefix == null ? prefixIcon : null,
       prefix: prefix,
       suffixIcon: suffixIcon,
       filled: true,
-      fillColor: cs.onSurface.withValues(alpha: 0.04),
+      fillColor: AuthTheme.fieldSurface(context),
       isDense: !large,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(radius),
@@ -82,11 +68,11 @@ abstract final class AuthUi {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(radius),
-        borderSide: const BorderSide(color: accent, width: 2),
+        borderSide: BorderSide(color: AuthTheme.focusedBorder(context), width: 1.6),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(radius),
-        borderSide: const BorderSide(color: DesignTokens.accentRed),
+        borderSide: BorderSide(color: AuthTheme.error(context)),
       ),
       contentPadding: EdgeInsets.symmetric(
         horizontal: large ? 16 : 14,
@@ -363,29 +349,39 @@ class _AuthPrimaryButtonState extends State<AuthPrimaryButton> {
         widget.showSuccess ||
         widget.onPressed == null;
 
-    return GestureDetector(
-      onTapDown: disabled ? null : (_) => setState(() => _pressed = true),
-      onTapUp: disabled ? null : (_) => setState(() => _pressed = false),
-      onTapCancel: disabled ? null : () => setState(() => _pressed = false),
-      child: AnimatedScale(
-        duration: const Duration(milliseconds: 130),
-        curve: Curves.easeOut,
+    return Semantics(
+      button: true,
+      label: widget.label,
+      child: GestureDetector(
+        onTapDown: disabled ? null : (_) => setState(() => _pressed = true),
+        onTapUp: disabled ? null : (_) => setState(() => _pressed = false),
+        onTapCancel: disabled ? null : () => setState(() => _pressed = false),
+        onTap: disabled ? null : widget.onPressed,
+        child: AnimatedScale(
+        duration: const Duration(milliseconds: 180),
+        curve: _pressed ? Curves.easeOut : Curves.easeOutBack,
         scale: _pressed ? 0.98 : 1,
-        child: SizedBox(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
           width: double.infinity,
           height: 56,
-          child: FilledButton(
-            onPressed: disabled ? null : widget.onPressed,
-            style: FilledButton.styleFrom(
-              backgroundColor: AuthUi.accent,
-              disabledBackgroundColor: AuthUi.accent.withValues(alpha: 0.45),
-              foregroundColor: DesignTokens.darkTextPrimary,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              elevation: 0,
-            ),
-            child: AnimatedSwitcher(
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            gradient: disabled
+                ? LinearGradient(
+                    colors: [
+                      CotrainrGradients.focus.withValues(alpha: 0.38),
+                      DesignTokens.discoverOrangeDeep.withValues(alpha: 0.38),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  )
+                : (_pressed
+                    ? CotrainrGradients.primaryPressed
+                    : CotrainrGradients.primary),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 220),
               switchInCurve: Curves.easeOutCubic,
               switchOutCurve: Curves.easeInCubic,
@@ -417,16 +413,21 @@ class _AuthPrimaryButtonState extends State<AuthPrimaryButton> {
                                 fontSize: 17,
                                 fontWeight: FontWeight.w800,
                                 letterSpacing: 0.1,
+                                color: DesignTokens.darkTextPrimary,
                               ),
                             ),
                             if (widget.trailingIcon != null) ...[
                               const SizedBox(width: 8),
-                              Icon(widget.trailingIcon, size: 18),
+                              Icon(
+                                widget.trailingIcon,
+                                size: 18,
+                                color: DesignTokens.darkTextPrimary,
+                              ),
                             ],
                           ],
                         ),
-            ),
           ),
+        ),
         ),
       ),
     );
@@ -509,12 +510,11 @@ class _AuthSocialButtonState extends State<AuthSocialButton> {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return AnimatedScale(
       duration: const Duration(milliseconds: 120),
       scale: _pressed ? 0.96 : 1,
       child: Material(
-        color: AccountHubTheme.cardBg(context),
+        color: AuthTheme.socialSurface(context),
         borderRadius: BorderRadius.circular(16),
         child: InkWell(
           onTapDown: widget.isLoading
@@ -540,9 +540,9 @@ class _AuthSocialButtonState extends State<AuthSocialButton> {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: cs.onSurface.withValues(alpha: 0.1),
+                  color: AuthTheme.socialBorder(context),
                 ),
-                boxShadow: AccountHubTheme.cardShadow(context),
+                boxShadow: AuthTheme.cardShadow(context),
               ),
               child: Center(child: widget.icon),
             ),
@@ -567,21 +567,14 @@ class AuthSectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isLight = Theme.of(context).brightness == Brightness.light;
-    final cs = Theme.of(context).colorScheme;
-
     return Container(
       width: double.infinity,
       padding: EdgeInsets.all(compact ? 14 : 16),
       decoration: BoxDecoration(
-        color: isLight
-            ? DesignTokens.lightCardBackground
-            : DesignTokens.darkSurfaceElevated.withValues(alpha: 0.92),
+        color: AuthTheme.surfaceElevated(context),
         borderRadius: BorderRadius.circular(AccountHubTheme.sectionRadius),
-        border: Border.all(
-          color: cs.onSurface.withValues(alpha: isLight ? 0.06 : 0.08),
-        ),
-        boxShadow: AccountHubTheme.cardShadow(context),
+        border: Border.all(color: AuthTheme.fieldBorder(context)),
+        boxShadow: AuthTheme.cardShadow(context),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -589,8 +582,11 @@ class AuthSectionCard extends StatelessWidget {
           if (title != null) ...[
             Text(
               title!,
-              style: AccountHubTheme.sectionTitle(context).copyWith(
-                fontSize: compact ? 15 : null,
+              style: TextStyle(
+                fontSize: compact ? 15 : 13,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.2,
+                color: AuthTheme.secondaryText(context),
               ),
             ),
             SizedBox(height: compact ? 10 : 12),
@@ -845,12 +841,9 @@ class _AuthSidewaysWheelPickerState extends State<AuthSidewaysWheelPicker> {
                     child: Center(
                       child: isSelected
                           ? ShaderMask(
-                              shaderCallback: (bounds) => const LinearGradient(
-                                colors: [
-                                  Color(0xFFFF8A00),
-                                  Color(0xFFFFD93D),
-                                ],
-                              ).createShader(bounds),
+                              blendMode: BlendMode.srcIn,
+                              shaderCallback: (bounds) =>
+                                  CotrainrGradients.primary.createShader(bounds),
                               child: Text(
                                 text,
                                 textAlign: TextAlign.center,
@@ -1000,39 +993,44 @@ class _AuthTapToTypeFieldState extends State<AuthTapToTypeField> {
   }
 }
 
+/// Foreground step transition: ~18px travel + fade. Background stays put.
 class AuthStepTransition extends StatelessWidget {
   final Animation<double> animation;
   final Widget child;
+  final bool forward;
 
   const AuthStepTransition({
     super.key,
     required this.animation,
     required this.child,
+    this.forward = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    final fade = CurvedAnimation(
+    final reduce = MediaQuery.disableAnimationsOf(context);
+    final curved = CurvedAnimation(
       parent: animation,
       curve: Curves.easeOutCubic,
-    );
-    final slide = Tween<Offset>(
-      begin: const Offset(0.03, 0.025),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: animation,
-      curve: Curves.easeOutCubic,
-    ));
-    final scale = Tween<double>(begin: 0.985, end: 1).animate(
-      CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
     );
 
-    return FadeTransition(
-      opacity: fade,
-      child: SlideTransition(
-        position: slide,
-        child: ScaleTransition(scale: scale, child: child),
-      ),
+    if (reduce) {
+      return FadeTransition(opacity: curved, child: child);
+    }
+
+    return AnimatedBuilder(
+      animation: curved,
+      builder: (context, _) {
+        final t = curved.value;
+        final dx = (1 - t) * 18 * (forward ? 1.0 : -1.0);
+        return Opacity(
+          opacity: t,
+          child: Transform.translate(
+            offset: Offset(dx, 0),
+            child: child,
+          ),
+        );
+      },
     );
   }
 }

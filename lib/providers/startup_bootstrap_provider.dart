@@ -13,6 +13,7 @@ import '../core/startup/startup_router_bridge.dart';
 import '../core/startup/startup_state.dart';
 import '../core/startup/supabase_bootstrap.dart';
 import '../repositories/verification_repository.dart';
+import '../router/app_router.dart';
 import 'profile_role_provider.dart';
 
 /// Minimum brand time on the Flutter splash (not a forced 3.5s wait).
@@ -47,6 +48,7 @@ class StartupBootstrapNotifier extends StateNotifier<StartupState> {
 
   void setPendingDeepLinkRoute(String? route) {
     _pendingDeepLinkRoute = route;
+    StartupRouterBridge.setPendingDeepLinkRoute(route);
   }
 
   String? get pendingDeepLinkRoute => _pendingDeepLinkRoute;
@@ -233,7 +235,7 @@ class StartupBootstrapNotifier extends StateNotifier<StartupState> {
 
   Future<void> retry() async {
     if (state.retrying || _bootstrapping) return;
-    _pendingDeepLinkRoute = null;
+    setPendingDeepLinkRoute(null);
     await bootstrap(isRetry: true);
   }
 
@@ -442,7 +444,9 @@ class StartupBootstrapNotifier extends StateNotifier<StartupState> {
           return;
         }
         if (event == AuthChangeEvent.passwordRecovery) {
-          _pendingDeepLinkRoute = '/auth/reset-password';
+          setPendingDeepLinkRoute('/auth/reset-password');
+          // Recovery sessions must never fall through splash → /auth/continue.
+          appRouter.go('/auth/reset-password');
         }
         unawaited(bootstrap(skipMinDisplay: true));
       }

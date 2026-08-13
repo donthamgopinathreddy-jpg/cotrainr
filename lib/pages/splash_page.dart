@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../theme/branding_assets.dart';
 import '../theme/design_tokens.dart';
+import '../core/startup/startup_router_bridge.dart';
 import '../widgets/branding/cotrainr_logo.dart';
 import '../widgets/branding/splash_light_trails.dart';
 
@@ -153,7 +154,15 @@ class _CotrainrSplashScreenState extends State<CotrainrSplashScreen>
     try {
       await SharedPreferences.getInstance();
       final session = Supabase.instance.client.auth.currentSession;
-      next = session != null ? '/auth/continue' : '/welcome';
+      final pending = StartupRouterBridge.pendingDeepLinkRoute;
+      // Password recovery must never be treated as a normal signed-in continue.
+      if (pending == '/auth/reset-password') {
+        next = '/auth/reset-password';
+      } else if (session != null) {
+        next = '/auth/continue';
+      } else {
+        next = '/welcome';
+      }
     } catch (e, st) {
       debugPrint('[CotrainrSplash] init failed: $e\n$st');
       next = '/welcome';

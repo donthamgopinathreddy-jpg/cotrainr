@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:health/health.dart';
 import 'package:geolocator/geolocator.dart';
+import '../../theme/auth_theme.dart';
 import '../../theme/design_tokens.dart';
 import '../../widgets/auth/auth_screen_background.dart';
 import '../../widgets/auth/auth_ui.dart';
@@ -261,20 +262,14 @@ class _PermissionsPageState extends State<PermissionsPage> {
   Widget build(BuildContext context) {
     final textPrimary = DesignTokens.textPrimaryOf(context);
     final textSecondary = DesignTokens.textSecondaryOf(context);
-    final surfaceColor = DesignTokens.surfaceOf(context);
     final borderColor = DesignTokens.borderColorOf(context);
-    final isLight = Theme.of(context).brightness == Brightness.light;
-    final pageBg = DesignTokens.backgroundOf(context);
+    final pageBg = AuthUi.pageBg(context);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: (isLight ? SystemUiOverlayStyle.dark : SystemUiOverlayStyle.light)
-          .copyWith(
-        statusBarColor: Colors.transparent,
-        systemNavigationBarColor: pageBg,
-      ),
+      value: AuthTheme.overlay(context),
       child: Scaffold(
         backgroundColor: pageBg,
-        body: AuthScreenBackground(
+        body: AuthScreenBackground.onboarding(
           scrimStrength: 0.4,
           child: SafeArea(
             child: Padding(
@@ -330,9 +325,7 @@ class _PermissionsPageState extends State<PermissionsPage> {
                             margin: const EdgeInsets.only(bottom: 10),
                             padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
-                              color: surfaceColor.withValues(
-                                alpha: isLight ? 1 : 0.92,
-                              ),
+                              color: AuthTheme.surface(context),
                               borderRadius: BorderRadius.circular(
                                 DesignTokens.radiusCard,
                               ),

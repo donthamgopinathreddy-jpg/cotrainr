@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import '../../theme/auth_theme.dart';
 import '../../theme/design_tokens.dart';
 import '../../widgets/auth/auth_screen_background.dart';
 import '../../widgets/auth/auth_ui.dart';
@@ -91,18 +92,13 @@ class _WelcomeAnimationPageState extends State<WelcomeAnimationPage>
   @override
   Widget build(BuildContext context) {
     final pageBg = AuthUi.pageBg(context);
-    final textPrimary = DesignTokens.textPrimaryOf(context);
-    final isLight = Theme.of(context).brightness == Brightness.light;
+    final textPrimary = AuthTheme.primaryText(context);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: (isLight ? SystemUiOverlayStyle.dark : SystemUiOverlayStyle.light)
-          .copyWith(
-        statusBarColor: Colors.transparent,
-        systemNavigationBarColor: pageBg,
-      ),
+      value: AuthTheme.overlay(context),
       child: Scaffold(
         backgroundColor: pageBg,
-        body: AuthScreenBackground(
+        body: AuthScreenBackground.loading(
           scrimStrength: 0.3,
           child: Stack(
             children: [

@@ -315,3 +315,22 @@ class DesignTokens {
   static const double elevationButton = 4.0;
   static const double elevationModal = 8.0;
 }
+
+/// Shared Cotrainr action gradient — same language as Discover selected controls.
+///
+/// Deep/vivid orange → warm amber. Do not invent a second orange system.
+abstract final class CotrainrGradients {
+  static const LinearGradient primary = DesignTokens.discoverGradient;
+
+  /// Readable midpoint for focus rings and selected text (not a fill).
+  static const Color focus = DesignTokens.discoverOrange;
+
+  static LinearGradient get primaryPressed => LinearGradient(
+        colors: [
+          Color.lerp(DesignTokens.discoverOrange, Colors.black, 0.14)!,
+          Color.lerp(DesignTokens.discoverOrangeDeep, Colors.black, 0.14)!,
+        ],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      );
+}

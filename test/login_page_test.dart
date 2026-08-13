@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:cotrainr/core/auth/auth_error_mapper.dart';
 import 'package:cotrainr/pages/auth/login_page.dart';
+import 'package:cotrainr/theme/design_tokens.dart';
+import 'package:cotrainr/widgets/auth/auth_ui.dart';
 
 void main() {
   testWidgets('Login shows validation for empty fields without raw exceptions',
@@ -27,6 +29,14 @@ void main() {
     expect(find.text('Remember me'), findsNothing);
     expect(find.text('Email'), findsWidgets);
     expect(find.text('User ID or Email'), findsNothing);
+    expect(find.byType(AuthPrimaryButton), findsWidgets);
+    final cta = tester.widget<AnimatedContainer>(
+      find.descendant(
+        of: find.byType(AuthPrimaryButton).first,
+        matching: find.byType(AnimatedContainer),
+      ),
+    );
+    expect((cta.decoration as BoxDecoration).gradient, CotrainrGradients.primary);
   });
 
   testWidgets('mapped errors never include raw backend tokens', (tester) async {

@@ -8,10 +8,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/auth/auth_error_mapper.dart';
 import '../../theme/account_hub_theme.dart';
-import '../../theme/design_tokens.dart';
+import '../../theme/auth_theme.dart';
 import '../../widgets/auth/auth_screen_background.dart';
 import '../../widgets/auth/auth_ui.dart';
-import '../../widgets/profile/account_hub_widgets.dart';
+import '../../widgets/auth/forgot_password_sheet.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -94,120 +94,7 @@ class _LoginPageState extends State<LoginPage>
 
   Future<void> _forgotPassword() async {
     HapticFeedback.lightImpact();
-
-    final emailController = TextEditingController();
-    final result = await showGeneralDialog<String>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: 'Dismiss',
-      barrierColor: Colors.black.withValues(alpha: 0.55),
-      transitionDuration: const Duration(milliseconds: 240),
-      pageBuilder: (context, animation, secondary) {
-        return const SizedBox.shrink();
-      },
-      transitionBuilder: (context, animation, secondary, child) {
-        final curved = CurvedAnimation(
-          parent: animation,
-          curve: Curves.easeOutCubic,
-        );
-        return FadeTransition(
-          opacity: curved,
-          child: ScaleTransition(
-            scale: Tween<double>(begin: 0.96, end: 1).animate(curved),
-            child: Center(
-              child: Material(
-                color: Colors.transparent,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 400),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: AuthSectionCard(
-                      title: 'Reset password',
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text(
-                            'Enter your email and we’ll send a reset link.',
-                            style: AuthUi.pageSubtitle(context)
-                                .copyWith(fontSize: 14),
-                          ),
-                          const SizedBox(height: 14),
-                          TextField(
-                            controller: emailController,
-                            keyboardType: TextInputType.emailAddress,
-                            autofocus: true,
-                            decoration: AuthUi.fieldDecoration(
-                              context,
-                              label: 'Email',
-                              prefixIcon: Icon(
-                                Icons.mail_outline_rounded,
-                                color: AccountHubTheme.rowSubtitle(context)
-                                    .color,
-                                size: 20,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: AuthOutlinedButton(
-                                  label: 'Cancel',
-                                  onPressed: () => Navigator.pop(context),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: AuthPrimaryButton(
-                                  label: 'Send',
-                                  onPressed: () => Navigator.pop(
-                                    context,
-                                    emailController.text,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-
-    emailController.dispose();
-
-    if (result != null && result.isNotEmpty) {
-      try {
-        await Supabase.instance.client.auth.resetPasswordForEmail(
-          result.trim(),
-          redirectTo: 'cotrainr://reset-password',
-        );
-        if (!mounted) return;
-        showHubSnackBar(context, 'Password reset email sent!');
-      } catch (e) {
-        if (!mounted) return;
-        final mapped = AuthErrorMapper.map(e);
-        final msg = AuthErrorMapper.shouldSuppressUi(mapped)
-            ? AuthErrorMapper.passwordResetGeneric.display
-            : (mapped.kind == AuthUserErrorKind.invalidCredentials
-                ? AuthErrorMapper.passwordResetGeneric.display
-                : mapped.display);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(msg),
-            backgroundColor: DesignTokens.accentRed,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    }
+    await showForgotPasswordSheet(context);
   }
 
   Future<void> _signInWithOAuth(OAuthProvider provider) async {
@@ -299,24 +186,19 @@ class _LoginPageState extends State<LoginPage>
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final isLight = Theme.of(context).brightness == Brightness.light;
-    final textSecondary = AccountHubTheme.rowSubtitle(context);
+    final textSecondary = AccountHubTheme.rowSubtitle(context).copyWith(
+      color: AuthTheme.secondaryText(context),
+    );
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
     final pageBg = AuthUi.pageBg(context);
-    final iconColor = cs.onSurface;
+    final iconColor = AuthTheme.primaryText(context);
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: (isLight ? SystemUiOverlayStyle.dark : SystemUiOverlayStyle.light)
-          .copyWith(
-        statusBarColor: Colors.transparent,
-        systemNavigationBarColor: pageBg,
-      ),
+      value: AuthTheme.overlay(context),
       child: Scaffold(
         backgroundColor: pageBg,
         resizeToAvoidBottomInset: true,
-        body: AuthScreenBackground(
-          scrimStrength: 0.42,
+        body: AuthScreenBackground.login(
           child: SafeArea(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -498,7 +380,7 @@ class _LoginPageState extends State<LoginPage>
                                             Text(
                                               _formError!,
                                               style: TextStyle(
-                                                color: DesignTokens.accentRed,
+                                                color: AuthTheme.error(context),
                                                 fontSize: 13,
                                                 height: 1.35,
                                               ),
@@ -545,7 +427,7 @@ class _LoginPageState extends State<LoginPage>
                                               icon: FaIcon(
                                                 FontAwesomeIcons.google,
                                                 size: 22,
-                                                color: cs.onSurface,
+                                                color: AuthTheme.primaryText(context),
                                               ),
                                             ),
                                             const SizedBox(width: 12),
@@ -557,7 +439,7 @@ class _LoginPageState extends State<LoginPage>
                                               icon: FaIcon(
                                                 FontAwesomeIcons.apple,
                                                 size: 24,
-                                                color: cs.onSurface,
+                                                color: AuthTheme.primaryText(context),
                                               ),
                                             ),
                                             const SizedBox(width: 12),
@@ -569,7 +451,7 @@ class _LoginPageState extends State<LoginPage>
                                               icon: FaIcon(
                                                 FontAwesomeIcons.microsoft,
                                                 size: 22,
-                                                color: cs.onSurface,
+                                                color: AuthTheme.primaryText(context),
                                               ),
                                             ),
                                           ],
