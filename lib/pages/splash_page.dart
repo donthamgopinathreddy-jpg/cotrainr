@@ -153,7 +153,7 @@ class _CotrainrSplashScreenState extends State<CotrainrSplashScreen>
     try {
       await SharedPreferences.getInstance();
       final session = Supabase.instance.client.auth.currentSession;
-      next = session != null ? '/home' : '/welcome';
+      next = session != null ? '/auth/continue' : '/welcome';
     } catch (e, st) {
       debugPrint('[CotrainrSplash] init failed: $e\n$st');
       next = '/welcome';

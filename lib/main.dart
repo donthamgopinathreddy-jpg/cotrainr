@@ -13,6 +13,7 @@ import 'services/health_tracking_service.dart';
 import 'services/water_notification_handler.dart';
 import 'services/water_notification_platform.dart';
 import 'services/water_reminder_service.dart';
+import 'widgets/app_link_handler.dart';
 import 'widgets/hydration/hydration_lifecycle_refresher.dart';
 import 'widgets/privacy/privacy_preferences_sync_initializer.dart';
 import 'widgets/quest/quest_sync_initializer.dart';
@@ -34,9 +35,9 @@ void main() async {
   final healthService = HealthTrackingService();
   healthService.initialize().then((initialized) {
     if (initialized) {
-      print('Health tracking service initialized successfully');
+      debugPrint('Health tracking service initialized successfully');
     } else {
-      print('Health tracking service initialization failed');
+      debugPrint('Health tracking service initialization failed');
     }
   });
 
@@ -54,7 +55,7 @@ Future<void> _initWaterReminders() async {
     await WaterReminderService.instance.ensureInitialized();
     await WaterReminderService.instance.rescheduleIfEnabled();
   } catch (e) {
-    print('Water reminder init failed: $e');
+    debugPrint('Water reminder init failed: $e');
   }
 }
 
@@ -65,43 +66,47 @@ class MyApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeModeProvider);
 
-    return PrivacyPreferencesSyncInitializer(
-      child: QuestSyncInitializer(
-        child: HydrationLifecycleRefresher(
-          child: MaterialApp.router(
-        title: 'Cotrainr',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.lightTheme,
-        darkTheme: AppTheme.darkTheme,
-        themeMode: themeMode,
-        routerConfig: appRouter,
-        builder: (context, child) {
-          final brightness = Theme.of(context).brightness;
-          final isDark = brightness == Brightness.dark;
-          final overlay = SystemUiOverlayStyle(
-            statusBarColor: Colors.transparent,
-            statusBarIconBrightness:
-                isDark ? Brightness.light : Brightness.dark,
-            statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
-            systemNavigationBarColor:
-                isDark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
-            systemNavigationBarIconBrightness:
-                isDark ? Brightness.light : Brightness.dark,
-            systemNavigationBarDividerColor: Colors.transparent,
-          );
-          return AnnotatedRegion<SystemUiOverlayStyle>(
-            value: overlay,
-            child: MediaQuery(
-              data: MediaQuery.of(context).copyWith(
-                textScaler: MediaQuery.of(context).textScaler.clamp(
-                  minScaleFactor: 0.8,
-                  maxScaleFactor: 1.2,
-                ),
-              ),
-              child: child ?? const SizedBox.shrink(),
+    return AppLinkHandler(
+      child: PrivacyPreferencesSyncInitializer(
+        child: QuestSyncInitializer(
+          child: HydrationLifecycleRefresher(
+            child: MaterialApp.router(
+              title: 'Cotrainr',
+              debugShowCheckedModeBanner: false,
+              theme: AppTheme.lightTheme,
+              darkTheme: AppTheme.darkTheme,
+              themeMode: themeMode,
+              routerConfig: appRouter,
+              builder: (context, child) {
+                final brightness = Theme.of(context).brightness;
+                final isDark = brightness == Brightness.dark;
+                final overlay = SystemUiOverlayStyle(
+                  statusBarColor: Colors.transparent,
+                  statusBarIconBrightness:
+                      isDark ? Brightness.light : Brightness.dark,
+                  statusBarBrightness:
+                      isDark ? Brightness.dark : Brightness.light,
+                  systemNavigationBarColor: isDark
+                      ? const Color(0xFF000000)
+                      : const Color(0xFFFFFFFF),
+                  systemNavigationBarIconBrightness:
+                      isDark ? Brightness.light : Brightness.dark,
+                  systemNavigationBarDividerColor: Colors.transparent,
+                );
+                return AnnotatedRegion<SystemUiOverlayStyle>(
+                  value: overlay,
+                  child: MediaQuery(
+                    data: MediaQuery.of(context).copyWith(
+                      textScaler: MediaQuery.of(context).textScaler.clamp(
+                        minScaleFactor: 0.8,
+                        maxScaleFactor: 1.2,
+                      ),
+                    ),
+                    child: child ?? const SizedBox.shrink(),
+                  ),
+                );
+              },
             ),
-          );
-        },
           ),
         ),
       ),

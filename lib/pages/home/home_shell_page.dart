@@ -228,10 +228,9 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
     });
   }
 
-  Widget _buildPage(int index) {
-    final user = ref.read(currentUserProvider).value;
-    final isTrainer = user?.isTrainer ?? false;
-    final isNutritionist = user?.isNutritionist ?? false;
+  Widget _buildPage(int index, CurrentUser user) {
+    final isTrainer = user.isTrainer;
+    final isNutritionist = user.isNutritionist;
 
     switch (index) {
       case 0:
@@ -270,13 +269,98 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
     }
   }
 
-  Widget _pageFor(int index) {
-    return _pageCache[index] ??= _buildPage(index);
+  Widget _pageFor(int index, CurrentUser user) {
+    return _pageCache[index] ??= _buildPage(index, user);
+  }
+
+  Widget _roleLoadingScaffold() {
+    return Scaffold(
+      backgroundColor: DesignTokens.backgroundOf(context),
+      body: const Center(
+        child: SizedBox(
+          width: 28,
+          height: 28,
+          child: CircularProgressIndicator(strokeWidth: 2.5),
+        ),
+      ),
+    );
+  }
+
+  Widget _roleErrorScaffold({required VoidCallback onRetry}) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    return Scaffold(
+      backgroundColor: DesignTokens.backgroundOf(context),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                'Couldn’t load your account',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: isLight ? Colors.black87 : Colors.white,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Check your connection and try again. We won’t guess your role.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: (isLight ? Colors.black87 : Colors.white)
+                      .withValues(alpha: 0.65),
+                ),
+              ),
+              const SizedBox(height: 22),
+              FilledButton(
+                onPressed: onRetry,
+                style: FilledButton.styleFrom(
+                  backgroundColor: DesignTokens.accentOrange,
+                ),
+                child: const Text('Try Again'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final userAsync = ref.watch(currentUserProvider);
+    final user = userAsync.asData?.value;
     final isLight = Theme.of(context).brightness == Brightness.light;
+
+    ref.listen(currentUserProvider, (prev, next) {
+      final prevRole = prev?.asData?.value?.role;
+      final nextRole = next.asData?.value?.role;
+      if (prevRole != nextRole && mounted) {
+        setState(() {
+          for (var i = 0; i < _pageCache.length; i++) {
+            _pageCache[i] = null;
+          }
+        });
+      }
+    });
+
+    // Neutral loading — never default to Client while role is unknown.
+    if (user == null) {
+      if (userAsync.isLoading) {
+        return _roleLoadingScaffold();
+      }
+      return _roleErrorScaffold(
+        onRetry: () {
+          for (var i = 0; i < _pageCache.length; i++) {
+            _pageCache[i] = null;
+          }
+          ref.invalidate(currentUserProvider);
+        },
+      );
+    }
 
     return Scaffold(
       backgroundColor: DesignTokens.backgroundOf(context),
@@ -293,7 +377,7 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
                   if (!_visitedTabIndexes.contains(index)) {
                     return const SizedBox.shrink();
                   }
-                  return _pageFor(index);
+                  return _pageFor(index, user);
                 },
               ),
             ),

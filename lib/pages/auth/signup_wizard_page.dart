@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/cupertino.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../core/auth/signup_error_mapper.dart';
 import '../../theme/design_tokens.dart';
 import '../../theme/account_hub_theme.dart';
 import '../../widgets/auth/auth_ui.dart';
@@ -13,6 +15,7 @@ import '../../services/user_goals_service.dart';
 import '../../services/pending_referral_service.dart';
 import '../../repositories/referral_repository.dart';
 import '../../models/provider_specialty_taxonomy.dart';
+import '../../pages/profile/settings/info_pages.dart';
 
 class SignupWizardPage extends StatefulWidget {
   const SignupWizardPage({super.key, this.initialReferralCode});
@@ -42,6 +45,11 @@ class _SignupWizardPageState extends State<SignupWizardPage>
   bool _isCheckingUserId = false;
   String? _emailValidationStatus; // 'valid', 'invalid', 'taken', null
   bool _isCheckingEmail = false;
+  bool _agreedLegal = false;
+  bool _showSlowHint = false;
+  String _termsVersion = '2026-08-01';
+  String _privacyVersion = '2026-08-01';
+  Timer? _slowHintTimer;
 
   // Step 2
   final _first = TextEditingController();
@@ -96,6 +104,7 @@ class _SignupWizardPageState extends State<SignupWizardPage>
   void initState() {
     super.initState();
     _initReferralCode();
+    unawaited(_loadLegalVersions());
     _fadeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 900),
@@ -109,6 +118,29 @@ class _SignupWizardPageState extends State<SignupWizardPage>
     _stepTransitionController.forward();
   }
 
+  Future<void> _loadLegalVersions() async {
+    try {
+      final raw = await Supabase.instance.client
+          .rpc('current_legal_versions')
+          .timeout(const Duration(seconds: 15));
+      if (!mounted) return;
+      if (raw is List && raw.isNotEmpty) {
+        final row = Map<String, dynamic>.from(raw.first as Map);
+        setState(() {
+          _termsVersion = row['terms_version']?.toString() ?? _termsVersion;
+          _privacyVersion =
+              row['privacy_version']?.toString() ?? _privacyVersion;
+        });
+      } else if (raw is Map) {
+        setState(() {
+          _termsVersion = raw['terms_version']?.toString() ?? _termsVersion;
+          _privacyVersion =
+              raw['privacy_version']?.toString() ?? _privacyVersion;
+        });
+      }
+    } catch (_) {}
+  }
+
   Future<void> _initReferralCode() async {
     final fromRoute = widget.initialReferralCode;
     final fromDeepLink = await PendingReferralService.getPendingCode();
@@ -120,6 +152,7 @@ class _SignupWizardPageState extends State<SignupWizardPage>
 
   @override
   void dispose() {
+    _slowHintTimer?.cancel();
     _page.dispose();
     _userId.dispose();
     _referralCode.dispose();
@@ -168,6 +201,12 @@ class _SignupWizardPageState extends State<SignupWizardPage>
     if (!RegExp(r'^[A-Za-z0-9_]{3,20}$').hasMatch(userIdText)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Username can only contain letters, numbers, and underscore')),
+      );
+      return false;
+    }
+    if (_userIdAvailabilityStatus == 'error') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(SignupErrorMapper.usernameCheckFailed.display)),
       );
       return false;
     }
@@ -252,10 +291,12 @@ class _SignupWizardPageState extends State<SignupWizardPage>
     });
 
     try {
-      final available = await Supabase.instance.client.rpc(
-        'is_username_available',
-        params: {'p_username': userId},
-      );
+      final available = await Supabase.instance.client
+          .rpc(
+            'is_username_available',
+            params: {'p_username': userId},
+          )
+          .timeout(const Duration(seconds: 15));
       if (!mounted) return;
       setState(() {
         _userIdAvailabilityStatus =
@@ -263,10 +304,10 @@ class _SignupWizardPageState extends State<SignupWizardPage>
         _isCheckingUserId = false;
       });
     } catch (_) {
-      // If RPC not applied yet, allow format-valid usernames through.
+      // Fail closed: never treat RPC failure as available.
       if (!mounted) return;
       setState(() {
-        _userIdAvailabilityStatus = 'available';
+        _userIdAvailabilityStatus = 'error';
         _isCheckingUserId = false;
       });
     }
@@ -328,6 +369,12 @@ class _SignupWizardPageState extends State<SignupWizardPage>
       );
       return false;
     }
+    if (!_agreedLegal) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(SignupErrorMapper.legalRequired.display)),
+      );
+      return false;
+    }
     return true;
   }
 
@@ -346,6 +393,8 @@ class _SignupWizardPageState extends State<SignupWizardPage>
   }
 
   void _next() {
+    if (_isSubmitting) return;
+
     if (_step == 0 && !_validateStep1()) {
       return;
     }
@@ -394,34 +443,24 @@ class _SignupWizardPageState extends State<SignupWizardPage>
     return '$y-$m-$day';
   }
 
-  String _friendlySignupError(Object e) {
-    final raw = e.toString();
-    final lower = raw.toLowerCase();
-    if (lower.contains('username already exists') ||
-        (lower.contains('duplicate key') && lower.contains('username'))) {
-      return 'That username is already taken. Pick another User ID.';
-    }
-    if (lower.contains('user already registered') ||
-        lower.contains('already been registered') ||
-        lower.contains('email address is already')) {
-      return 'An account with this email already exists. Try logging in.';
-    }
-    if (lower.contains('database error saving new user')) {
-      return 'Could not create your profile. Try a different User ID. If it keeps failing, apply the latest signup database migration.';
-    }
-    if (lower.contains('password')) {
-      return 'Password does not meet requirements.';
-    }
-    return raw
-        .replaceFirst(RegExp(r'^Exception:\s*'), '')
-        .replaceFirst(RegExp(r'^AuthException\(message:\s*'), '')
-        .replaceFirst(RegExp(r',\s*statusCode:.*\)\s*$'), '')
-        .replaceFirst(RegExp(r'^Signup failed:\s*'), '');
-  }
-
   Future<void> _submit() async {
+    if (_isSubmitting) return;
+    if (!_agreedLegal) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(SignupErrorMapper.legalRequired.display)),
+      );
+      return;
+    }
+
     HapticFeedback.mediumImpact();
-    setState(() => _isSubmitting = true);
+    setState(() {
+      _isSubmitting = true;
+      _showSlowHint = false;
+    });
+    _slowHintTimer?.cancel();
+    _slowHintTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted && _isSubmitting) setState(() => _showSlowHint = true);
+    });
 
     try {
       final supabase = Supabase.instance.client;
@@ -464,40 +503,70 @@ class _SignupWizardPageState extends State<SignupWizardPage>
             ProviderSpecialtyTaxonomy.normalizeList(_selectedSpecializations);
       }
 
-      final response = await supabase.auth.signUp(
-        email: _email.text.trim(),
-        password: _pass.text,
-        data: signUpData,
-      );
+      final response = await supabase.auth
+          .signUp(
+            email: _email.text.trim(),
+            password: _pass.text,
+            data: signUpData,
+          )
+          .timeout(const Duration(seconds: 15));
 
       if (!mounted) return;
 
       if (response.user != null) {
         var session = response.session;
-        
+
         if (session == null) {
           try {
-            final signInResponse = await supabase.auth.signInWithPassword(
-              email: _email.text.trim(),
-              password: _pass.text,
-            );
+            final signInResponse = await supabase.auth
+                .signInWithPassword(
+                  email: _email.text.trim(),
+                  password: _pass.text,
+                )
+                .timeout(const Duration(seconds: 15));
             session = signInResponse.session;
-          } catch (e) {
+          } catch (_) {
             session = supabase.auth.currentSession;
           }
         }
-        
+
         if (session == null) {
           await Future.delayed(const Duration(milliseconds: 300));
           session = supabase.auth.currentSession;
         }
-        
+
         if (session == null) {
           await Future.delayed(const Duration(milliseconds: 300));
           session = supabase.auth.currentSession;
         }
-        
+
         if (session != null) {
+          try {
+            await supabase
+                .rpc(
+                  'record_legal_acceptance',
+                  params: {
+                    'p_terms_version': _termsVersion,
+                    'p_privacy_version': _privacyVersion,
+                  },
+                )
+                .timeout(const Duration(seconds: 15));
+          } catch (e) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(SignupErrorMapper.map(e).display),
+                backgroundColor: DesignTokens.accentRed,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius:
+                      BorderRadius.circular(DesignTokens.radiusCard),
+                ),
+              ),
+            );
+            return;
+          }
+
           // Initialize user goals (calculate water goal from weight)
           final goalsService = UserGoalsService();
           await goalsService.initializeGoals(weightKg: weightKgRaw);
@@ -519,18 +588,25 @@ class _SignupWizardPageState extends State<SignupWizardPage>
                       backgroundColor: DesignTokens.accentGreen,
                       behavior: SnackBarBehavior.floating,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
+                        borderRadius:
+                            BorderRadius.circular(DesignTokens.radiusCard),
                       ),
                     ),
                   );
-                } else if (status == 'invalid_code' || status == 'self_referral') {
+                } else if (status == 'invalid_code' ||
+                    status == 'self_referral') {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text(msg.isNotEmpty ? msg : 'Referral code could not be applied'),
+                      content: Text(
+                        msg.isNotEmpty
+                            ? msg
+                            : 'Referral code could not be applied',
+                      ),
                       backgroundColor: DesignTokens.accentRed,
                       behavior: SnackBarBehavior.floating,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
+                        borderRadius:
+                            BorderRadius.circular(DesignTokens.radiusCard),
                       ),
                     ),
                   );
@@ -543,22 +619,21 @@ class _SignupWizardPageState extends State<SignupWizardPage>
             // Non-fatal: user is signed up, referral is optional
           }
 
-          // Ensure profile.role matches signup choice (safety net if trigger used old logic)
-          try {
-            await supabase.rpc('sync_profile_role_from_auth');
-          } catch (_) {
-            // Non-fatal: migration/trigger may already have set correct role
-          }
+          // Role is set only by trusted handle_new_user from signup metadata.
+          // Do NOT call sync_profile_role_from_auth (revoked for clients).
 
           if (_role == 'Trainer' || _role == 'Nutritionist') {
             try {
-              await supabase.from('providers').upsert({
-                'user_id': response.user!.id,
-                'provider_type': _role.toLowerCase(),
-                'specialization': ProviderSpecialtyTaxonomy.normalizeList(
-                  _selectedSpecializations,
-                ),
-              });
+              await supabase
+                  .from('providers')
+                  .upsert({
+                    'user_id': response.user!.id,
+                    'provider_type': _role.toLowerCase(),
+                    'specialization': ProviderSpecialtyTaxonomy.normalizeList(
+                      _selectedSpecializations,
+                    ),
+                  })
+                  .timeout(const Duration(seconds: 15));
             } catch (_) {
               // Non-fatal: handle_new_user trigger may have created the row
             }
@@ -572,13 +647,12 @@ class _SignupWizardPageState extends State<SignupWizardPage>
         } else {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text('Account created! Please check your email to confirm.'),
+            const SnackBar(
+              content: Text(
+                'Account created! Please check your email to confirm.',
+              ),
               backgroundColor: DesignTokens.accentGreen,
               behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
-              ),
             ),
           );
           context.go('/auth/login');
@@ -586,11 +660,23 @@ class _SignupWizardPageState extends State<SignupWizardPage>
       } else {
         throw Exception('Signup failed');
       }
+    } on TimeoutException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(SignupErrorMapper.map(TimeoutException('signup')).display),
+          backgroundColor: DesignTokens.accentRed,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
+          ),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Signup failed: ${_friendlySignupError(e)}'),
+          content: Text(SignupErrorMapper.map(e).display),
           backgroundColor: DesignTokens.accentRed,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(
@@ -599,8 +685,12 @@ class _SignupWizardPageState extends State<SignupWizardPage>
         ),
       );
     } finally {
+      _slowHintTimer?.cancel();
       if (mounted) {
-        setState(() => _isSubmitting = false);
+        setState(() {
+          _isSubmitting = false;
+          _showSlowHint = false;
+        });
       }
     }
   }
@@ -858,10 +948,15 @@ class _SignupWizardPageState extends State<SignupWizardPage>
                     _StepGoalsContent(
                       goals: _goals,
                       selectedGoals: _selectedGoals,
+                      agreedLegal: _agreedLegal,
+                      onAgreedLegalChanged: (v) {
+                        setState(() => _agreedLegal = v);
+                      },
                       onToggleGoal: (g) {
                         HapticFeedback.selectionClick();
                         setState(() {
-                          if (_selectedGoals.contains(g) && _selectedGoals.length > 1) {
+                          if (_selectedGoals.contains(g) &&
+                              _selectedGoals.length > 1) {
                             _selectedGoals.remove(g);
                           } else {
                             _selectedGoals.add(g);
@@ -878,13 +973,29 @@ class _SignupWizardPageState extends State<SignupWizardPage>
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                 child: SafeArea(
                   top: false,
-                  child: AuthPrimaryButton(
-                    label: _step == _lastStepIndex ? 'Create Account' : 'Next',
-                    isLoading: _isSubmitting,
-                    trailingIcon: _isSubmitting
-                        ? null
-                        : Icons.arrow_forward_rounded,
-                    onPressed: _isSubmitting ? null : _next,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_showSlowHint) ...[
+                        Text(
+                          'Taking a little longer than usual…',
+                          style: TextStyle(
+                            color: DesignTokens.textSecondaryOf(context),
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
+                      AuthPrimaryButton(
+                        label:
+                            _step == _lastStepIndex ? 'Create Account' : 'Next',
+                        isLoading: _isSubmitting,
+                        trailingIcon: _isSubmitting
+                            ? null
+                            : Icons.arrow_forward_rounded,
+                        onPressed: _isSubmitting ? null : _next,
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -1018,6 +1129,8 @@ class _Step1ContentState extends State<_Step1Content> {
                   : null,
             helperText: widget.userIdAvailabilityStatus == 'taken'
               ? 'Username already taken'
+              : widget.userIdAvailabilityStatus == 'error'
+              ? 'Unable to check User ID right now. Try again.'
               : widget.userId.text.isNotEmpty && (widget.userId.text.length < 3 || widget.userId.text.length > 20)
               ? 'Must be 3-20 characters'
               : null,
@@ -2268,11 +2381,15 @@ class _StepGoalsContent extends StatelessWidget {
   final List<String> goals;
   final Set<String> selectedGoals;
   final ValueChanged<String> onToggleGoal;
+  final bool agreedLegal;
+  final ValueChanged<bool> onAgreedLegalChanged;
 
   const _StepGoalsContent({
     required this.goals,
     required this.selectedGoals,
     required this.onToggleGoal,
+    required this.agreedLegal,
+    required this.onAgreedLegalChanged,
   });
 
   @override
@@ -2396,6 +2513,67 @@ class _StepGoalsContent extends StatelessWidget {
                 );
               },
             ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Checkbox(
+                value: agreedLegal,
+                activeColor: DesignTokens.accentOrange,
+                onChanged: (v) => onAgreedLegalChanged(v ?? false),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        'I agree to the ',
+                        style: TextStyle(color: textSecondary, fontSize: 13),
+                      ),
+                      GestureDetector(
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const TermsOfServicePage(),
+                          ),
+                        ),
+                        child: Text(
+                          'Terms of Service',
+                          style: TextStyle(
+                            color: DesignTokens.accentOrange,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                      Text(
+                        ' and ',
+                        style: TextStyle(color: textSecondary, fontSize: 13),
+                      ),
+                      GestureDetector(
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const PrivacyPolicyPage(),
+                          ),
+                        ),
+                        child: Text(
+                          'Privacy Policy',
+                          style: TextStyle(
+                            color: DesignTokens.accentOrange,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),

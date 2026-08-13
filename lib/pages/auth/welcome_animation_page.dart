@@ -72,7 +72,7 @@ class _WelcomeAnimationPageState extends State<WelcomeAnimationPage>
           _welcomeController.forward().then((_) {
             Future.delayed(const Duration(milliseconds: 1500), () {
               if (mounted) {
-                context.go('/home');
+                context.go('/auth/continue');
               }
             });
           });

@@ -9,6 +9,9 @@ import '../../pages/auth/signup_wizard_page.dart';
 import '../../pages/auth/welcome_page.dart';
 import '../../pages/auth/welcome_animation_page.dart';
 import '../../pages/auth/permissions_page.dart';
+import '../../pages/auth/reset_password_page.dart';
+import '../../pages/auth/post_auth_continue_page.dart';
+import '../../pages/auth/complete_profile_page.dart';
 import '../../pages/splash_page.dart';
 import '../../pages/home/home_shell_page.dart';
 import '../../pages/notifications/notification_page.dart';
@@ -42,6 +45,8 @@ import '../../pages/profile/settings/service_locations_page.dart';
 import '../../pages/profile/cotrainr_pass_page.dart';
 import '../../pages/profile/partner_center_application_page.dart';
 
+/// Session-based redirect. Post-auth routing uses /auth/continue
+/// (complete-profile / verification / home) — never blind /home.
 final GoRouter appRouter = GoRouter(
   initialLocation: '/splash',
   debugLogDiagnostics: true,
@@ -51,13 +56,15 @@ final GoRouter appRouter = GoRouter(
     final isLoggedIn = session != null;
     final location = state.matchedLocation;
 
-    // Public routes that don't require auth
     final publicRoutes = [
       '/splash',
       '/welcome',
       '/auth/login',
       '/auth/create-account',
       '/auth/permissions',
+      '/auth/reset-password',
+      '/auth/continue',
+      '/auth/complete-profile',
       '/welcome-animation',
       '/invite',
     ];
@@ -68,53 +75,52 @@ final GoRouter appRouter = GoRouter(
       return null;
     }
 
-    // If not logged in and trying to access protected route
+    // Password recovery deep link must not be forced away.
+    if (location == '/auth/reset-password') {
+      return null;
+    }
+
+    // Post-auth resolver + social completion stay reachable while logged in.
+    if (location == '/auth/continue' ||
+        location == '/auth/complete-profile' ||
+        location == '/auth/permissions') {
+      if (!isLoggedIn) return '/welcome';
+      return null;
+    }
+
     if (!isLoggedIn && !isPublicRoute) {
       return '/welcome';
     }
 
-    // If logged in and on public auth routes, redirect home (splash owns cold start).
+    // Logged in on public auth routes → authoritative continue (not /home).
     if (isLoggedIn &&
         isPublicRoute &&
         location != '/welcome-animation' &&
-        location != '/splash') {
-      // Try to get user role from metadata (fallback, pages will check profiles.role)
-      try {
-        final user = supabase.auth.currentUser;
-        if (user != null && user.userMetadata != null) {
-          final role = user.userMetadata?['role']?.toString().toLowerCase();
-          if (role == 'trainer') {
-            return '/home';
-          } else if (role == 'nutritionist') {
-            return '/home';
-          }
-        }
-      } catch (e) {
-        // If we can't get role, default to home
-      }
-      return '/home';
+        location != '/splash' &&
+        location != '/auth/permissions' &&
+        location != '/auth/reset-password' &&
+        location != '/auth/continue' &&
+        location != '/auth/complete-profile') {
+      return '/auth/continue';
     }
 
-    // Remove role from video query params (security)
-    if (state.matchedLocation.startsWith('/video') && state.uri.queryParameters.containsKey('role')) {
+    if (location.startsWith('/video') &&
+        state.uri.queryParameters.containsKey('role')) {
       final cleanUri = state.uri.replace(queryParameters: {});
       return cleanUri.toString();
     }
 
-    // Redirect legacy video routes to V2
     final path = state.uri.path;
     if (path == '/video/create') {
       final clientId = state.uri.queryParameters['clientId'];
-      return clientId != null ? '/video?openCreate=1&clientId=$clientId' : '/video?openCreate=1';
+      return clientId != null
+          ? '/video?openCreate=1&clientId=$clientId'
+          : '/video?openCreate=1';
     }
-    if (path == '/video/join') {
-      return '/video?openJoin=1';
-    }
-    if (path.startsWith('/video/room/')) {
-      return '/video';
-    }
+    if (path == '/video/join') return '/video?openJoin=1';
+    if (path.startsWith('/video/room/')) return '/video';
 
-    return null; // No redirect needed - pages will enforce role checks
+    return null;
   },
   routes: [
     GoRoute(
@@ -152,6 +158,14 @@ final GoRouter appRouter = GoRouter(
       ),
     ),
     GoRoute(
+      path: '/auth/reset-password',
+      name: 'resetPassword',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const ResetPasswordPage(),
+        state: state,
+      ),
+    ),
+    GoRoute(
       path: '/auth/create-account',
       name: 'createAccount',
       pageBuilder: (context, state) {
@@ -183,6 +197,22 @@ final GoRouter appRouter = GoRouter(
           state: state,
         );
       },
+    ),
+    GoRoute(
+      path: '/auth/continue',
+      name: 'postAuthContinue',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const PostAuthContinuePage(),
+        state: state,
+      ),
+    ),
+    GoRoute(
+      path: '/auth/complete-profile',
+      name: 'completeProfile',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const CompleteProfilePage(),
+        state: state,
+      ),
     ),
     GoRoute(
       path: '/welcome-animation',

@@ -1,0 +1,7 @@
+# Cotrainr Supabase local/project function config.
+# Full project config may live in the hosted dashboard; this file documents
+# function-specific deploy flags required for Login.
+
+[functions.login-with-identifier]
+# Unauthenticated entrypoint — password login before a session exists.
+verify_jwt = false

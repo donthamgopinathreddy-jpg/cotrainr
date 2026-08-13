@@ -918,6 +918,11 @@ class AuthTapToTypeField extends StatefulWidget {
   final List<TextInputFormatter>? inputFormatters;
   final ValueChanged<String>? onChanged;
   final String? Function(String?)? validator;
+  final TextInputAction? textInputAction;
+  final VoidCallback? onEditingComplete;
+  final ValueChanged<String>? onFieldSubmitted;
+  final Iterable<String>? autofillHints;
+  final FocusNode? focusNode;
 
   const AuthTapToTypeField({
     super.key,
@@ -929,6 +934,11 @@ class AuthTapToTypeField extends StatefulWidget {
     this.inputFormatters,
     this.onChanged,
     this.validator,
+    this.textInputAction,
+    this.onEditingComplete,
+    this.onFieldSubmitted,
+    this.autofillHints,
+    this.focusNode,
   });
 
   @override
@@ -936,12 +946,21 @@ class AuthTapToTypeField extends StatefulWidget {
 }
 
 class _AuthTapToTypeFieldState extends State<AuthTapToTypeField> {
-  final _focusNode = FocusNode();
+  FocusNode? _ownedFocus;
+  FocusNode get _focusNode => widget.focusNode ?? _ownedFocus!;
   bool _keyboardEnabled = false;
 
   @override
+  void initState() {
+    super.initState();
+    if (widget.focusNode == null) {
+      _ownedFocus = FocusNode();
+    }
+  }
+
+  @override
   void dispose() {
-    _focusNode.dispose();
+    _ownedFocus?.dispose();
     super.dispose();
   }
 
@@ -966,6 +985,10 @@ class _AuthTapToTypeFieldState extends State<AuthTapToTypeField> {
       onChanged: widget.onChanged,
       style: widget.style,
       onTap: _enableKeyboard,
+      textInputAction: widget.textInputAction,
+      onEditingComplete: widget.onEditingComplete,
+      onFieldSubmitted: widget.onFieldSubmitted,
+      autofillHints: widget.autofillHints,
       decoration: widget.decoration.copyWith(
         hintText: _keyboardEnabled
             ? widget.decoration.hintText
