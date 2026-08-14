@@ -916,6 +916,9 @@ class AuthTapToTypeField extends StatefulWidget {
   final ValueChanged<String>? onFieldSubmitted;
   final Iterable<String>? autofillHints;
   final FocusNode? focusNode;
+  final bool autocorrect;
+  final bool enableSuggestions;
+  final TextCapitalization textCapitalization;
 
   const AuthTapToTypeField({
     super.key,
@@ -932,6 +935,9 @@ class AuthTapToTypeField extends StatefulWidget {
     this.onFieldSubmitted,
     this.autofillHints,
     this.focusNode,
+    this.autocorrect = true,
+    this.enableSuggestions = true,
+    this.textCapitalization = TextCapitalization.none,
   });
 
   @override
@@ -982,6 +988,9 @@ class _AuthTapToTypeFieldState extends State<AuthTapToTypeField> {
       onEditingComplete: widget.onEditingComplete,
       onFieldSubmitted: widget.onFieldSubmitted,
       autofillHints: widget.autofillHints,
+      autocorrect: widget.autocorrect,
+      enableSuggestions: widget.enableSuggestions,
+      textCapitalization: widget.textCapitalization,
       decoration: widget.decoration.copyWith(
         hintText: _keyboardEnabled
             ? widget.decoration.hintText

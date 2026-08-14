@@ -46,15 +46,17 @@
 		<key>UIApplicationSupportsIndirectInputEvents</key>
 		<true/>
 		<key>NSCameraUsageDescription</key>
-		<string>We need access to your camera to take photos for your posts.</string>
+		<string>Cotrainr uses the camera for profile photos, verification documents, and chat attachments.</string>
 		<key>NSPhotoLibraryUsageDescription</key>
-		<string>We need access to your photo library to select images for your posts.</string>
+		<string>Cotrainr uses your photo library for profile photos, verification documents, and chat attachments.</string>
 		<key>NSPhotoLibraryAddUsageDescription</key>
-		<string>We need access to save photos to your library.</string>
+		<string>Cotrainr may save photos you choose to your library.</string>
+		<key>NSLocationWhenInUseUsageDescription</key>
+		<string>Cotrainr uses your location to show nearby trainers, nutritionists, and fitness services.</string>
 		<key>NSHealthShareUsageDescription</key>
-		<string>We sync your steps, calories, distance, and water with Apple Health to give you better insights.</string>
+		<string>Cotrainr reads your steps, calories, distance, and water from Apple Health to show your activity.</string>
 		<key>NSHealthUpdateUsageDescription</key>
-		<string>We sync your fitness data with Apple Health to give you better insights.</string>
+		<string>Cotrainr does not write health samples. This description is required by HealthKit configuration.</string>
 		<key>UIBackgroundModes</key>
 		<array>
 			<string>fetch</string>

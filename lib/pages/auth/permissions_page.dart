@@ -30,7 +30,8 @@ class _PermissionsPageState extends State<PermissionsPage> {
     PermissionItem(
       permission: null, // Health permission handled separately
       title: 'Health Data',
-      description: 'Track your steps, calories burned, and activity data',
+      description:
+          'Read steps, calories, distance, and water from Health Connect or Apple Health',
       icon: Icons.favorite,
       isRequired: true,
       isHealth: true,
@@ -38,28 +39,24 @@ class _PermissionsPageState extends State<PermissionsPage> {
     PermissionItem(
       permission: Permission.location,
       title: 'Location',
-      description: 'Calculate distance traveled using GPS',
+      description:
+          'Show nearby trainers, nutritionists, and fitness services',
       icon: Icons.location_on,
-      isRequired: true,
+      isRequired: false,
     ),
     PermissionItem(
       permission: Permission.camera,
       title: 'Camera',
-      description: 'Take photos for profile and progress tracking',
+      description:
+          'Take photos for your profile, verification documents, and chat',
       icon: Icons.camera_alt,
       isRequired: false,
     ),
     PermissionItem(
-      permission: Permission.microphone,
-      title: 'Microphone',
-      description: 'Record voice messages and video calls',
-      icon: Icons.mic,
-      isRequired: false,
-    ),
-    PermissionItem(
       permission: Permission.storage,
-      title: 'Storage',
-      description: 'Save photos, documents, and app data',
+      title: 'Photos & files',
+      description:
+          'Choose photos and documents from your device for profile and chat',
       icon: Icons.folder,
       isRequired: false,
     ),

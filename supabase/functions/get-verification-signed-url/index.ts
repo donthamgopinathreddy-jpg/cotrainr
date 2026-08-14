@@ -2,8 +2,18 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+const PATH_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/(credential|gov_id)\.(jpg|jpeg|png|webp)$/i;
+
+function json(status: number, body: Record<string, unknown>) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -11,40 +21,68 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const body = await req.json();
-    const path = body?.path;
-    const expiresIn = typeof body?.expiresIn === 'number' ? Math.min(Math.max(body.expiresIn, 60), 3600) : 900; // 5-15 min default 900s
-    if (!path || typeof path !== 'string') {
-      return new Response(
-        JSON.stringify({ error: 'path required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    const authHeader = req.headers.get('Authorization') ?? '';
+    if (!authHeader.toLowerCase().startsWith('bearer ')) {
+      return json(401, { error: 'Unauthorized' });
     }
 
-    const supabase = createClient(
+    const supabaseAuth = createClient(
       Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } } },
     );
 
-    const { data, error } = await supabase.storage
+    const {
+      data: { user },
+      error: userError,
+    } = await supabaseAuth.auth.getUser();
+    if (userError || !user) {
+      return json(401, { error: 'Unauthorized' });
+    }
+
+    const body = await req.json();
+    const path = typeof body?.path === 'string' ? body.path.trim() : '';
+    const expiresIn =
+      typeof body?.expiresIn === 'number'
+        ? Math.min(Math.max(body.expiresIn, 60), 3600)
+        : 900;
+
+    if (!path || path.includes('..') || path.startsWith('/') || !PATH_RE.test(path)) {
+      return json(400, { error: 'invalid path' });
+    }
+
+    const ownerId = path.split('/')[0];
+    const isOwner = ownerId === user.id;
+
+    const admin = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    );
+
+    let isAdmin = false;
+    if (!isOwner) {
+      const { data: adminRow } = await admin
+        .from('admin_users')
+        .select('user_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      isAdmin = adminRow != null;
+    }
+
+    if (!isOwner && !isAdmin) {
+      return json(403, { error: 'Forbidden' });
+    }
+
+    const { data, error } = await admin.storage
       .from('verification-docs')
       .createSignedUrl(path, expiresIn);
 
     if (error) {
-      return new Response(
-        JSON.stringify({ error: error.message }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return json(400, { error: error.message });
     }
 
-    return new Response(
-      JSON.stringify({ signedUrl: data.signedUrl }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return json(200, { signedUrl: data.signedUrl });
   } catch (e) {
-    return new Response(
-      JSON.stringify({ error: String(e) }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return json(500, { error: String(e) });
   }
 });

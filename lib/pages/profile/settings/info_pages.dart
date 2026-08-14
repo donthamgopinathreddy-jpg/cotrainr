@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../legal/legal_document_meta.dart';
+import '../../../legal/privacy_policy_content.dart';
+import '../../../legal/terms_of_service_content.dart';
 import '../../../utils/launch_utils.dart';
 import '../../../theme/design_tokens.dart';
 import '../../../widgets/common/app_form_fields.dart';
+import '../../../widgets/legal/legal_document.dart';
 
 Color _settingsBg(BuildContext context) {
   return DesignTokens.backgroundOf(context);
@@ -63,7 +67,8 @@ class HelpCenterPage extends StatelessWidget {
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.public_rounded),
                   title: const Text('www.cotrainr.com'),
-                  subtitle: const Text('Reference (not opened automatically)'),
+                  subtitle: const Text('Website'),
+                  onTap: () => LaunchUtils.openWebsite(context),
                 ),
               ],
             ),
@@ -161,71 +166,20 @@ class TermsOfServicePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Scaffold(
-      backgroundColor: _settingsBg(context),
-      appBar: AppBar(
-        backgroundColor: _settingsBg(context),
-        elevation: 0,
-        title: const Text('Terms of Service'),
+    return LegalDocumentPage(
+      title: TermsOfServiceContent.title,
+      tagline: TermsOfServiceContent.tagline,
+      versionLabel: LegalDocumentMeta.version,
+      effectiveLabel: LegalDocumentMeta.effectiveDateLabel,
+      updatedLabel: LegalDocumentMeta.lastUpdatedLabel,
+      atAGlance: TermsOfServiceContent.atAGlance,
+      callout: const LegalCallout(
+        child: SelectableText(TermsOfServiceContent.introCallout),
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-        children: [
-          _Card(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Terms of Service',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    color: cs.onSurface,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'This is a short in-app version of our Terms. For the most current version, visit www.cotrainr.com.',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: cs.onSurface.withValues(alpha: 0.78),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                _LegalSection(
-                  title: '1. Acceptable use',
-                  body:
-                      'Use CoTrainr responsibly. Don’t misuse the service, attempt unauthorized access, or harm other users.',
-                ),
-                _LegalSection(
-                  title: '2. Accounts',
-                  body:
-                      'You are responsible for your account activity and keeping access secure.',
-                ),
-                _LegalSection(
-                  title: '3. Contact',
-                  body: 'Legal email: noreply@cotrainr.com',
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          _Card(
-            child: ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.mail_outline_rounded),
-              title: const Text('Email (legal)'),
-              subtitle: const Text('noreply@cotrainr.com'),
-              onTap: () => LaunchUtils.sendEmail(
-                context,
-                to: LaunchUtils.noReplyEmail,
-                subject: 'Terms of Service',
-              ),
-            ),
-          ),
-        ],
+      sections: TermsOfServiceContent.sections,
+      contact: const LegalContactSection(
+        intro:
+            'For questions about these Terms, account issues or deletion requests, email Cotrainr Support.',
       ),
     );
   }
@@ -236,71 +190,20 @@ class PrivacyPolicyPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Scaffold(
-      backgroundColor: _settingsBg(context),
-      appBar: AppBar(
-        backgroundColor: _settingsBg(context),
-        elevation: 0,
-        title: const Text('Privacy Policy'),
+    return LegalDocumentPage(
+      title: PrivacyPolicyContent.title,
+      tagline: PrivacyPolicyContent.tagline,
+      versionLabel: LegalDocumentMeta.version,
+      effectiveLabel: LegalDocumentMeta.effectiveDateLabel,
+      updatedLabel: LegalDocumentMeta.lastUpdatedLabel,
+      atAGlance: PrivacyPolicyContent.atAGlance,
+      callout: const LegalCallout(
+        child: SelectableText(PrivacyPolicyContent.introCallout),
       ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-        children: [
-          _Card(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Privacy Policy',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    color: cs.onSurface,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'This page explains how CoTrainr handles your information. For the most current version, visit www.cotrainr.com.',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: cs.onSurface.withValues(alpha: 0.78),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                _LegalSection(
-                  title: 'What we collect',
-                  body:
-                      'Account and profile details, app usage data, and content you choose to submit.',
-                ),
-                _LegalSection(
-                  title: 'How we use it',
-                  body:
-                      'To provide the service, improve features, and support users.',
-                ),
-                _LegalSection(
-                  title: 'Contact',
-                  body: 'Legal email: noreply@cotrainr.com',
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          _Card(
-            child: ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.mail_outline_rounded),
-              title: const Text('Email (legal)'),
-              subtitle: const Text('noreply@cotrainr.com'),
-              onTap: () => LaunchUtils.sendEmail(
-                context,
-                to: LaunchUtils.noReplyEmail,
-                subject: 'Privacy Policy',
-              ),
-            ),
-          ),
-        ],
+      sections: PrivacyPolicyContent.sections,
+      contact: const LegalContactSection(
+        intro:
+            'For privacy questions, data requests or account-deletion requests, email Cotrainr Support.',
       ),
     );
   }
@@ -356,42 +259,6 @@ class _FaqItem extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _LegalSection extends StatelessWidget {
-  final String title;
-  final String body;
-  const _LegalSection({required this.title, required this.body});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w900,
-              color: cs.onSurface,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            body,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: cs.onSurface.withValues(alpha: 0.78),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

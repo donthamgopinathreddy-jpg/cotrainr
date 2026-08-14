@@ -1,41 +1,75 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../services/location_permission_status.dart';
 import '../../../services/privacy_preferences_service.dart';
 import '../../../theme/account_hub_theme.dart';
 import '../../../utils/launch_utils.dart';
+import '../../../utils/page_transitions.dart';
 import '../../../widgets/profile/account_hub_widgets.dart';
 import 'change_password_page.dart';
 import 'info_pages.dart';
-import '../../../utils/page_transitions.dart';
 
 class PrivacySecurityPage extends StatefulWidget {
-  const PrivacySecurityPage({super.key});
+  const PrivacySecurityPage({
+    super.key,
+    this.preferencesService,
+    this.locationGateway,
+  });
+
+  final PrivacyPreferencesStore? preferencesService;
+  final LocationPermissionGateway? locationGateway;
 
   @override
   State<PrivacySecurityPage> createState() => _PrivacySecurityPageState();
 }
 
-class _PrivacySecurityPageState extends State<PrivacySecurityPage> {
-  final _service = PrivacyPreferencesService();
+class _PrivacySecurityPageState extends State<PrivacySecurityPage>
+    with WidgetsBindingObserver {
+  late final PrivacyPreferencesStore _service;
+  late final LocationPermissionGateway _location;
   PrivacyPreferences _prefs = const PrivacyPreferences();
   bool _loading = true;
   bool _saving = false;
+  LocationAccessLabel _locationLabel = LocationAccessLabel.notRequested;
 
   @override
   void initState() {
     super.initState();
+    _service = widget.preferencesService ?? PrivacyPreferencesService();
+    _location = widget.locationGateway ?? const LocationPermissionGateway();
+    WidgetsBinding.instance.addObserver(this);
     _load();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshLocation();
+    }
   }
 
   Future<void> _load() async {
     final prefs = await _service.load();
-    if (mounted) {
-      setState(() {
-        _prefs = prefs;
-        _loading = false;
-      });
-    }
+    final locationLabel = await _location.readLabel();
+    if (!mounted) return;
+    setState(() {
+      _prefs = prefs;
+      _locationLabel = locationLabel;
+      _loading = false;
+    });
+  }
+
+  Future<void> _refreshLocation() async {
+    final locationLabel = await _location.readLabel();
+    if (!mounted) return;
+    setState(() => _locationLabel = locationLabel);
   }
 
   Future<void> _save() async {
@@ -54,13 +88,13 @@ class _PrivacySecurityPageState extends State<PrivacySecurityPage> {
     }
   }
 
-  Future<void> _confirmDeleteAccount() async {
+  Future<void> _requestAccountDeletion() async {
     final ok = await showHubConfirmDialog(
       context,
-      title: 'Delete Account?',
+      title: 'Request Account Deletion',
       message:
-          'This action cannot be undone. Account deletion is not yet available in the app — contact support to request removal.',
-      confirmLabel: 'Contact Support',
+          'Account deletion is not available in the app yet. You can email Cotrainr Support to request that your account and associated data be removed. Support will confirm with you before anything is deleted.',
+      confirmLabel: 'Email Support',
       isDanger: true,
     );
     if (!ok || !mounted) return;
@@ -106,42 +140,18 @@ class _PrivacySecurityPageState extends State<PrivacySecurityPage> {
                 HubSectionCard(
                   title: 'Security',
                   animationDelayMs: 0,
-                  child: Column(
-                    children: [
-                      HubActionRow(
-                        icon: Icons.lock_outline_rounded,
-                        title: 'Change Password',
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          Navigator.push(
-                            context,
-                            PageTransitions.slideRoute(
-                              const ChangePasswordPage(),
-                            ),
-                          );
-                        },
-                      ),
-                      const Divider(height: 1),
-                      HubActionRow(
-                        icon: Icons.phonelink_lock_outlined,
-                        title: 'Two-Factor Authentication',
-                        trailing: const ComingSoonBadge(),
-                        onTap: () => showHubSnackBar(
-                          context,
-                          'Two-factor authentication coming soon',
+                  child: HubActionRow(
+                    icon: Icons.lock_outline_rounded,
+                    title: 'Change Password',
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      Navigator.push(
+                        context,
+                        PageTransitions.slideRoute(
+                          const ChangePasswordPage(),
                         ),
-                      ),
-                      const Divider(height: 1),
-                      HubActionRow(
-                        icon: Icons.devices_outlined,
-                        title: 'Active Sessions',
-                        trailing: const ComingSoonBadge(),
-                        onTap: () => showHubSnackBar(
-                          context,
-                          'Session management coming soon',
-                        ),
-                      ),
-                    ],
+                      );
+                    },
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -152,38 +162,35 @@ class _PrivacySecurityPageState extends State<PrivacySecurityPage> {
                     children: [
                       HubToggleRow(
                         title: 'Share Activity Data with Trainer',
+                        subtitle:
+                            'Steps, calories, distance, and water from your daily metrics.',
                         value: _prefs.shareActivityWithTrainer,
                         onChanged: (v) => setState(
-                          () => _prefs =
-                              _prefs.copyWith(shareActivityWithTrainer: v),
-                        ),
-                      ),
-                      const Divider(height: 1),
-                      HubToggleRow(
-                        title: 'Share Meal Data with Trainer',
-                        value: _prefs.shareMealsWithTrainer,
-                        onChanged: (v) => setState(
-                          () => _prefs =
-                              _prefs.copyWith(shareMealsWithTrainer: v),
-                        ),
-                      ),
-                      const Divider(height: 1),
-                      HubToggleRow(
-                        title: 'Share Nutrition Data with Nutritionist',
-                        value: _prefs.shareNutritionWithNutritionist,
-                        onChanged: (v) => setState(
                           () => _prefs = _prefs.copyWith(
-                            shareNutritionWithNutritionist: v,
+                            shareActivityWithTrainer: v,
                           ),
                         ),
                       ),
                       const Divider(height: 1),
                       HubToggleRow(
-                        title: 'Share Health Metrics with Providers',
-                        value: _prefs.shareHealthMetricsWithProviders,
+                        title: 'Share Meal Data with Trainer',
+                        subtitle: 'Meals you log in Meal Tracker.',
+                        value: _prefs.shareMealsWithTrainer,
                         onChanged: (v) => setState(
                           () => _prefs = _prefs.copyWith(
-                            shareHealthMetricsWithProviders: v,
+                            shareMealsWithTrainer: v,
+                          ),
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      HubToggleRow(
+                        title: 'Share Meal Logs with Nutritionist',
+                        subtitle:
+                            'Logged meals only. Calorie and planner targets stay private.',
+                        value: _prefs.shareNutritionWithNutritionist,
+                        onChanged: (v) => setState(
+                          () => _prefs = _prefs.copyWith(
+                            shareNutritionWithNutritionist: v,
                           ),
                         ),
                       ),
@@ -192,27 +199,33 @@ class _PrivacySecurityPageState extends State<PrivacySecurityPage> {
                 ),
                 const SizedBox(height: 12),
                 HubSectionCard(
-                  title: 'Location',
+                  title: 'Permissions',
                   animationDelayMs: 80,
-                  child: HubToggleRow(
-                    title: 'Location Access',
+                  child: HubActionRow(
+                    icon: Icons.location_on_outlined,
+                    title: 'Location',
                     subtitle:
-                        'Used for nearby fitness places and Discover.',
-                    value: _prefs.locationAccess,
-                    onChanged: (v) => setState(
-                      () => _prefs = _prefs.copyWith(locationAccess: v),
+                        '${locationAccessLabelText(_locationLabel)} · Nearby trainers, nutritionists, and fitness services',
+                    trailing: TextButton(
+                      onPressed: () async {
+                        HapticFeedback.lightImpact();
+                        await _location.manage();
+                        await _refreshLocation();
+                      },
+                      child: const Text('Manage'),
                     ),
+                    showChevron: false,
                   ),
                 ),
                 const SizedBox(height: 12),
                 HubSectionCard(
-                  title: 'Legal / Data',
+                  title: 'Legal & Data',
                   animationDelayMs: 120,
                   child: Column(
                     children: [
                       HubActionRow(
                         icon: Icons.privacy_tip_outlined,
-                        title: 'View Privacy Policy',
+                        title: 'Privacy Policy',
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -222,18 +235,26 @@ class _PrivacySecurityPageState extends State<PrivacySecurityPage> {
                       ),
                       const Divider(height: 1),
                       HubActionRow(
-                        icon: Icons.download_outlined,
-                        title: 'Download My Data',
-                        trailing: const ComingSoonBadge(),
-                        onTap: () => showHubSnackBar(
+                        icon: Icons.description_outlined,
+                        title: 'Terms & Conditions',
+                        onTap: () => Navigator.push(
                           context,
-                          'Data export coming soon',
+                          MaterialPageRoute(
+                            builder: (_) => const TermsOfServicePage(),
+                          ),
                         ),
                       ),
                       const Divider(height: 1),
+                      const HubActionRow(
+                        icon: Icons.download_outlined,
+                        title: 'Download My Data',
+                        trailing: ComingSoonBadge(),
+                        showChevron: false,
+                      ),
+                      const Divider(height: 1),
                       HubDangerButton(
-                        label: 'Delete Account',
-                        onTap: _confirmDeleteAccount,
+                        label: 'Request Account Deletion',
+                        onTap: _requestAccountDeletion,
                       ),
                     ],
                   ),
@@ -242,32 +263,16 @@ class _PrivacySecurityPageState extends State<PrivacySecurityPage> {
                 HubSectionCard(
                   title: 'Contact',
                   animationDelayMs: 160,
-                  child: Column(
-                    children: [
-                      HubActionRow(
-                        icon: Icons.email_outlined,
-                        title: 'support@cotrainr.com',
-                        subtitle: 'Support',
-                        showChevron: false,
-                        onTap: () => LaunchUtils.sendEmail(
-                          context,
-                          to: LaunchUtils.supportEmail,
-                          subject: 'Privacy & Security',
-                        ),
-                      ),
-                      const Divider(height: 1),
-                      HubActionRow(
-                        icon: Icons.mail_outline_rounded,
-                        title: 'noreply@cotrainr.com',
-                        subtitle: 'Legal / Automated',
-                        showChevron: false,
-                        onTap: () => LaunchUtils.sendEmail(
-                          context,
-                          to: LaunchUtils.noReplyEmail,
-                          subject: 'Privacy & Security',
-                        ),
-                      ),
-                    ],
+                  child: HubActionRow(
+                    icon: Icons.email_outlined,
+                    title: 'Contact Support',
+                    subtitle: LaunchUtils.supportEmail,
+                    showChevron: false,
+                    onTap: () => LaunchUtils.sendEmail(
+                      context,
+                      to: LaunchUtils.supportEmail,
+                      subject: 'Privacy & Security',
+                    ),
                   ),
                 ),
               ],

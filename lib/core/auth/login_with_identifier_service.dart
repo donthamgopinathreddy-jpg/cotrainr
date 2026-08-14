@@ -6,26 +6,45 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'auth_error_mapper.dart';
 import 'login_identifier.dart';
 
+typedef LoginFunctionInvoke = Future<FunctionResponse> Function(
+  String functionName,
+  Map<String, dynamic> body,
+);
+
+typedef LoginSessionInstaller = Future<bool> Function({
+  required String accessToken,
+  required String refreshToken,
+});
+
 /// Client for secure User ID / email password login via Edge Function.
 ///
 /// The Edge Function resolves usernames with the service role and authenticates
 /// via Supabase Auth. The Flutter app never receives username→email mappings.
 class LoginWithIdentifierService {
-  LoginWithIdentifierService({SupabaseClient? client})
-      : _client = client ?? Supabase.instance.client;
+  LoginWithIdentifierService({
+    SupabaseClient? client,
+    LoginFunctionInvoke? invoke,
+    LoginSessionInstaller? installSession,
+  })  : _client = client,
+        _invoke = invoke,
+        _installSession = installSession;
 
-  final SupabaseClient _client;
+  final SupabaseClient? _client;
+  final LoginFunctionInvoke? _invoke;
+  final LoginSessionInstaller? _installSession;
 
   static const functionName = 'login-with-identifier';
   static const timeout = Duration(seconds: 15);
+
+  SupabaseClient get _supabase => _client ?? Supabase.instance.client;
 
   /// Authenticates and installs the session on the Supabase client.
   Future<void> signIn({
     required String identifier,
     required String password,
   }) async {
-    final id = LoginIdentifier.trim(identifier);
-    final localIdError = LoginIdentifier.validateIdentifier(id);
+    final id = LoginIdentifier.normalizeForSubmit(identifier);
+    final localIdError = LoginIdentifier.validateIdentifier(identifier);
     if (localIdError != null) {
       throw AuthValidationException(localIdError);
     }
@@ -34,16 +53,18 @@ class LoginWithIdentifierService {
       throw AuthValidationException(localPassError);
     }
 
+    if (kDebugMode) {
+      debugPrint('[LOGIN] identifier auth started');
+    }
+
     try {
-      final response = await _client.functions
-          .invoke(
-            functionName,
-            body: {
-              'identifier': id,
-              'password': password,
-            },
-          )
-          .timeout(timeout);
+      final response = await (_invoke ?? _defaultInvoke)(
+        functionName,
+        {
+          'identifier': id,
+          'password': password,
+        },
+      ).timeout(timeout);
 
       final status = response.status;
       final data = response.data;
@@ -61,7 +82,9 @@ class LoginWithIdentifierService {
         throw const AuthMappedException(AuthErrorMapper.serviceUnavailable);
       }
       if (status < 200 || status >= 300) {
-        debugPrint('[LoginWithIdentifier] unexpected status=$status');
+        if (kDebugMode) {
+          debugPrint('[LOGIN] edge response success=false');
+        }
         throw const AuthMappedException(AuthErrorMapper.unknown);
       }
 
@@ -82,45 +105,34 @@ class LoginWithIdentifierService {
 
       final refreshToken = map['refresh_token'] as String?;
       final accessToken = map['access_token'] as String?;
-      if (refreshToken == null || refreshToken.isEmpty) {
+      if (refreshToken == null ||
+          refreshToken.isEmpty ||
+          accessToken == null ||
+          accessToken.isEmpty) {
         if (kDebugMode) {
-          debugPrint('[LOGIN] edge response missing refresh_token');
+          debugPrint('[LOGIN] edge response success=false');
         }
+        // Dual tokens are required. Refresh-only setSession historically
+        // emitted tokenRefreshed (not SIGNED_IN) and broke startup routing.
         throw const AuthMappedException(AuthErrorMapper.unknown);
       }
 
       if (kDebugMode) {
-        debugPrint(
-          '[LOGIN] authentication returned success '
-          'hasAccessToken=${accessToken != null && accessToken.isNotEmpty} '
-          'hasRefreshToken=true',
-        );
-        debugPrint('[LOGIN] calling setSession');
+        debugPrint('[LOGIN] edge response success=true');
       }
 
-      // Prefer dual-token fast path → SIGNED_IN (avoids refresh-only
-      // tokenRefreshed, which StartupBootstrap intentionally ignores).
-      if (accessToken != null && accessToken.isNotEmpty) {
-        await _client.auth.setSession(
-          refreshToken,
-          accessToken: accessToken,
-        );
-      } else {
-        await _client.auth.setSession(refreshToken);
-      }
-      if (_client.auth.currentSession == null ||
-          _client.auth.currentUser == null) {
+      final installed = await (_installSession ?? _defaultInstallSession)(
+        accessToken: accessToken,
+        refreshToken: refreshToken,
+      );
+      if (!installed) {
         if (kDebugMode) {
-          debugPrint(
-            '[LOGIN] setSession left currentSession/currentUser null',
-          );
+          debugPrint('[LOGIN] session established=false');
         }
         throw const AuthMappedException(AuthErrorMapper.unknown);
       }
       if (kDebugMode) {
-        debugPrint(
-          '[LOGIN] setSession ok userId=${_client.auth.currentUser!.id}',
-        );
+        debugPrint('[LOGIN] session established=true');
       }
     } on AuthMappedException {
       rethrow;
@@ -131,9 +143,30 @@ class LoginWithIdentifierService {
     } on FunctionException catch (e) {
       throw AuthMappedException(AuthErrorMapper.map(e));
     } catch (e) {
-      debugPrint('[LoginWithIdentifier] failure type=${e.runtimeType}');
+      if (kDebugMode) {
+        debugPrint('[LOGIN] identifier auth failed type=${e.runtimeType}');
+      }
       throw AuthMappedException(AuthErrorMapper.map(e));
     }
+  }
+
+  Future<FunctionResponse> _defaultInvoke(
+    String name,
+    Map<String, dynamic> body,
+  ) {
+    return _supabase.functions.invoke(name, body: body);
+  }
+
+  Future<bool> _defaultInstallSession({
+    required String accessToken,
+    required String refreshToken,
+  }) async {
+    await _supabase.auth.setSession(
+      refreshToken,
+      accessToken: accessToken,
+    );
+    return _supabase.auth.currentSession != null &&
+        _supabase.auth.currentUser != null;
   }
 }
 

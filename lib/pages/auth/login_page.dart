@@ -141,8 +141,6 @@ class _LoginPageState extends State<LoginPage>
     });
 
     try {
-      // Restored working path: native Supabase email password auth.
-      // Do NOT use Edge Function / setSession for this recovery step.
       await Supabase.instance.client.auth
           .signInWithPassword(
             email: _idOrEmail.text.trim().toLowerCase(),
@@ -283,10 +281,10 @@ class _LoginPageState extends State<LoginPage>
                                             validator: (v) {
                                               final t = v?.trim() ?? '';
                                               if (t.isEmpty) {
-                                                return 'Enter your email';
+                                                return 'Enter your email.';
                                               }
                                               if (!_emailRe.hasMatch(t)) {
-                                                return 'Enter a valid email';
+                                                return 'Enter a valid email address.';
                                               }
                                               return null;
                                             },
@@ -298,6 +296,7 @@ class _LoginPageState extends State<LoginPage>
                                               context,
                                               large: true,
                                               label: 'Email',
+                                              hint: 'you@example.com',
                                               prefixIcon: Icon(
                                                 Icons.email_outlined,
                                                 color: textSecondary.color,

@@ -79,35 +79,45 @@ class HubActionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final content = SizedBox(
-      height: subtitle != null ? 60 : AccountHubTheme.rowHeight,
-      child: Row(
-        children: [
-          Icon(
-            icon,
-            size: AccountHubTheme.iconSize,
-            color: iconColor ?? cs.onSurface.withValues(alpha: 0.7),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: AccountHubTheme.rowTitle(context)),
-                if (subtitle != null) ...[
-                  const SizedBox(height: 2),
-                  Text(subtitle!, style: AccountHubTheme.rowSubtitle(context)),
-                ],
-              ],
+    final content = ConstrainedBox(
+      constraints: BoxConstraints(
+        minHeight: subtitle != null ? 60 : AccountHubTheme.rowHeight,
+      ),
+      child: Padding(
+        padding: EdgeInsets.symmetric(vertical: subtitle != null ? 8 : 0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: AccountHubTheme.iconSize,
+              color: iconColor ?? cs.onSurface.withValues(alpha: 0.7),
             ),
-          ),
-          if (trailing != null)
-            trailing!
-          else if (showChevron)
-            Icon(Icons.chevron_right_rounded,
-                color: cs.onSurface.withValues(alpha: 0.4)),
-        ],
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: AccountHubTheme.rowTitle(context)),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle!,
+                      style: AccountHubTheme.rowSubtitle(context),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (trailing != null)
+              trailing!
+            else if (showChevron)
+              Icon(Icons.chevron_right_rounded,
+                  color: cs.onSurface.withValues(alpha: 0.4)),
+          ],
+        ),
       ),
     );
 
@@ -260,14 +270,17 @@ class HubToggleRow extends StatelessWidget {
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 200),
       opacity: enabled ? 1 : 0.45,
-      child: SwitchListTile(
-        contentPadding: EdgeInsets.zero,
-        value: value,
-        onChanged: enabled ? onChanged : null,
-        title: Text(title, style: AccountHubTheme.rowTitle(context)),
-        subtitle: subtitle != null
-            ? Text(subtitle!, style: AccountHubTheme.rowSubtitle(context))
-            : null,
+      child: Material(
+        type: MaterialType.transparency,
+        child: SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          value: value,
+          onChanged: enabled ? onChanged : null,
+          title: Text(title, style: AccountHubTheme.rowTitle(context)),
+          subtitle: subtitle != null
+              ? Text(subtitle!, style: AccountHubTheme.rowSubtitle(context))
+              : null,
+        ),
       ),
     );
   }

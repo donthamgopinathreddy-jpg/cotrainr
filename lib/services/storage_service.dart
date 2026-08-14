@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:path/path.dart' as path;
 
+import 'chat_media_storage.dart';
+
 /// Service for uploading files to Supabase Storage
 class StorageService {
   final SupabaseClient _supabase;
@@ -124,9 +126,9 @@ class StorageService {
     }
   }
 
-  /// Upload chat media (image, video, or document) to the existing `posts` bucket.
+  /// Upload chat media to the private `chat-attachments` bucket.
   /// Path: `{userId}/chat/{conversationId}/{timestamp}_{safeName}`
-  /// Returns the public URL of the uploaded media.
+  /// Returns a stable `chat://` ref for persistence (not a public URL).
   Future<String?> uploadChatMedia(
     File mediaFile, {
     required String mediaKind,
@@ -161,7 +163,7 @@ class StorageService {
           _guessChatContentType(extension: extension, mediaKind: mediaKind);
 
       try {
-        await _supabase.storage.from('posts').uploadBinary(
+        await _supabase.storage.from(ChatMediaStorage.bucket).uploadBinary(
               filePath,
               bytes,
               fileOptions: FileOptions(
@@ -179,15 +181,14 @@ class StorageService {
                 msg.contains('400'))) {
           throw Exception(
             'Document upload is blocked by storage settings. '
-            'In Supabase SQL editor, run 20260808_chat_docs_storage_fix.sql '
-            '(posts bucket must allow PDF/Office MIME types).',
+            'Apply 20260815_chat_attachments_private_bucket.sql.',
           );
         }
         rethrow;
       }
       onProgress?.call(1.0);
 
-      return _supabase.storage.from('posts').getPublicUrl(filePath);
+      return ChatMediaStorage.storedRefForPath(filePath);
     } catch (e) {
       print('Error uploading chat media: $e');
       rethrow;

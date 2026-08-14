@@ -19,6 +19,7 @@ import '../../services/user_safety_service.dart';
 import '../../providers/unread_messages_count_provider.dart';
 import '../../utils/chat_attachment_rules.dart';
 import '../../utils/chat_message_reconciler.dart';
+import '../../services/chat_media_storage.dart';
 import '../../widgets/common/app_overlays.dart';
 import '../../widgets/messaging/report_user_sheet.dart';
 import '../../widgets/provider/provider_avatar.dart';
@@ -230,7 +231,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         final content = msg['content'] as String? ?? '';
         final createdAt = msg['created_at'] as String?;
         final time = _formatTime(createdAt);
-        final media = _parseMediaFields(msg);
+        final resolved = await ChatMediaStorage.resolveMessageMedia(
+          _supabase,
+          msg,
+        );
+        final media = _parseMediaFields(resolved);
 
         loaded.add(
           ReconciledChatMessage(
@@ -269,36 +274,43 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void _setupRealtimeSubscription() {
     _messagesChannel =
         _messagesRepo.subscribeToMessages(widget.conversationId, (newMessage) {
-      final currentUserId = _supabase.auth.currentUser?.id;
-      final senderId = newMessage['sender_id'] as String;
-      final isSent = senderId == currentUserId;
-      final content = newMessage['content'] as String? ?? '';
-      final createdAt = newMessage['created_at'] as String?;
-      final time = _formatTime(createdAt);
-      final messageId = newMessage['id'] as String?;
+      () async {
+        final currentUserId = _supabase.auth.currentUser?.id;
+        final senderId = newMessage['sender_id'] as String;
+        final isSent = senderId == currentUserId;
+        final content = newMessage['content'] as String? ?? '';
+        final createdAt = newMessage['created_at'] as String?;
+        final time = _formatTime(createdAt);
+        final messageId = newMessage['id'] as String?;
 
-      if (!mounted || messageId == null || messageId.isEmpty) return;
+        if (!mounted || messageId == null || messageId.isEmpty) return;
 
-      final media = _parseMediaFields(newMessage);
-      final added = _reconciler.upsertCanonical(
-        messageId: messageId,
-        text: content,
-        isSent: isSent,
-        time: time,
-        imageUrl: media.imageUrl,
-        videoUrl: media.videoUrl,
-        documentUrl: media.documentUrl,
-        documentName: media.documentName,
-        documentMime: media.documentMime,
-        documentSizeBytes: media.documentSizeBytes,
-      );
-      if (!added) return;
+        final resolved = await ChatMediaStorage.resolveMessageMedia(
+          _supabase,
+          newMessage,
+        );
+        if (!mounted) return;
+        final media = _parseMediaFields(resolved);
+        final added = _reconciler.upsertCanonical(
+          messageId: messageId,
+          text: content,
+          isSent: isSent,
+          time: time,
+          imageUrl: media.imageUrl,
+          videoUrl: media.videoUrl,
+          documentUrl: media.documentUrl,
+          documentName: media.documentName,
+          documentMime: media.documentMime,
+          documentSizeBytes: media.documentSizeBytes,
+        );
+        if (!added) return;
 
-      setState(_syncMessagesFromReconciler);
-      _scrollToBottom();
-      if (!isSent) {
-        _markMessagesAsRead();
-      }
+        setState(_syncMessagesFromReconciler);
+        _scrollToBottom();
+        if (!isSent) {
+          _markMessagesAsRead();
+        }
+      }();
     });
   }
 
@@ -570,14 +582,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final sentId = sent['id'] as String?;
       final createdAt = sent['created_at'] as String?;
       final sentMediaUrl = sent['media_url'] as String? ?? mediaUrl;
-      final parsed = _parseMediaFields({
-        ...sent,
-        'media_url': sentMediaUrl,
-        'media_kind': sent['media_kind'] ?? mediaKind,
-        'media_file_name': sent['media_file_name'] ?? displayName,
-        'media_mime_type': sent['media_mime_type'] ?? mime,
-        'media_size_bytes': sent['media_size_bytes'] ?? sizeBytes,
-      });
+      final resolvedSent = await ChatMediaStorage.resolveMessageMedia(
+        _supabase,
+        {
+          ...sent,
+          'media_url': sentMediaUrl,
+          'media_kind': sent['media_kind'] ?? mediaKind,
+          'media_file_name': sent['media_file_name'] ?? displayName,
+          'media_mime_type': sent['media_mime_type'] ?? mime,
+          'media_size_bytes': sent['media_size_bytes'] ?? sizeBytes,
+        },
+      );
+      final parsed = _parseMediaFields(resolvedSent);
 
       if (sentId != null && sentId.isNotEmpty) {
         setState(() {

@@ -4,6 +4,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../theme/account_hub_theme.dart';
 import '../../theme/branding_assets.dart';
+import '../../utils/launch_utils.dart';
 import '../../widgets/profile/account_hub_widgets.dart';
 
 class AppVersionPage extends StatefulWidget {
@@ -208,7 +209,8 @@ class _AppVersionPageState extends State<AppVersionPage> {
                 HubActionRow(
                   icon: Icons.mail_outline_rounded,
                   title: 'Support email',
-                  subtitle: 'Emails are sent from noreply@cotrainr.com',
+                  subtitle:
+                      'Automated outgoing mail uses ${LaunchUtils.noReplyEmail}',
                   showChevron: false,
                 ),
               ],
