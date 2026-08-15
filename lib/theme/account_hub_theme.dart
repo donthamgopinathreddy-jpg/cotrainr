@@ -47,4 +47,40 @@ abstract final class AccountHubTheme {
         fontWeight: FontWeight.w500,
         color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55),
       );
+
+  /// Shared Switch treatment: orange ON, grey OFF, muted disabled.
+  static SwitchThemeData switchTheme({required bool isDark}) {
+    final offTrack =
+        isDark ? const Color(0xFF5C5C5C) : const Color(0xFFB0B0B0);
+    final thumb = isDark ? const Color(0xFFF5F5F5) : Colors.white;
+    final thumbBorder =
+        isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE0E0E0);
+
+    return SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.disabled)) {
+          return thumb.withValues(alpha: 0.7);
+        }
+        return thumb;
+      }),
+      trackColor: WidgetStateProperty.resolveWith((states) {
+        final selected = states.contains(WidgetState.selected);
+        final disabled = states.contains(WidgetState.disabled);
+        final base = selected ? DesignTokens.accentOrange : offTrack;
+        return disabled ? base.withValues(alpha: 0.4) : base;
+      }),
+      trackOutlineColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return Colors.transparent;
+        }
+        return thumbBorder.withValues(alpha: 0.5);
+      }),
+      overlayColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.pressed)) {
+          return DesignTokens.accentOrange.withValues(alpha: 0.12);
+        }
+        return null;
+      }),
+    );
+  }
 }

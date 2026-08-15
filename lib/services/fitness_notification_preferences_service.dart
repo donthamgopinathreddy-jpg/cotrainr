@@ -1,6 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../repositories/profile_repository.dart';
+import 'water_reminder_service.dart';
 
 /// Fitness-focused notification categories (device + Supabase master push).
 class FitnessNotificationPreferences {
@@ -71,44 +72,73 @@ class FitnessNotificationPreferences {
   }
 }
 
-class FitnessNotificationPreferencesService {
-  static const _prefix = 'fitness_notif_';
+abstract class FitnessNotificationPreferencesStore {
+  Future<FitnessNotificationPreferences> load();
+  Future<void> save(FitnessNotificationPreferences prefs);
+}
 
+class FitnessNotificationPreferencesService
+    implements FitnessNotificationPreferencesStore {
+  FitnessNotificationPreferencesService({
+    ProfileRepository? profileRepository,
+    Future<void> Function()? applyWaterGate,
+  })  : _profileRepository = profileRepository ?? ProfileRepository(),
+        _applyWaterGate = applyWaterGate ??
+            (() => WaterReminderService.instance.applyPreferenceGate());
+
+  static const prefix = 'fitness_notif_';
+  static const allKey = '${prefix}all';
+  static const waterRemindersKey = '${prefix}water_reminders';
+
+  final ProfileRepository _profileRepository;
+  final Future<void> Function() _applyWaterGate;
+
+  /// Whether local water reminders may fire (master + water category).
+  static Future<bool> allowsWaterReminders() async {
+    final prefs = await SharedPreferences.getInstance();
+    final all = prefs.getBool(allKey) ?? true;
+    final water = prefs.getBool(waterRemindersKey) ?? true;
+    return all && water;
+  }
+
+  @override
   Future<FitnessNotificationPreferences> load() async {
     final prefs = await SharedPreferences.getInstance();
-    final repo = ProfileRepository();
-    final remote = await repo.fetchNotificationPreferences();
-    final all = remote['push'] ?? prefs.getBool('${_prefix}all') ?? true;
+    final remote = await _profileRepository.fetchNotificationPreferences();
+    final all = remote['push'] ?? prefs.getBool(allKey) ?? true;
 
     return FitnessNotificationPreferences(
       all: all,
-      trainerMessages: prefs.getBool('${_prefix}trainer_messages') ?? true,
+      trainerMessages: prefs.getBool('${prefix}trainer_messages') ?? true,
       nutritionistMessages:
-          prefs.getBool('${_prefix}nutritionist_messages') ?? true,
-      mealReminders: prefs.getBool('${_prefix}meal_reminders') ??
+          prefs.getBool('${prefix}nutritionist_messages') ?? true,
+      mealReminders: prefs.getBool('${prefix}meal_reminders') ??
           (remote['reminders'] ?? true),
-      waterReminders: prefs.getBool('${_prefix}water_reminders') ?? true,
-      workoutReminders: prefs.getBool('${_prefix}workout_reminders') ?? true,
-      goalProgress:
-          prefs.getBool('${_prefix}goal_progress') ?? (remote['achievements'] ?? true),
-      achievementAlerts: prefs.getBool('${_prefix}achievement_alerts') ??
+      waterReminders: prefs.getBool(waterRemindersKey) ?? true,
+      workoutReminders: prefs.getBool('${prefix}workout_reminders') ?? true,
+      goalProgress: prefs.getBool('${prefix}goal_progress') ??
+          (remote['achievements'] ?? true),
+      achievementAlerts: prefs.getBool('${prefix}achievement_alerts') ??
           (remote['achievements'] ?? true),
     );
   }
 
+  @override
   Future<void> save(FitnessNotificationPreferences prefs) async {
     final sp = await SharedPreferences.getInstance();
-    await sp.setBool('${_prefix}all', prefs.all);
-    await sp.setBool('${_prefix}trainer_messages', prefs.trainerMessages);
-    await sp.setBool('${_prefix}nutritionist_messages', prefs.nutritionistMessages);
-    await sp.setBool('${_prefix}meal_reminders', prefs.mealReminders);
-    await sp.setBool('${_prefix}water_reminders', prefs.waterReminders);
-    await sp.setBool('${_prefix}workout_reminders', prefs.workoutReminders);
-    await sp.setBool('${_prefix}goal_progress', prefs.goalProgress);
-    await sp.setBool('${_prefix}achievement_alerts', prefs.achievementAlerts);
+    await sp.setBool(allKey, prefs.all);
+    await sp.setBool('${prefix}trainer_messages', prefs.trainerMessages);
+    await sp.setBool(
+      '${prefix}nutritionist_messages',
+      prefs.nutritionistMessages,
+    );
+    await sp.setBool('${prefix}meal_reminders', prefs.mealReminders);
+    await sp.setBool(waterRemindersKey, prefs.waterReminders);
+    await sp.setBool('${prefix}workout_reminders', prefs.workoutReminders);
+    await sp.setBool('${prefix}goal_progress', prefs.goalProgress);
+    await sp.setBool('${prefix}achievement_alerts', prefs.achievementAlerts);
 
-    final repo = ProfileRepository();
-    await repo.updateNotificationPreferences(
+    await _profileRepository.updateNotificationPreferences(
       push: prefs.all,
       community: prefs.trainerMessages && prefs.nutritionistMessages,
       reminders: prefs.mealReminders &&
@@ -116,5 +146,7 @@ class FitnessNotificationPreferencesService {
           prefs.workoutReminders,
       achievements: prefs.goalProgress && prefs.achievementAlerts,
     );
+
+    await _applyWaterGate();
   }
 }

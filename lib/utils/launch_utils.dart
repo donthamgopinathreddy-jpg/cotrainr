@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class LaunchUtils {
@@ -14,11 +15,14 @@ class LaunchUtils {
     await _launch(context, uri);
   }
 
-  static Future<void> sendEmail(
+  /// Opens the device mail composer. Returns `true` only if launch succeeded.
+  /// Does not imply the email was sent or received.
+  static Future<bool> sendEmail(
     BuildContext context, {
     required String to,
     String? subject,
     String? body,
+    bool showFailureHelp = true,
   }) async {
     final uri = Uri(
       scheme: 'mailto',
@@ -28,39 +32,69 @@ class LaunchUtils {
         if (body != null && body.trim().isNotEmpty) 'body': body,
       },
     );
-    await _launch(context, uri);
+    final ok = await _launch(context, uri, showGenericFailure: false);
+    if (!ok && showFailureHelp && context.mounted) {
+      await showEmailLaunchFailure(context, email: to);
+    }
+    return ok;
   }
 
-  static Future<void> _launch(BuildContext context, Uri uri) async {
+  static Future<void> showEmailLaunchFailure(
+    BuildContext context, {
+    String email = supportEmail,
+  }) async {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          "Couldn't open your email app. Contact $email",
+        ),
+        action: SnackBarAction(
+          label: 'Copy email',
+          onPressed: () async {
+            await Clipboard.setData(ClipboardData(text: email));
+          },
+        ),
+        duration: const Duration(seconds: 6),
+      ),
+    );
+  }
+
+  static Future<bool> _launch(
+    BuildContext context,
+    Uri uri, {
+    bool showGenericFailure = true,
+  }) async {
     try {
       final canLaunch = await canLaunchUrl(uri);
       if (!canLaunch) {
-        if (context.mounted) {
+        if (showGenericFailure && context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Unable to open this link. Please try again.'),
             ),
           );
         }
-        return;
+        return false;
       }
       final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!ok && context.mounted) {
+      if (!ok && showGenericFailure && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Could not open link. Please try again.'),
           ),
         );
       }
-    } catch (e) {
-      if (context.mounted) {
+      return ok;
+    } catch (_) {
+      if (showGenericFailure && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('An error occurred. Please try again.'),
           ),
         );
       }
+      return false;
     }
   }
 }
-

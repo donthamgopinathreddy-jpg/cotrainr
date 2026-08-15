@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../repositories/metrics_repository.dart';
 import '../theme/design_tokens.dart';
+import 'fitness_notification_preferences_service.dart';
 import 'hydration_local_store.dart';
 import 'user_goals_service.dart';
 import 'water_notification_handler.dart';
@@ -155,7 +156,19 @@ class WaterReminderService {
 
   Future<bool> isEnabled() async {
     final minutes = await getIntervalMinutes();
-    return minutes > 0;
+    if (minutes <= 0) return false;
+    return FitnessNotificationPreferencesService.allowsWaterReminders();
+  }
+
+  /// Cancels or reschedules locals from Notifications prefs without clearing interval.
+  Future<void> applyPreferenceGate() async {
+    final allowed =
+        await FitnessNotificationPreferencesService.allowsWaterReminders();
+    if (!allowed) {
+      await cancelAll();
+      return;
+    }
+    await rescheduleIfEnabled();
   }
 
   Future<String> statusLabel() async {
@@ -230,11 +243,18 @@ class WaterReminderService {
       return true;
     }
 
+    await prefs.setInt(_prefsKeyMinutes, minutes);
+
+    final allowed =
+        await FitnessNotificationPreferencesService.allowsWaterReminders();
+    if (!allowed) {
+      return true;
+    }
+
     if (!await requestPermissionIfNeeded()) {
       return false;
     }
 
-    await prefs.setInt(_prefsKeyMinutes, minutes);
     await syncHydrationSnapshot();
     await _scheduleRepeating(minutes);
     return true;
@@ -248,6 +268,13 @@ class WaterReminderService {
   Future<void> rescheduleIfEnabled() async {
     final minutes = await getIntervalMinutes();
     if (minutes <= 0) return;
+
+    final allowed =
+        await FitnessNotificationPreferencesService.allowsWaterReminders();
+    if (!allowed) {
+      await cancelAll();
+      return;
+    }
 
     await ensureInitialized();
     await cancelAll();
@@ -357,7 +384,9 @@ class WaterReminderService {
         }
         if (addedMl != null) {
           final minutes = await getIntervalMinutes();
-          if (minutes > 0) {
+          final allowed = await FitnessNotificationPreferencesService
+              .allowsWaterReminders();
+          if (minutes > 0 && allowed) {
             await WaterNotificationPlatform.scheduleRepeating(minutes);
           }
         }

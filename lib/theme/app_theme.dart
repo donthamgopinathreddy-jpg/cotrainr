@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'account_hub_theme.dart';
 import 'design_tokens.dart';
 
 /// App Theme Configuration
@@ -196,6 +197,8 @@ class AppTheme {
         thickness: 1,
         space: 1,
       ),
+
+      switchTheme: AccountHubTheme.switchTheme(isDark: false),
     );
   }
 
@@ -386,6 +389,8 @@ class AppTheme {
         thickness: 1,
         space: 1,
       ),
+
+      switchTheme: AccountHubTheme.switchTheme(isDark: true),
     );
   }
 }

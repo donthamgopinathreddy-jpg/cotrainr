@@ -15,6 +15,7 @@ import '../../theme/design_tokens.dart';
 import '../../theme/text_styles.dart';
 import '../../widgets/common/pressable_card.dart';
 import '../../widgets/profile/account_hub_widgets.dart';
+import 'edit_profile_save_state.dart';
 
 class EditProfilePage extends ConsumerStatefulWidget {
   const EditProfilePage({super.key});
@@ -55,11 +56,101 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   bool _isInitializing = true;
   bool _emailVerified = false;
 
+  String _baselineFirstName = '';
+  String _baselineLastName = '';
+  String _baselineEmail = '';
+  String _baselinePhone = '';
+  String _baselineDob = '';
+  String _baselineGender = 'Male';
+  String _baselineHeight = '';
+  String _baselineHeightFeet = '';
+  String _baselineHeightInches = '';
+  String _baselineWeight = '';
+  String _baselineGoalWeight = '';
+  bool _baselineUseMetricHeight = true;
+  bool _baselineUseMetricWeight = true;
+
   @override
   void initState() {
     super.initState();
+    for (final c in [
+      _firstNameController,
+      _lastNameController,
+      _emailController,
+      _phoneController,
+      _dobController,
+      _heightController,
+      _heightFeetController,
+      _heightInchesController,
+      _weightController,
+      _goalWeightController,
+    ]) {
+      c.addListener(_onFormChanged);
+    }
     _loadProfileData();
   }
+
+  void _onFormChanged() {
+    if (!_isInitializing && mounted) setState(() {});
+  }
+
+  void _captureBaseline() {
+    _baselineFirstName = _firstNameController.text;
+    _baselineLastName = _lastNameController.text;
+    _baselineEmail = _emailController.text;
+    _baselinePhone = _phoneController.text;
+    _baselineDob = _dobController.text;
+    _baselineGender = _selectedGender;
+    _baselineHeight = _heightController.text;
+    _baselineHeightFeet = _heightFeetController.text;
+    _baselineHeightInches = _heightInchesController.text;
+    _baselineWeight = _weightController.text;
+    _baselineGoalWeight = _goalWeightController.text;
+    _baselineUseMetricHeight = _useMetricHeight;
+    _baselineUseMetricWeight = _useMetricWeight;
+  }
+
+  bool get _isDirty {
+    if (_isInitializing) return false;
+    return _firstNameController.text != _baselineFirstName ||
+        _lastNameController.text != _baselineLastName ||
+        _emailController.text != _baselineEmail ||
+        _phoneController.text != _baselinePhone ||
+        _dobController.text != _baselineDob ||
+        _selectedGender != _baselineGender ||
+        _heightController.text != _baselineHeight ||
+        _heightFeetController.text != _baselineHeightFeet ||
+        _heightInchesController.text != _baselineHeightInches ||
+        _weightController.text != _baselineWeight ||
+        _goalWeightController.text != _baselineGoalWeight ||
+        _useMetricHeight != _baselineUseMetricHeight ||
+        _useMetricWeight != _baselineUseMetricWeight;
+  }
+
+  String get _heightValidationRaw {
+    if (_useMetricHeight) return _heightController.text;
+    final feet = int.tryParse(_heightFeetController.text.trim()) ?? 0;
+    final inches = int.tryParse(_heightInchesController.text.trim()) ?? 0;
+    if (feet == 0 && inches == 0) return '';
+    return ((feet * 12) + inches).toString();
+  }
+
+  bool get _formLooksValid => editProfileFormLooksValid(
+        firstName: _firstNameController.text,
+        lastName: _lastNameController.text,
+        email: _emailController.text,
+        phone: _phoneController.text,
+        dob: _dobController.text,
+        heightRaw: _heightValidationRaw,
+        weightRaw: _weightController.text,
+        goalWeight: _goalWeightController.text,
+      );
+
+  bool get _canSave => editProfileCanSave(
+        dirty: _isDirty,
+        valid: _formLooksValid,
+        saving: _isLoading,
+      );
 
   Future<void> _loadProfileData({bool showLoading = true}) async {
     if (!mounted) return;
@@ -170,6 +261,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
 
         // Force UI rebuild after controller updates
         if (mounted) {
+          _captureBaseline();
           setState(() {});
         }
       }
@@ -433,6 +525,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
   }
 
   Future<void> _saveProfile() async {
+    if (!_canSave) return;
     if (!_formKey.currentState!.validate()) return;
     if (!mounted) return;
 
@@ -626,27 +719,10 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
           style: AppTextStyles.screenTitle(context),
         ),
         actions: [
-          TextButton(
-            onPressed: _isLoading ? null : _saveProfile,
-            child: _isLoading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : ShaderMask(
-                    shaderCallback: (bounds) => const LinearGradient(
-                      colors: [Color(0xFFFF8A00), Color(0xFFFFD93D)],
-                    ).createShader(bounds),
-                    child: Text(
-                      'Save',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
+          HubAppBarSaveAction(
+            enabled: _canSave,
+            saving: _isLoading,
+            onPressed: _saveProfile,
           ),
         ],
       ),
@@ -883,12 +959,14 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                   right: 16,
                   bottom: 16 + MediaQuery.paddingOf(context).bottom,
                   child: PressableCard(
-                    onTap: _isLoading ? null : _saveProfile,
+                    onTap: _canSave ? _saveProfile : null,
                     borderRadius: 16,
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       decoration: BoxDecoration(
-                        color: colorScheme.primary,
+                        color: _canSave
+                            ? DesignTokens.accentOrange
+                            : colorScheme.onSurface.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: Center(
@@ -901,12 +979,15 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
                                   color: Colors.white,
                                 ),
                               )
-                            : const Text(
+                            : Text(
                                 'Save Changes',
                                 style: TextStyle(
                                   fontSize: 15,
                                   fontWeight: FontWeight.w700,
-                                  color: Colors.white,
+                                  color: _canSave
+                                      ? Colors.white
+                                      : colorScheme.onSurface
+                                          .withValues(alpha: 0.45),
                                 ),
                               ),
                       ),

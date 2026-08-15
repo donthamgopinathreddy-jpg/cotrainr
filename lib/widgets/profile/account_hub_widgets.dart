@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../theme/account_hub_theme.dart';
+import '../../theme/design_tokens.dart';
 import '../common/pressable_card.dart';
 
 class HubSectionCard extends StatelessWidget {
@@ -280,6 +281,56 @@ class HubToggleRow extends StatelessWidget {
           subtitle: subtitle != null
               ? Text(subtitle!, style: AccountHubTheme.rowSubtitle(context))
               : null,
+        ),
+      ),
+    );
+  }
+}
+
+/// Top-right Save action: muted when inactive, Cotrainr orange when enabled.
+class HubAppBarSaveAction extends StatelessWidget {
+  final bool enabled;
+  final bool saving;
+  final VoidCallback? onPressed;
+  final String label;
+
+  const HubAppBarSaveAction({
+    super.key,
+    required this.enabled,
+    this.saving = false,
+    this.onPressed,
+    this.label = 'Save',
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.35);
+    final active = DesignTokens.accentOrange;
+
+    if (saving) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Center(
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: active,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return TextButton(
+      onPressed: enabled ? onPressed : null,
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+          color: enabled ? active : muted,
         ),
       ),
     );

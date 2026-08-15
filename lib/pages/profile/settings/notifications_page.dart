@@ -2,61 +2,101 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../services/fitness_notification_preferences_service.dart';
+import '../../../services/os_notification_permission_status.dart';
 import '../../../theme/account_hub_theme.dart';
+import '../../../theme/design_tokens.dart';
 import '../../../widgets/profile/account_hub_widgets.dart';
 
 class NotificationsPage extends StatefulWidget {
-  const NotificationsPage({super.key});
+  const NotificationsPage({
+    super.key,
+    this.preferencesService,
+    this.osPermissionGateway,
+  });
+
+  final FitnessNotificationPreferencesStore? preferencesService;
+  final OsNotificationPermissionGateway? osPermissionGateway;
 
   @override
   State<NotificationsPage> createState() => _NotificationsPageState();
 }
 
-class _NotificationsPageState extends State<NotificationsPage> {
-  final _service = FitnessNotificationPreferencesService();
+class _NotificationsPageState extends State<NotificationsPage>
+    with WidgetsBindingObserver {
+  late final FitnessNotificationPreferencesStore _service;
+  late final OsNotificationPermissionGateway _osPermission;
   FitnessNotificationPreferences _prefs = const FitnessNotificationPreferences();
   bool _loading = true;
   bool _saving = false;
+  OsNotificationAccessLabel _osLabel = OsNotificationAccessLabel.notDetermined;
 
   @override
   void initState() {
     super.initState();
+    _service =
+        widget.preferencesService ?? FitnessNotificationPreferencesService();
+    _osPermission =
+        widget.osPermissionGateway ?? const OsNotificationPermissionGateway();
+    WidgetsBinding.instance.addObserver(this);
     _load();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _refreshOsPermission();
+    }
   }
 
   Future<void> _load() async {
     final prefs = await _service.load();
-    if (mounted) {
-      setState(() {
-        _prefs = prefs;
-        _loading = false;
-      });
-    }
+    final osLabel = await _osPermission.readLabel();
+    if (!mounted) return;
+    setState(() {
+      _prefs = prefs;
+      _osLabel = osLabel;
+      _loading = false;
+    });
   }
 
-  Future<void> _save() async {
-    setState(() => _saving = true);
+  Future<void> _refreshOsPermission() async {
+    final osLabel = await _osPermission.readLabel();
+    if (!mounted) return;
+    setState(() => _osLabel = osLabel);
+  }
+
+  Future<void> _persist(FitnessNotificationPreferences next) async {
+    if (_saving) return;
+    final previous = _prefs;
+    setState(() {
+      _prefs = next;
+      _saving = true;
+    });
     HapticFeedback.lightImpact();
     try {
-      await _service.save(_prefs);
-      if (mounted) {
-        showHubSnackBar(context, 'Notification preferences saved');
-        Navigator.pop(context);
-      }
-    } catch (e) {
-      if (mounted) showHubSnackBar(context, 'Could not save preferences');
+      await _service.save(next);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _prefs = previous);
+      showHubSnackBar(context, 'Could not save preferences');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
 
-  void _setAll(bool v) => setState(() => _prefs = _prefs.copyWith(all: v));
-
   @override
   Widget build(BuildContext context) {
     final bg = AccountHubTheme.pageBg(context);
-    final cs = Theme.of(context).colorScheme;
-    final dependentsEnabled = _prefs.all;
+    final dependentsEnabled = _prefs.all && !_saving;
+    final osDenied = _osLabel == OsNotificationAccessLabel.denied ||
+        _osLabel == OsNotificationAccessLabel.permanentlyDenied ||
+        _osLabel == OsNotificationAccessLabel.restricted;
 
     return Scaffold(
       backgroundColor: bg,
@@ -64,21 +104,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
         backgroundColor: bg,
         elevation: 0,
         title: const Text('Notifications'),
-        actions: [
-          TextButton(
-            onPressed: _saving || _loading ? null : _save,
-            child: _saving
-                ? SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: cs.primary,
-                    ),
-                  )
-                : const Text('Save'),
-          ),
-        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -86,89 +111,60 @@ class _NotificationsPageState extends State<NotificationsPage> {
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
               children: [
                 HubSectionCard(
-                  title: 'Push notifications',
+                  title: 'Device permission',
                   animationDelayMs: 0,
-                  child: Column(
-                    children: [
-                      HubToggleRow(
-                        title: 'All notifications',
-                        subtitle: 'Master switch for push notifications.',
-                        value: _prefs.all,
-                        onChanged: _setAll,
-                      ),
-                      const Divider(height: 1),
-                      HubToggleRow(
-                        title: 'Trainer messages',
-                        subtitle: 'Messages from your coach.',
-                        value: _prefs.trainerMessages,
-                        enabled: dependentsEnabled,
-                        onChanged: (v) => setState(
-                          () => _prefs = _prefs.copyWith(trainerMessages: v),
+                  child: HubActionRow(
+                    icon: Icons.notifications_outlined,
+                    title: 'System notifications',
+                    subtitle:
+                        '${osNotificationAccessLabelText(_osLabel)} · Controlled by your device settings',
+                    trailing: TextButton(
+                      onPressed: () async {
+                        HapticFeedback.lightImpact();
+                        await _osPermission.manage();
+                        await _refreshOsPermission();
+                      },
+                      child: Text(
+                        'Manage',
+                        style: TextStyle(
+                          color: DesignTokens.accentOrange,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
-                      const Divider(height: 1),
-                      HubToggleRow(
-                        title: 'Nutritionist messages',
-                        subtitle: 'Meal and nutrition guidance.',
-                        value: _prefs.nutritionistMessages,
-                        enabled: dependentsEnabled,
-                        onChanged: (v) => setState(
-                          () =>
-                              _prefs = _prefs.copyWith(nutritionistMessages: v),
-                        ),
-                      ),
-                      const Divider(height: 1),
-                      HubToggleRow(
-                        title: 'Meal reminders',
-                        subtitle: 'Reminders to log meals.',
-                        value: _prefs.mealReminders,
-                        enabled: dependentsEnabled,
-                        onChanged: (v) => setState(
-                          () => _prefs = _prefs.copyWith(mealReminders: v),
-                        ),
-                      ),
-                      const Divider(height: 1),
-                      HubToggleRow(
-                        title: 'Water reminders',
-                        subtitle: 'Hydration reminders.',
-                        value: _prefs.waterReminders,
-                        enabled: dependentsEnabled,
-                        onChanged: (v) => setState(
-                          () => _prefs = _prefs.copyWith(waterReminders: v),
-                        ),
-                      ),
-                      const Divider(height: 1),
-                      HubToggleRow(
-                        title: 'Workout reminders',
-                        subtitle: 'Scheduled workout reminders.',
-                        value: _prefs.workoutReminders,
-                        enabled: dependentsEnabled,
-                        onChanged: (v) => setState(
-                          () => _prefs = _prefs.copyWith(workoutReminders: v),
-                        ),
-                      ),
-                      const Divider(height: 1),
-                      HubToggleRow(
-                        title: 'Goal progress',
-                        subtitle:
-                            'Weight, BMI, steps, and nutrition progress.',
-                        value: _prefs.goalProgress,
-                        enabled: dependentsEnabled,
-                        onChanged: (v) => setState(
-                          () => _prefs = _prefs.copyWith(goalProgress: v),
-                        ),
-                      ),
-                      const Divider(height: 1),
-                      HubToggleRow(
-                        title: 'Achievement alerts',
-                        subtitle: 'Streaks and milestones.',
-                        value: _prefs.achievementAlerts,
-                        enabled: dependentsEnabled,
-                        onChanged: (v) => setState(
-                          () => _prefs = _prefs.copyWith(achievementAlerts: v),
-                        ),
-                      ),
-                    ],
+                    ),
+                    showChevron: false,
+                  ),
+                ),
+                if (osDenied) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'App switches cannot override system notification permission while it is denied.',
+                    style: AccountHubTheme.rowSubtitle(context),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                HubSectionCard(
+                  title: 'Push notifications',
+                  animationDelayMs: 40,
+                  child: HubToggleRow(
+                    title: 'All notifications',
+                    subtitle: 'Master switch for notifications',
+                    value: _prefs.all,
+                    enabled: !_saving,
+                    onChanged: (v) => _persist(_prefs.copyWith(all: v)),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                HubSectionCard(
+                  title: 'Reminders',
+                  animationDelayMs: 80,
+                  child: HubToggleRow(
+                    title: 'Water reminders',
+                    subtitle: 'Hydration reminders',
+                    value: _prefs.waterReminders,
+                    enabled: dependentsEnabled,
+                    onChanged: (v) =>
+                        _persist(_prefs.copyWith(waterReminders: v)),
                   ),
                 ),
               ],
