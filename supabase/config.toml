@@ -5,3 +5,8 @@
 [functions.login-with-identifier]
 # Unauthenticated entrypoint — password login before a session exists.
 verify_jwt = false
+
+[functions.google-oauth-callback]
+# Google redirects the browser here without a Supabase Authorization header.
+# Auth is enforced inside the function via OAuth state + PKCE (not gateway JWT).
+verify_jwt = false

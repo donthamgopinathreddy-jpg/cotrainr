@@ -1,17 +1,20 @@
 import 'dart:async';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/auth/auth_deep_link.dart';
 import '../core/startup/startup_router_bridge.dart';
 import '../router/app_router.dart';
 import '../services/pending_referral_service.dart';
 
-/// Handles app deep links (invite, Zoom, water, auth callback, password reset).
+/// Handles app deep links (invite, Google Meet OAuth return, water, auth, reset).
+///
+/// Lives *above* [MaterialApp.router], so navigation must use [appRouter]
+/// (not `context.go`) — otherwise GoRouter is missing from this context.
 ///
 /// - [AuthDeepLink.callback] → session → `/auth/continue`
 /// - [AuthDeepLink.resetPassword] → recovery session → `/auth/reset-password`
+/// - `cotrainr://video/google-connected` → OAuth event → `/video?google-connected=1`
 class AppLinkHandler extends StatefulWidget {
   const AppLinkHandler({super.key, required this.child});
 
@@ -38,13 +41,37 @@ class _AppLinkHandlerState extends State<AppLinkHandler> {
     return uri.host == 'video' && uri.path.startsWith('/zoom-connected');
   }
 
+  bool _isVideoGoogleConnectedUri(Uri uri) {
+    if (uri.scheme != 'cotrainr') return false;
+    if (uri.host == 'video') {
+      return uri.path == '/google-connected' ||
+          uri.path.startsWith('/google-connected');
+    }
+    // Defensive: some platforms flatten host into path.
+    return uri.path == '/video/google-connected' ||
+        uri.path.startsWith('/video/google-connected');
+  }
+
   String? _extractCode(Uri uri) {
     final code = uri.queryParameters['code'];
     return (code != null && code.trim().isNotEmpty) ? code.trim() : null;
   }
 
+  /// Maps OAuth return URI → in-app Video Sessions route (never /video/google-connected).
+  String _googleConnectedAppRoute(Uri uri) {
+    final error = uri.queryParameters['error'];
+    if (error != null && error.isNotEmpty) {
+      return '/video?google-connected=1&google_error=${Uri.encodeComponent(error)}';
+    }
+    // success=1 (or bare path) → refresh status on Video Sessions.
+    return '/video?google-connected=1';
+  }
+
   void _handleUri(Uri? uri) {
     if (uri == null) return;
+    debugPrint(
+      '[AppLinkHandler] uri scheme=${uri.scheme} host=${uri.host} path=${uri.path}',
+    );
     if (AuthDeepLink.isResetPasswordUri(uri)) {
       unawaited(_continueAfterPasswordRecovery(uri));
       return;
@@ -54,32 +81,34 @@ class _AppLinkHandlerState extends State<AppLinkHandler> {
       return;
     }
     if (_isVideoZoomConnectedUri(uri)) {
-      if (!mounted) return;
-      final error = uri.queryParameters['error'];
-      final target = error != null && error.isNotEmpty
-          ? '/video?zoom-connected=1&zoom_error=${Uri.encodeComponent(error)}'
-          : '/video?zoom-connected=1';
-      context.go(target);
+      // Zoom OAuth retired from MVP — ignore callback noise; stay on video list.
+      appRouter.go('/video');
+      return;
+    }
+    if (_isVideoGoogleConnectedUri(uri)) {
+      final target = _googleConnectedAppRoute(uri);
+      debugPrint('[AppLinkHandler] google oauth complete → $target');
+      // Survive splash / cold-start races before Video Sessions paints.
+      StartupRouterBridge.setPendingDeepLinkRoute(target);
+      appRouter.go(target);
       return;
     }
     if (_isWaterInsightsUri(uri)) {
-      if (!mounted) return;
       final isLoggedIn = Supabase.instance.client.auth.currentSession != null;
       if (!isLoggedIn) {
-        context.go('/welcome');
+        appRouter.go('/welcome');
         return;
       }
-      context.go('/insights/water');
+      appRouter.go('/insights/water');
       return;
     }
     if (!_isInviteUri(uri)) return;
     final code = _extractCode(uri);
     if (code == null) return;
-    if (!mounted) return;
     PendingReferralService.setPendingCode(code);
     final isLoggedIn = Supabase.instance.client.auth.currentSession != null;
     if (!isLoggedIn) {
-      context.go('/auth/create-account?code=${Uri.encodeComponent(code)}');
+      appRouter.go('/auth/create-account?code=${Uri.encodeComponent(code)}');
     }
   }
 

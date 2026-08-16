@@ -111,6 +111,34 @@ final GoRouter appRouter = GoRouter(
     }
 
     final path = state.uri.path;
+    // OAuth custom-scheme returns must never become an unmatched Flutter route
+    // (that produced the post-consent black screen). Treat as completion event.
+    if (path == '/video/google-connected' ||
+        path == '/google-connected' ||
+        path.startsWith('/video/google-connected') ||
+        path == '/video/session/google-connected' ||
+        path.startsWith('/video/session/google-connected')) {
+      final err = state.uri.queryParameters['error'] ??
+          state.uri.queryParameters['google_error'];
+      if (err != null && err.isNotEmpty) {
+        return '/video?google-connected=1&google_error=${Uri.encodeComponent(err)}';
+      }
+      return '/video?google-connected=1';
+    }
+    if (path == '/video/zoom-connected' ||
+        path.startsWith('/video/zoom-connected')) {
+      return '/video';
+    }
+    // Reject non-UUID session detail ids (e.g. OAuth path fragments).
+    final sessionMatch =
+        RegExp(r'^/video/session/([^/]+)$').firstMatch(path);
+    if (sessionMatch != null) {
+      final id = sessionMatch.group(1) ?? '';
+      final isUuid = RegExp(
+        r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+      ).hasMatch(id);
+      if (!isUuid) return '/video';
+    }
     if (path == '/video/create') {
       final clientId = state.uri.queryParameters['clientId'];
       return clientId != null

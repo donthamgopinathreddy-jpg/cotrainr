@@ -40,7 +40,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleTop"
+            android:launchMode="singleTask"
             android:taskAffinity=""
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
@@ -54,6 +54,11 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+            <!-- app_links owns custom-scheme OAuth returns; prevent GoRouter from
+                 treating cotrainr://video/google-connected as an unknown route. -->
+            <meta-data
+              android:name="flutter_deeplinking_enabled"
+              android:value="false" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
@@ -72,12 +77,21 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="cotrainr" android:host="invite" android:pathPrefix="/" />
             </intent-filter>
-            <!-- Deep link: cotrainr://video/zoom-connected (Zoom OAuth callback) -->
+            <!-- Deep link: cotrainr://video/zoom-connected (legacy Zoom; ignored) -->
+            <!-- Deep link: cotrainr://video/google-connected?success=1 (Google Meet OAuth) -->
+            <!-- Query params are ignored by path matching; pathPrefix covers exact path. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="cotrainr" android:host="video" android:pathPrefix="/zoom-connected" />
+                <data
+                    android:scheme="cotrainr"
+                    android:host="video"
+                    android:pathPrefix="/google-connected" />
+                <data
+                    android:scheme="cotrainr"
+                    android:host="video"
+                    android:pathPrefix="/zoom-connected" />
             </intent-filter>
             <!-- Auth OAuth callback: cotrainr://auth-callback -->
             <intent-filter>

@@ -158,6 +158,11 @@ class _CotrainrSplashScreenState extends State<CotrainrSplashScreen>
       // Password recovery must never be treated as a normal signed-in continue.
       if (pending == '/auth/reset-password') {
         next = '/auth/reset-password';
+      } else if (pending != null &&
+          pending.startsWith('/video') &&
+          session != null) {
+        // Google Meet OAuth return (cold start) → Video Sessions, not /auth/continue.
+        next = pending;
       } else if (session != null) {
         next = '/auth/continue';
       } else {

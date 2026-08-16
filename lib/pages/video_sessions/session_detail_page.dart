@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+
 import '../../repositories/video_sessions_repository.dart';
-import '../../theme/app_colors.dart';
+import '../../theme/account_hub_theme.dart';
 import '../../theme/design_tokens.dart';
+import '../../utils/meeting_link_rules.dart';
+import '../../widgets/profile/account_hub_widgets.dart';
 
 class SessionDetailPage extends StatefulWidget {
   final String sessionId;
@@ -21,6 +25,8 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
   VideoSession? _session;
   bool _loading = true;
   bool _cancelling = false;
+  bool _saving = false;
+  String? _error;
 
   @override
   void initState() {
@@ -29,232 +35,513 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    if (!isVideoSessionUuid(widget.sessionId)) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'Session not found';
+      });
+      return;
+    }
     try {
       final session = await _repo.getSession(widget.sessionId);
-      if (mounted) {
-        setState(() {
-          _session = session;
-          _loading = false;
-        });
-      }
+      if (!mounted) return;
+      setState(() {
+        _session = session;
+        _loading = false;
+        if (session == null) _error = 'Session not found';
+      });
     } catch (e) {
-      if (mounted) {
-        setState(() => _loading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load: $e')),
-        );
+      if (!mounted) return;
+      var message = 'Could not load session';
+      if (e is PostgrestException) {
+        message = 'Could not load session (${e.code ?? 'error'}): ${e.message}';
       }
+      setState(() {
+        _loading = false;
+        _error = message;
+      });
     }
   }
 
   Future<void> _join() async {
-    if (_session == null) return;
+    final session = _session;
+    if (session == null || !session.canJoin) return;
+    final uri = Uri.tryParse(session.joinUrl);
+    if (uri == null) {
+      showHubSnackBar(context, 'Invalid meeting link');
+      return;
+    }
     try {
-      final uri = Uri.parse(_session!.joinUrl);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Opening Zoom... Return here when done')),
-          );
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not open link')),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed: $e')),
-        );
-      }
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      if (mounted) showHubSnackBar(context, 'Could not open meeting link');
     }
   }
 
-  Future<void> _copyInvite() async {
-    if (_session == null) return;
-    await Clipboard.setData(ClipboardData(text: _session!.joinUrl));
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Invite link copied')),
-      );
-    }
+  Future<void> _copyLink() async {
+    final session = _session;
+    if (session == null) return;
+    await Clipboard.setData(ClipboardData(text: session.joinUrl));
+    if (mounted) showHubSnackBar(context, 'Meeting link copied');
   }
 
   Future<void> _cancel() async {
-    if (_session == null) return;
+    final session = _session;
+    if (session == null || _cancelling) return;
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Cancel session?'),
-        content: const Text('Participants will no longer be able to join.'),
+        title: const Text('Cancel this session?'),
+        content: const Text(
+          'The Member will no longer be able to join from Cotrainr. '
+          'The external meeting link is not deleted automatically.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('No'),
+            child: const Text('Keep Session'),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Yes, cancel'),
+            child: Text(
+              'Cancel Session',
+              style: TextStyle(
+                color: AccountHubTheme.dangerRed,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
         ],
       ),
     );
-    if (confirm != true) return;
+    if (confirm != true || !mounted) return;
 
     setState(() => _cancelling = true);
+    HapticFeedback.lightImpact();
     try {
       await _repo.cancelSession(widget.sessionId);
+      if (!mounted) return;
+      showHubSnackBar(context, 'Session cancelled');
+      context.pop();
+    } catch (_) {
       if (mounted) {
-        context.pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Session cancelled')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed: $e')),
-        );
+        showHubSnackBar(context, 'Could not cancel session');
       }
     } finally {
       if (mounted) setState(() => _cancelling = false);
     }
   }
 
+  Future<void> _edit() async {
+    final session = _session;
+    if (session == null || !session.isScheduled || _saving) return;
+
+    final titleCtrl = TextEditingController(text: session.title);
+    final notesCtrl = TextEditingController(text: session.description ?? '');
+    DateTime date = session.scheduledStart;
+    TimeOfDay time = TimeOfDay.fromDateTime(session.scheduledStart);
+    var duration = session.durationMinutes;
+
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setModal) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom,
+              ),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                decoration: BoxDecoration(
+                  color: AccountHubTheme.cardBg(ctx),
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(24)),
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'Edit Session',
+                        style: AccountHubTheme.rowTitle(ctx).copyWith(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        session.isGoogleMeet
+                            ? 'Google Meet link stays the same when you reschedule.'
+                            : 'Update session details.',
+                        style: AccountHubTheme.rowSubtitle(ctx),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: titleCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Title',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () async {
+                                final picked = await showDatePicker(
+                                  context: ctx,
+                                  initialDate: date,
+                                  firstDate: DateTime.now(),
+                                  lastDate: DateTime.now()
+                                      .add(const Duration(days: 365)),
+                                );
+                                if (picked != null) {
+                                  setModal(() => date = picked);
+                                }
+                              },
+                              child: Text(DateFormat('d MMM yyyy').format(date)),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () async {
+                                final picked = await showTimePicker(
+                                  context: ctx,
+                                  initialTime: time,
+                                );
+                                if (picked != null) {
+                                  setModal(() => time = picked);
+                                }
+                              },
+                              child: Text(time.format(ctx)),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        children: [30, 45, 60].map((m) {
+                          return ChoiceChip(
+                            label: Text('$m min'),
+                            selected: duration == m,
+                            onSelected: (_) => setModal(() => duration = m),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: notesCtrl,
+                        maxLines: 2,
+                        decoration: const InputDecoration(
+                          labelText: 'Notes',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      ElevatedButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: DesignTokens.accentOrange,
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Text('Save changes'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (saved != true || !mounted) {
+      titleCtrl.dispose();
+      notesCtrl.dispose();
+      return;
+    }
+
+    final scheduled = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      time.hour,
+      time.minute,
+    );
+
+    setState(() => _saving = true);
+    try {
+      final updated = await _repo.updateSession(
+        sessionId: session.id,
+        title: titleCtrl.text.trim(),
+        scheduledStart: scheduled,
+        durationMinutes: duration,
+        description: notesCtrl.text.trim(),
+        preserveJoinUrl: true,
+      );
+      if (!mounted) return;
+      setState(() => _session = updated.copyWith(
+            counterpartyName: session.counterpartyName,
+          ));
+      showHubSnackBar(context, 'Session updated');
+    } catch (_) {
+      if (mounted) showHubSnackBar(context, 'Could not update session');
+    } finally {
+      titleCtrl.dispose();
+      notesCtrl.dispose();
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final bg = AccountHubTheme.pageBg(context);
     final cs = Theme.of(context).colorScheme;
-    final currentUserId = Supabase.instance.client.auth.currentUser?.id;
-    final isHost = _session != null && _session!.hostId == currentUserId;
+    final me = Supabase.instance.client.auth.currentUser?.id;
+    final session = _session;
+    final isHost = session != null && session.hostId == me;
+    final providerLabel = session?.meetingProviderLabel;
 
     return Scaffold(
+      backgroundColor: bg,
       appBar: AppBar(
-        title: const Text('Session', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+        backgroundColor: bg,
+        elevation: 0,
+        title: const Text(
+          'Session',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+        ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => context.pop(),
         ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.purple))
-          : _session == null
-              ? const Center(child: Text('Session not found'))
-              : SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: cs.surface,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: DesignTokens.cardShadowOf(context),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _session!.title,
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w800,
+          ? const Center(
+              child: CircularProgressIndicator(
+                color: DesignTokens.accentOrange,
+              ),
+            )
+          : session == null
+              ? Center(
+                  child: Text(
+                    _error ?? 'Session not found',
+                    style: AccountHubTheme.rowSubtitle(context),
+                  ),
+                )
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                  children: [
+                    HubSectionCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  session.title,
+                                  style: AccountHubTheme.rowTitle(context)
+                                      .copyWith(fontSize: 20),
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                const Icon(Icons.calendar_today_rounded, size: 18, color: AppColors.textSecondary),
-                                const SizedBox(width: 8),
-                                Text(
-                                  _formatDateTime(_session!.scheduledStart),
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: AppColors.textSecondaryOf(context),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                const Icon(Icons.timer_outlined, size: 18, color: AppColors.textSecondary),
-                                const SizedBox(width: 8),
-                                Text(
-                                  '${_session!.durationMinutes} min • Up to ${_session!.maxParticipants} participants',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: AppColors.textSecondaryOf(context),
-                                  ),
-                                ),
-                              ],
+                              _StatusChip(session: session),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          _MetaRow(
+                            icon: Icons.person_outline_rounded,
+                            text: isHost
+                                ? 'with ${session.counterpartyName ?? 'Member'}'
+                                : 'with ${session.counterpartyName ?? 'Provider'}',
+                          ),
+                          const SizedBox(height: 8),
+                          _MetaRow(
+                            icon: Icons.calendar_today_rounded,
+                            text: DateFormat('EEEE, d MMM yyyy · h:mm a')
+                                .format(session.scheduledStart.toLocal()),
+                          ),
+                          const SizedBox(height: 8),
+                          _MetaRow(
+                            icon: Icons.timer_outlined,
+                            text: '${session.durationMinutes} minutes',
+                          ),
+                          if (providerLabel != null) ...[
+                            const SizedBox(height: 8),
+                            _MetaRow(
+                              icon: Icons.videocam_outlined,
+                              text: providerLabel,
                             ),
                           ],
-                        ),
+                          if (session.description != null &&
+                              session.description!.trim().isNotEmpty) ...[
+                            const SizedBox(height: 14),
+                            Text('Notes', style: AccountHubTheme.sectionTitle(context)),
+                            const SizedBox(height: 4),
+                            Text(
+                              session.description!,
+                              style: AccountHubTheme.rowSubtitle(context)
+                                  .copyWith(
+                                color: cs.onSurface.withValues(alpha: 0.8),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
-                      const SizedBox(height: 24),
+                    ),
+                    const SizedBox(height: 16),
+                    if (session.canJoin)
                       SizedBox(
-                        width: double.infinity,
+                        height: 52,
                         child: ElevatedButton.icon(
-                          onPressed: _session!.isCancelled ? null : _join,
-                          icon: const Icon(Icons.videocam_rounded, size: 22),
+                          onPressed: _join,
+                          icon: const Icon(Icons.videocam_rounded),
                           label: const Text('Join Session'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.purple,
+                            backgroundColor: DesignTokens.accentOrange,
                             foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          onPressed: _copyInvite,
-                          icon: const Icon(Icons.copy_rounded, size: 20),
-                          label: const Text('Copy Invite Link'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: AppColors.purple,
-                            side: const BorderSide(color: AppColors.purple),
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          ),
-                        ),
-                      ),
-                      if (isHost && _session!.isScheduled) ...[
-                        const SizedBox(height: 24),
-                        SizedBox(
-                          width: double.infinity,
-                          child: TextButton.icon(
-                            onPressed: _cancelling ? null : _cancel,
-                            icon: _cancelling
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  )
-                                : const Icon(Icons.cancel_outlined, size: 20),
-                            label: const Text('Cancel Session'),
-                            style: TextButton.styleFrom(
-                              foregroundColor: AppColors.red,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
                             ),
+                          ),
+                        ),
+                      )
+                    else
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Text(
+                          _joinDisabledReason(session),
+                          style: AccountHubTheme.rowSubtitle(context),
+                        ),
+                      ),
+                    if (isHost) ...[
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: _copyLink,
+                        icon: const Icon(Icons.copy_rounded, size: 18),
+                        label: const Text('Copy meeting link'),
+                      ),
+                      if (session.isScheduled) ...[
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(
+                          onPressed: _saving ? null : _edit,
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                          label: Text(_saving ? 'Saving…' : 'Edit session'),
+                        ),
+                        const SizedBox(height: 8),
+                        TextButton.icon(
+                          onPressed: _cancelling ? null : _cancel,
+                          icon: _cancelling
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.cancel_outlined),
+                          label: const Text('Cancel Session'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: AccountHubTheme.dangerRed,
                           ),
                         ),
                       ],
                     ],
-                  ),
+                  ],
                 ),
     );
   }
 
-  String _formatDateTime(DateTime dt) {
-    final timeStr = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-    return '${dt.day}/${dt.month}/${dt.year} at $timeStr';
+  String _joinDisabledReason(VideoSession session) {
+    if (session.isCancelled) {
+      return 'This session was cancelled.';
+    }
+    final eligibility = VideoSessionJoinRules.evaluate(
+      status: session.status,
+      scheduledStart: session.scheduledStart,
+      durationMinutes: session.durationMinutes,
+      joinUrl: session.joinUrl,
+    );
+    switch (eligibility) {
+      case VideoSessionJoinEligibility.missingLink:
+      case VideoSessionJoinEligibility.invalidLink:
+        return 'No valid meeting link is available.';
+      case VideoSessionJoinEligibility.past:
+        return 'This session is in the past.';
+      case VideoSessionJoinEligibility.cancelled:
+        return 'This session was cancelled.';
+      case VideoSessionJoinEligibility.joinable:
+        return 'Join is unavailable.';
+    }
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  final VideoSession session;
+  const _StatusChip({required this.session});
+
+  @override
+  Widget build(BuildContext context) {
+    final label = session.isCancelled
+        ? 'Cancelled'
+        : session.isPast
+            ? 'Past'
+            : 'Upcoming';
+    final color = session.isCancelled
+        ? AccountHubTheme.dangerRed
+        : session.isPast
+            ? const Color(0xFF9CA3AF)
+            : DesignTokens.accentOrange;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
+      ),
+    );
+  }
+}
+
+class _MetaRow extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  const _MetaRow({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.45)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(text, style: AccountHubTheme.rowSubtitle(context)),
+        ),
+      ],
+    );
   }
 }
