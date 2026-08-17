@@ -18,6 +18,7 @@ import '../trainer/trainer_my_clients_page.dart';
 import '../nutritionist/nutritionist_my_clients_page.dart';
 import '../../providers/unread_messages_count_provider.dart';
 import '../../providers/unread_notifications_count_provider.dart';
+import '../../providers/unread_video_session_notifications_provider.dart';
 
 class HomeShellPage extends ConsumerStatefulWidget {
   final bool showWelcome;
@@ -197,7 +198,10 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
           schema: 'public',
           table: 'notifications',
           callback: (_) {
-            if (mounted) ref.invalidate(unreadNotificationsCountProvider);
+            if (mounted) {
+              ref.invalidate(unreadNotificationsCountProvider);
+              ref.invalidate(unreadVideoSessionNotificationsProvider);
+            }
           },
         )
         .onPostgresChanges(
@@ -205,7 +209,10 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
           schema: 'public',
           table: 'notifications',
           callback: (_) {
-            if (mounted) ref.invalidate(unreadNotificationsCountProvider);
+            if (mounted) {
+              ref.invalidate(unreadNotificationsCountProvider);
+              ref.invalidate(unreadVideoSessionNotificationsProvider);
+            }
           },
         )
         .subscribe();
@@ -216,6 +223,7 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
     if (state == AppLifecycleState.resumed && mounted) {
       ref.invalidate(unreadMessagesCountProvider);
       ref.invalidate(unreadNotificationsCountProvider);
+      ref.invalidate(unreadVideoSessionNotificationsProvider);
     }
   }
 

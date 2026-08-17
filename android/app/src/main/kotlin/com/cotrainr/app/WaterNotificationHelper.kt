@@ -1,4 +1,4 @@
-package com.example.cotrainr
+package com.cotrainr.app
 
 import android.app.AlarmManager
 import android.app.NotificationChannel
@@ -12,7 +12,6 @@ import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import com.example.cotrainr.R
 
 object WaterNotificationHelper {
     /** Versioned channel — old `water_reminders` settings cannot be changed in-place. */
@@ -27,7 +26,7 @@ object WaterNotificationHelper {
     const val ACTION_ADD_250 = "water_add_250"
     const val ACTION_ADD_500 = "water_add_500"
 
-    private const val ACTION_ALARM = "com.example.cotrainr.WATER_REMINDER_ALARM"
+    private const val ACTION_ALARM = "com.cotrainr.app.WATER_REMINDER_ALARM"
     private const val ACTION_BROADCAST_TAPPED =
         "com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver.ACTION_TAPPED"
 

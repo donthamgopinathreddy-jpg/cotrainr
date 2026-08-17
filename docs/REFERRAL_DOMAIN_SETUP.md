@@ -9,7 +9,7 @@ Host these files at `https://www.cotrainr.com/.well-known/` for App Links (Andro
 **Template:** See `.well-known/assetlinks.json`
 
 **Replace:**
-- `package_name` → `com.example.cotrainr_flutter` (from `android/app/build.gradle.kts` applicationId)
+- `package_name` → `com.cotrainr.app` (from `android/app/build.gradle.kts` applicationId)
 - `sha256_cert_fingerprints` → Array of SHA-256 fingerprints:
   - **Debug:** `keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android` (Windows: `%USERPROFILE%\.android\debug.keystore`)
   - **Release:** From your release keystore or Google Play App Signing (Play Console → Setup → App signing)

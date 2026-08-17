@@ -1,90 +1,148 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../router/app_router.dart';
 
-/// Handles FCM push notifications: init, token registration, foreground/background handlers.
+import '../router/app_router.dart';
+import 'video_session_notification_actions.dart';
+
+/// Top-level isolate entry for FCM. Must stay a top-level function.
 @pragma('vm:entry-point')
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
-  debugPrint('Background message: ${message.notification?.title}');
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  try {
+    await Firebase.initializeApp();
+  } catch (e) {
+    debugPrint('[BOOT] FCM background Firebase init failed: $e');
+  }
 }
 
 class PushNotificationService {
-  static final PushNotificationService _instance = PushNotificationService._internal();
+  static final PushNotificationService _instance =
+      PushNotificationService._internal();
   factory PushNotificationService() => _instance;
   PushNotificationService._internal();
 
-  final FirebaseMessaging _messaging = FirebaseMessaging.instance;
+  FirebaseMessaging? _messaging;
   final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
+  bool _started = false;
+  StreamSubscription<AuthState>? _authSub;
 
   static const String _channelId = 'cotrainr_notifications';
 
-  /// Initialize Firebase and push notifications. Call from main() after Supabase init.
-  /// Requires google-services.json (Android) and GoogleService-Info.plist (iOS).
+  /// Never throws. Never call before the first Flutter frame.
   Future<void> initialize() async {
+    if (_started) return;
+    _started = true;
+    debugPrint('[BOOT] push init start');
     try {
-      await Firebase.initializeApp(
-        // Uses default from google-services.json / GoogleService-Info.plist
-        // Add those files from Firebase Console to enable push
-      );
-      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+      await Firebase.initializeApp().timeout(const Duration(seconds: 8));
+      debugPrint('[BOOT] Firebase.initializeApp complete');
 
-      // Create Android notification channel for FCM
+      try {
+        FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+      } catch (e) {
+        debugPrint('[BOOT] onBackgroundMessage register failed: $e');
+      }
+
+      _messaging = FirebaseMessaging.instance;
+
+      const androidSettings =
+          AndroidInitializationSettings('@mipmap/ic_launcher');
+      const darwinSettings = DarwinInitializationSettings(
+        requestAlertPermission: false,
+        requestBadgePermission: false,
+        requestSoundPermission: false,
+      );
+      const initSettings = InitializationSettings(
+        android: androidSettings,
+        iOS: darwinSettings,
+      );
+      await _localNotifications
+          .initialize(
+            initSettings,
+            onDidReceiveNotificationResponse: _onNotificationTapped,
+          )
+          .timeout(const Duration(seconds: 5));
+
       if (Platform.isAndroid) {
-        const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-        const initSettings = InitializationSettings(android: androidSettings);
-        await _localNotifications.initialize(
-          initSettings,
-          onDidReceiveNotificationResponse: _onNotificationTapped,
-        );
-        await _localNotifications
+        final androidPlugin = _localNotifications
             .resolvePlatformSpecificImplementation<
-                AndroidFlutterLocalNotificationsPlugin>()
-            ?.createNotificationChannel(
-              const AndroidNotificationChannel(
-                _channelId,
-                'Cotrainr Notifications',
-                description: 'Push notifications from Cotrainr',
-                importance: Importance.high,
-              ),
-            );
+                AndroidFlutterLocalNotificationsPlugin>();
+        await androidPlugin?.createNotificationChannel(
+          const AndroidNotificationChannel(
+            _channelId,
+            'Cotrainr Notifications',
+            description: 'Push notifications from Cotrainr',
+            importance: Importance.high,
+          ),
+        );
+        await androidPlugin?.createNotificationChannel(
+          const AndroidNotificationChannel(
+            VideoSessionNotificationActions.channelId,
+            'Video Sessions',
+            description: 'Video session reminders and start alerts',
+            importance: Importance.max,
+          ),
+        );
       }
 
-      final settings = await _messaging.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
-      if (settings.authorizationStatus == AuthorizationStatus.denied) {
-        debugPrint('Push permission denied');
-        return;
-      }
+      _messaging!.onTokenRefresh.listen(saveDeviceToken);
+      FirebaseMessaging.onMessage.listen(_showForegroundNotification);
+      FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationTap);
 
-      final token = await _messaging.getToken();
-      if (token != null) await saveDeviceToken(token);
-
-      _messaging.onTokenRefresh.listen(saveDeviceToken);
-
-      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-        _showForegroundNotification(message);
+      _authSub ??= Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+        if (data.session != null) {
+          unawaited(_registerTokenIfPermitted());
+        }
       });
 
-      final initialMessage = await _messaging.getInitialMessage();
-      if (initialMessage != null) {
-        _handleNotificationTap(initialMessage);
+      unawaited(_registerTokenIfPermitted());
+      debugPrint('[BOOT] push init complete');
+    } catch (e, st) {
+      debugPrint('[BOOT] push init failed: $e\n$st');
+    }
+  }
+
+  Future<void> _registerTokenIfPermitted() async {
+    try {
+      final messaging = _messaging;
+      if (messaging == null) return;
+      final settings = await messaging.getNotificationSettings().timeout(
+            const Duration(seconds: 4),
+          );
+      if (settings.authorizationStatus == AuthorizationStatus.denied ||
+          settings.authorizationStatus == AuthorizationStatus.notDetermined) {
+        debugPrint('[BOOT] skip FCM token; permission=${settings.authorizationStatus}');
+        return;
       }
-      FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationTap);
+      final initial = await messaging.getInitialMessage().timeout(
+            const Duration(seconds: 3),
+            onTimeout: () => null,
+          );
+      if (initial != null) _handleNotificationTap(initial);
+      final token = await messaging.getToken().timeout(const Duration(seconds: 8));
+      if (token != null) await saveDeviceToken(token);
     } catch (e) {
-      debugPrint('PushNotificationService init error: $e');
+      debugPrint('[BOOT] FCM token/register skipped: $e');
     }
   }
 
   void _onNotificationTapped(NotificationResponse response) {
+    final payload =
+        VideoSessionNotificationActions.decodePayload(response.payload);
+    if (payload != null &&
+        (payload.containsKey('video_session_id') ||
+            response.actionId == VideoSessionNotificationActions.join ||
+            response.actionId == VideoSessionNotificationActions.dismiss)) {
+      VideoSessionNotificationActions.handleResponse(response);
+      return;
+    }
     appRouter.go('/notifications');
   }
 
@@ -92,41 +150,69 @@ class PushNotificationService {
     if (!Platform.isAndroid) return;
     final notification = message.notification;
     if (notification == null) return;
+    final data = message.data;
+    final type = data['type'] ?? '';
+    final isVideo = type.toString().startsWith('video_session_');
+    final isActionable = type == 'video_session_reminder_5m' ||
+        type == 'video_session_starting';
+    final payload = jsonEncode({
+      'action': 'open',
+      'type': type,
+      'video_session_id': data['video_session_id'],
+      'join_url': data['join_url'],
+      'scheduled_start': data['scheduled_start'],
+      'status': 'scheduled',
+    });
+
     await _localNotifications.show(
       message.hashCode,
       notification.title ?? 'Cotrainr',
       notification.body ?? '',
-      const NotificationDetails(
+      NotificationDetails(
         android: AndroidNotificationDetails(
-          _channelId,
-          'Cotrainr Notifications',
-          channelDescription: 'Push notifications from Cotrainr',
-          importance: Importance.high,
-          priority: Priority.high,
+          isVideo ? VideoSessionNotificationActions.channelId : _channelId,
+          isVideo ? 'Video Sessions' : 'Cotrainr Notifications',
+          channelDescription: isVideo
+              ? 'Video session reminders and start alerts'
+              : 'Push notifications from Cotrainr',
+          importance: isActionable ? Importance.max : Importance.high,
+          priority: isActionable ? Priority.max : Priority.high,
+          actions: isActionable
+              ? const [
+                  AndroidNotificationAction(
+                    VideoSessionNotificationActions.join,
+                    'Join',
+                    showsUserInterface: true,
+                  ),
+                  AndroidNotificationAction(
+                    VideoSessionNotificationActions.dismiss,
+                    'Dismiss',
+                    cancelNotification: true,
+                  ),
+                ]
+              : null,
         ),
       ),
-      payload: message.data.toString(),
+      payload: payload,
     );
   }
 
   void _handleNotificationTap(RemoteMessage message) {
-    final data = message.data;
-    if (data['type'] == 'meeting' && data['meeting_id'] != null) {
-      // Could navigate to meeting - handled by app link or deep link
-    }
-    // Defer navigation until app is built (for getInitialMessage)
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      appRouter.go('/notifications');
-    });
+    VideoSessionNotificationActions.routeFromPushData(message.data);
   }
 
-  /// Re-register token (fetch current and save). Call after user signs in.
   Future<void> registerToken() async {
-    final token = await _messaging.getToken();
-    await saveDeviceToken(token);
+    try {
+      await initialize();
+      final token = await _messaging?.getToken().timeout(
+            const Duration(seconds: 8),
+          );
+      await saveDeviceToken(token);
+    } catch (e) {
+      debugPrint('[BOOT] registerToken failed: $e');
+    }
   }
 
-  /// Save FCM token to Supabase device_tokens.
   Future<void> saveDeviceToken(String? token) async {
     if (token == null || token.isEmpty) return;
     final userId = Supabase.instance.client.auth.currentUser?.id;
@@ -145,15 +231,20 @@ class PushNotificationService {
       );
     } catch (e) {
       debugPrint('Error saving device token: $e');
+      if (e is PostgrestException && e.code == 'PGRST205') {
+        debugPrint(
+          '[BOOT] device_tokens table missing — apply migration '
+          '20260821_video_session_names_and_push.sql',
+        );
+      }
     }
   }
 
-  /// Remove token on sign out.
   Future<void> removeDeviceToken() async {
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null) return;
     try {
-      final token = await _messaging.getToken();
+      final token = await _messaging?.getToken();
       if (token != null) {
         await Supabase.instance.client
             .from('device_tokens')

@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:health/health.dart';
 import 'package:geolocator/geolocator.dart';
+import '../../services/push_notification_service.dart';
 import '../../theme/auth_theme.dart';
 import '../../theme/design_tokens.dart';
 import '../../widgets/auth/auth_screen_background.dart';
@@ -176,6 +179,9 @@ class _PermissionsPageState extends State<PermissionsPage> {
 
     if (status.isGranted) {
       HapticFeedback.mediumImpact();
+      if (item.permission == Permission.notification) {
+        unawaited(PushNotificationService().registerToken());
+      }
     } else if (status.isPermanentlyDenied) {
       _showPermissionDeniedDialog(item);
     }

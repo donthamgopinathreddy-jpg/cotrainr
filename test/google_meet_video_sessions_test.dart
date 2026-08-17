@@ -20,7 +20,18 @@ void main() {
       );
       expect(s.isGoogleMeet, isTrue);
       expect(s.meetingProviderLabel, 'Google Meet');
-      expect(s.canJoin, isTrue);
+      expect(
+        VideoSessionJoinRules.canJoin(
+          VideoSessionJoinRules.evaluate(
+            status: s.status,
+            scheduledStart: s.scheduledStart,
+            durationMinutes: s.durationMinutes,
+            joinUrl: s.joinUrl,
+            now: DateTime(2026, 8, 20, 17, 55),
+          ),
+        ),
+        isTrue,
+      );
     });
 
     test('edit preserveJoinUrl keeps same Meet URL conceptually', () {

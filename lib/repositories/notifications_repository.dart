@@ -147,6 +147,56 @@ class NotificationsRepository {
     }
   }
 
+  static const videoSessionNotificationTypes = [
+    'video_session_created',
+    'video_session_rescheduled',
+    'video_session_cancelled',
+    'video_session_reminder_5m',
+    'video_session_starting',
+  ];
+
+  static bool isVideoSessionType(String? type) {
+    final t = type?.toLowerCase() ?? '';
+    return t.startsWith('video_session_');
+  }
+
+  Future<int> fetchUnreadVideoSessionCount() async {
+    if (_currentUserId == null) return 0;
+    try {
+      final response = await _supabase
+          .from('notifications')
+          .select('id')
+          .eq('user_id', _currentUserId!)
+          .eq('read', false)
+          .inFilter('type', videoSessionNotificationTypes);
+      return (response as List).length;
+    } catch (e) {
+      print('Error fetching unread video session notifications: $e');
+      return 0;
+    }
+  }
+
+  Future<void> markVideoSessionNotificationsRead({String? sessionId}) async {
+    if (_currentUserId == null) return;
+    try {
+      var query = _supabase
+          .from('notifications')
+          .update({
+            'read': true,
+            'read_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('user_id', _currentUserId!)
+          .eq('read', false)
+          .inFilter('type', videoSessionNotificationTypes);
+      if (sessionId != null && sessionId.isNotEmpty) {
+        query = query.contains('data', {'video_session_id': sessionId});
+      }
+      await query;
+    } catch (e) {
+      print('Error marking video session notifications read: $e');
+    }
+  }
+
   /// Fetch post preview (content + first media URL) for notification display
   Future<Map<String, dynamic>?> fetchPostPreview(String postId) async {
     if (!FeatureFlags.enableCoCircle) return null;

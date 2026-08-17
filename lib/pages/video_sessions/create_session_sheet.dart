@@ -238,7 +238,7 @@ class _CreateSessionSheetState extends State<CreateSessionSheet> {
               onConnect: widget.onConnectGoogle,
             ),
             const SizedBox(height: 16),
-            Text('Member', style: AccountHubTheme.rowTitle(context)),
+            Text('Who\'s joining', style: AccountHubTheme.rowTitle(context)),
             const SizedBox(height: 8),
             if (_leadsLoading)
               const Padding(
@@ -283,17 +283,17 @@ class _CreateSessionSheetState extends State<CreateSessionSheet> {
                         (lead.client?['full_name'] as String?)?.trim().isNotEmpty ==
                                 true
                             ? lead.client!['full_name'] as String
-                            : 'Member';
+                            : 'Unnamed profile';
                     final selected = _selectedClientId == lead.clientId;
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: CircleAvatar(
                         backgroundColor:
-                            DesignTokens.accentOrange.withValues(alpha: 0.15),
+                            DesignTokens.videoSessionsAccent.withValues(alpha: 0.15),
                         child: Text(
                           name.isNotEmpty ? name[0].toUpperCase() : '?',
                           style: const TextStyle(
-                            color: DesignTokens.accentOrange,
+                            color: DesignTokens.videoSessionsAccent,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -304,7 +304,7 @@ class _CreateSessionSheetState extends State<CreateSessionSheet> {
                             ? Icons.radio_button_checked_rounded
                             : Icons.radio_button_off_rounded,
                         color: selected
-                            ? DesignTokens.accentOrange
+                            ? DesignTokens.videoSessionsAccent
                             : cs.onSurface.withValues(alpha: 0.35),
                       ),
                       onTap: () =>
@@ -376,14 +376,14 @@ class _CreateSessionSheetState extends State<CreateSessionSheet> {
                       _durationMinutes = mins;
                     }),
                     selectedColor:
-                        DesignTokens.accentOrange.withValues(alpha: 0.25),
+                        DesignTokens.videoSessionsAccent.withValues(alpha: 0.25),
                   ),
                 ChoiceChip(
                   label: const Text('Custom'),
                   selected: _customDuration,
                   onSelected: (_) => setState(() => _customDuration = true),
                   selectedColor:
-                      DesignTokens.accentOrange.withValues(alpha: 0.25),
+                      DesignTokens.videoSessionsAccent.withValues(alpha: 0.25),
                 ),
               ],
             ),
@@ -423,7 +423,7 @@ class _CreateSessionSheetState extends State<CreateSessionSheet> {
                     ? null
                     : _create,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: DesignTokens.accentOrange,
+                  backgroundColor: DesignTokens.videoSessionsAccent,
                   foregroundColor: Colors.white,
                   disabledBackgroundColor:
                       cs.onSurface.withValues(alpha: 0.12),
@@ -472,12 +472,12 @@ class _GoogleMeetBanner extends StatelessWidget {
       decoration: BoxDecoration(
         color: ready
             ? AccountHubTheme.goalsGreen.withValues(alpha: 0.1)
-            : DesignTokens.accentOrange.withValues(alpha: 0.1),
+            : DesignTokens.videoSessionsAccent.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: ready
               ? AccountHubTheme.goalsGreen.withValues(alpha: 0.35)
-              : DesignTokens.accentOrange.withValues(alpha: 0.35),
+              : DesignTokens.videoSessionsAccent.withValues(alpha: 0.35),
         ),
       ),
       child: Column(
@@ -522,7 +522,7 @@ class _GoogleMeetBanner extends StatelessWidget {
                           : 'Connect Google',
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: DesignTokens.accentOrange,
+                  backgroundColor: DesignTokens.videoSessionsAccent,
                   foregroundColor: Colors.white,
                 ),
               ),

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../repositories/notifications_repository.dart';
 import '../../repositories/video_sessions_repository.dart';
 import '../../theme/account_hub_theme.dart';
 import '../../theme/design_tokens.dart';
@@ -55,6 +56,11 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
         _loading = false;
         if (session == null) _error = 'Session not found';
       });
+      if (session != null) {
+        NotificationsRepository().markVideoSessionNotificationsRead(
+          sessionId: session.id,
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       var message = 'Could not load session';
@@ -253,7 +259,7 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
                       ElevatedButton(
                         onPressed: () => Navigator.pop(ctx, true),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: DesignTokens.accentOrange,
+                          backgroundColor: DesignTokens.videoSessionsAccent,
                           foregroundColor: Colors.white,
                         ),
                         child: const Text('Save changes'),
@@ -313,7 +319,6 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
     final me = Supabase.instance.client.auth.currentUser?.id;
     final session = _session;
     final isHost = session != null && session.hostId == me;
-    final providerLabel = session?.meetingProviderLabel;
 
     return Scaffold(
       backgroundColor: bg,
@@ -332,7 +337,7 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
       body: _loading
           ? const Center(
               child: CircularProgressIndicator(
-                color: DesignTokens.accentOrange,
+                color: DesignTokens.videoSessionsAccent,
               ),
             )
           : session == null
@@ -364,9 +369,7 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
                           const SizedBox(height: 12),
                           _MetaRow(
                             icon: Icons.person_outline_rounded,
-                            text: isHost
-                                ? 'with ${session.counterpartyName ?? 'Member'}'
-                                : 'with ${session.counterpartyName ?? 'Provider'}',
+                            text: session.withLine,
                           ),
                           const SizedBox(height: 8),
                           _MetaRow(
@@ -379,13 +382,6 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
                             icon: Icons.timer_outlined,
                             text: '${session.durationMinutes} minutes',
                           ),
-                          if (providerLabel != null) ...[
-                            const SizedBox(height: 8),
-                            _MetaRow(
-                              icon: Icons.videocam_outlined,
-                              text: providerLabel,
-                            ),
-                          ],
                           if (session.description != null &&
                               session.description!.trim().isNotEmpty) ...[
                             const SizedBox(height: 14),
@@ -409,9 +405,9 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
                         child: ElevatedButton.icon(
                           onPressed: _join,
                           icon: const Icon(Icons.videocam_rounded),
-                          label: const Text('Join Session'),
+                          label: const Text('Join Meeting'),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: DesignTokens.accentOrange,
+                            backgroundColor: DesignTokens.videoSessionsAccent,
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),
@@ -487,6 +483,8 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
         return 'This session is in the past.';
       case VideoSessionJoinEligibility.cancelled:
         return 'This session was cancelled.';
+      case VideoSessionJoinEligibility.tooEarly:
+        return 'Available 5 min before';
       case VideoSessionJoinEligibility.joinable:
         return 'Join is unavailable.';
     }
@@ -508,7 +506,7 @@ class _StatusChip extends StatelessWidget {
         ? AccountHubTheme.dangerRed
         : session.isPast
             ? const Color(0xFF9CA3AF)
-            : DesignTokens.accentOrange;
+            : DesignTokens.videoSessionsAccent;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(

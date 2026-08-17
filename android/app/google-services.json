@@ -1,26 +1,36 @@
 {
   "project_info": {
-    "project_number": "684040501799",
-    "project_id": "cotrainr-18f07",
-    "storage_bucket": "cotrainr-18f07.firebasestorage.app"
+    "project_number": "657627915418",
+    "project_id": "cotrainr",
+    "storage_bucket": "cotrainr.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:684040501799:android:ab6d7bd6eb3e5e1e596c02",
+        "mobilesdk_app_id": "1:657627915418:android:24d1e4be43dd3b482c2b23",
         "android_client_info": {
-          "package_name": "com.example.cotrainr"
+          "package_name": "com.cotrainr.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "657627915418-2o4tkaads138bk5t1on9sr882qh4c4as.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
-          "current_key": "AIzaSyDSoE0LnkGmvJUXhj7o9JeTIujRCelcjHY"
+          "current_key": "AIzaSyDZrbUb0m40lpRrtNjtpyPQuQD-lTq6r3c"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "657627915418-2o4tkaads138bk5t1on9sr882qh4c4as.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

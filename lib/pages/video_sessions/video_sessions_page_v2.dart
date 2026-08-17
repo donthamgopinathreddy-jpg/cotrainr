@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,11 +10,15 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/startup/startup_router_bridge.dart';
+import '../../providers/unread_notifications_count_provider.dart';
+import '../../providers/unread_video_session_notifications_provider.dart';
+import '../../repositories/notifications_repository.dart';
 import '../../repositories/video_sessions_repository.dart';
 import '../../services/profile_role_service.dart';
 import '../../theme/account_hub_theme.dart';
 import '../../theme/design_tokens.dart';
 import '../../widgets/profile/account_hub_widgets.dart';
+import '../../widgets/video_sessions/video_session_card_actions.dart';
 import 'create_session_sheet.dart';
 
 /// Video Sessions with Google Meet auto-created links.
@@ -69,7 +75,6 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
     final uri = widget.uri;
     if (uri == null) return;
     final openCreate = uri.queryParameters['openCreate'] == '1';
-    final openJoin = uri.queryParameters['openJoin'] == '1';
     final clientId = uri.queryParameters['clientId'];
     if (uri.queryParameters['google-connected'] == '1') {
       StartupRouterBridge.setPendingDeepLinkRoute(null);
@@ -84,8 +89,6 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
     }
     if (openCreate && _isHost) {
       _openCreateSession(preselectedClientId: clientId);
-    } else if (openJoin) {
-      _showJoinWithLinkSheet(context);
     }
   }
 
@@ -116,6 +119,7 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
           google = await _repo.getGoogleMeetStatus();
         } catch (_) {}
       }
+      unawaited(NotificationsRepository().markVideoSessionNotificationsRead());
       if (!mounted) return;
       setState(() {
         _userRole = roleLower;
@@ -123,6 +127,8 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
         _googleStatus = google;
         _loading = false;
       });
+      ref.invalidate(unreadVideoSessionNotificationsProvider);
+      ref.invalidate(unreadNotificationsCountProvider);
     } catch (e) {
       if (!mounted) return;
       var message = 'Could not load sessions. Pull to retry.';
@@ -204,7 +210,6 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
   @override
   Widget build(BuildContext context) {
     final bg = AccountHubTheme.pageBg(context);
-    final me = Supabase.instance.client.auth.currentUser?.id;
 
     return Scaffold(
       backgroundColor: bg,
@@ -227,7 +232,7 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
       floatingActionButton: _isHost
           ? FloatingActionButton.extended(
               onPressed: _openCreateSession,
-              backgroundColor: DesignTokens.accentOrange,
+              backgroundColor: DesignTokens.videoSessionsAccent,
               icon: const Icon(Icons.add_rounded, color: Colors.white),
               label: const Text(
                 'Schedule Session',
@@ -241,11 +246,11 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
       body: _loading
           ? const Center(
               child: CircularProgressIndicator(
-                color: DesignTokens.accentOrange,
+                color: DesignTokens.videoSessionsAccent,
               ),
             )
           : RefreshIndicator(
-              color: DesignTokens.accentOrange,
+              color: DesignTokens.videoSessionsAccent,
               onRefresh: _load,
               child: CustomScrollView(
                 physics: const AlwaysScrollableScrollPhysics(
@@ -274,20 +279,6 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
                         ),
                       ),
                     ),
-                  if (!_isHost)
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: TextButton.icon(
-                            onPressed: () => _showJoinWithLinkSheet(context),
-                            icon: const Icon(Icons.link_rounded, size: 18),
-                            label: const Text('Join with link'),
-                          ),
-                        ),
-                      ),
-                    ),
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -304,8 +295,8 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
                         child: _EmptyCard(
                           title: 'No sessions scheduled',
                           body: _isHost
-                              ? 'Schedule a video session with a Member.'
-                              : 'Your Trainer or Nutritionist can schedule sessions here.',
+                              ? 'Schedule a video session with a connected client.'
+                              : 'Your trainer or nutritionist can schedule sessions here.',
                           actionLabel: _isHost ? 'Schedule Session' : null,
                           onAction: _isHost ? _openCreateSession : null,
                         ),
@@ -320,7 +311,6 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
                             padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
                             child: _SessionCard(
                               session: s,
-                              isHost: s.hostId == me,
                               onTap: () =>
                                   context.push('/video/session/${s.id}'),
                               onJoin: s.canJoin
@@ -365,7 +355,6 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
                             ),
                             child: _SessionCard(
                               session: s,
-                              isHost: s.hostId == me,
                               compact: true,
                               onTap: () =>
                                   context.push('/video/session/${s.id}'),
@@ -429,7 +418,7 @@ class _EmptyCard extends StatelessWidget {
             TextButton(
               onPressed: onAction,
               style: TextButton.styleFrom(
-                foregroundColor: DesignTokens.accentOrange,
+                foregroundColor: DesignTokens.videoSessionsAccent,
               ),
               child: Text(actionLabel!),
             ),
@@ -442,14 +431,12 @@ class _EmptyCard extends StatelessWidget {
 
 class _SessionCard extends StatelessWidget {
   final VideoSession session;
-  final bool isHost;
   final bool compact;
   final VoidCallback onTap;
   final VoidCallback? onJoin;
 
   const _SessionCard({
     required this.session,
-    required this.isHost,
     required this.onTap,
     this.onJoin,
     this.compact = false,
@@ -458,7 +445,6 @@ class _SessionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final withName = session.counterpartyName ?? (isHost ? 'Member' : 'Provider');
     final when = _formatWhen(session.scheduledStart);
     final status = _statusLabel(session);
     final statusColor = _statusColor(session);
@@ -509,7 +495,7 @@ class _SessionCard extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(
-                'with $withName',
+                session.withLine,
                 style: AccountHubTheme.rowSubtitle(context),
               ),
               const SizedBox(height: 4),
@@ -523,37 +509,22 @@ class _SessionCard extends StatelessWidget {
               ),
               if (!compact) ...[
                 const SizedBox(height: 12),
-                Row(
-                  children: [
-                    if (onJoin != null)
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: onJoin,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: DesignTokens.accentOrange,
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: const Text('Join'),
-                        ),
-                      ),
-                    if (onJoin != null) const SizedBox(width: 10),
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: onTap,
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: cs.onSurface,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: Text(isHost ? 'Manage' : 'Details'),
+                if (session.isTooEarlyToJoin)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Text(
+                      'Available 5 min before',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: DesignTokens.videoSessionsAccent,
                       ),
                     ),
-                  ],
+                  ),
+                VideoSessionCardActionRow(
+                  onJoin: onJoin,
+                  onDetails: onTap,
+                  outlineColor: cs.onSurface,
                 ),
               ],
             ],
@@ -572,7 +543,7 @@ class _SessionCard extends StatelessWidget {
   Color _statusColor(VideoSession s) {
     if (s.isCancelled) return AccountHubTheme.dangerRed;
     if (s.isPast) return const Color(0xFF9CA3AF);
-    return DesignTokens.accentOrange;
+    return DesignTokens.videoSessionsAccent;
   }
 
   String _formatWhen(DateTime dt) {
@@ -619,7 +590,7 @@ class _GoogleConnectionCard extends StatelessWidget {
                 Icons.videocam_outlined,
                 color: ready
                     ? AccountHubTheme.goalsGreen
-                    : DesignTokens.accentOrange,
+                    : DesignTokens.videoSessionsAccent,
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -647,7 +618,7 @@ class _GoogleConnectionCard extends StatelessWidget {
               child: ElevatedButton(
                 onPressed: loading ? null : onConnect,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: DesignTokens.accentOrange,
+                  backgroundColor: DesignTokens.videoSessionsAccent,
                   foregroundColor: Colors.white,
                 ),
                 child: Text(
@@ -671,72 +642,4 @@ class _GoogleConnectionCard extends StatelessWidget {
       ),
     );
   }
-}
-
-void _showJoinWithLinkSheet(BuildContext context) {
-  final controller = TextEditingController();
-  showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    builder: (ctx) {
-      return Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        child: Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: AccountHubTheme.cardBg(ctx),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'Paste invite link',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Opens the meeting outside Cotrainr. This does not add the session to your list.',
-                style: AccountHubTheme.rowSubtitle(ctx),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: controller,
-                decoration: const InputDecoration(
-                  hintText: 'https://…',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.url,
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () async {
-                  final url = controller.text.trim();
-                  if (url.isEmpty) return;
-                  Navigator.pop(ctx);
-                  final uri = Uri.tryParse(url);
-                  if (uri == null || uri.scheme.toLowerCase() != 'https') {
-                    showHubSnackBar(context, 'Enter a valid https link');
-                    return;
-                  }
-                  try {
-                    await launchUrl(uri, mode: LaunchMode.externalApplication);
-                  } catch (_) {
-                    showHubSnackBar(context, 'Could not open link');
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: DesignTokens.accentOrange,
-                  foregroundColor: Colors.white,
-                ),
-                child: const Text('Open link'),
-              ),
-            ],
-          ),
-        ),
-      );
-    },
-  );
 }

@@ -117,6 +117,7 @@ class _CotrainrSplashScreenState extends State<CotrainrSplashScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       FlutterNativeSplash.remove();
+      debugPrint('[BOOT] native splash removed from Flutter splash');
       unawaited(_precache());
       final reduce = MediaQuery.of(context).disableAnimations;
       if (reduce) {

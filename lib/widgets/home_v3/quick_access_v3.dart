@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../providers/accepted_client_trainers_provider.dart';
+import '../../providers/unread_video_session_notifications_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
 import '../../theme/text_styles.dart';
@@ -133,6 +134,8 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
     final trainerCount = ref.watch(acceptedClientTrainersCountProvider);
     final nutritionistCount =
         ref.watch(acceptedClientNutritionistsCountProvider);
+    final videoUnread = ref.watch(unreadVideoSessionNotificationsProvider)
+        .maybeWhen(data: (n) => n, orElse: () => 0);
     // Ensure realtime/list provider is warm for clients.
     if (_role != 'trainer' && _role != 'nutritionist') {
       ref.watch(acceptedClientTrainersProvider);
@@ -167,6 +170,7 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
             tiles: tiles,
             isLight: isLight,
             role: _role,
+            videoUnread: videoUnread,
             onTileTap: (tile) => _routeFor(context, tile.title)?.call(),
           ),
         ],
@@ -224,12 +228,14 @@ class _ExploreBentoGrid extends StatelessWidget {
   final Map<String, _ExploreTileData> tiles;
   final bool isLight;
   final String role;
+  final int videoUnread;
   final ValueChanged<_ExploreTileData> onTileTap;
 
   const _ExploreBentoGrid({
     required this.tiles,
     required this.isLight,
     required this.role,
+    required this.videoUnread,
     required this.onTileTap,
   });
 
@@ -273,6 +279,7 @@ class _ExploreBentoGrid extends StatelessWidget {
                   item: _get('Video Sessions')!,
                   layout: _ExploreTileLayout.banner,
                   isLight: isLight,
+                  showAlertDot: videoUnread > 0,
                   onTap: () => onTileTap(_get('Video Sessions')!),
                 ),
               ),
@@ -306,6 +313,7 @@ class _ExploreBentoGrid extends StatelessWidget {
             item: video,
             layout: _ExploreTileLayout.banner,
             isLight: isLight,
+            showAlertDot: videoUnread > 0,
             onTap: () => onTileTap(video),
           ),
         ),
@@ -350,6 +358,7 @@ class _ExploreBentoGrid extends StatelessWidget {
               item: left,
               layout: _ExploreTileLayout.half,
               isLight: isLight,
+              showAlertDot: left.title == 'Video Sessions' && videoUnread > 0,
               onTap: () => onTileTap(left),
             ),
           ),
@@ -359,6 +368,7 @@ class _ExploreBentoGrid extends StatelessWidget {
               item: right,
               layout: _ExploreTileLayout.half,
               isLight: isLight,
+              showAlertDot: right.title == 'Video Sessions' && videoUnread > 0,
               onTap: () => onTileTap(right),
             ),
           ),
@@ -374,12 +384,14 @@ class _ExploreTile extends StatelessWidget {
   final _ExploreTileData item;
   final _ExploreTileLayout layout;
   final bool isLight;
+  final bool showAlertDot;
   final VoidCallback? onTap;
 
   const _ExploreTile({
     required this.item,
     required this.layout,
     required this.isLight,
+    this.showAlertDot = false,
     this.onTap,
   });
 
@@ -414,6 +426,19 @@ class _ExploreTile extends StatelessWidget {
                   ),
                 ),
               ),
+              if (showAlertDot)
+                Positioned(
+                  top: isBanner ? 12 : 12,
+                  right: isBanner ? 14 : 12,
+                  child: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFE53935),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
               Padding(
                 padding: EdgeInsets.fromLTRB(
                   isBanner ? 18 : 16,

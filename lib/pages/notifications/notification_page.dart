@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
 import '../../services/notification_service.dart';
@@ -34,6 +35,7 @@ enum NotificationType {
   leadRequest,
   leadAccepted,
   leadDeclined,
+  videoSession,
 }
 
 class NotificationPage extends ConsumerStatefulWidget {
@@ -122,16 +124,26 @@ class _NotificationPageState extends ConsumerState<NotificationPage> {
         final leadId = data?['lead_id'] as String?;
         final clientId = data?['client_id'] as String? ??
             (type == NotificationType.leadRequest ? actorId : null);
+        final videoSessionId = data?['video_session_id'] as String?;
+        var message = notif['body'] as String;
+        if (type == NotificationType.videoSession) {
+          message = _localizedVideoSessionBody(
+            dbType: notif['type'] as String,
+            data: data,
+            fallback: message,
+          );
+        }
         notifications.add(NotificationData(
           id: notif['id'] as String,
           type: type,
           userName: actorProfile?['full_name'] as String? ?? actorProfile?['username'] as String?,
           title: notif['title'] as String,
-          message: notif['body'] as String,
+          message: message,
           time: timeStr,
           hasUnread: !(notif['read'] as bool? ?? false),
           userAvatarUrl: actorProfile?['avatar_url'] as String?,
           meetingId: data?['meeting_id'] as String?,
+          videoSessionId: videoSessionId,
           postId: postId,
           postContentPreview: postContentPreview,
           postMediaUrl: postMediaUrl,
@@ -224,6 +236,36 @@ class _NotificationPageState extends ConsumerState<NotificationPage> {
     return true;
   }
 
+  String _localizedVideoSessionBody({
+    required String dbType,
+    required Map<String, dynamic>? data,
+    required String fallback,
+  }) {
+    final counterpart = (data?['counterpart_name'] as String?)?.trim().isNotEmpty == true
+        ? data!['counterpart_name'] as String
+        : (data?['host_name'] as String?)?.trim();
+    final startRaw = data?['scheduled_start'] as String?;
+    final start = startRaw == null ? null : DateTime.tryParse(startRaw);
+    if (counterpart == null || counterpart.isEmpty || start == null) {
+      return fallback;
+    }
+    final when = DateFormat('d MMM yyyy · h:mm a').format(start.toLocal());
+    switch (dbType.toLowerCase()) {
+      case 'video_session_created':
+        return '$counterpart scheduled a session with you for $when.';
+      case 'video_session_rescheduled':
+        return '$counterpart moved your session to $when.';
+      case 'video_session_cancelled':
+        return '$counterpart cancelled your video session scheduled for $when.';
+      case 'video_session_reminder_5m':
+        return 'Your session with $counterpart starts at ${DateFormat('h:mm a').format(start.toLocal())}.';
+      case 'video_session_starting':
+        return 'Your session with $counterpart is starting now.';
+      default:
+        return fallback;
+    }
+  }
+
   Future<Map<String, dynamic>?> _getActorProfile(String userId) async {
     try {
       final supabase = Supabase.instance.client;
@@ -267,6 +309,12 @@ class _NotificationPageState extends ConsumerState<NotificationPage> {
         return NotificationType.leadAccepted;
       case 'lead_declined':
         return NotificationType.leadDeclined;
+      case 'video_session_created':
+      case 'video_session_rescheduled':
+      case 'video_session_cancelled':
+      case 'video_session_reminder_5m':
+      case 'video_session_starting':
+        return NotificationType.videoSession;
       default:
         return NotificationType.goalReached;
     }
@@ -593,6 +641,13 @@ class _NotificationPageState extends ConsumerState<NotificationPage> {
                                   _openClientProfile(notification);
                                   return;
                                 }
+                                if (notification.type == NotificationType.videoSession &&
+                                    notification.videoSessionId != null &&
+                                    notification.videoSessionId!.isNotEmpty &&
+                                    !notification.videoSessionId!.contains('google-connected')) {
+                                  context.push('/video/session/${notification.videoSessionId}');
+                                  return;
+                                }
                                 if (notification.type == NotificationType.meeting && notification.meetingId != null) {
                                   final meetingStorage = MeetingStorageService();
                                   final meeting = meetingStorage.getMeetingById(notification.meetingId!);
@@ -682,6 +737,7 @@ class NotificationData {
   final bool hasImage;
   final bool canFollow;
   final String? meetingId;
+  final String? videoSessionId;
   final String? userAvatarUrl;
   final String? postId;
   final String? postContentPreview;
@@ -703,6 +759,7 @@ class NotificationData {
     this.hasImage = false,
     this.canFollow = false,
     this.meetingId,
+    this.videoSessionId,
     this.userAvatarUrl,
     this.postId,
     this.postContentPreview,
@@ -733,6 +790,7 @@ class NotificationData {
       hasImage: hasImage,
       canFollow: canFollow,
       meetingId: meetingId,
+      videoSessionId: videoSessionId,
       userAvatarUrl: userAvatarUrl,
       postId: postId,
       postContentPreview: postContentPreview,
@@ -925,6 +983,7 @@ class _NotificationItemState extends State<_NotificationItem>
       case NotificationType.message:
         return Icons.chat_bubble_rounded;
       case NotificationType.meeting:
+      case NotificationType.videoSession:
         return Icons.video_call_rounded;
       case NotificationType.questCompleted:
         return Icons.check_circle_rounded;

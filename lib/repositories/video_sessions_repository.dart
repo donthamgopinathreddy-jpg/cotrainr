@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../utils/meeting_link_rules.dart';
+import '../video_sessions/video_session_notification_logic.dart';
 
 /// Columns safe for authenticated clients (no obsolete client_id, no token embeds).
 const _videoSessionSelectColumns =
@@ -45,6 +46,9 @@ class VideoSession {
   final String? clientId;
   final DateTime createdAt;
   final String? counterpartyName;
+  final List<String> participantNames;
+  final int participantCount;
+  final String? nameResolutionStatus;
 
   VideoSession({
     required this.id,
@@ -61,12 +65,24 @@ class VideoSession {
     this.clientId,
     required this.createdAt,
     this.counterpartyName,
+    this.participantNames = const [],
+    this.participantCount = 0,
+    this.nameResolutionStatus,
   });
 
   factory VideoSession.fromJson(
     Map<String, dynamic> json, {
     String? counterpartyName,
   }) {
+    final namesRaw = json['participant_names'];
+    final parsedNames = namesRaw is List
+        ? namesRaw
+            .map((e) => e?.toString().trim() ?? '')
+            .where((n) => n.isNotEmpty)
+            .toList()
+        : const <String>[];
+    final resolvedName = counterpartyName ??
+        (json['counterpart_name'] as String?)?.trim();
     return VideoSession(
       id: json['id'] as String,
       hostId: json['host_id'] as String,
@@ -81,11 +97,21 @@ class VideoSession {
       providerMeetingId: json['provider_meeting_id'] as String?,
       clientId: json['client_id'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
-      counterpartyName: counterpartyName,
+      counterpartyName: resolvedName,
+      participantNames: parsedNames,
+      participantCount: (json['participant_count'] as num?)?.toInt() ??
+          parsedNames.length,
+      nameResolutionStatus: json['name_resolution_status'] as String?,
     );
   }
 
-  VideoSession copyWith({String? counterpartyName, String? status}) {
+  VideoSession copyWith({
+    String? counterpartyName,
+    String? status,
+    List<String>? participantNames,
+    int? participantCount,
+    String? nameResolutionStatus,
+  }) {
     return VideoSession(
       id: id,
       hostId: hostId,
@@ -101,6 +127,10 @@ class VideoSession {
       clientId: clientId,
       createdAt: createdAt,
       counterpartyName: counterpartyName ?? this.counterpartyName,
+      participantNames: participantNames ?? this.participantNames,
+      participantCount: participantCount ?? this.participantCount,
+      nameResolutionStatus:
+          nameResolutionStatus ?? this.nameResolutionStatus,
     );
   }
 
@@ -118,13 +148,23 @@ class VideoSession {
 
   bool get isUpcoming => isScheduled && !isPast;
 
-  bool get canJoin => VideoSessionJoinRules.canJoin(
-        VideoSessionJoinRules.evaluate(
-          status: status,
-          scheduledStart: scheduledStart,
-          durationMinutes: durationMinutes,
-          joinUrl: joinUrl,
-        ),
+  VideoSessionJoinEligibility get joinEligibility =>
+      VideoSessionJoinRules.evaluate(
+        status: status,
+        scheduledStart: scheduledStart,
+        durationMinutes: durationMinutes,
+        joinUrl: joinUrl,
+      );
+
+  bool get canJoin => VideoSessionJoinRules.canJoin(joinEligibility);
+
+  bool get isTooEarlyToJoin =>
+      joinEligibility == VideoSessionJoinEligibility.tooEarly;
+
+  /// Counterpart line for list/detail. Never "with Provider" / "with Member".
+  String get withLine => VideoSessionNotificationLogic.withLine(
+        participantNames: participantNames,
+        counterpartyName: counterpartyName,
       );
 
   String? get meetingProviderLabel {
@@ -219,20 +259,50 @@ class VideoSessionsRepository {
   /// List sessions visible to the current user (RLS).
   Future<List<VideoSession>> listSessions() async {
     try {
-      final res = await _supabase
-          .from('video_sessions')
-          .select(_videoSessionSelectColumns)
-          .inFilter('status', ['scheduled', 'ended', 'cancelled'])
-          .order('scheduled_start', ascending: false);
-
+      final res = await _supabase.rpc('list_my_video_sessions');
       final sessions = (res as List)
-          .map((e) => VideoSession.fromJson(e as Map<String, dynamic>))
+          .map((e) => VideoSession.fromJson(Map<String, dynamic>.from(e as Map)))
           .toList();
-
-      return _attachCounterpartyNames(sessions);
+      _logNameResolution(sessions);
+      return sessions;
     } catch (e) {
-      _logPostgrestError('listSessions', e);
-      rethrow;
+      _logPostgrestError('list_my_video_sessions', e);
+      try {
+        final res = await _supabase
+            .from('video_sessions')
+            .select(_videoSessionSelectColumns)
+            .inFilter('status', ['scheduled', 'ended', 'cancelled'])
+            .order('scheduled_start', ascending: false);
+
+        final sessions = (res as List)
+            .map((e) => VideoSession.fromJson(e as Map<String, dynamic>))
+            .toList();
+
+        final named = await _attachCounterpartyNames(sessions);
+        _logNameResolution(named);
+        return named;
+      } catch (e2) {
+        _logPostgrestError('listSessions', e2);
+        rethrow;
+      }
+    }
+  }
+
+  void _logNameResolution(List<VideoSession> sessions) {
+    if (!kDebugMode) return;
+    for (final s in sessions) {
+      if (!VideoSessionNotificationLogic.shouldShowGenericPartnerFallback(
+        participantNames: s.participantNames,
+        counterpartyName: s.counterpartyName,
+      )) {
+        continue;
+      }
+      debugPrint(
+        '[VideoSessionsRepository] name fallback session=${s.id} '
+        'host=${s.hostId} status=${s.nameResolutionStatus ?? 'unknown'} '
+        'participantCount=${s.participantCount} '
+        'reason=${s.nameResolutionStatus ?? 'missing_profile_or_query'}',
+      );
     }
   }
 
@@ -244,7 +314,7 @@ class VideoSessionsRepository {
     if (me == null) return sessions;
 
     // Membership is only via video_session_participants (no video_sessions.client_id).
-    final participantBySession = <String, String>{};
+    final participantIdsBySession = <String, List<String>>{};
     try {
       final partRes = await _supabase
           .from('video_session_participants')
@@ -254,8 +324,8 @@ class VideoSessionsRepository {
         final map = row as Map<String, dynamic>;
         if (map['role'] != 'participant') continue;
         final sessionId = map['session_id'] as String;
-        // Prefer first non-host participant as the display counterparty.
-        participantBySession.putIfAbsent(sessionId, () => map['user_id'] as String);
+        final uid = map['user_id'] as String;
+        participantIdsBySession.putIfAbsent(sessionId, () => <String>[]).add(uid);
       }
     } catch (e) {
       _logPostgrestError('listSessions.participants', e);
@@ -266,68 +336,81 @@ class VideoSessionsRepository {
     for (final s in sessions) {
       if (s.hostId != me) {
         ids.add(s.hostId);
-      } else {
-        final other = participantBySession[s.id];
-        if (other != null) ids.add(other);
+      }
+      for (final uid in participantIdsBySession[s.id] ?? const <String>[]) {
+        ids.add(uid);
       }
     }
     if (ids.isEmpty) return sessions;
 
     try {
-      final profiles = await _supabase
-          .from('profiles')
-          .select('id, full_name')
-          .inFilter('id', ids.toList());
+      // Prefer SECURITY DEFINER public profile RPC — direct profiles SELECT is
+      // blocked by RLS ("own profile only"), which caused "your session partner".
+      final profiles = await _supabase.rpc(
+        'get_public_profiles',
+        params: {'p_user_ids': ids.toList()},
+      );
       final nameById = <String, String>{};
       for (final row in (profiles as List)) {
-        final map = row as Map<String, dynamic>;
-        final name = (map['full_name'] as String?)?.trim();
-        if (name != null && name.isNotEmpty) {
+        final map = Map<String, dynamic>.from(row as Map);
+        final name = VideoSessionNotificationLogic.displayName(
+          fullName: map['full_name'] as String?,
+          username: map['username'] as String?,
+        );
+        if (name.isNotEmpty) {
           nameById[map['id'] as String] = name;
+        } else if (kDebugMode) {
+          debugPrint(
+            '[VideoSessionsRepository] missing profile display name '
+            'user=${map['id']}',
+          );
+        }
+      }
+
+      if (kDebugMode) {
+        final missing = ids.where((id) => !nameById.containsKey(id)).toList();
+        if (missing.isNotEmpty) {
+          debugPrint(
+            '[VideoSessionsRepository] profiles missing or empty for ids=$missing '
+            '(RLS denial unlikely via get_public_profiles; check empty full_name)',
+          );
         }
       }
 
       return sessions.map((s) {
-        final otherId =
-            s.hostId != me ? s.hostId : participantBySession[s.id];
-        return VideoSession(
-          id: s.id,
-          hostId: s.hostId,
-          provider: s.provider,
-          title: s.title,
-          description: s.description,
-          scheduledStart: s.scheduledStart,
-          durationMinutes: s.durationMinutes,
-          maxParticipants: s.maxParticipants,
-          status: s.status,
-          joinUrl: s.joinUrl,
-          providerMeetingId: s.providerMeetingId,
-          clientId: s.hostId == me ? participantBySession[s.id] : null,
-          createdAt: s.createdAt,
+        final isHost = s.hostId == me;
+        final memberIds = participantIdsBySession[s.id] ?? const <String>[];
+        final displayIds = isHost ? memberIds : <String>[s.hostId];
+        final names = displayIds
+            .map((id) => nameById[id])
+            .whereType<String>()
+            .toList();
+        final otherId = displayIds.isEmpty ? null : displayIds.first;
+        String? status;
+        if (displayIds.isEmpty && isHost) {
+          status = 'missing_participant';
+        } else if (otherId != null && !nameById.containsKey(otherId)) {
+          status = 'missing_profile';
+        } else if (names.isEmpty) {
+          status = 'missing_profile';
+        } else {
+          status = 'ok';
+        }
+        return s.copyWith(
           counterpartyName: otherId == null ? null : nameById[otherId],
+          participantNames: names,
+          participantCount: displayIds.length,
+          nameResolutionStatus: status,
         );
       }).toList();
     } catch (e) {
       _logPostgrestError('listSessions.profiles', e);
-      // Names are optional — still return sessions if profiles fail.
-      return sessions.map((s) {
-        return VideoSession(
-          id: s.id,
-          hostId: s.hostId,
-          provider: s.provider,
-          title: s.title,
-          description: s.description,
-          scheduledStart: s.scheduledStart,
-          durationMinutes: s.durationMinutes,
-          maxParticipants: s.maxParticipants,
-          status: s.status,
-          joinUrl: s.joinUrl,
-          providerMeetingId: s.providerMeetingId,
-          clientId: s.hostId == me ? participantBySession[s.id] : null,
-          createdAt: s.createdAt,
-          counterpartyName: s.counterpartyName,
+      if (kDebugMode) {
+        debugPrint(
+          '[VideoSessionsRepository] relationship/profile query failure: $e',
         );
-      }).toList();
+      }
+      return sessions;
     }
   }
 
@@ -441,15 +524,28 @@ class VideoSessionsRepository {
       return null;
     }
     try {
-      final res = await _supabase
-          .from('video_sessions')
-          .select(_videoSessionSelectColumns)
-          .eq('id', sessionId)
-          .maybeSingle();
-
-      if (res == null) return null;
-      final list = await _attachCounterpartyNames([VideoSession.fromJson(res)]);
-      return list.first;
+      final res = await _supabase.rpc(
+        'get_my_video_session',
+        params: {'p_session_id': sessionId},
+      );
+      final list = (res as List);
+      if (list.isEmpty) {
+        // Fallback for environments without the RPC yet.
+        final row = await _supabase
+            .from('video_sessions')
+            .select(_videoSessionSelectColumns)
+            .eq('id', sessionId)
+            .maybeSingle();
+        if (row == null) return null;
+        final named =
+            await _attachCounterpartyNames([VideoSession.fromJson(row)]);
+        _logNameResolution(named);
+        return named.first;
+      }
+      final session =
+          VideoSession.fromJson(Map<String, dynamic>.from(list.first as Map));
+      _logNameResolution([session]);
+      return session;
     } catch (e) {
       _logPostgrestError('getSession', e);
       rethrow;

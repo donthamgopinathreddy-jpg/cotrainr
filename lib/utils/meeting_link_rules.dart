@@ -41,10 +41,13 @@ enum VideoSessionJoinEligibility {
   missingLink,
   invalidLink,
   past,
+  tooEarly,
 }
 
 class VideoSessionJoinRules {
   VideoSessionJoinRules._();
+
+  static const joinEarlyWindow = Duration(minutes: 5);
 
   static VideoSessionJoinEligibility evaluate({
     required String status,
@@ -61,13 +64,11 @@ class VideoSessionJoinRules {
       return VideoSessionJoinEligibility.invalidLink;
     }
     final end = scheduledStart.add(Duration(minutes: durationMinutes));
-    // Allow join from start−30m through end+30m; otherwise treat as past/upcoming detail.
-    final windowStart = scheduledStart.subtract(const Duration(minutes: 30));
+    final windowStart = scheduledStart.subtract(joinEarlyWindow);
     final windowEnd = end.add(const Duration(minutes: 30));
     if (clock.isAfter(windowEnd)) return VideoSessionJoinEligibility.past;
     if (clock.isBefore(windowStart)) {
-      // Still allow Join for upcoming scheduled sessions (product: Join available).
-      return VideoSessionJoinEligibility.joinable;
+      return VideoSessionJoinEligibility.tooEarly;
     }
     return VideoSessionJoinEligibility.joinable;
   }

@@ -1,4 +1,4 @@
-package com.example.cotrainr
+package com.cotrainr.app
 
 import android.content.Intent
 import android.os.Bundle
@@ -10,7 +10,7 @@ import io.flutter.plugin.common.MethodChannel
 // (registerForActivityResult needs ComponentActivity)
 class MainActivity : FlutterFragmentActivity() {
     companion object {
-        const val ACTION_WATER_QUICK_LOG = "com.example.cotrainr.WATER_QUICK_LOG"
+        const val ACTION_WATER_QUICK_LOG = "com.cotrainr.app.WATER_QUICK_LOG"
         private const val CHANNEL = "cotrainr/water_notifications"
     }
 

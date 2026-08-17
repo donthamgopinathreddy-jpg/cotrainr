@@ -10,6 +10,7 @@ import 'router/app_router.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_mode_provider.dart';
 import 'services/health_tracking_service.dart';
+import 'services/push_notification_service.dart';
 import 'services/water_notification_handler.dart';
 import 'services/water_notification_platform.dart';
 import 'services/water_reminder_service.dart';
@@ -19,35 +20,67 @@ import 'widgets/privacy/privacy_preferences_sync_initializer.dart';
 import 'widgets/quest/quest_sync_initializer.dart';
 
 void main() async {
+  debugPrint('[BOOT] app start');
   final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
-  // Keep OS splash (black + logo) until Flutter paints CotrainrSplashScreen.
+  debugPrint('[BOOT] widgets binding ready');
+  // Keep OS splash until Flutter paints CotrainrSplashScreen (or failsafe).
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
-  // Critical startup: Supabase must be ready before GoRouter redirect runs.
-  // Branded CotrainrSplashScreen then restores session, loads local prefs,
-  // and chooses the initial route (with a short minimum display time).
-  await Supabase.initialize(
-    url: SupabaseConfig.supabaseUrl,
-    anonKey: SupabaseConfig.supabaseAnonKey,
-  );
+  try {
+    debugPrint('[BOOT] Supabase init start');
+    await Supabase.initialize(
+      url: SupabaseConfig.supabaseUrl,
+      anonKey: SupabaseConfig.supabaseAnonKey,
+    ).timeout(const Duration(seconds: 12));
+    debugPrint('[BOOT] Supabase init complete');
+  } catch (e, st) {
+    debugPrint('[BOOT] Supabase init failed: $e\n$st');
+  }
 
   // Non-blocking secondary services — do not delay first frame / splash.
-  final healthService = HealthTrackingService();
-  healthService.initialize().then((initialized) {
-    if (initialized) {
-      debugPrint('Health tracking service initialized successfully');
-    } else {
-      debugPrint('Health tracking service initialization failed');
-    }
-  });
+  try {
+    final healthService = HealthTrackingService();
+    unawaited(healthService.initialize().then((initialized) {
+      if (initialized) {
+        debugPrint('Health tracking service initialized successfully');
+      } else {
+        debugPrint('Health tracking service initialization failed');
+      }
+    }));
+  } catch (e) {
+    debugPrint('[BOOT] health init schedule failed: $e');
+  }
 
   unawaited(_initWaterReminders());
-  // Register as early as possible so cold-start notification actions are not dropped.
-  WaterNotificationPlatform.ensureQuickLogHandler(
-    handler: WaterNotificationHandler.handleActionId,
-  );
+  try {
+    WaterNotificationPlatform.ensureQuickLogHandler(
+      handler: WaterNotificationHandler.handleActionId,
+    );
+  } catch (e) {
+    debugPrint('[BOOT] water notification handler failed: $e');
+  }
 
+  debugPrint('[BOOT] runApp');
   runApp(const ProviderScope(child: MyApp()));
+
+  // If CotrainrSplashScreen never paints, do not keep the native logo forever.
+  unawaited(Future<void>.delayed(const Duration(seconds: 2), () {
+    FlutterNativeSplash.remove();
+    debugPrint('[BOOT] native splash failsafe remove');
+  }));
+
+  widgetsBinding.addPostFrameCallback((_) {
+    debugPrint('[BOOT] first frame');
+    unawaited(_initPushAfterFirstFrame());
+  });
+}
+
+Future<void> _initPushAfterFirstFrame() async {
+  try {
+    await PushNotificationService().initialize();
+  } catch (e, st) {
+    debugPrint('[BOOT] push after first frame failed: $e\n$st');
+  }
 }
 
 Future<void> _initWaterReminders() async {

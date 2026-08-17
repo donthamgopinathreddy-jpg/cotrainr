@@ -11,6 +11,7 @@ import {
   jsonError,
   jsonResponse,
 } from "../_shared/google_meet.ts"
+import { deliverNotificationRows } from "../_shared/push_deliver.ts"
 
 function isHttpsUrl(value: string): boolean {
   try {
@@ -329,6 +330,18 @@ Deno.serve(async (req) => {
         "PARTICIPANTS_FAILED",
       )
     }
+    console.log(JSON.stringify({
+      event: "participant_inserted",
+      session_id: session.id,
+      participant_count: participantIds.length,
+    }))
+    console.log(JSON.stringify({
+      event: "session_created",
+      session_id: session.id,
+      provider: effectiveProvider,
+    }))
+
+    await notifySessionCreated(supabase, session.id as string)
 
     if (
       typeof client_request_id === "string" &&
@@ -351,6 +364,37 @@ Deno.serve(async (req) => {
     )
   }
 })
+
+async function notifySessionCreated(
+  supabase: ReturnType<typeof createClient>,
+  sessionId: string,
+): Promise<void> {
+  const { data, error } = await supabase.rpc("notify_video_session_created", {
+    p_session_id: sessionId,
+  })
+  if (error) {
+    console.error(JSON.stringify({
+      event: "notification_event_failed",
+      code: error.code,
+      message: error.message,
+    }))
+    return
+  }
+  const rows = Array.isArray(data) ? data : []
+  console.log(JSON.stringify({
+    event: "notification_event_inserted",
+    session_id: sessionId,
+    count: rows.length,
+  }))
+  try {
+    await deliverNotificationRows(rows)
+  } catch (e) {
+    console.error(JSON.stringify({
+      event: "fcm_send_attempted",
+      errorCode: String(e).slice(0, 200),
+    }))
+  }
+}
 
 async function upsertParticipants(
   supabase: ReturnType<typeof createClient>,

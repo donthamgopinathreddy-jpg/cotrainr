@@ -70,7 +70,7 @@ void main() {
       expect(e, VideoSessionJoinEligibility.past);
     });
 
-    test('upcoming with valid link is joinable', () {
+    test('upcoming more than 5 minutes before start is too early', () {
       final e = VideoSessionJoinRules.evaluate(
         status: 'scheduled',
         scheduledStart: start,
@@ -78,8 +78,8 @@ void main() {
         joinUrl: 'https://meet.google.com/x',
         now: start.subtract(const Duration(hours: 2)),
       );
-      expect(e, VideoSessionJoinEligibility.joinable);
-      expect(VideoSessionJoinRules.canJoin(e), isTrue);
+      expect(e, VideoSessionJoinEligibility.tooEarly);
+      expect(VideoSessionJoinRules.canJoin(e), isFalse);
     });
   });
 }

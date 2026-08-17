@@ -2,7 +2,7 @@
 
 This guide configures Firebase Cloud Messaging (FCM) for device push notifications.
 
-**App package:** `com.example.cotrainr_flutter`
+**App package:** `com.cotrainr.app`
 
 ## Quick checklist (you must do these)
 
@@ -21,7 +21,7 @@ This guide configures Firebase Cloud Messaging (FCM) for device push notificatio
 
 ## 2. Android
 
-1. In Firebase Console, add an **Android app** with package name: `com.example.cotrainr_flutter`
+1. In Firebase Console, add an **Android app** with package name: `com.cotrainr.app`
 2. Download `google-services.json` and **replace** the file in `android/app/` (overwrite the placeholder)
 3. The Google Services plugin is already configured in `android/app/build.gradle.kts`
 

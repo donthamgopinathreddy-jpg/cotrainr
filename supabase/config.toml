@@ -10,3 +10,7 @@ verify_jwt = false
 # Google redirects the browser here without a Supabase Authorization header.
 # Auth is enforced inside the function via OAuth state + PKCE (not gateway JWT).
 verify_jwt = false
+
+[functions.dispatch-video-session-reminders]
+# Invoked by pg_cron / scheduled HTTP, not by signed-in Flutter clients.
+verify_jwt = false

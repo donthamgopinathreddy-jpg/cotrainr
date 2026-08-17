@@ -1,4 +1,4 @@
-package com.example.cotrainr
+package com.cotrainr.app
 
 import android.content.BroadcastReceiver
 import android.content.Context

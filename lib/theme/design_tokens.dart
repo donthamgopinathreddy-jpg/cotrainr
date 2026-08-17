@@ -41,6 +41,9 @@ class DesignTokens {
   static const Color accentBlue = Color(0xFF4DA3FF);
   static const Color accentBlueLight = Color(0xFF6BB5FF);
   static const Color accentPurple = Color(0xFF8B5CF6);
+  /// Video Sessions module accent (home tile / session CTAs).
+  static const Color videoSessionsAccent = Color(0xFF8B7CF6);
+  static const Color videoSessionsAccentLight = Color(0xFFB38CFF);
 
   // Status colors
   static const Color accentGreen = Color(0xFF3ED598);

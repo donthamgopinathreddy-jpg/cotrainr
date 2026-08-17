@@ -39,3 +39,34 @@ If automated migrations fail due to duplicate version history, run manually in S
 
 1. `supabase/migrations/20260816_video_sessions_mvp_hardening.sql` (if not applied)
 2. `supabase/migrations/20260817_google_meet_integration.sql`
+3. `supabase/migrations/20260818_video_sessions_rls_no_recursion.sql`
+4. `supabase/migrations/20260819_video_sessions_drop_client_id_refs.sql`
+5. `supabase/migrations/20260820_video_session_notifications.sql` (optional if 20260821 applied)
+6. **`supabase/migrations/20260821_video_session_names_and_push.sql` (required)**
+
+## Video session notifications / reminders
+
+Server-side jobs live in `video_session_notification_jobs`. Created/reschedule/cancel rows go into existing `public.notifications`. Push uses existing `device_tokens` + `send-push-notification` (also invoked directly from `create-video-session` / `dispatch-video-session-reminders`, not only the dashboard webhook).
+
+Dispatch SQL:
+
+`SELECT public.dispatch_video_session_notification_jobs();`
+
+pg_cron is scheduled in the migration when the extension exists (`* * * * *`). If pg_cron is unavailable, deploy and schedule the Edge Function every minute:
+
+```bash
+supabase functions deploy create-video-session
+supabase functions deploy send-push-notification
+supabase functions deploy dispatch-video-session-reminders --no-verify-jwt
+supabase secrets set VIDEO_SESSION_CRON_SECRET=<random>
+```
+
+Also required for FCM (existing send-push secrets):
+
+- `FIREBASE_PROJECT_ID`
+- `FIREBASE_CLIENT_EMAIL`
+- `FIREBASE_PRIVATE_KEY`
+
+Dashboard → Edge Functions → `dispatch-video-session-reminders` → add a scheduled trigger (every 1 minute) with header `x-cron-secret`.
+
+Android reminder/start notifications include Join and Dismiss actions in the foreground local notification. iOS has no custom action buttons in this MVP (tap opens session detail).
