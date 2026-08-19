@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -9,6 +10,7 @@ import '../repositories/metrics_repository.dart';
 import '../theme/design_tokens.dart';
 import 'fitness_notification_preferences_service.dart';
 import 'hydration_local_store.dart';
+import 'local_notification_router.dart';
 import 'user_goals_service.dart';
 import 'water_notification_handler.dart';
 import 'water_notification_platform.dart';
@@ -63,10 +65,13 @@ class WaterReminderService {
 
     await _plugin.initialize(
       initSettings,
-      onDidReceiveNotificationResponse:
-          WaterNotificationHandler.onForegroundResponse,
+      onDidReceiveNotificationResponse: (response) {
+        if (!routeLocalNotificationResponse(response)) {
+          unawaited(WaterNotificationHandler.onForegroundResponse(response));
+        }
+      },
       onDidReceiveBackgroundNotificationResponse:
-          waterNotificationBackgroundResponse,
+          localNotificationBackgroundRouter,
     );
 
     if (Platform.isAndroid) {

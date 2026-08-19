@@ -166,7 +166,7 @@ Deno.serve(async (req) => {
       )
     }
 
-    const maxSlots = Math.min(5, Math.max(2, Number(max_participants) || 5))
+    const maxSlots = Math.min(21, Math.max(2, Number(max_participants) || 21))
     if (participantIds.length > maxSlots - 1) {
       return jsonError(
         `Max ${maxSlots - 1} invitees (host occupies 1 slot)`,

@@ -513,8 +513,12 @@ final GoRouter appRouter = GoRouter(
       name: 'sessionDetail',
       pageBuilder: (context, state) {
         final id = state.pathParameters['id'] ?? '';
+        final action = state.uri.queryParameters['action'];
         return _fadeSlidePage(
-          child: SessionDetailPage(sessionId: id),
+          child: SessionDetailPage(
+            sessionId: id,
+            initialAction: action,
+          ),
           state: state,
         );
       },

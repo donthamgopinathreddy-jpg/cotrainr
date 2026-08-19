@@ -90,6 +90,10 @@ async function getFirebaseAccessToken(): Promise<string> {
   return tokenData.access_token
 }
 
+function isActionableVideoReminder(type: string): boolean {
+  return type === "video_session_reminder_5m" || type === "video_session_starting"
+}
+
 async function sendFcmMessage(
   accessToken: string,
   projectId: string,
@@ -98,6 +102,33 @@ async function sendFcmMessage(
   body: string,
   data: Record<string, string> = {},
 ): Promise<{ ok: boolean; status: number }> {
+  const actionable = isActionableVideoReminder(data.type || "")
+  // Data-only for JOIN/REJECT reminders so Android does not auto-render a
+  // button-less system notification that would duplicate our local one.
+  const message: Record<string, unknown> = {
+    token,
+    data: {
+      ...data,
+      title,
+      body,
+    },
+    android: {
+      priority: data.type?.startsWith("video_session_") ? "HIGH" : "NORMAL",
+    },
+  }
+  if (!actionable) {
+    message.notification = { title, body }
+    message.android = {
+      priority: data.type?.startsWith("video_session_") ? "HIGH" : "NORMAL",
+      notification: {
+        channel_id: data.type?.startsWith("video_session_")
+          ? "cotrainr_video_sessions"
+          : "cotrainr_notifications",
+        click_action: "FLUTTER_NOTIFICATION_CLICK",
+      },
+    }
+  }
+
   const res = await fetch(
     `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`,
     {
@@ -106,22 +137,7 @@ async function sendFcmMessage(
         "Content-Type": "application/json",
         Authorization: `Bearer ${accessToken}`,
       },
-      body: JSON.stringify({
-        message: {
-          token,
-          notification: { title, body },
-          data,
-          android: {
-            priority: data.type?.startsWith("video_session_") ? "HIGH" : "NORMAL",
-            notification: {
-              channel_id: data.type?.startsWith("video_session_")
-                ? "cotrainr_video_sessions"
-                : "cotrainr_notifications",
-              click_action: "FLUTTER_NOTIFICATION_CLICK",
-            },
-          },
-        },
-      }),
+      body: JSON.stringify({ message }),
     },
   )
   if (!res.ok) {
@@ -157,6 +173,41 @@ export async function deliverNotificationPush(
       notification_id: record.id,
     }))
     return { attempted: false, tokenCount: 0, sent: 0, skipped: "user_disabled_push" }
+  }
+
+  const type = record.type || ""
+  const remindersOff = profile?.notification_video_session_reminders === false
+  const sessionsOff = profile?.notification_video_sessions === false
+  if (
+    (type === "video_session_reminder_5m" || type === "video_session_starting") &&
+    remindersOff
+  ) {
+    console.log(JSON.stringify({
+      event: "fcm_skipped",
+      reason: "user_disabled_video_reminders",
+      notification_id: record.id,
+    }))
+    return {
+      attempted: false,
+      tokenCount: 0,
+      sent: 0,
+      skipped: "user_disabled_video_reminders",
+    }
+  }
+  if (type.startsWith("video_session_") && sessionsOff &&
+      type !== "video_session_reminder_5m" &&
+      type !== "video_session_starting") {
+    console.log(JSON.stringify({
+      event: "fcm_skipped",
+      reason: "user_disabled_video_sessions",
+      notification_id: record.id,
+    }))
+    return {
+      attempted: false,
+      tokenCount: 0,
+      sent: 0,
+      skipped: "user_disabled_video_sessions",
+    }
   }
 
   const { data: tokens, error: tokenErr } = await supabase

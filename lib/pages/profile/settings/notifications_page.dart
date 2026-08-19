@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../../services/fitness_notification_preferences_service.dart';
 import '../../../services/os_notification_permission_status.dart';
+import '../../../services/video_session_notification_prefs.dart';
 import '../../../theme/account_hub_theme.dart';
 import '../../../theme/design_tokens.dart';
 import '../../../widgets/profile/account_hub_widgets.dart';
@@ -12,10 +13,12 @@ class NotificationsPage extends StatefulWidget {
     super.key,
     this.preferencesService,
     this.osPermissionGateway,
+    this.videoSessionPrefsStore,
   });
 
   final FitnessNotificationPreferencesStore? preferencesService;
   final OsNotificationPermissionGateway? osPermissionGateway;
+  final VideoSessionNotificationPrefsStore? videoSessionPrefsStore;
 
   @override
   State<NotificationsPage> createState() => _NotificationsPageState();
@@ -25,7 +28,9 @@ class _NotificationsPageState extends State<NotificationsPage>
     with WidgetsBindingObserver {
   late final FitnessNotificationPreferencesStore _service;
   late final OsNotificationPermissionGateway _osPermission;
+  late final VideoSessionNotificationPrefsStore _videoPrefsStore;
   FitnessNotificationPreferences _prefs = const FitnessNotificationPreferences();
+  VideoSessionNotificationPrefs _videoPrefs = const VideoSessionNotificationPrefs();
   bool _loading = true;
   bool _saving = false;
   OsNotificationAccessLabel _osLabel = OsNotificationAccessLabel.notDetermined;
@@ -37,6 +42,8 @@ class _NotificationsPageState extends State<NotificationsPage>
         widget.preferencesService ?? FitnessNotificationPreferencesService();
     _osPermission =
         widget.osPermissionGateway ?? const OsNotificationPermissionGateway();
+    _videoPrefsStore = widget.videoSessionPrefsStore ??
+        ProfileVideoSessionNotificationPrefsStore();
     WidgetsBinding.instance.addObserver(this);
     _load();
   }
@@ -56,10 +63,16 @@ class _NotificationsPageState extends State<NotificationsPage>
 
   Future<void> _load() async {
     final prefs = await _service.load();
+    VideoSessionNotificationPrefs videoPrefs =
+        const VideoSessionNotificationPrefs();
+    try {
+      videoPrefs = await _videoPrefsStore.load();
+    } catch (_) {}
     final osLabel = await _osPermission.readLabel();
     if (!mounted) return;
     setState(() {
       _prefs = prefs;
+      _videoPrefs = videoPrefs;
       _osLabel = osLabel;
       _loading = false;
     });
@@ -84,6 +97,25 @@ class _NotificationsPageState extends State<NotificationsPage>
     } catch (_) {
       if (!mounted) return;
       setState(() => _prefs = previous);
+      showHubSnackBar(context, 'Could not save preferences');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _persistVideo(VideoSessionNotificationPrefs next) async {
+    if (_saving) return;
+    final previous = _videoPrefs;
+    setState(() {
+      _videoPrefs = next;
+      _saving = true;
+    });
+    HapticFeedback.lightImpact();
+    try {
+      await _videoPrefsStore.save(next);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _videoPrefs = previous);
       showHubSnackBar(context, 'Could not save preferences');
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -165,6 +197,34 @@ class _NotificationsPageState extends State<NotificationsPage>
                     enabled: dependentsEnabled,
                     onChanged: (v) =>
                         _persist(_prefs.copyWith(waterReminders: v)),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                HubSectionCard(
+                  title: 'Video sessions',
+                  animationDelayMs: 120,
+                  child: Column(
+                    children: [
+                      HubToggleRow(
+                        title: 'Video session notifications',
+                        subtitle:
+                            'Created, changed, cancelled, and participant responses',
+                        value: _videoPrefs.sessions,
+                        enabled: !_saving,
+                        onChanged: (v) =>
+                            _persistVideo(_videoPrefs.copyWith(sessions: v)),
+                      ),
+                      const Divider(height: 1),
+                      HubToggleRow(
+                        title: 'Session reminders',
+                        subtitle:
+                            '5-minute reminder and session-start reminder',
+                        value: _videoPrefs.reminders,
+                        enabled: !_saving,
+                        onChanged: (v) =>
+                            _persistVideo(_videoPrefs.copyWith(reminders: v)),
+                      ),
+                    ],
                   ),
                 ),
               ],

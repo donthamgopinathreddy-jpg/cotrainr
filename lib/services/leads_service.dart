@@ -9,6 +9,15 @@ class LeadsService {
   LeadsService({SupabaseClient? supabase})
       : _supabase = supabase ?? Supabase.instance.client;
 
+  static Map<String, dynamic> _publicClientProfile(Map<String, dynamic> m) {
+    return {
+      'id': m['id'],
+      'full_name': m['full_name'],
+      'username': m['username'],
+      'avatar_url': m['avatar_url'],
+    };
+  }
+
   Future<CreateLeadResult> createLead({
     required String providerId,
     String? message,
@@ -103,11 +112,7 @@ class LeadsService {
           );
           for (final p in profilesResponse as List) {
             final m = p as Map<String, dynamic>;
-            profilesMap[m['id'] as String] = {
-              'id': m['id'],
-              'full_name': m['full_name'],
-              'avatar_url': m['avatar_url'],
-            };
+            profilesMap[m['id'] as String] = _publicClientProfile(m);
           }
         } catch (e) {
           debugPrint('LeadsService: Error fetching client profiles: $e');
@@ -157,11 +162,7 @@ class LeadsService {
           );
           for (final p in profilesResponse as List) {
             final m = p as Map<String, dynamic>;
-            profilesMap[m['id'] as String] = {
-              'id': m['id'],
-              'full_name': m['full_name'],
-              'avatar_url': m['avatar_url'],
-            };
+            profilesMap[m['id'] as String] = _publicClientProfile(m);
           }
         } catch (e) {
           debugPrint('LeadsService: Error fetching client profiles: $e');
@@ -395,11 +396,7 @@ class LeadsService {
           );
           for (final p in profilesResponse as List) {
             final m = p as Map<String, dynamic>;
-            profilesMap[m['id'] as String] = {
-              'id': m['id'],
-              'full_name': m['full_name'],
-              'avatar_url': m['avatar_url'],
-            };
+            profilesMap[m['id'] as String] = _publicClientProfile(m);
           }
         } catch (e) {
           debugPrint('LeadsService: Error fetching client profiles: $e');

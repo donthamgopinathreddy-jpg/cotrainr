@@ -2,17 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
 import '../../providers/profile_images_provider.dart';
 import '../../providers/health_tracking_provider.dart';
 import '../../providers/quest_provider.dart';
 import '../../providers/unread_notifications_count_provider.dart';
+import '../../providers/provider_practice_provider.dart';
 import '../../repositories/profile_repository.dart';
 import '../../repositories/metrics_repository.dart';
-import '../../services/leads_service.dart';
-import '../../services/leads_models.dart' show Lead;
 import '../../services/user_goals_service.dart';
 import '../../services/streak_service.dart';
 import '../../services/metrics_sync_service.dart';
@@ -28,8 +26,7 @@ import '../../widgets/home_v3/quick_access_v3.dart';
 import '../../widgets/home_v3/home_nav_hint_cards.dart';
 import '../../widgets/home_v3/nearby_preview_v3.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
-import '../../widgets/nutritionist/nutritionist_overview_section.dart';
-import '../../widgets/trainer/trainer_overview_section.dart';
+import '../../widgets/provider/provider_clients_summary.dart';
 import '../bmi/bmi_details_screen.dart';
 import '../insights/insights_detail_page.dart';
 
@@ -57,9 +54,6 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
 
   String _nutritionistName = 'Nutritionist';
   int _streakDays = 0;
-  int _totalClients = 0;
-  int _pendingRequests = 0;
-  List<TrainerClientPreview> _recentClients = [];
 
   int _goalSteps = 10000;
   int _goalCalories = 2000;
@@ -162,20 +156,9 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
     try {
       final profileRepo = ProfileRepository();
       final metricsRepo = MetricsRepository();
-      final leadsService = LeadsService();
       final profile = await profileRepo.fetchMyProfile();
       final todayMetrics = await metricsRepo.getTodayMetrics();
       final weeklyRows = await metricsRepo.getWeeklyMetrics();
-      final leads = await leadsService.getMyLeads();
-
-      final uid = Supabase.instance.client.auth.currentUser?.id;
-      final myLeads = uid != null
-          ? leads
-              .where((l) => l.providerId == uid && l.providerType == 'nutritionist')
-              .toList()
-          : <Lead>[];
-      final accepted = myLeads.where((l) => l.status == 'accepted').toList();
-      final pending = myLeads.where((l) => l.status == 'requested').toList();
 
       List<double> series(List<Map<String, dynamic>> rows, String key) {
         final list = rows.map((m) => ((m[key] as num?) ?? 0).toDouble()).toList();
@@ -186,19 +169,11 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
         return list;
       }
 
-      final previews = <TrainerClientPreview>[
-        ...pending.take(2).map(_leadToPreview),
-        ...accepted.take(3).map(_leadToPreview),
-      ];
-
       if (!mounted) return;
       setState(() {
         _nutritionistName = profile?['full_name'] as String? ??
             profile?['username'] as String? ??
             'Nutritionist';
-        _totalClients = accepted.length;
-        _pendingRequests = pending.length;
-        _recentClients = previews.take(3).toList();
         _currentSteps = (todayMetrics?['steps'] as num?)?.toInt() ?? 0;
         _currentCalories =
             (todayMetrics?['calories_burned'] as num?)?.toDouble() ?? 0;
@@ -251,24 +226,18 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
     } catch (_) {}
   }
 
-  TrainerClientPreview _leadToPreview(Lead lead) {
-    final client = lead.client;
-    final name = client?['full_name'] as String? ?? 'Client';
-    final username = client?['username'] as String? ?? '';
-    return TrainerClientPreview(
-      id: lead.clientId,
-      name: name.isNotEmpty ? name : username,
-      subtitle: lead.status == 'requested'
-          ? 'Pending request'
-          : (username.isNotEmpty ? '@$username' : 'Active client'),
-      avatarUrl: client?['avatar_url'] as String?,
-      isPending: lead.status == 'requested',
-      leadId: lead.id,
-    );
-  }
-
   Future<void> _refreshNotificationBadge() async {
     ref.invalidate(unreadNotificationsCountProvider);
+  }
+
+  void _openClientsTab({int tab = 0}) {
+    ref.read(providerClientsTabIntentProvider.notifier).state = tab;
+    widget.onNavigateToClientsTab?.call();
+  }
+
+  void _openClientNotes() {
+    HapticFeedback.lightImpact();
+    context.push('/trainer/notes');
   }
 
   @override
@@ -313,6 +282,7 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
       _loadGoals(),
       _loadCoachingData(),
     ]);
+    ref.invalidate(providerPracticeSummaryProvider);
     ref.read(dailyMetricsProvider.notifier).refresh();
   }
 
@@ -321,6 +291,8 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
     final isLight = Theme.of(context).brightness == Brightness.light;
     final bg = isLight ? HomePremiumTheme.lightWarmBg : DesignTokens.darkBackground;
     final liveMetrics = ref.watch(dailyMetricsProvider).valueOrNull;
+    final practice = ref.watch(providerPracticeSummaryProvider('nutritionist'));
+    final summary = practice.valueOrNull ?? ProviderPracticeSummary.empty;
     final currentSteps = liveMetrics?.steps ?? _currentSteps;
     final currentCalories =
         (liveMetrics?.activeCalories ?? _currentCalories).round();
@@ -501,11 +473,18 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
                   child: _animated(
                     _safeSection(
                       context,
-                      NutritionistOverviewSection(
-                        totalClients: _totalClients,
-                        pendingRequests: _pendingRequests,
-                        recentClients: _recentClients,
-                        onViewAllClients: widget.onNavigateToClientsTab,
+                      ProviderClientsSummary(
+                        activeCount: summary.activeCount,
+                        requestCount: summary.requestCount,
+                        clients: summary.clients,
+                        loading: practice.isLoading && practice.valueOrNull == null,
+                        onOpenClients: () => _openClientsTab(tab: 0),
+                        onOpenRequests: () => _openClientsTab(tab: 1),
+                        onOpenNotes: _openClientNotes,
+                        onOpenClient: (c) {
+                          if (c.id.isEmpty) return;
+                          context.push('/nutritionist/clients/${c.id}');
+                        },
                       ),
                     ),
                     180,

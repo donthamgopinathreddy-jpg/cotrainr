@@ -153,6 +153,7 @@ class NotificationsRepository {
     'video_session_cancelled',
     'video_session_reminder_5m',
     'video_session_starting',
+    'video_session_rejected',
   ];
 
   static bool isVideoSessionType(String? type) {

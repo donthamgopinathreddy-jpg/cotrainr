@@ -19,6 +19,7 @@ import '../nutritionist/nutritionist_my_clients_page.dart';
 import '../../providers/unread_messages_count_provider.dart';
 import '../../providers/unread_notifications_count_provider.dart';
 import '../../providers/unread_video_session_notifications_provider.dart';
+import '../../services/video_session_pending_navigation.dart';
 
 class HomeShellPage extends ConsumerStatefulWidget {
   final bool showWelcome;
@@ -158,8 +159,17 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _subscribeBadgeRealtime();
+      unawaited(_applyPendingVideoSessionAction());
     });
     unawaited(_guardIncompleteOnboarding());
+  }
+
+  Future<void> _applyPendingVideoSessionAction() async {
+    final route = await VideoSessionPendingNavigation.peek();
+    if (route == null || !mounted) return;
+    await VideoSessionPendingNavigation.consume();
+    if (!mounted) return;
+    context.go(route);
   }
 
   Future<void> _guardIncompleteOnboarding() async {

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' show DartPluginRegistrant;
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -9,16 +10,90 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../router/app_router.dart';
+import '../video_sessions/video_session_notification_logic.dart';
+import 'local_notification_router.dart';
 import 'video_session_notification_actions.dart';
 
 /// Top-level isolate entry for FCM. Must stay a top-level function.
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   try {
+    DartPluginRegistrant.ensureInitialized();
     await Firebase.initializeApp();
   } catch (e) {
     debugPrint('[BOOT] FCM background Firebase init failed: $e');
   }
+  await showVideoSessionReminderIfNeeded(message);
+}
+
+Future<void> showVideoSessionReminderIfNeeded(RemoteMessage message) async {
+  final data = message.data;
+  final type = data['type'] ?? data['notification_type'] ?? '';
+  if (!VideoSessionNotificationLogic.isActionableReminderType(type.toString())) {
+    return;
+  }
+  final plugin = FlutterLocalNotificationsPlugin();
+  await plugin.initialize(
+    const InitializationSettings(
+      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+    ),
+    onDidReceiveBackgroundNotificationResponse:
+        localNotificationBackgroundRouter,
+  );
+  if (Platform.isAndroid) {
+    final android = plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    await android?.createNotificationChannel(
+      const AndroidNotificationChannel(
+        VideoSessionNotificationActions.channelId,
+        'Video Sessions',
+        description: 'Video session reminders and start alerts',
+        importance: Importance.max,
+      ),
+    );
+  }
+  await _showActionableVideoLocalNotification(plugin, data);
+}
+
+Future<void> _showActionableVideoLocalNotification(
+  FlutterLocalNotificationsPlugin plugin,
+  Map<String, dynamic> data,
+) async {
+  final sessionId = VideoSessionNotificationActions.sessionIdFrom(data) ?? '';
+  final type = data['type']?.toString() ??
+      data['notification_type']?.toString() ??
+      '';
+  final id = Object.hash(sessionId, type) & 0x7fffffff;
+  final title = data['title']?.toString().trim().isNotEmpty == true
+      ? data['title'].toString()
+      : VideoSessionNotificationActions.reminderTitleFromData(data);
+  final body = VideoSessionNotificationActions.reminderBodyFromData(data);
+  final payload = VideoSessionNotificationActions.encodePayload(
+    action: 'open',
+    sessionId: sessionId,
+    joinUrl: data['join_url']?.toString(),
+    scheduledStart: data['scheduled_start']?.toString(),
+    durationMinutes: int.tryParse('${data['duration_minutes']}'),
+    status: data['status']?.toString() ?? 'scheduled',
+    type: type,
+    counterpartName: data['counterpart_name']?.toString(),
+  );
+  await plugin.show(
+    id == 0 ? type.hashCode : id,
+    title,
+    body,
+    NotificationDetails(
+      android: AndroidNotificationDetails(
+        VideoSessionNotificationActions.channelId,
+        'Video Sessions',
+        channelDescription: 'Video session reminders and start alerts',
+        importance: Importance.max,
+        priority: Priority.max,
+        actions: VideoSessionNotificationActions.androidActions,
+      ),
+    ),
+    payload: payload,
+  );
 }
 
 class PushNotificationService {
@@ -67,6 +142,8 @@ class PushNotificationService {
           .initialize(
             initSettings,
             onDidReceiveNotificationResponse: _onNotificationTapped,
+            onDidReceiveBackgroundNotificationResponse:
+                localNotificationBackgroundRouter,
           )
           .timeout(const Duration(seconds: 5));
 
@@ -102,10 +179,23 @@ class PushNotificationService {
         }
       });
 
+      unawaited(_consumeLaunchIntents());
       unawaited(_registerTokenIfPermitted());
       debugPrint('[BOOT] push init complete');
     } catch (e, st) {
       debugPrint('[BOOT] push init failed: $e\n$st');
+    }
+  }
+
+  Future<void> _consumeLaunchIntents() async {
+    try {
+      final launch = await _localNotifications.getNotificationAppLaunchDetails();
+      if (launch?.didNotificationLaunchApp == true &&
+          launch?.notificationResponse != null) {
+        _onNotificationTapped(launch!.notificationResponse!);
+      }
+    } catch (e) {
+      debugPrint('[BOOT] launch notification details failed: $e');
     }
   }
 
@@ -134,34 +224,30 @@ class PushNotificationService {
   }
 
   void _onNotificationTapped(NotificationResponse response) {
-    final payload =
-        VideoSessionNotificationActions.decodePayload(response.payload);
-    if (payload != null &&
-        (payload.containsKey('video_session_id') ||
-            response.actionId == VideoSessionNotificationActions.join ||
-            response.actionId == VideoSessionNotificationActions.dismiss)) {
-      VideoSessionNotificationActions.handleResponse(response);
-      return;
-    }
+    if (routeLocalNotificationResponse(response)) return;
     appRouter.go('/notifications');
   }
 
   Future<void> _showForegroundNotification(RemoteMessage message) async {
     if (!Platform.isAndroid) return;
+    final data = message.data;
+    final type = (data['type'] ?? data['notification_type'] ?? '').toString();
+    final isActionable =
+        VideoSessionNotificationLogic.isActionableReminderType(type);
+    if (isActionable) {
+      await _showActionableVideoLocalNotification(_localNotifications, data);
+      return;
+    }
     final notification = message.notification;
     if (notification == null) return;
-    final data = message.data;
-    final type = data['type'] ?? '';
-    final isVideo = type.toString().startsWith('video_session_');
-    final isActionable = type == 'video_session_reminder_5m' ||
-        type == 'video_session_starting';
+    final isVideo = type.startsWith('video_session_');
     final payload = jsonEncode({
       'action': 'open',
       'type': type,
       'video_session_id': data['video_session_id'],
       'join_url': data['join_url'],
       'scheduled_start': data['scheduled_start'],
-      'status': 'scheduled',
+      'status': data['status'] ?? 'scheduled',
     });
 
     await _localNotifications.show(
@@ -175,22 +261,8 @@ class PushNotificationService {
           channelDescription: isVideo
               ? 'Video session reminders and start alerts'
               : 'Push notifications from Cotrainr',
-          importance: isActionable ? Importance.max : Importance.high,
-          priority: isActionable ? Priority.max : Priority.high,
-          actions: isActionable
-              ? const [
-                  AndroidNotificationAction(
-                    VideoSessionNotificationActions.join,
-                    'Join',
-                    showsUserInterface: true,
-                  ),
-                  AndroidNotificationAction(
-                    VideoSessionNotificationActions.dismiss,
-                    'Dismiss',
-                    cancelNotification: true,
-                  ),
-                ]
-              : null,
+          importance: Importance.high,
+          priority: Priority.high,
         ),
       ),
       payload: payload,

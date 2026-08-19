@@ -65,6 +65,21 @@ void main() {
       );
     });
 
+    test('group session uses first name plus others', () {
+      expect(
+        VideoSessionNotificationLogic.withLine(
+          participantNames: const ['Vyjayanthi', 'Jyothi', 'Gopinath'],
+        ),
+        'with Vyjayanthi + 2 others',
+      );
+      expect(
+        VideoSessionNotificationLogic.withLine(
+          participantNames: const ['Vyjayanthi', 'Jyothi'],
+        ),
+        'with Vyjayanthi + 1 other',
+      );
+    });
+
     test('displayName prefers full_name then username', () {
       expect(
         VideoSessionNotificationLogic.displayName(
@@ -162,6 +177,10 @@ void main() {
         'Your session with Gopi starts at 5:08 PM.',
       );
       expect(
+        VideoSessionNotificationLogic.startingBody(counterpartName: 'Gopi'),
+        'Your session with Gopi is ready.',
+      );
+      expect(
         VideoSessionNotificationLogic.createdBody(
           hostName: 'Rahul Sharma',
           whenLabel: 'x',
@@ -201,6 +220,7 @@ void main() {
           'video_session_cancelled',
           'video_session_reminder_5m',
           'video_session_starting',
+          'video_session_rejected',
         ]),
       );
       expect(NotificationsRepository.isVideoSessionType('video_session_created'), isTrue);

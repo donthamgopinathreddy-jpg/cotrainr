@@ -64,6 +64,8 @@ class ProfileRepository {
         'community': true,
         'reminders': true,
         'achievements': true,
+        'videoSessions': true,
+        'videoSessionReminders': true,
       };
     }
     try {
@@ -75,6 +77,9 @@ class ProfileRepository {
         'community': response['notification_community'] as bool? ?? true,
         'reminders': response['notification_reminders'] as bool? ?? true,
         'achievements': response['notification_achievements'] as bool? ?? true,
+        'videoSessions': response['notification_video_sessions'] as bool? ?? true,
+        'videoSessionReminders':
+            response['notification_video_session_reminders'] as bool? ?? true,
       };
     } catch (e) {
       return _defaultNotificationPrefs;
@@ -86,6 +91,8 @@ class ProfileRepository {
     'community': true,
     'reminders': true,
     'achievements': true,
+    'videoSessions': true,
+    'videoSessionReminders': true,
   };
 
   /// Update notification preferences
@@ -94,15 +101,24 @@ class ProfileRepository {
     required bool community,
     required bool reminders,
     required bool achievements,
+    bool? videoSessions,
+    bool? videoSessionReminders,
   }) async {
     if (_currentUserId == null) return;
     try {
-      await _supabase.from('profiles').update({
+      final updates = <String, dynamic>{
         'notification_push': push,
         'notification_community': community,
         'notification_reminders': reminders,
         'notification_achievements': achievements,
-      }).eq('id', _currentUserId!);
+      };
+      if (videoSessions != null) {
+        updates['notification_video_sessions'] = videoSessions;
+      }
+      if (videoSessionReminders != null) {
+        updates['notification_video_session_reminders'] = videoSessionReminders;
+      }
+      await _supabase.from('profiles').update(updates).eq('id', _currentUserId!);
     } catch (e) {
       print('Error updating notification preferences: $e');
       rethrow;

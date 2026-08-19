@@ -14,3 +14,7 @@ verify_jwt = false
 [functions.dispatch-video-session-reminders]
 # Invoked by pg_cron / scheduled HTTP, not by signed-in Flutter clients.
 verify_jwt = false
+
+[functions.respond-video-session]
+# Authenticated Flutter clients. Actor is taken from the JWT, not the body.
+verify_jwt = true

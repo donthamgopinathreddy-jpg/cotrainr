@@ -98,6 +98,8 @@ void main() {
 
       expect(find.text('All notifications'), findsOneWidget);
       expect(find.text('Water reminders'), findsOneWidget);
+      expect(find.text('Video session notifications'), findsOneWidget);
+      expect(find.text('Session reminders'), findsOneWidget);
       expect(find.text('System notifications'), findsOneWidget);
       expect(find.text('Save'), findsNothing);
 
@@ -191,7 +193,7 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(find.text('All notifications'), findsOneWidget);
-        expect(find.byType(Switch), findsNWidgets(2));
+        expect(find.byType(Switch), findsNWidgets(4));
       }
     });
   });

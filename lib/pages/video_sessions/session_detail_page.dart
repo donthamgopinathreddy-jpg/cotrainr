@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -10,12 +12,21 @@ import '../../repositories/video_sessions_repository.dart';
 import '../../theme/account_hub_theme.dart';
 import '../../theme/design_tokens.dart';
 import '../../utils/meeting_link_rules.dart';
+import '../../video_sessions/video_session_notification_logic.dart';
 import '../../widgets/profile/account_hub_widgets.dart';
+import '../../widgets/video_sessions/video_session_avatar.dart';
+import '../../widgets/video_sessions/video_session_people_sheet.dart';
+import '../../widgets/video_sessions/video_session_reject_sheet.dart';
 
 class SessionDetailPage extends StatefulWidget {
   final String sessionId;
+  final String? initialAction;
 
-  const SessionDetailPage({super.key, required this.sessionId});
+  const SessionDetailPage({
+    super.key,
+    required this.sessionId,
+    this.initialAction,
+  });
 
   @override
   State<SessionDetailPage> createState() => _SessionDetailPageState();
@@ -27,6 +38,8 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
   bool _loading = true;
   bool _cancelling = false;
   bool _saving = false;
+  bool _responding = false;
+  bool _handledInitialAction = false;
   String? _error;
 
   @override
@@ -60,6 +73,7 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
         NotificationsRepository().markVideoSessionNotificationsRead(
           sessionId: session.id,
         );
+        _runInitialAction(session);
       }
     } catch (e) {
       if (!mounted) return;
@@ -74,6 +88,21 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
     }
   }
 
+  void _runInitialAction(VideoSession session) {
+    if (_handledInitialAction) return;
+    final action = widget.initialAction;
+    if (action != 'join' && action != 'reject') return;
+    _handledInitialAction = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (action == 'join') {
+        _join();
+      } else if (action == 'reject') {
+        unawaited(_reject());
+      }
+    });
+  }
+
   Future<void> _join() async {
     final session = _session;
     if (session == null || !session.canJoin) return;
@@ -86,6 +115,56 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (_) {
       if (mounted) showHubSnackBar(context, 'Could not open meeting link');
+    }
+  }
+
+  Future<void> _reject() async {
+    final session = _session;
+    if (session == null || _responding) return;
+    if (!session.isScheduled) {
+      showHubSnackBar(context, 'This session can no longer be updated');
+      return;
+    }
+    final name = session.counterpartyName?.trim().isNotEmpty == true
+        ? session.counterpartyName!.trim()
+        : (session.participantNames.isNotEmpty
+            ? session.participantNames.first
+            : 'them');
+    final result = await showVideoSessionRejectSheet(
+      context: context,
+      counterpartDisplayName: name,
+    );
+    if (result == null || !mounted) return;
+
+    setState(() => _responding = true);
+    try {
+      final role = await _repo.rejectSession(
+        sessionId: session.id,
+        reasonCode: result.reasonCode,
+        reasonText: result.reasonText,
+      );
+      if (!mounted) return;
+      final reason = VideoSessionNotificationLogic.rejectReasonLabel(
+        result.reasonCode,
+        otherText: result.reasonText,
+      );
+      setState(() {
+        _session = session.copyWith(
+          myResponseStatus: 'rejected',
+          myResponseReason: reason,
+          myRespondedAt: DateTime.now(),
+        );
+      });
+      showHubSnackBar(
+        context,
+        VideoSessionNotificationLogic.notifiedSnackbar(role),
+      );
+    } on VideoSessionCreateException catch (e) {
+      if (mounted) showHubSnackBar(context, e.message);
+    } catch (_) {
+      if (mounted) showHubSnackBar(context, 'Could not save response');
+    } finally {
+      if (mounted) setState(() => _responding = false);
     }
   }
 
@@ -105,8 +184,8 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
       builder: (ctx) => AlertDialog(
         title: const Text('Cancel this session?'),
         content: const Text(
-          'The Member will no longer be able to join from Cotrainr. '
-          'The external meeting link is not deleted automatically.',
+          'Participants will no longer be able to join from Cotrainr. '
+          'The meeting link is not deleted automatically.',
         ),
         actions: [
           TextButton(
@@ -367,10 +446,42 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
                             ],
                           ),
                           const SizedBox(height: 12),
-                          _MetaRow(
-                            icon: Icons.person_outline_rounded,
-                            text: session.withLine,
-                          ),
+                          if (session.people.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            Text(
+                              'Participants',
+                              style: AccountHubTheme.sectionTitle(context),
+                            ),
+                            const SizedBox(height: 8),
+                            for (final person in session.people)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: Row(
+                                  children: [
+                                    VideoSessionAvatar(
+                                      name: person.displayName,
+                                      imageUrl: person.avatarUrl,
+                                      size: 40,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        person.displayName.trim().isEmpty
+                                            ? 'Unnamed profile'
+                                            : person.displayName.trim(),
+                                        style: AccountHubTheme.rowTitle(context),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ] else ...[
+                            const SizedBox(height: 8),
+                            _MetaRow(
+                              icon: Icons.person_outline_rounded,
+                              text: session.withLine,
+                            ),
+                          ],
                           const SizedBox(height: 8),
                           _MetaRow(
                             icon: Icons.calendar_today_rounded,
@@ -399,7 +510,77 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    if (session.canJoin)
+                    if (session.hasRejected) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: AccountHubTheme.dangerRed.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Unable to attend',
+                              style: AccountHubTheme.rowTitle(context).copyWith(
+                                color: AccountHubTheme.dangerRed,
+                              ),
+                            ),
+                            if (session.myResponseReason != null &&
+                                session.myResponseReason!.trim().isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                'Reason: ${session.myResponseReason}',
+                                style: AccountHubTheme.rowSubtitle(context),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      if (session.isScheduled) ...[
+                        const SizedBox(height: 10),
+                        TextButton(
+                          onPressed: _responding ? null : _reject,
+                          style: TextButton.styleFrom(
+                            foregroundColor: DesignTokens.videoSessionsAccent,
+                          ),
+                          child: const Text('Change response'),
+                        ),
+                      ],
+                    ] else if (session.counterpartRejected) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: AccountHubTheme.dangerRed.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Unable to attend',
+                              style: AccountHubTheme.rowTitle(context).copyWith(
+                                color: AccountHubTheme.dangerRed,
+                              ),
+                            ),
+                            if (session.counterpartResponseReason != null &&
+                                session.counterpartResponseReason!
+                                    .trim()
+                                    .isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                'Reason: ${session.counterpartResponseReason}',
+                                style: AccountHubTheme.rowSubtitle(context),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                    if (!session.hasRejected && session.canJoin)
                       SizedBox(
                         height: 52,
                         child: ElevatedButton.icon(
@@ -415,7 +596,7 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
                           ),
                         ),
                       )
-                    else
+                    else if (!session.hasRejected)
                       Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
@@ -497,16 +678,15 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = session.isCancelled
-        ? 'Cancelled'
-        : session.isPast
-            ? 'Past'
-            : 'Upcoming';
-    final color = session.isCancelled
-        ? AccountHubTheme.dangerRed
-        : session.isPast
-            ? const Color(0xFF9CA3AF)
-            : DesignTokens.videoSessionsAccent;
+    final label = session.hasRejected || session.counterpartRejected
+        ? 'Rejected'
+        : session.isCancelled
+            ? 'Cancelled'
+            : session.isPast
+                ? null
+                : 'Upcoming';
+    if (label == null) return const SizedBox.shrink();
+    final color = videoSessionStatusColor(context, label);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(

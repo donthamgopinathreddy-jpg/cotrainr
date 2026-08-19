@@ -8,6 +8,7 @@ import '../../providers/unread_video_session_notifications_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
 import '../../theme/text_styles.dart';
+import '../../utils/client_notes_grouping.dart';
 import '../common/pressable_card.dart';
 import 'home_premium_theme.dart';
 
@@ -66,17 +67,10 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
       ),
     };
 
-    if (isTrainer) {
-      tiles['Client Notes'] = const _ExploreTileData(
-        title: 'Client Notes',
-        subtitle: 'Review feedback and session notes.',
-        icon: Icons.edit_note_rounded,
-        accent: Color(0xFFFF6B6B),
-      );
-    } else if (!isNutritionist) {
-      tiles['Coach Notes'] = const _ExploreTileData(
-        title: 'Coach Notes',
-        subtitle: 'View trainer feedback and notes.',
+    if (!isTrainer && !isNutritionist) {
+      tiles['Notes'] = const _ExploreTileData(
+        title: kClientNotesExploreTitle,
+        subtitle: kClientNotesExploreSubtitle,
         icon: Icons.note_rounded,
         accent: Color(0xFFFF6B6B),
       );
@@ -105,6 +99,7 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
 
   VoidCallback? _routeFor(BuildContext context, String title) {
     switch (title) {
+      case 'Notes':
       case 'Coach Notes':
         return () => context.push('/coach-notes');
       case 'Client Notes':
@@ -263,27 +258,10 @@ class _ExploreBentoGrid extends StatelessWidget {
           );
         }
         if (isTrainer) {
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildPairRow(
-                pairH,
-                _get('Nutrition Goals')!,
-                _get('Client Notes')!,
-              ),
-              const SizedBox(height: _gap),
-              SizedBox(
-                height: bannerH,
-                width: double.infinity,
-                child: _ExploreTile(
-                  item: _get('Video Sessions')!,
-                  layout: _ExploreTileLayout.banner,
-                  isLight: isLight,
-                  showAlertDot: videoUnread > 0,
-                  onTap: () => onTileTap(_get('Video Sessions')!),
-                ),
-              ),
-            ],
+          return _buildPairRow(
+            pairH,
+            _get('Nutrition Goals')!,
+            _get('Video Sessions')!,
           );
         }
         if (isClient) {
@@ -296,7 +274,7 @@ class _ExploreBentoGrid extends StatelessWidget {
 
   Widget _buildClientLayout(double pairH, double bannerH) {
     final nutrition = _get('Nutrition Goals')!;
-    final coach = _get('Coach Notes')!;
+    final coach = _get('Notes')!;
     final video = _get('Video Sessions')!;
     final providers = _get('Trainers & Nutritionists')!;
     final subscription = _get('Subscription')!;
@@ -525,7 +503,7 @@ class _ExploreTileData {
     // Brighter light-mode accents for Explore tiles.
     return switch (title) {
       'Nutrition Goals' => const Color(0xFF12C07A),
-      'Coach Notes' || 'Client Notes' => const Color(0xFFFF4D4D),
+      'Notes' || 'Coach Notes' || 'Client Notes' => const Color(0xFFFF4D4D),
       'Video Sessions' => const Color(0xFF7C5CFF),
       'My Trainers' || 'Trainers' || 'Trainers & Nutritionists' =>
         const Color(0xFFFF8A00),

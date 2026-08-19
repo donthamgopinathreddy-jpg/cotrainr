@@ -30,6 +30,20 @@ bool isVideoSessionUuid(String value) {
   ).hasMatch(v);
 }
 
+class VideoSessionPerson {
+  final String userId;
+  final String displayName;
+  final String? avatarUrl;
+  final String role;
+
+  const VideoSessionPerson({
+    required this.userId,
+    required this.displayName,
+    this.avatarUrl,
+    this.role = 'participant',
+  });
+}
+
 /// Supabase-backed provider-neutral video session.
 class VideoSession {
   final String id;
@@ -49,6 +63,12 @@ class VideoSession {
   final List<String> participantNames;
   final int participantCount;
   final String? nameResolutionStatus;
+  final String? myResponseStatus;
+  final String? myResponseReason;
+  final DateTime? myRespondedAt;
+  final String? counterpartResponseStatus;
+  final String? counterpartResponseReason;
+  final List<VideoSessionPerson> people;
 
   VideoSession({
     required this.id,
@@ -68,6 +88,12 @@ class VideoSession {
     this.participantNames = const [],
     this.participantCount = 0,
     this.nameResolutionStatus,
+    this.myResponseStatus,
+    this.myResponseReason,
+    this.myRespondedAt,
+    this.counterpartResponseStatus,
+    this.counterpartResponseReason,
+    this.people = const [],
   });
 
   factory VideoSession.fromJson(
@@ -83,6 +109,7 @@ class VideoSession {
         : const <String>[];
     final resolvedName = counterpartyName ??
         (json['counterpart_name'] as String?)?.trim();
+    final respondedAtRaw = json['my_responded_at'] as String?;
     return VideoSession(
       id: json['id'] as String,
       hostId: json['host_id'] as String,
@@ -102,6 +129,13 @@ class VideoSession {
       participantCount: (json['participant_count'] as num?)?.toInt() ??
           parsedNames.length,
       nameResolutionStatus: json['name_resolution_status'] as String?,
+      myResponseStatus: json['my_response_status'] as String?,
+      myResponseReason: json['my_response_reason'] as String?,
+      myRespondedAt: respondedAtRaw == null
+          ? null
+          : DateTime.tryParse(respondedAtRaw),
+      counterpartResponseStatus: json['counterpart_response_status'] as String?,
+      counterpartResponseReason: json['counterpart_response_reason'] as String?,
     );
   }
 
@@ -111,6 +145,12 @@ class VideoSession {
     List<String>? participantNames,
     int? participantCount,
     String? nameResolutionStatus,
+    String? myResponseStatus,
+    String? myResponseReason,
+    DateTime? myRespondedAt,
+    String? counterpartResponseStatus,
+    String? counterpartResponseReason,
+    List<VideoSessionPerson>? people,
   }) {
     return VideoSession(
       id: id,
@@ -131,12 +171,22 @@ class VideoSession {
       participantCount: participantCount ?? this.participantCount,
       nameResolutionStatus:
           nameResolutionStatus ?? this.nameResolutionStatus,
+      myResponseStatus: myResponseStatus ?? this.myResponseStatus,
+      myResponseReason: myResponseReason ?? this.myResponseReason,
+      myRespondedAt: myRespondedAt ?? this.myRespondedAt,
+      counterpartResponseStatus:
+          counterpartResponseStatus ?? this.counterpartResponseStatus,
+      counterpartResponseReason:
+          counterpartResponseReason ?? this.counterpartResponseReason,
+      people: people ?? this.people,
     );
   }
 
   bool get isScheduled => status == 'scheduled';
   bool get isCancelled => status == 'cancelled';
   bool get isEnded => status == 'ended';
+  bool get hasRejected => myResponseStatus == 'rejected';
+  bool get counterpartRejected => counterpartResponseStatus == 'rejected';
 
   DateTime get endsAt =>
       scheduledStart.add(Duration(minutes: durationMinutes));
@@ -148,6 +198,13 @@ class VideoSession {
 
   bool get isUpcoming => isScheduled && !isPast;
 
+  bool includesParticipant(String userId) {
+    if (userId.isEmpty) return false;
+    if (people.any((p) => p.userId == userId)) return true;
+    if (clientId == userId) return true;
+    return false;
+  }
+
   VideoSessionJoinEligibility get joinEligibility =>
       VideoSessionJoinRules.evaluate(
         status: status,
@@ -156,16 +213,26 @@ class VideoSession {
         joinUrl: joinUrl,
       );
 
-  bool get canJoin => VideoSessionJoinRules.canJoin(joinEligibility);
+  bool get canJoin =>
+      !hasRejected && VideoSessionJoinRules.canJoin(joinEligibility);
 
   bool get isTooEarlyToJoin =>
       joinEligibility == VideoSessionJoinEligibility.tooEarly;
 
   /// Counterpart line for list/detail. Never "with Provider" / "with Member".
-  String get withLine => VideoSessionNotificationLogic.withLine(
-        participantNames: participantNames,
-        counterpartyName: counterpartyName,
-      );
+  String get withLine {
+    var names = participantNames;
+    if (names.isEmpty && people.isNotEmpty) {
+      names = people
+          .where((p) => p.role != 'host' && p.displayName.trim().isNotEmpty)
+          .map((p) => p.displayName.trim())
+          .toList();
+    }
+    return VideoSessionNotificationLogic.withLine(
+      participantNames: names,
+      counterpartyName: counterpartyName,
+    );
+  }
 
   String? get meetingProviderLabel {
     if (provider == 'google_meet' || provider == 'meet') return 'Google Meet';
@@ -264,7 +331,7 @@ class VideoSessionsRepository {
           .map((e) => VideoSession.fromJson(Map<String, dynamic>.from(e as Map)))
           .toList();
       _logNameResolution(sessions);
-      return sessions;
+      return await _attachPeople(sessions);
     } catch (e) {
       _logPostgrestError('list_my_video_sessions', e);
       try {
@@ -280,11 +347,55 @@ class VideoSessionsRepository {
 
         final named = await _attachCounterpartyNames(sessions);
         _logNameResolution(named);
-        return named;
+        return await _attachPeople(named);
       } catch (e2) {
         _logPostgrestError('listSessions', e2);
         rethrow;
       }
+    }
+  }
+
+  /// Next upcoming session that includes [clientId] as a participant.
+  Future<VideoSession?> upcomingSessionForClient(String clientId) async {
+    try {
+      final sessions = await listSessions();
+      final upcoming = sessions
+          .where((s) => s.isUpcoming && s.includesParticipant(clientId))
+          .toList()
+        ..sort((a, b) => a.scheduledStart.compareTo(b.scheduledStart));
+      return upcoming.isEmpty ? null : upcoming.first;
+    } catch (e) {
+      _logPostgrestError('upcomingSessionForClient', e);
+      return null;
+    }
+  }
+
+  Future<List<VideoSession>> _attachPeople(List<VideoSession> sessions) async {
+    if (sessions.isEmpty) return sessions;
+    try {
+      final res = await _supabase.rpc('list_my_video_session_people');
+      final rows = (res as List).cast<dynamic>();
+      final bySession = <String, List<VideoSessionPerson>>{};
+      for (final raw in rows) {
+        final map = Map<String, dynamic>.from(raw as Map);
+        final sid = map['session_id'] as String?;
+        final uid = map['user_id'] as String?;
+        if (sid == null || uid == null) continue;
+        bySession.putIfAbsent(sid, () => []).add(
+              VideoSessionPerson(
+                userId: uid,
+                displayName: (map['display_name'] as String?)?.trim() ?? '',
+                avatarUrl: map['avatar_url'] as String?,
+                role: map['role'] as String? ?? 'participant',
+              ),
+            );
+      }
+      return sessions
+          .map((s) => s.copyWith(people: bySession[s.id] ?? const []))
+          .toList();
+    } catch (e) {
+      _logPostgrestError('list_my_video_session_people', e);
+      return sessions;
     }
   }
 
@@ -380,7 +491,12 @@ class VideoSessionsRepository {
       return sessions.map((s) {
         final isHost = s.hostId == me;
         final memberIds = participantIdsBySession[s.id] ?? const <String>[];
-        final displayIds = isHost ? memberIds : <String>[s.hostId];
+        final displayIds = isHost
+            ? memberIds
+            : <String>{
+                s.hostId,
+                ...memberIds.where((id) => id != me),
+              }.toList();
         final names = displayIds
             .map((id) => nameById[id])
             .whereType<String>()
@@ -540,15 +656,46 @@ class VideoSessionsRepository {
         final named =
             await _attachCounterpartyNames([VideoSession.fromJson(row)]);
         _logNameResolution(named);
-        return named.first;
+        final withPeople = await _attachPeople(named);
+        return withPeople.first;
       }
       final session =
           VideoSession.fromJson(Map<String, dynamic>.from(list.first as Map));
       _logNameResolution([session]);
-      return session;
+      final withPeople = await _attachPeople([session]);
+      return withPeople.first;
     } catch (e) {
       _logPostgrestError('getSession', e);
       rethrow;
     }
+  }
+
+  /// Persist attendance rejection. Actor is the signed-in JWT user.
+  Future<String> rejectSession({
+    required String sessionId,
+    required String reasonCode,
+    String? reasonText,
+  }) async {
+    final res = await _supabase.functions.invoke(
+      'respond-video-session',
+      body: {
+        'session_id': sessionId,
+        'response_status': 'rejected',
+        'reason_code': reasonCode,
+        if (reasonText != null && reasonText.trim().isNotEmpty)
+          'reason_text': reasonText.trim(),
+      },
+    );
+    if (res.status != 200) {
+      final map = res.data is Map ? Map<String, dynamic>.from(res.data as Map) : null;
+      final code = map?['code']?.toString();
+      final err = map?['error']?.toString() ?? 'Could not save response';
+      if (code == 'FORBIDDEN') {
+        throw VideoSessionCreateException(err, code: code);
+      }
+      throw VideoSessionCreateException(err, code: code);
+    }
+    final map = res.data is Map ? Map<String, dynamic>.from(res.data as Map) : null;
+    return map?['snackbar_role']?.toString() ?? 'trainer';
   }
 }

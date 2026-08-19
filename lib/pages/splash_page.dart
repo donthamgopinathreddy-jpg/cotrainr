@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme/branding_assets.dart';
 import '../theme/design_tokens.dart';
 import '../core/startup/startup_router_bridge.dart';
+import '../services/video_session_pending_navigation.dart';
 import '../widgets/branding/cotrainr_logo.dart';
 import '../widgets/branding/splash_light_trails.dart';
 
@@ -156,9 +157,13 @@ class _CotrainrSplashScreenState extends State<CotrainrSplashScreen>
       await SharedPreferences.getInstance();
       final session = Supabase.instance.client.auth.currentSession;
       final pending = StartupRouterBridge.pendingDeepLinkRoute;
+      final videoAction = await VideoSessionPendingNavigation.peek();
       // Password recovery must never be treated as a normal signed-in continue.
       if (pending == '/auth/reset-password') {
         next = '/auth/reset-password';
+      } else if (videoAction != null && session != null) {
+        await VideoSessionPendingNavigation.consume();
+        next = videoAction;
       } else if (pending != null &&
           pending.startsWith('/video') &&
           session != null) {

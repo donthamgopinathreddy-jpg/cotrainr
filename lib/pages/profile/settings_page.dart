@@ -19,6 +19,7 @@ import 'settings/change_password_page.dart';
 import 'settings/health_devices_page.dart';
 import 'settings/help_center_page.dart';
 import 'settings/info_pages.dart';
+import 'settings/integrations_page.dart';
 import 'settings/notifications_page.dart';
 import 'settings/privacy_security_page.dart';
 import 'settings/service_locations_page.dart';
@@ -182,6 +183,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     icon: Icons.notifications_none_outlined,
                     title: 'Notifications',
                     onTap: () => _push(context, const NotificationsPage()),
+                  ),
+                  const Divider(height: 1),
+                  HubActionRow(
+                    icon: Icons.hub_outlined,
+                    title: 'Integrations',
+                    subtitle: 'Google Meet',
+                    onTap: () => _push(context, const IntegrationsPage()),
                   ),
                 ],
               ),

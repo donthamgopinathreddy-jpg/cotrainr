@@ -67,6 +67,11 @@ class DayMealsData {
         totalFats: 0,
         totalFiber: 0,
       );
+
+  int get loggedItemCount =>
+      mealsByType.values.fold(0, (sum, items) => sum + items.length);
+
+  bool get hasLoggedMeals => loggedItemCount > 0;
 }
 
 /// Single food item from DB (maps to FoodItem in UI).

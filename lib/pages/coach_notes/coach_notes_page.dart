@@ -1,369 +1,437 @@
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
-import '../../theme/app_colors.dart';
-import '../../repositories/coach_notes_repository.dart';
+import 'package:flutter/services.dart';
 
-/// Page for clients to view notes from their trainers and nutritionists.
+import '../../repositories/coach_notes_repository.dart';
+import '../../theme/design_tokens.dart';
+import '../../utils/client_notes_grouping.dart';
+import '../../widgets/common/pressable_card.dart';
+import '../../widgets/home_v3/home_premium_theme.dart';
+import '../../widgets/video_sessions/video_session_avatar.dart';
+import '../../widgets/video_sessions/video_session_theme.dart';
+import 'provider_notes_detail_page.dart';
+
+/// Client inbox for notes from trainers and nutritionists.
 class CoachNotesPage extends StatefulWidget {
-  const CoachNotesPage({super.key});
+  final CoachNotesInboxApi? inbox;
+  final String? viewerClientId;
+
+  const CoachNotesPage({
+    super.key,
+    this.inbox,
+    this.viewerClientId,
+  });
 
   @override
   State<CoachNotesPage> createState() => _CoachNotesPageState();
 }
 
 class _CoachNotesPageState extends State<CoachNotesPage> {
-  final CoachNotesRepository _repo = CoachNotesRepository();
-  final PageController _pageController = PageController();
-  List<CoachNote> _notes = [];
-  bool _isLoading = true;
-  int _currentIndex = 0;
+  late final CoachNotesInboxApi _inbox;
+  final _scroll = ScrollController();
 
-  List<CoachNote> get _coachNotes =>
-      _notes.where((n) => n.coachType == 'trainer').toList();
-  List<CoachNote> get _nutritionistNotes =>
-      _notes.where((n) => n.coachType == 'nutritionist').toList();
+  bool _loading = true;
+  bool _loadFailed = false;
+  List<CoachNote> _notes = [];
 
   @override
   void initState() {
     super.initState();
-    _loadNotes();
+    _inbox = widget.inbox ?? CoachNotesRepository();
+    _load();
   }
 
   @override
   void dispose() {
-    _pageController.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
-  Future<void> _loadNotes() async {
-    if (!mounted) return;
-    setState(() => _isLoading = true);
-
+  Future<void> _load({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _loadFailed = false;
+      });
+    }
     try {
-      final notes = await _repo.getMyNotes();
-      if (mounted) {
-        setState(() {
-          _notes = notes;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _notes = [];
-          _isLoading = false;
-        });
-      }
+      final notes = await _inbox.getMyNotes();
+      if (!mounted) return;
+      setState(() {
+        _notes = notes;
+        _loading = false;
+        _loadFailed = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _loadFailed = true;
+        if (!silent) _notes = [];
+      });
     }
   }
 
-  String _formatTime(DateTime dt) {
-    final now = DateTime.now();
-    final diff = now.difference(dt);
-    if (diff.inDays > 7) {
-      return '${dt.day}/${dt.month}/${dt.year}';
-    } else if (diff.inDays > 0) {
-      return '${diff.inDays}d ago';
-    } else if (diff.inHours > 0) {
-      return '${diff.inHours}h ago';
-    } else if (diff.inMinutes > 0) {
-      return '${diff.inMinutes}m ago';
-    } else {
-      return 'Just now';
-    }
-  }
+  List<ClientNotesProviderGroup> get _groups => groupClientNotesByProvider(
+        _notes,
+        viewerClientId: widget.viewerClientId,
+      );
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final groups = _groups;
 
     return Scaffold(
+      backgroundColor: VideoSessionUi.pageBg(context),
       appBar: AppBar(
-        title: const Text('Notes'),
+        title: const Text(kClientNotesScreenTitle),
         centerTitle: true,
         elevation: 0,
-        backgroundColor: cs.surface,
-        foregroundColor: cs.onSurface,
+        backgroundColor: VideoSessionUi.pageBg(context),
+        foregroundColor: HomePremiumTheme.primaryText(isLight),
+        actions: [
+          if (!_loading && !_loadFailed && groups.isNotEmpty)
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => ClientAllNotesPage(groups: groups),
+                  ),
+                );
+              },
+              child: const Text('All notes'),
+            ),
+        ],
       ),
       body: RefreshIndicator(
-        onRefresh: _loadNotes,
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const SizedBox(height: 16),
-                  _buildPillTabBar(context, cs),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: PageView(
-                      controller: _pageController,
-                      onPageChanged: (i) => setState(() => _currentIndex = i),
-                      children: [
-                        _buildNotesPage(cs, _coachNotes, AppColors.blue),
-                        _buildNotesPage(cs, _nutritionistNotes, AppColors.green),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-      ),
-    );
-  }
-
-  Widget _buildPillTabBar(BuildContext context, ColorScheme cs) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Container(
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-          color: cs.surfaceContainerHighest.withValues(alpha: 0.6),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(
-            color: cs.outlineVariant.withValues(alpha: 0.5),
-          ),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: GestureDetector(
-                onTap: () {
-                  _pageController.animateToPage(
-                    0,
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeOutCubic,
-                  );
-                },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 250),
-                  curve: Curves.easeOutCubic,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    gradient: _currentIndex == 0
-                        ? const LinearGradient(
-                            colors: [Color(0xFFE53935), Color(0xFFE96A6A)],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          )
-                        : null,
-                    color: _currentIndex == 0 ? null : Colors.transparent,
-                    borderRadius: BorderRadius.circular(999),
-                    boxShadow: _currentIndex == 0
-                        ? [
-                            BoxShadow(
-                              color: const Color(0xFFE53935).withValues(alpha: 0.3),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
+        color: DesignTokens.videoSessionsAccent,
+        onRefresh: () => _load(silent: true),
+        child: _loading
+            ? const _NotesSkeleton()
+            : _loadFailed
+                ? _ErrorState(onRetry: _load)
+                : groups.isEmpty
+                    ? const _EmptyState()
+                    : ListView.builder(
+                        controller: _scroll,
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                        itemCount: groups.length + 1,
+                        itemBuilder: (context, index) {
+                          if (index == 0) {
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 12, top: 4),
+                              child: Text(
+                                'YOUR COACHES',
+                                style: VideoSessionUi.sectionLabel(context),
+                              ),
+                            );
+                          }
+                          final group = groups[index - 1];
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: _ProviderRow(
+                              group: group,
+                              isLight: isLight,
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) =>
+                                        ProviderNotesDetailPage(group: group),
+                                  ),
+                                );
+                              },
                             ),
-                          ]
-                        : null,
-                  ),
-                  child: Text(
-                    'Coaches',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: _currentIndex == 0
-                          ? Colors.white
-                          : cs.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            Expanded(
-              child: GestureDetector(
-                onTap: () {
-                  _pageController.animateToPage(
-                    1,
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeOutCubic,
-                  );
-                },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 250),
-                  curve: Curves.easeOutCubic,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    gradient: _currentIndex == 1
-                        ? const LinearGradient(
-                            colors: [Color(0xFFE53935), Color(0xFFE96A6A)],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          )
-                        : null,
-                    color: _currentIndex == 1 ? null : Colors.transparent,
-                    borderRadius: BorderRadius.circular(999),
-                    boxShadow: _currentIndex == 1
-                        ? [
-                            BoxShadow(
-                              color: const Color(0xFFE53935).withValues(alpha: 0.3),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ]
-                        : null,
-                  ),
-                  child: Text(
-                    'Nutritionist',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: _currentIndex == 1
-                          ? Colors.white
-                          : cs.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNotesPage(
-    ColorScheme cs,
-    List<CoachNote> notes,
-    Color accentColor,
-  ) {
-    return notes.isEmpty
-        ? SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: _buildEmptyStateContent(cs),
-          )
-        : ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            itemCount: notes.length,
-            itemBuilder: (context, index) {
-              final note = notes[index];
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _NoteSliderCard(
-                  note: note,
-                  formatTime: _formatTime,
-                  accentColor: accentColor,
-                ),
-              );
-            },
-          );
-  }
-
-  Widget _buildEmptyStateContent(ColorScheme cs) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
-      child: Column(
-        children: [
-          Icon(
-            Icons.note_add_outlined,
-            size: 48,
-            color: cs.outline.withValues(alpha: 0.5),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Notes from your trainers and nutritionists will appear here when they add them from their dashboard.',
-            style: TextStyle(
-              fontSize: 14,
-              color: cs.onSurfaceVariant,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
+                          );
+                        },
+                      ),
       ),
     );
   }
 }
 
-class _NoteSliderCard extends StatelessWidget {
-  final CoachNote note;
-  final String Function(DateTime) formatTime;
-  final Color accentColor;
+class _ProviderRow extends StatelessWidget {
+  final ClientNotesProviderGroup group;
+  final bool isLight;
+  final VoidCallback onTap;
 
-  const _NoteSliderCard({
-    required this.note,
-    required this.formatTime,
-    required this.accentColor,
+  const _ProviderRow({
+    required this.group,
+    required this.isLight,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return Card(
-      margin: EdgeInsets.zero,
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(999),
-        side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5)),
+    final role = group.roleLabel;
+    return Semantics(
+      button: true,
+      label: [
+        group.name,
+        ?role,
+        noteCountLabel(group.noteCount),
+      ].join(', '),
+      child: PressableCard(
+        borderRadius: VideoSessionUi.radius,
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+          decoration: VideoSessionUi.cardBox(context),
+          child: Row(
+            children: [
+              VideoSessionAvatar(
+                name: group.name,
+                imageUrl: group.avatarUrl,
+                size: 48,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      group.name.isEmpty ? (role ?? '') : group.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: HomePremiumTheme.primaryText(isLight),
+                      ),
+                    ),
+                    if (role != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        role,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: HomePremiumTheme.secondaryText(isLight),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 2),
+                    Text(
+                      '${noteCountLabel(group.noteCount)} · Latest ${formatNoteDateShort(group.latestAt)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: HomePremiumTheme.secondaryText(isLight),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                color: HomePremiumTheme.secondaryText(isLight),
+              ),
+            ],
+          ),
+        ),
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-              Row(
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(32, 80, 32, 32),
+      children: [
+        Text(
+          'No notes yet',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            color: HomePremiumTheme.primaryText(isLight),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Feedback from your trainers and nutritionists will appear here.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            height: 1.35,
+            color: HomePremiumTheme.secondaryText(isLight),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ErrorState extends StatelessWidget {
+  final VoidCallback onRetry;
+
+  const _ErrorState({required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(32, 80, 32, 32),
+      children: [
+        Text(
+          'Couldn\'t load notes',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            color: HomePremiumTheme.primaryText(isLight),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Try again',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: HomePremiumTheme.secondaryText(isLight)),
+        ),
+        const SizedBox(height: 20),
+        Center(
+          child: SizedBox(
+            height: 44,
+            child: ElevatedButton(
+              onPressed: () {
+                HapticFeedback.lightImpact();
+                onRetry();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: DesignTokens.videoSessionsAccent,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                'Retry',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _NotesSkeleton extends StatelessWidget {
+  const _NotesSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).brightness == Brightness.light
+        ? const Color(0xFFE8E8EA)
+        : Colors.white.withValues(alpha: 0.08);
+    return ListView(
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+      children: List.generate(
+        4,
+        (i) => Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Container(
+            height: 84,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(VideoSessionUi.radius),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class ClientAllNotesPage extends StatelessWidget {
+  final List<ClientNotesProviderGroup> groups;
+
+  const ClientAllNotesPage({super.key, required this.groups});
+
+  @override
+  Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final notes = [
+      for (final group in groups)
+        for (final note in group.notes) (group: group, note: note),
+    ]..sort((a, b) => b.note.createdAt.compareTo(a.note.createdAt));
+
+    return Scaffold(
+      backgroundColor: VideoSessionUi.pageBg(context),
+      appBar: AppBar(
+        title: const Text('All notes'),
+        centerTitle: true,
+        elevation: 0,
+        backgroundColor: VideoSessionUi.pageBg(context),
+        foregroundColor: HomePremiumTheme.primaryText(isLight),
+      ),
+      body: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+        itemCount: notes.length,
+        itemBuilder: (context, i) {
+          final item = notes[i];
+          final role = item.group.roleLabel;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+              decoration: VideoSessionUi.cardBox(context),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  CircleAvatar(
-                    radius: 16,
-                    backgroundColor: accentColor,
-                    backgroundImage: note.coachAvatarUrl != null && note.coachAvatarUrl!.isNotEmpty
-                        ? CachedNetworkImageProvider(note.coachAvatarUrl!)
-                        : null,
-                    child: note.coachAvatarUrl == null || note.coachAvatarUrl!.isEmpty
-                        ? Text(
-                            (note.coachName ?? 'C').substring(0, 1).toUpperCase(),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12,
-                            ),
-                          )
-                        : null,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          note.coachName ?? 'Coach',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                            color: cs.onSurface,
-                          ),
+                  Row(
+                    children: [
+                      VideoSessionAvatar(
+                        name: item.group.name,
+                        imageUrl: item.group.avatarUrl,
+                        size: 36,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          [
+                            item.group.name,
+                            ?role,
+                          ].join(' · '),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                        ),
-                        Text(
-                          formatTime(note.createdAt),
                           style: TextStyle(
-                            fontSize: 11,
-                            color: cs.onSurfaceVariant,
+                            fontWeight: FontWeight.w700,
+                            color: HomePremiumTheme.primaryText(isLight),
                           ),
                         ),
-                      ],
+                      ),
+                      Text(
+                        formatNoteDateShort(item.note.createdAt),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: HomePremiumTheme.secondaryText(isLight),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    item.note.content,
+                    style: TextStyle(
+                      height: 1.4,
+                      color: HomePremiumTheme.primaryText(isLight),
                     ),
                   ),
                 ],
               ),
-            const SizedBox(height: 8),
-            Text(
-              note.content,
-              style: TextStyle(
-                fontSize: 13,
-                color: cs.onSurface,
-                height: 1.35,
-              ),
-              maxLines: 4,
-              overflow: TextOverflow.ellipsis,
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

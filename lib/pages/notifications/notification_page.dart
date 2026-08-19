@@ -260,7 +260,13 @@ class _NotificationPageState extends ConsumerState<NotificationPage> {
       case 'video_session_reminder_5m':
         return 'Your session with $counterpart starts at ${DateFormat('h:mm a').format(start.toLocal())}.';
       case 'video_session_starting':
-        return 'Your session with $counterpart is starting now.';
+        return 'Your session with $counterpart is ready.';
+      case 'video_session_rejected':
+        final reason = (data?['reason_label'] as String?)?.trim();
+        if (reason != null && reason.isNotEmpty) {
+          return '$counterpart can\'t attend. Reason: $reason';
+        }
+        return '$counterpart can\'t attend.';
       default:
         return fallback;
     }
@@ -314,6 +320,7 @@ class _NotificationPageState extends ConsumerState<NotificationPage> {
       case 'video_session_cancelled':
       case 'video_session_reminder_5m':
       case 'video_session_starting':
+      case 'video_session_rejected':
         return NotificationType.videoSession;
       default:
         return NotificationType.goalReached;

@@ -9,6 +9,7 @@ import '../../services/leads_models.dart' show Lead;
 import '../../widgets/common/pressable_card.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
 import '../../widgets/trainer/trainer_theme.dart';
+import '../../widgets/video_sessions/video_session_avatar.dart';
 import 'create_client_page.dart';
 
 class TrainerCoachNotesPage extends StatefulWidget {
@@ -47,12 +48,17 @@ class _TrainerCoachNotesPageState extends State<TrainerCoachNotesPage> {
     try {
       final leads = await _leadsService.getMyLeads();
       final uid = Supabase.instance.client.auth.currentUser?.id;
+      final role = Supabase.instance.client.auth.currentUser?.userMetadata?['role']
+          ?.toString()
+          .toLowerCase();
+      final providerType =
+          role == 'nutritionist' ? 'nutritionist' : 'trainer';
       final accepted = uid == null
           ? <Lead>[]
           : leads
               .where((l) =>
                   l.providerId == uid &&
-                  l.providerType == 'trainer' &&
+                  l.providerType == providerType &&
                   l.status == 'accepted')
               .toList();
 
@@ -197,7 +203,7 @@ class _TrainerCoachNotesPageState extends State<TrainerCoachNotesPage> {
                     ),
                     const SizedBox(height: 8),
                     SizedBox(
-                      height: 44,
+                      height: 48,
                       child: ListView.separated(
                         scrollDirection: Axis.horizontal,
                         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -211,10 +217,7 @@ class _TrainerCoachNotesPageState extends State<TrainerCoachNotesPage> {
                             onTap: () => _selectClient(c.id),
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 200),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 10,
-                              ),
+                              padding: const EdgeInsets.fromLTRB(8, 6, 14, 6),
                               decoration: BoxDecoration(
                                 gradient: selected ? TrainerTheme.gradient : null,
                                 color: selected
@@ -225,15 +228,26 @@ class _TrainerCoachNotesPageState extends State<TrainerCoachNotesPage> {
                                 borderRadius: BorderRadius.circular(20),
                                 boxShadow: HomePremiumTheme.softCardShadow(isLight),
                               ),
-                              child: Text(
-                                c.name,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w700,
-                                  color: selected
-                                      ? Colors.white
-                                      : HomePremiumTheme.primaryText(isLight),
-                                ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  VideoSessionAvatar(
+                                    name: c.name,
+                                    imageUrl: c.avatar,
+                                    size: 28,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    c.name,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                      color: selected
+                                          ? Colors.white
+                                          : HomePremiumTheme.primaryText(isLight),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           );
@@ -257,9 +271,16 @@ class _TrainerCoachNotesPageState extends State<TrainerCoachNotesPage> {
                             ),
                             TextButton(
                               onPressed: () {
-                                if (client.id.isNotEmpty) {
-                                  context.push('/clients/${client.id}', extra: client);
-                                }
+                                if (client.id.isEmpty) return;
+                                final role = Supabase
+                                    .instance.client.auth.currentUser
+                                    ?.userMetadata?['role']
+                                    ?.toString()
+                                    .toLowerCase();
+                                final path = role == 'nutritionist'
+                                    ? '/nutritionist/clients/${client.id}'
+                                    : '/clients/${client.id}';
+                                context.push(path, extra: client);
                               },
                               child: const Text('Open profile'),
                             ),
@@ -335,7 +356,7 @@ class _TrainerCoachNotesPageState extends State<TrainerCoachNotesPage> {
         ),
         const SizedBox(height: 12),
         Text(
-          'No notes for this client yet',
+          'No notes yet',
           textAlign: TextAlign.center,
           style: TextStyle(
             fontWeight: FontWeight.w600,
@@ -346,7 +367,7 @@ class _TrainerCoachNotesPageState extends State<TrainerCoachNotesPage> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 32),
           child: Text(
-            'Write a note below. Your client will see it in their Notes screen.',
+            'Notes you send to clients will appear here.',
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 13,

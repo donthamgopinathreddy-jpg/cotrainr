@@ -63,15 +63,19 @@ class VideoSessionCardActionRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final details = SizedBox(
       height: buttonHeight,
-      child: OutlinedButton(
-        onPressed: onDetails,
-        style: detailsStyle(outlineColor),
-        child: const Text(
-          detailsLabel,
-          maxLines: 1,
-          softWrap: false,
-          overflow: TextOverflow.ellipsis,
-          style: _labelStyle,
+      child: Semantics(
+        button: true,
+        label: detailsLabel,
+        child: OutlinedButton(
+          onPressed: onDetails,
+          style: detailsStyle(outlineColor),
+          child: const Text(
+            detailsLabel,
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
+            style: _labelStyle,
+          ),
         ),
       ),
     );
@@ -87,15 +91,19 @@ class VideoSessionCardActionRow extends StatelessWidget {
           Expanded(
             child: SizedBox(
               height: buttonHeight,
-              child: ElevatedButton(
-                onPressed: onJoin,
-                style: joinStyle(),
-                child: const Text(
-                  joinLabel,
-                  maxLines: 1,
-                  softWrap: false,
-                  overflow: TextOverflow.ellipsis,
-                  style: _labelStyle,
+              child: Semantics(
+                button: true,
+                label: joinLabel,
+                child: ElevatedButton(
+                  onPressed: onJoin,
+                  style: joinStyle(),
+                  child: const Text(
+                    joinLabel,
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.ellipsis,
+                    style: _labelStyle,
+                  ),
                 ),
               ),
             ),

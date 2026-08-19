@@ -15,11 +15,14 @@ import '../../providers/unread_video_session_notifications_provider.dart';
 import '../../repositories/notifications_repository.dart';
 import '../../repositories/video_sessions_repository.dart';
 import '../../services/profile_role_service.dart';
-import '../../theme/account_hub_theme.dart';
 import '../../theme/design_tokens.dart';
 import '../../widgets/profile/account_hub_widgets.dart';
 import '../../widgets/video_sessions/video_session_card_actions.dart';
+import '../../widgets/video_sessions/video_session_people_sheet.dart';
+import '../../widgets/video_sessions/video_session_theme.dart';
 import 'create_session_sheet.dart';
+import 'past_sessions_page.dart';
+import 'schedule_session_page.dart';
 
 /// Video Sessions with Google Meet auto-created links.
 class VideoSessionsPageV2 extends ConsumerStatefulWidget {
@@ -44,6 +47,9 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
 
   bool get _isHost =>
       _userRole == 'trainer' || _userRole == 'nutritionist';
+
+  bool get _googleReady =>
+      _googleStatus.connected && !_googleStatus.reconnectRequired;
 
   @override
   void initState() {
@@ -93,9 +99,6 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
   }
 
   Future<void> _refreshGoogleStatus() async {
-    if (!_isHost && _userRole.isNotEmpty) {
-      // Role may not be loaded yet on first call.
-    }
     try {
       final status = await _repo.getGoogleMeetStatus();
       if (mounted) setState(() => _googleStatus = status);
@@ -158,43 +161,50 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
     }
   }
 
-  Future<void> _disconnectGoogle() async {
-    setState(() => _googleLoading = true);
-    try {
-      await _repo.disconnectGoogleMeet();
+  Future<void> _openCreateSession({String? preselectedClientId}) async {
+    if (!_isHost) return;
+    HapticFeedback.mediumImpact();
+    final created = await Navigator.of(context).push<VideoSession>(
+      PageRouteBuilder(
+        transitionDuration: VideoSessionUi.motion(context),
+        reverseTransitionDuration: VideoSessionUi.motion(context),
+        pageBuilder: (_, animation, __) {
+          return FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0.04, 0),
+                end: Offset.zero,
+              ).animate(CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOut,
+              )),
+              child: ScheduleSessionPage(
+                preselectedClientId: preselectedClientId,
+                googleStatus: _googleStatus,
+                googleConnecting: _googleLoading,
+                onConnectGoogle: _connectGoogle,
+              ),
+            ),
+          );
+        },
+      ),
+    );
+    if (!mounted) return;
+    if (created != null) {
+      await _load();
+      if (!mounted) return;
+      showHubSnackBar(context, 'Session scheduled');
+      context.push('/video/session/${created.id}');
+    } else {
       await _refreshGoogleStatus();
-      if (mounted) showHubSnackBar(context, 'Google Meet disconnected');
-    } catch (e) {
-      if (mounted) {
-        showHubSnackBar(
-          context,
-          e.toString().replaceFirst('Exception: ', ''),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _googleLoading = false);
     }
   }
 
-  void _openCreateSession({String? preselectedClientId}) {
-    if (!_isHost) return;
-    HapticFeedback.mediumImpact();
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => CreateSessionSheet(
-        preselectedClientId: preselectedClientId,
-        googleStatus: _googleStatus,
-        googleConnecting: _googleLoading,
-        onConnectGoogle: _connectGoogle,
-        onCreate: (session) async {
-          Navigator.pop(ctx);
-          await _load();
-          if (!mounted) return;
-          showHubSnackBar(context, 'Session scheduled');
-          context.push('/video/session/${session.id}');
-        },
+  void _openPastSessions() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PastSessionsPage(sessions: _past),
       ),
     );
   }
@@ -207,15 +217,19 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
       _sessions.where((s) => s.isPast).toList()
         ..sort((a, b) => b.scheduledStart.compareTo(a.scheduledStart));
 
+  List<VideoSession> get _pastPreview => _past.take(3).toList();
+
   @override
   Widget build(BuildContext context) {
-    final bg = AccountHubTheme.pageBg(context);
+    final canPop = Navigator.of(context).canPop() || context.canPop();
+    final bottomPad = _isHost ? 8.0 : 24.0;
 
     return Scaffold(
-      backgroundColor: bg,
+      backgroundColor: VideoSessionUi.pageBg(context),
       appBar: AppBar(
-        backgroundColor: bg,
+        backgroundColor: VideoSessionUi.pageBg(context),
         elevation: 0,
+        automaticallyImplyLeading: canPop,
         title: Text(
           _isHost
               ? (_userRole == 'nutritionist'
@@ -224,21 +238,36 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
               : 'Video Sessions',
           style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
         ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.pop(),
-        ),
       ),
-      floatingActionButton: _isHost
-          ? FloatingActionButton.extended(
-              onPressed: _openCreateSession,
-              backgroundColor: DesignTokens.videoSessionsAccent,
-              icon: const Icon(Icons.add_rounded, color: Colors.white),
-              label: const Text(
-                'Schedule Session',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
+      bottomNavigationBar: _isHost
+          ? SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: SizedBox(
+                  height: 52,
+                  child: Semantics(
+                    button: true,
+                    label: 'Schedule Session',
+                    child: ElevatedButton(
+                      onPressed: _openCreateSession,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: DesignTokens.videoSessionsAccent,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius:
+                              BorderRadius.circular(VideoSessionUi.radius),
+                        ),
+                      ),
+                      child: const Text(
+                        'Schedule Session',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             )
@@ -253,9 +282,7 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
               color: DesignTokens.videoSessionsAccent,
               onRefresh: _load,
               child: CustomScrollView(
-                physics: const AlwaysScrollableScrollPhysics(
-                  parent: BouncingScrollPhysics(),
-                ),
+                physics: const AlwaysScrollableScrollPhysics(),
                 slivers: [
                   if (_error != null)
                     SliverToBoxAdapter(
@@ -263,28 +290,29 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
                         padding: const EdgeInsets.all(16),
                         child: Text(
                           _error!,
-                          style: TextStyle(color: AccountHubTheme.dangerRed),
+                          style: const TextStyle(color: Color(0xFFDC2626)),
                         ),
                       ),
                     ),
-                  if (_isHost)
+                  if (_isHost && !_googleReady)
                     SliverToBoxAdapter(
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                        child: _GoogleConnectionCard(
+                        child: _CompactGooglePrompt(
                           status: _googleStatus,
                           loading: _googleLoading,
                           onConnect: _connectGoogle,
-                          onDisconnect: _disconnectGoogle,
                         ),
                       ),
                     ),
                   SliverToBoxAdapter(
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
                       child: Text(
                         'Upcoming',
-                        style: AccountHubTheme.sectionTitle(context),
+                        style: VideoSessionUi.sectionLabel(context).copyWith(
+                          fontSize: 15,
+                        ),
                       ),
                     ),
                   ),
@@ -297,8 +325,6 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
                           body: _isHost
                               ? 'Schedule a video session with a connected client.'
                               : 'Your trainer or nutritionist can schedule sessions here.',
-                          actionLabel: _isHost ? 'Schedule Session' : null,
-                          onAction: _isHost ? _openCreateSession : null,
                         ),
                       ),
                     )
@@ -309,9 +335,9 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
                           final s = _upcoming[index];
                           return Padding(
                             padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                            child: _SessionCard(
+                            child: _UpcomingSessionCard(
                               session: s,
-                              onTap: () =>
+                              onDetails: () =>
                                   context.push('/video/session/${s.id}'),
                               onJoin: s.canJoin
                                   ? () => _openJoinUrl(s.joinUrl)
@@ -327,43 +353,65 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
                       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                       child: Text(
                         'Past',
-                        style: AccountHubTheme.sectionTitle(context),
+                        style: VideoSessionUi.sectionLabel(context).copyWith(
+                          fontSize: 15,
+                        ),
                       ),
                     ),
                   ),
                   if (_past.isEmpty)
                     SliverToBoxAdapter(
                       child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
+                        padding: EdgeInsets.fromLTRB(16, 0, 16, bottomPad),
                         child: Text(
                           'No past sessions yet.',
-                          style: AccountHubTheme.rowSubtitle(context),
+                          style: TextStyle(
+                            color: VideoSessionUi.secondaryText(context),
+                          ),
                         ),
                       ),
                     )
-                  else
+                  else ...[
                     SliverList(
                       delegate: SliverChildBuilderDelegate(
                         (context, index) {
-                          final s = _past[index];
+                          final s = _pastPreview[index];
                           return Padding(
-                            padding: EdgeInsets.fromLTRB(
-                              16,
-                              0,
-                              16,
-                              index == _past.length - 1 ? 96 : 10,
-                            ),
-                            child: _SessionCard(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                            child: PastSessionRow(
                               session: s,
-                              compact: true,
                               onTap: () =>
                                   context.push('/video/session/${s.id}'),
                             ),
                           );
                         },
-                        childCount: _past.length,
+                        childCount: _pastPreview.length,
                       ),
                     ),
+                    if (_past.length > 3)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: EdgeInsets.fromLTRB(16, 0, 16, bottomPad),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: TextButton(
+                              onPressed: _openPastSessions,
+                              style: TextButton.styleFrom(
+                                foregroundColor:
+                                    DesignTokens.videoSessionsAccent,
+                                minimumSize: const Size(48, 44),
+                              ),
+                              child: const Text(
+                                'View all past sessions',
+                                style: TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      const SliverToBoxAdapter(child: SizedBox(height: 8)),
+                  ],
                 ],
               ),
             ),
@@ -387,80 +435,64 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
 class _EmptyCard extends StatelessWidget {
   final String title;
   final String body;
-  final String? actionLabel;
-  final VoidCallback? onAction;
 
-  const _EmptyCard({
-    required this.title,
-    required this.body,
-    this.actionLabel,
-    this.onAction,
-  });
+  const _EmptyCard({required this.title, required this.body});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AccountHubTheme.cardBg(context),
-        borderRadius: BorderRadius.circular(AccountHubTheme.cardRadius),
-        boxShadow: AccountHubTheme.cardShadow(context),
-      ),
+      padding: const EdgeInsets.all(16),
+      decoration: VideoSessionUi.cardBox(context),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: AccountHubTheme.rowTitle(context)),
-          const SizedBox(height: 6),
-          Text(body, style: AccountHubTheme.rowSubtitle(context)),
-          if (actionLabel != null && onAction != null) ...[
-            const SizedBox(height: 14),
-            TextButton(
-              onPressed: onAction,
-              style: TextButton.styleFrom(
-                foregroundColor: DesignTokens.videoSessionsAccent,
-              ),
-              child: Text(actionLabel!),
+          Text(
+            title,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: Theme.of(context).colorScheme.onSurface,
             ),
-          ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            body,
+            style: TextStyle(color: VideoSessionUi.secondaryText(context)),
+          ),
         ],
       ),
     );
   }
 }
 
-class _SessionCard extends StatelessWidget {
+class _UpcomingSessionCard extends StatelessWidget {
   final VideoSession session;
-  final bool compact;
-  final VoidCallback onTap;
+  final VoidCallback onDetails;
   final VoidCallback? onJoin;
 
-  const _SessionCard({
+  const _UpcomingSessionCard({
     required this.session,
-    required this.onTap,
+    required this.onDetails,
     this.onJoin,
-    this.compact = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final when = _formatWhen(session.scheduledStart);
-    final status = _statusLabel(session);
-    final statusColor = _statusColor(session);
+    final status = videoSessionMeaningfulStatus(session);
 
     return Material(
-      color: AccountHubTheme.cardBg(context),
-      borderRadius: BorderRadius.circular(AccountHubTheme.cardRadius),
-      elevation: 0,
+      color: VideoSessionUi.cardBg(context),
+      borderRadius: BorderRadius.circular(VideoSessionUi.radius),
       child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(AccountHubTheme.cardRadius),
+        onTap: onDetails,
+        borderRadius: BorderRadius.circular(VideoSessionUi.radius),
         child: Container(
-          padding: EdgeInsets.all(compact ? 14 : 16),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AccountHubTheme.cardRadius),
-            boxShadow: AccountHubTheme.cardShadow(context),
+            borderRadius: BorderRadius.circular(VideoSessionUi.radius),
+            border: Border.all(color: VideoSessionUi.border(context)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -470,80 +502,59 @@ class _SessionCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       session.title,
-                      style: AccountHubTheme.rowTitle(context),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: cs.onSurface,
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: statusColor.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
+                  if (status != null)
+                    Text(
                       status,
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
-                        color: statusColor,
+                        color: videoSessionStatusColor(context, status),
                       ),
                     ),
-                  ),
                 ],
               ),
-              const SizedBox(height: 6),
-              Text(
-                session.withLine,
-                style: AccountHubTheme.rowSubtitle(context),
-              ),
+              VideoSessionWithLine(session: session),
               const SizedBox(height: 4),
               Text(
                 '$when · ${session.durationMinutes} min',
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: cs.onSurface.withValues(alpha: 0.75),
+                  color: cs.onSurface.withValues(alpha: 0.78),
                 ),
               ),
-              if (!compact) ...[
-                const SizedBox(height: 12),
-                if (session.isTooEarlyToJoin)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Text(
-                      'Available 5 min before',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: DesignTokens.videoSessionsAccent,
-                      ),
+              if (!session.hasRejected && session.isTooEarlyToJoin)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    'Available 5 min before',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: DesignTokens.videoSessionsAccent,
                     ),
                   ),
-                VideoSessionCardActionRow(
-                  onJoin: onJoin,
-                  onDetails: onTap,
-                  outlineColor: cs.onSurface,
                 ),
-              ],
+              const SizedBox(height: 12),
+              VideoSessionCardActionRow(
+                onJoin: session.hasRejected ? null : onJoin,
+                onDetails: onDetails,
+                outlineColor: cs.onSurface,
+              ),
             ],
           ),
         ),
       ),
     );
-  }
-
-  String _statusLabel(VideoSession s) {
-    if (s.isCancelled) return 'Cancelled';
-    if (s.isPast) return 'Past';
-    return 'Upcoming';
-  }
-
-  Color _statusColor(VideoSession s) {
-    if (s.isCancelled) return AccountHubTheme.dangerRed;
-    if (s.isPast) return const Color(0xFF9CA3AF);
-    return DesignTokens.videoSessionsAccent;
   }
 
   String _formatWhen(DateTime dt) {
@@ -558,86 +569,59 @@ class _SessionCard extends StatelessWidget {
   }
 }
 
-class _GoogleConnectionCard extends StatelessWidget {
+class _CompactGooglePrompt extends StatelessWidget {
   final GoogleMeetIntegrationStatus status;
   final bool loading;
   final VoidCallback onConnect;
-  final VoidCallback onDisconnect;
 
-  const _GoogleConnectionCard({
+  const _CompactGooglePrompt({
     required this.status,
     required this.loading,
     required this.onConnect,
-    required this.onDisconnect,
   });
 
   @override
   Widget build(BuildContext context) {
-    final ready = status.connected && !status.reconnectRequired;
     return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AccountHubTheme.cardBg(context),
-        borderRadius: BorderRadius.circular(AccountHubTheme.cardRadius),
-        boxShadow: AccountHubTheme.cardShadow(context),
-      ),
+      padding: const EdgeInsets.all(14),
+      decoration: VideoSessionUi.cardBox(context),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(
-                Icons.videocam_outlined,
-                color: ready
-                    ? AccountHubTheme.goalsGreen
-                    : DesignTokens.videoSessionsAccent,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  ready ? 'Google Meet: Connected' : 'Google Meet',
-                  style: AccountHubTheme.rowTitle(context),
-                ),
-              ),
-            ],
+          const Text(
+            'Connect Google Meet',
+            style: TextStyle(fontWeight: FontWeight.w700),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           Text(
-            ready
-                ? (status.googleEmail ??
-                    'Ready to create Meet links for sessions.')
-                : status.reconnectRequired
-                    ? 'Reconnect Google Meet to schedule sessions.'
-                    : 'Connect Google once to create Meet links automatically.',
-            style: AccountHubTheme.rowSubtitle(context),
+            status.reconnectRequired
+                ? 'Reconnect Google Meet to schedule sessions.'
+                : 'Connect Google Meet to create session links automatically.',
+            style: TextStyle(
+              fontSize: 13,
+              color: VideoSessionUi.secondaryText(context),
+            ),
           ),
-          const SizedBox(height: 12),
-          if (!ready)
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: loading ? null : onConnect,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: DesignTokens.videoSessionsAccent,
-                  foregroundColor: Colors.white,
-                ),
-                child: Text(
-                  loading
-                      ? 'Connecting…'
-                      : status.reconnectRequired
-                          ? 'Reconnect Google Meet'
-                          : 'Connect Google',
-                ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            height: 44,
+            child: ElevatedButton(
+              onPressed: loading ? null : onConnect,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: DesignTokens.videoSessionsAccent,
+                foregroundColor: Colors.white,
+                elevation: 0,
               ),
-            )
-          else
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(
-                onPressed: loading ? null : onDisconnect,
-                child: const Text('Disconnect'),
+              child: Text(
+                loading
+                    ? 'Connecting…'
+                    : status.reconnectRequired
+                        ? 'Reconnect Google Meet'
+                        : 'Connect Google Meet',
               ),
             ),
+          ),
         ],
       ),
     );
