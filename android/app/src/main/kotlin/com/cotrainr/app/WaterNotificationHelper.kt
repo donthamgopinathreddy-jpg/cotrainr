@@ -34,6 +34,7 @@ object WaterNotificationHelper {
     private const val KEY_CONSUMED_ML = "consumed_ml"
     private const val KEY_GOAL_ML = "goal_ml"
     private const val KEY_INTERVAL_MINUTES = "interval_minutes"
+    private const val KEY_UPDATED_AT = "updated_at"
 
     // Matches DesignTokens.accentOrange
     private val ACCENT_ORANGE = Color.parseColor("#FF8A00")
