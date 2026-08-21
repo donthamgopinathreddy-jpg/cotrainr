@@ -177,7 +177,8 @@ class _NearbyPreviewV3State extends State<NearbyPreviewV3> {
         ),
         const SizedBox(height: 14),
         SizedBox(
-          height: 38,
+          height: (12 * 2 + 14 * MediaQuery.textScalerOf(context).scale(1.0))
+              .clamp(38.0, 60.0),
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: _categories.length,
@@ -217,6 +218,8 @@ class _NearbyPreviewV3State extends State<NearbyPreviewV3> {
                       const SizedBox(width: 5),
                       Text(
                         chip.$1,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,

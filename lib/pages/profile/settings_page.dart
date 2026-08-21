@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/account_hub_theme.dart';
 import '../../theme/design_tokens.dart';
 import '../../utils/page_transitions.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/common/logout_confirmation_sheet.dart';
 import '../../widgets/profile/account_hub_widgets.dart';
 import '../subscription/subscription_page.dart';
@@ -24,22 +25,27 @@ import 'settings/notifications_page.dart';
 import 'settings/privacy_security_page.dart';
 import 'settings/service_locations_page.dart';
 import '../../repositories/profile_repository.dart';
+import '../../services/water_reminder_service.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({
     super.key,
     this.appVersionLoader,
+    this.profileRepository,
   });
 
   /// Optional override for tests. Defaults to [PackageInfo.version].
   final Future<String> Function()? appVersionLoader;
+
+  /// Optional override for tests. Defaults to [ProfileRepository()].
+  final ProfileRepository? profileRepository;
 
   @override
   ConsumerState<SettingsPage> createState() => _SettingsPageState();
 }
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
-  final ProfileRepository _profileRepo = ProfileRepository();
+  late final ProfileRepository _profileRepo;
   Map<String, dynamic>? _profile;
   bool _isLoadingProfile = true;
   String _appVersion = '';
@@ -47,6 +53,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   @override
   void initState() {
     super.initState();
+    _profileRepo = widget.profileRepository ?? ProfileRepository();
     _loadProfile();
     _loadAppVersion();
   }
@@ -97,6 +104,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Future<void> _handleLogout(BuildContext context) async {
     HapticFeedback.mediumImpact();
     try {
+      try {
+        await WaterReminderService.instance.cancelAll();
+      } catch (_) {}
       await Supabase.instance.client.auth.signOut();
       if (!mounted) return;
       context.go('/welcome');
@@ -113,10 +123,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
+      appBar: CotrainrAppBar(
+        title: 'Settings',
         backgroundColor: bg,
-        elevation: 0,
-        title: const Text('Settings'),
       ),
       body: RefreshIndicator(
         color: DesignTokens.accentOrange,
@@ -184,13 +193,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     title: 'Notifications',
                     onTap: () => _push(context, const NotificationsPage()),
                   ),
-                  const Divider(height: 1),
-                  HubActionRow(
-                    icon: Icons.hub_outlined,
-                    title: 'Integrations',
-                    subtitle: 'Google Meet',
-                    onTap: () => _push(context, const IntegrationsPage()),
-                  ),
+                  if (_isProvider && !_isLoadingProfile) ...[
+                    const Divider(height: 1),
+                    HubActionRow(
+                      icon: Icons.hub_outlined,
+                      title: 'Integrations',
+                      subtitle: 'Google Meet',
+                      onTap: () => _push(context, const IntegrationsPage()),
+                    ),
+                  ],
                 ],
               ),
             ),

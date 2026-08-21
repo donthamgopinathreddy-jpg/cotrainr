@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 
+import '../../repositories/video_sessions_repository.dart';
 import '../../theme/design_tokens.dart';
 import '../../widgets/common/pressable_card.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
 import '../../widgets/video_sessions/video_session_avatar.dart';
-import '../../widgets/video_sessions/video_session_theme.dart';
 
 class ProviderClientPreview {
   final String id;
@@ -23,6 +24,57 @@ class ProviderClientPreview {
   });
 }
 
+class ProviderNextSessionPreview {
+  final String sessionId;
+  final String clientName;
+  final DateTime scheduledStart;
+
+  const ProviderNextSessionPreview({
+    required this.sessionId,
+    required this.clientName,
+    required this.scheduledStart,
+  });
+}
+
+ProviderNextSessionPreview? nextSessionPreviewFromSessions(
+  List<VideoSession>? sessions,
+) {
+  if (sessions == null || sessions.isEmpty) return null;
+  final upcoming = sessions.where((s) => s.isUpcoming).toList()
+    ..sort((a, b) => a.scheduledStart.compareTo(b.scheduledStart));
+  if (upcoming.isEmpty) return null;
+  final session = upcoming.first;
+  return ProviderNextSessionPreview(
+    sessionId: session.id,
+    clientName: _nextSessionClientName(session),
+    scheduledStart: session.scheduledStart,
+  );
+}
+
+String _nextSessionClientName(VideoSession session) {
+  final counterpart = session.counterpartyName?.trim() ?? '';
+  if (counterpart.isNotEmpty) return counterpart;
+  final fromPeople = session.people
+      .where((p) => p.role != 'host' && p.displayName.trim().isNotEmpty)
+      .map((p) => p.displayName.trim());
+  if (fromPeople.isNotEmpty) return fromPeople.first;
+  if (session.participantNames.isNotEmpty) {
+    return session.participantNames.first.trim();
+  }
+  return session.title;
+}
+
+String formatNextSessionWhen(DateTime value, {DateTime? now}) {
+  final local = value.toLocal();
+  final clock = DateFormat('h:mm a', 'en_US').format(local);
+  final today = now ?? DateTime.now();
+  final todayDay = DateTime(today.year, today.month, today.day);
+  final day = DateTime(local.year, local.month, local.day);
+  if (day == todayDay) return 'Today, $clock';
+  if (day == todayDay.add(const Duration(days: 1))) return 'Tomorrow, $clock';
+  return '${DateFormat('d MMM', 'en_US').format(local)}, $clock';
+}
+
 /// Compact client-management tile shared by trainer and nutritionist Home.
 class ProviderClientsSummary extends StatelessWidget {
   final int activeCount;
@@ -33,6 +85,8 @@ class ProviderClientsSummary extends StatelessWidget {
   final VoidCallback onOpenNotes;
   final ValueChanged<ProviderClientPreview> onOpenClient;
   final bool loading;
+  final ProviderNextSessionPreview? nextSession;
+  final VoidCallback? onOpenNextSession;
 
   const ProviderClientsSummary({
     super.key,
@@ -44,6 +98,8 @@ class ProviderClientsSummary extends StatelessWidget {
     required this.onOpenNotes,
     required this.onOpenClient,
     this.loading = false,
+    this.nextSession,
+    this.onOpenNextSession,
   });
 
   @override
@@ -57,30 +113,36 @@ class ProviderClientsSummary extends StatelessWidget {
           activeCount: activeCount,
           requestCount: requestCount,
           loading: loading,
+          nextSession: nextSession,
           onOpenClients: onOpenClients,
           onOpenRequests: onOpenRequests,
           onOpenNotes: onOpenNotes,
+          onOpenNextSession: onOpenNextSession,
         ),
         const SizedBox(height: 16),
         Row(
           children: [
-            Text(
-              'Clients',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: HomePremiumTheme.primaryText(isLight),
+            Expanded(
+              child: Text(
+                'Recent clients',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: HomePremiumTheme.primaryText(isLight),
+                ),
               ),
             ),
-            const Spacer(),
             Semantics(
               button: true,
               label: 'See all',
               child: TextButton(
                 onPressed: onOpenClients,
                 style: TextButton.styleFrom(
-                  foregroundColor: DesignTokens.videoSessionsAccent,
+                  foregroundColor: HomePremiumTheme.recentClientAccent(isLight),
                   minimumSize: const Size(44, 44),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
                 child: const Text(
                   'See all',
@@ -124,9 +186,11 @@ class _SummaryTile extends StatelessWidget {
   final int activeCount;
   final int requestCount;
   final bool loading;
+  final ProviderNextSessionPreview? nextSession;
   final VoidCallback onOpenClients;
   final VoidCallback onOpenRequests;
   final VoidCallback onOpenNotes;
+  final VoidCallback? onOpenNextSession;
 
   const _SummaryTile({
     required this.isLight,
@@ -136,93 +200,136 @@ class _SummaryTile extends StatelessWidget {
     required this.onOpenClients,
     required this.onOpenRequests,
     required this.onOpenNotes,
+    this.nextSession,
+    this.onOpenNextSession,
   });
 
   @override
   Widget build(BuildContext context) {
+    final accent = HomePremiumTheme.clientsManagementAccent(isLight);
     return Semantics(
       label: 'Clients summary. $activeCount active. $requestCount requests.',
       child: PressableCard(
-        borderRadius: VideoSessionUi.radius,
+        borderRadius: 16,
         onTap: onOpenClients,
         child: Container(
           width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-          decoration: VideoSessionUi.cardBox(context),
+          padding: const EdgeInsets.fromLTRB(16, 12, 8, 16),
+          decoration: BoxDecoration(
+            color: HomePremiumTheme.clientsManagementSurface(isLight),
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      'Clients',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: HomePremiumTheme.primaryText(isLight),
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 0, top: 2),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Clients',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: HomePremiumTheme.primaryText(isLight),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Manage your practice',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: HomePremiumTheme.secondaryText(isLight),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                  Text(
-                    'View all',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: DesignTokens.videoSessionsAccent,
+                  Semantics(
+                    button: true,
+                    label: 'Open My Clients',
+                    child: IconButton(
+                      onPressed: onOpenClients,
+                      icon: Icon(
+                        Icons.chevron_right_rounded,
+                        color: accent,
+                      ),
+                      tooltip: 'Open My Clients',
+                      constraints: const BoxConstraints(
+                        minWidth: 44,
+                        minHeight: 44,
+                      ),
                     ),
-                  ),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    size: 18,
-                    color: DesignTokens.videoSessionsAccent,
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
-              Text(
-                'Manage clients, requests and follow-ups',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: HomePremiumTheme.secondaryText(isLight),
-                ),
-              ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               if (loading)
-                const _TileSkeleton()
+                const Padding(
+                  padding: EdgeInsets.only(right: 8),
+                  child: _TileSkeleton(),
+                )
               else
-                Row(
-                  children: [
-                    Expanded(
-                      child: _MetricHit(
-                        label: 'Active',
-                        value: '$activeCount',
-                        semanticLabel: '$activeCount active clients',
-                        onTap: onOpenClients,
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: _MetricHit(
+                          icon: Icons.people_outline_rounded,
+                          label: 'Active',
+                          value: '$activeCount',
+                          semanticLabel: '$activeCount active clients',
+                          onTap: onOpenClients,
+                        ),
                       ),
-                    ),
-                    Expanded(
-                      child: _MetricHit(
-                        label: 'Request',
-                        value: '$requestCount',
-                        showDot: requestCount > 0,
-                        semanticLabel: requestCount == 1
-                            ? '1 request needing action'
-                            : '$requestCount requests needing action',
-                        onTap: onOpenRequests,
+                      Expanded(
+                        child: _MetricHit(
+                          icon: Icons.person_add_alt_1_outlined,
+                          label: 'Requests',
+                          value: '$requestCount',
+                          showDot: requestCount > 0,
+                          semanticLabel: requestCount == 1
+                              ? '1 request needing action'
+                              : '$requestCount requests needing action',
+                          onTap: onOpenRequests,
+                        ),
                       ),
-                    ),
-                    Expanded(
-                      child: _MetricHit(
-                        label: 'Notes',
-                        value: '→',
-                        semanticLabel: 'Client Notes',
-                        onTap: onOpenNotes,
-                        emphasize: true,
+                      Expanded(
+                        child: _MetricHit(
+                          icon: Icons.description_outlined,
+                          label: 'Notes',
+                          value: null,
+                          semanticLabel: 'Client Notes',
+                          onTap: onOpenNotes,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
+              if (!loading && nextSession != null) ...[
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Divider(
+                    height: 1,
+                    color: accent.withValues(alpha: 0.18),
+                  ),
+                ),
+                _NextSessionRow(
+                  isLight: isLight,
+                  preview: nextSession!,
+                  onTap: onOpenNextSession ?? onOpenClients,
+                ),
+              ],
             ],
           ),
         ),
@@ -232,25 +339,26 @@ class _SummaryTile extends StatelessWidget {
 }
 
 class _MetricHit extends StatelessWidget {
+  final IconData icon;
   final String label;
-  final String value;
+  final String? value;
   final String semanticLabel;
   final VoidCallback onTap;
   final bool showDot;
-  final bool emphasize;
 
   const _MetricHit({
+    required this.icon,
     required this.label,
     required this.value,
     required this.semanticLabel,
     required this.onTap,
     this.showDot = false,
-    this.emphasize = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final isLight = Theme.of(context).brightness == Brightness.light;
+    final accent = HomePremiumTheme.clientsManagementAccent(isLight);
     return Semantics(
       button: true,
       label: semanticLabel,
@@ -259,53 +367,134 @@ class _MetricHit extends StatelessWidget {
           HapticFeedback.lightImpact();
           onTap();
         },
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 48),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Flexible(
-                    child: Text(
-                      value,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: emphasize ? 18 : 20,
-                        fontWeight: FontWeight.w800,
-                        color: emphasize
-                            ? DesignTokens.videoSessionsAccent
-                            : HomePremiumTheme.primaryText(isLight),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Icon(icon, size: 22, color: accent),
+                    if (showDot)
+                      Positioned(
+                        right: -3,
+                        top: -2,
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: DesignTokens.accentRed,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
                       ),
+                  ],
+                ),
+                if (value != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    value!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      height: 1.1,
+                      color: HomePremiumTheme.primaryText(isLight),
                     ),
                   ),
-                  if (showDot) ...[
-                    const SizedBox(width: 6),
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                        color: DesignTokens.accentRed,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-              const SizedBox(height: 2),
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: HomePremiumTheme.secondaryText(isLight),
+                ] else
+                  const SizedBox(height: 6),
+                const SizedBox(height: 2),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: HomePremiumTheme.secondaryText(isLight),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NextSessionRow extends StatelessWidget {
+  final bool isLight;
+  final ProviderNextSessionPreview preview;
+  final VoidCallback onTap;
+
+  const _NextSessionRow({
+    required this.isLight,
+    required this.preview,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = HomePremiumTheme.clientsManagementAccent(isLight);
+    final when = formatNextSessionWhen(preview.scheduledStart);
+    return Semantics(
+      button: true,
+      label: 'Next session ${preview.clientName} $when',
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.lightImpact();
+          onTap();
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 44),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(0, 10, 4, 0),
+            child: Row(
+              children: [
+                Icon(Icons.videocam_outlined, size: 20, color: accent),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Next session',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: HomePremiumTheme.secondaryText(isLight),
+                        ),
+                      ),
+                      Text(
+                        '${preview.clientName} · $when',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: HomePremiumTheme.primaryText(isLight),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 20,
+                  color: accent,
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -326,15 +515,19 @@ class _ClientRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final accent = HomePremiumTheme.recentClientAccent(isLight);
     return Semantics(
       button: true,
       label: 'Client ${client.name}',
       child: PressableCard(
-        borderRadius: VideoSessionUi.radius,
+        borderRadius: 16,
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: VideoSessionUi.cardBox(context),
+          decoration: BoxDecoration(
+            color: HomePremiumTheme.recentClientSurface(isLight),
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Row(
             children: [
               VideoSessionAvatar(
@@ -372,7 +565,7 @@ class _ClientRow extends StatelessWidget {
               ),
               Icon(
                 Icons.chevron_right_rounded,
-                color: HomePremiumTheme.secondaryText(isLight),
+                color: accent,
                 size: 20,
               ),
             ],
@@ -389,7 +582,7 @@ class _TileSkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = Theme.of(context).brightness == Brightness.light
-        ? const Color(0xFFE8E8EA)
+        ? const Color(0xFFE4DFF3)
         : Colors.white.withValues(alpha: 0.08);
     return Row(
       children: [
@@ -397,7 +590,7 @@ class _TileSkeleton extends StatelessWidget {
           if (i > 0) const SizedBox(width: 12),
           Expanded(
             child: Container(
-              height: 36,
+              height: 52,
               decoration: BoxDecoration(
                 color: color,
                 borderRadius: BorderRadius.circular(8),
@@ -415,16 +608,14 @@ class _RowSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = Theme.of(context).brightness == Brightness.light
-        ? const Color(0xFFE8E8EA)
-        : Colors.white.withValues(alpha: 0.08);
+    final isLight = Theme.of(context).brightness == Brightness.light;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Container(
         height: 64,
         decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(VideoSessionUi.radius),
+          color: HomePremiumTheme.recentClientSurface(isLight),
+          borderRadius: BorderRadius.circular(16),
         ),
       ),
     );

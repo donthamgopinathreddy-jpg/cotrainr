@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../repositories/partner_centers_repository.dart';
 import '../../theme/design_tokens.dart';
 import '../../widgets/common/app_form_fields.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 
 class PartnerCenterApplicationPage extends StatefulWidget {
   const PartnerCenterApplicationPage({super.key});
@@ -190,10 +191,9 @@ class _PartnerCenterApplicationPageState
     if (_successCode != null) {
       return Scaffold(
         backgroundColor: bg,
-        appBar: AppBar(
+        appBar: CotrainrAppBar(
+          title: 'Application received',
           backgroundColor: bg,
-          elevation: 0,
-          title: const Text('Application received'),
         ),
         body: SafeArea(
           child: Padding(
@@ -262,10 +262,9 @@ class _PartnerCenterApplicationPageState
 
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
+      appBar: CotrainrAppBar(
+        title: 'Become a Cotrainr Partner',
         backgroundColor: bg,
-        elevation: 0,
-        title: const Text('Become a Cotrainr Partner'),
       ),
       body: Form(
         key: _formKey,

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../repositories/provider_reviews_repository.dart';
 import '../../theme/design_tokens.dart';
 import '../../widgets/common/app_form_fields.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
 import '../../widgets/provider/provider_avatar.dart';
 
@@ -114,8 +115,7 @@ class _ProviderReviewPageState extends State<ProviderReviewPage> {
       appBar: AppBar(
         backgroundColor: bg,
         title: Text(_isUpdate ? 'Edit review' : 'Review $_roleLabel'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
+        leading: CotrainrBackButton(
           onPressed: () => context.pop(false),
         ),
       ),

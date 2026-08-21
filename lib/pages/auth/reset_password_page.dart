@@ -10,6 +10,7 @@ import '../../core/startup/startup_router_bridge.dart';
 import '../../theme/auth_theme.dart';
 import '../../widgets/auth/auth_screen_background.dart';
 import '../../widgets/auth/auth_ui.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 
 /// Recovery screen for `cotrainr://reset-password` deep links.
 class ResetPasswordPage extends StatefulWidget {
@@ -155,19 +156,13 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
       child: AuthScreenBackground.onboarding(
         child: Scaffold(
           backgroundColor: Colors.transparent,
-          appBar: AppBar(
+          appBar: CotrainrAppBar(
+            title: _phase == _ResetPhase.success
+                ? 'Password updated'
+                : 'Set new password',
+            fallbackRoute: '/login',
             backgroundColor: Colors.transparent,
-            elevation: 0,
             foregroundColor: textPrimary,
-            title: Text(
-              _phase == _ResetPhase.success
-                  ? 'Password updated'
-                  : 'Set new password',
-              style: TextStyle(
-                color: textPrimary,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
           ),
           body: SafeArea(
             child: AnimatedSwitcher(

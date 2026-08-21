@@ -8,6 +8,7 @@ import '../../models/provider_location_model.dart';
 import '../../providers/provider_locations_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 import 'map_location_picker_page.dart';
 
 /// Form page for adding/editing provider locations
@@ -232,6 +233,8 @@ class _ProviderLocationFormPageState
         ),
         elevation: 0,
         backgroundColor: Colors.transparent,
+        automaticallyImplyLeading: false,
+        leading: CotrainrBackButton(color: colorScheme.onSurface),
         flexibleSpace: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(

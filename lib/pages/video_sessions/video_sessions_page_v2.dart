@@ -16,6 +16,7 @@ import '../../repositories/notifications_repository.dart';
 import '../../repositories/video_sessions_repository.dart';
 import '../../services/profile_role_service.dart';
 import '../../theme/design_tokens.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/profile/account_hub_widgets.dart';
 import '../../widgets/video_sessions/video_session_card_actions.dart';
 import '../../widgets/video_sessions/video_session_people_sheet.dart';
@@ -221,50 +222,48 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
 
   @override
   Widget build(BuildContext context) {
-    final canPop = Navigator.of(context).canPop() || context.canPop();
     final bottomPad = _isHost ? 8.0 : 24.0;
+    final title = _isHost
+        ? (_userRole == 'nutritionist'
+            ? 'Nutritionist Sessions'
+            : 'Trainer Sessions')
+        : 'Video Sessions';
 
-    return Scaffold(
+    return CotrainrPopScope(
+      fallbackRoute: '/home',
+      child: Scaffold(
       backgroundColor: VideoSessionUi.pageBg(context),
-      appBar: AppBar(
+      appBar: CotrainrAppBar(
+        title: title,
         backgroundColor: VideoSessionUi.pageBg(context),
-        elevation: 0,
-        automaticallyImplyLeading: canPop,
-        title: Text(
-          _isHost
-              ? (_userRole == 'nutritionist'
-                  ? 'Nutritionist Sessions'
-                  : 'Trainer Sessions')
-              : 'Video Sessions',
-          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-        ),
+        fallbackRoute: '/home',
       ),
       bottomNavigationBar: _isHost
           ? SafeArea(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                child: SizedBox(
-                  height: 52,
-                  child: Semantics(
-                    button: true,
-                    label: 'Schedule Session',
-                    child: ElevatedButton(
-                      onPressed: _openCreateSession,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: DesignTokens.videoSessionsAccent,
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius:
-                              BorderRadius.circular(VideoSessionUi.radius),
-                        ),
+                child: Semantics(
+                  button: true,
+                  label: 'Schedule Session',
+                  child: ElevatedButton(
+                    onPressed: _openCreateSession,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: DesignTokens.videoSessionsAccent,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      minimumSize: const Size.fromHeight(52),
+                      shape: RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(VideoSessionUi.radius),
                       ),
-                      child: const Text(
-                        'Schedule Session',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                        ),
+                    ),
+                    child: const Text(
+                      'Schedule Session',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   ),
@@ -415,6 +414,7 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
                 ],
               ),
             ),
+    ),
     );
   }
 

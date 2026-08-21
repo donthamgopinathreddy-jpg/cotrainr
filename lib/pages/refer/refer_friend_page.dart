@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../providers/referral_provider.dart';
 import '../../theme/account_hub_theme.dart';
 import '../../theme/design_tokens.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
 import '../../widgets/profile/account_hub_widgets.dart';
 
@@ -52,10 +53,9 @@ class _ReferFriendPageState extends ConsumerState<ReferFriendPage> {
 
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
+      appBar: CotrainrAppBar(
+        title: 'Refer a Friend',
         backgroundColor: bg,
-        elevation: 0,
-        title: const Text('Refer a Friend'),
       ),
       body: RefreshIndicator(
         color: DesignTokens.accentOrange,

@@ -6,6 +6,7 @@ import '../../providers/entitlements_provider.dart';
 import '../../repositories/subscriptions_repository.dart';
 import '../../theme/account_hub_theme.dart';
 import '../../theme/design_tokens.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
 import '../../widgets/profile/account_hub_widgets.dart';
 
@@ -55,10 +56,9 @@ class _SubscriptionPageState extends ConsumerState<SubscriptionPage> {
 
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
+      appBar: CotrainrAppBar(
+        title: 'Subscription',
         backgroundColor: bg,
-        elevation: 0,
-        title: const Text('Subscription'),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(strokeWidth: 2))

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme/account_hub_theme.dart';
+import '../../../widgets/common/cotrainr_back_button.dart';
 import '../../../widgets/profile/appearance_toggle.dart';
 import '../../../widgets/profile/account_hub_widgets.dart';
 
@@ -12,10 +13,9 @@ class AppearanceSettingsPage extends StatelessWidget {
     final bg = AccountHubTheme.pageBg(context);
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
+      appBar: CotrainrAppBar(
+        title: 'Appearance',
         backgroundColor: bg,
-        elevation: 0,
-        title: const Text('Appearance'),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),

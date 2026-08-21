@@ -11,6 +11,7 @@ import '../../repositories/profile_repository.dart';
 import '../../repositories/video_sessions_repository.dart';
 import '../../services/coach_client_access_service.dart';
 import '../../theme/design_tokens.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/profile/account_hub_widgets.dart';
 import '../../widgets/video_sessions/video_session_avatar.dart';
 import '../trainer/create_client_page.dart';
@@ -283,13 +284,9 @@ class _ClientDetailShellState extends State<ClientDetailShell>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: ClientMonitoringUi.pageBg(context),
-      appBar: AppBar(
+      appBar: CotrainrAppBar(
+        title: _name ?? 'Client',
         backgroundColor: ClientMonitoringUi.pageBg(context),
-        elevation: 0,
-        title: Text(
-          _name ?? 'Client',
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-        ),
       ),
       body: _loading && _name == null
           ? const Center(

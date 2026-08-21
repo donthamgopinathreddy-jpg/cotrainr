@@ -10,6 +10,7 @@ import '../../services/user_goals_service.dart';
 import '../../theme/design_tokens.dart';
 import '../../theme/insight_metric_theme.dart';
 import '../../theme/text_styles.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/insights/insight_premium_widgets.dart';
 import '../../widgets/insights/metric_goal_picker_sheet.dart';
 import '../../widgets/insights/water_reminder_picker_sheet.dart';
@@ -440,6 +441,10 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
             SliverAppBar(
               pinned: true,
               backgroundColor: Colors.transparent,
+              automaticallyImplyLeading: false,
+              leading: CotrainrBackButton(
+                color: DesignTokens.textPrimaryOf(context),
+              ),
               flexibleSpace: isLight
                   ? ColoredBox(color: pageBg)
                   : ClipRect(

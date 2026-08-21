@@ -126,7 +126,6 @@ class HealthTrackingService {
           );
         }
       }
-      await Permission.notification.request();
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[Metrics] OS permission request error: $e');

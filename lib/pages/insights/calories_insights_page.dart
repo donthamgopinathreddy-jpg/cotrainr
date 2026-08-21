@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 
 class CaloriesInsightsPage extends StatelessWidget {
   const CaloriesInsightsPage({super.key});
@@ -18,14 +18,7 @@ class CaloriesInsightsPage extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  IconButton(
-                    onPressed: () => context.pop(),
-                    icon: const Icon(
-                      Icons.arrow_back_ios_new_rounded,
-                      color: AppColors.textPrimary,
-                      size: 20,
-                    ),
-                  ),
+                  CotrainrBackButton(color: AppColors.textPrimary),
                   const SizedBox(width: 4),
                   const Text(
                     'Calories Insights',

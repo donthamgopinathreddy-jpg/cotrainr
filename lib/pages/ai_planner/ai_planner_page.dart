@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/common/cotrainr_back_button.dart';
+
 /// Placeholder page for AI Planner - coming soon.
 class AiPlannerPage extends StatelessWidget {
   const AiPlannerPage({super.key});
@@ -9,10 +11,8 @@ class AiPlannerPage extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('AI Planner'),
-        centerTitle: true,
-        elevation: 0,
+      appBar: CotrainrAppBar(
+        title: 'AI Planner',
         backgroundColor: cs.surface,
         foregroundColor: cs.onSurface,
       ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../utils/client_notes_grouping.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
 import '../../widgets/video_sessions/video_session_avatar.dart';
 import '../../widgets/video_sessions/video_session_theme.dart';
@@ -18,8 +19,10 @@ class ProviderNotesDetailPage extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: VideoSessionUi.pageBg(context),
-      appBar: AppBar(
-        title: Column(
+      appBar: CotrainrAppBar(
+        backgroundColor: VideoSessionUi.pageBg(context),
+        foregroundColor: HomePremiumTheme.primaryText(isLight),
+        titleWidget: Column(
           children: [
             Text(
               title,
@@ -36,10 +39,6 @@ class ProviderNotesDetailPage extends StatelessWidget {
               ),
           ],
         ),
-        centerTitle: true,
-        elevation: 0,
-        backgroundColor: VideoSessionUi.pageBg(context),
-        foregroundColor: HomePremiumTheme.primaryText(isLight),
       ),
       body: ListView.builder(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),

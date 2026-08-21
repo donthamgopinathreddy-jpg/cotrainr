@@ -8,6 +8,7 @@ import '../../providers/accepted_client_trainers_provider.dart';
 import '../../repositories/provider_reviews_repository.dart';
 import '../../services/leads_models.dart' show AcceptedProvider;
 import '../../theme/design_tokens.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/common/fade_slide_in.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
 import '../../widgets/provider/connected_provider_card.dart';
@@ -127,17 +128,7 @@ class _ConnectedProvidersPageState
               padding: const EdgeInsets.fromLTRB(8, 8, 16, 0),
               child: Row(
                 children: [
-                  IconButton(
-                    onPressed: () {
-                      HapticFeedback.selectionClick();
-                      if (context.canPop()) {
-                        context.pop();
-                      } else {
-                        context.go('/home');
-                      }
-                    },
-                    icon: Icon(Icons.arrow_back_rounded, color: textPrimary),
-                  ),
+                  CotrainrBackButton(fallbackRoute: '/home', color: textPrimary),
                   const SizedBox(width: 4),
                   Icon(_titleIcon, size: 22, color: DesignTokens.accentOrange),
                   const SizedBox(width: 10),

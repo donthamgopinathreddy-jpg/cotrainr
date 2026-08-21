@@ -21,6 +21,7 @@ import '../../utils/chat_attachment_rules.dart';
 import '../../utils/chat_message_reconciler.dart';
 import '../../services/chat_media_storage.dart';
 import '../../widgets/common/app_overlays.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/messaging/report_user_sheet.dart';
 import '../../widgets/provider/provider_avatar.dart';
 import '../profile/public_profile_readonly_page.dart';
@@ -1106,11 +1107,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded),
-          color: cs.onSurface,
-          onPressed: () => Navigator.pop(context),
-        ),
+        leading: CotrainrBackButton(color: cs.onSurface),
         title: Row(
           children: [
             GestureDetector(

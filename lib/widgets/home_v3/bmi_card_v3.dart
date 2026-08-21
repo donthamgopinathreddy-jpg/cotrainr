@@ -82,79 +82,97 @@ class BmiCardV3 extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Left: BMI label with icon
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.monitor_weight,
-                        size: 20,
-                        color: AppColors.textSecondaryOf(context),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'BMI',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.monitor_weight,
+                          size: 20,
                           color: AppColors.textSecondaryOf(context),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Body Mass Index',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: AppColors.textSecondaryOf(context).withOpacity(0.7),
-                    ),
-                  ),
-                ],
-              ),
-              // Right: BMI value and status
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: bmi > 0
-                        ? AnimatedNumber(
-                            value: bmi,
-                            format: (v) => v.toStringAsFixed(1),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            'BMI',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontSize: 36,
-                              fontWeight: FontWeight.w900,
-                              color: meterColor,
-                              height: 1.0,
-                            ),
-                          )
-                        : Text(
-                            '--',
-                            style: TextStyle(
-                              fontSize: 36,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors.textPrimaryOf(context),
-                              height: 1.0,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textSecondaryOf(context),
                             ),
                           ),
-                  ),
-                  if (status.isNotEmpty) ...[
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 2),
                     Text(
-                      status.toUpperCase(),
+                      'Body Mass Index',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: statusInfo.color,
-                        letterSpacing: 0.5,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.textSecondaryOf(context)
+                            .withOpacity(0.7),
                       ),
                     ),
                   ],
-                ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Right: BMI value and status
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: bmi > 0
+                          ? AnimatedNumber(
+                              value: bmi,
+                              format: (v) => v.toStringAsFixed(1),
+                              style: TextStyle(
+                                fontSize: 36,
+                                fontWeight: FontWeight.w900,
+                                color: meterColor,
+                                height: 1.0,
+                              ),
+                            )
+                          : Text(
+                              '--',
+                              style: TextStyle(
+                                fontSize: 36,
+                                fontWeight: FontWeight.w900,
+                                color: AppColors.textPrimaryOf(context),
+                                height: 1.0,
+                              ),
+                            ),
+                    ),
+                    if (status.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Semantics(
+                        label: 'BMI status $status',
+                        excludeSemantics: true,
+                        child: Text(
+                          status.toUpperCase(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: statusInfo.color,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ],
           ),
@@ -170,16 +188,6 @@ class BmiCardV3 extends StatelessWidget {
           ),
           
           const SizedBox(height: 12),
-
-          if (bmi > 0 && heightCm != null && heightCm! > 0) ...[
-            _TargetInfoRow(
-              bmi: bmi,
-              heightCm: heightCm!,
-              weightKg: weightKg,
-              context: context,
-            ),
-            const SizedBox(height: 12),
-          ],
 
           // Height and Weight pills in a row
           Row(
@@ -279,114 +287,6 @@ class _StatusInfo {
   final String label;
 
   _StatusInfo({required this.color, required this.label});
-}
-
-/// Compact actionable BMI target (healthy range upper/lower bound).
-class _TargetInfoRow extends StatelessWidget {
-  static const _healthyMax = 24.9;
-  static const _healthyMin = 18.5;
-
-  final double bmi;
-  final double heightCm;
-  final double? weightKg;
-  final BuildContext context;
-
-  const _TargetInfoRow({
-    required this.bmi,
-    required this.heightCm,
-    required this.weightKg,
-    required this.context,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final heightM = heightCm / 100;
-    final isLight = Theme.of(context).brightness == Brightness.light;
-
-    if (bmi >= _healthyMin && bmi <= _healthyMax) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: isLight
-              ? const Color(0xFF22C55E).withValues(alpha: 0.12)
-              : Colors.white.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Text(
-          'You are in the healthy BMI range',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            color: const Color(0xFF22C55E),
-          ),
-        ),
-      );
-    }
-
-    final targetBmi = bmi > _healthyMax ? _healthyMax : _healthyMin;
-    final targetWeight = targetBmi * heightM * heightM;
-    final current = weightKg ?? 0;
-    final diff = current > 0 ? (current - targetWeight).abs() : 0.0;
-    final diffLabel = bmi > _healthyMax
-        ? '${diff.toStringAsFixed(1)} kg to healthy range'
-        : '${diff.toStringAsFixed(1)} kg to healthy range';
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: isLight
-            ? Colors.white.withValues(alpha: 0.65)
-            : Colors.white.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: isLight
-              ? HomePremiumTheme.lightCharcoalText.withValues(alpha: 0.08)
-              : Colors.white.withValues(alpha: 0.1),
-        ),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Target BMI ${targetBmi.toStringAsFixed(1)}',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textSecondaryOf(context),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'Target Weight ${targetWeight.toStringAsFixed(1)} kg',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimaryOf(context),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (current > 0)
-            Text(
-              diffLabel,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: BmiMeterColors.fromProgress(
-                  bmi > _healthyMax ? 0.65 : 0.2,
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
 }
 
 class _MetricPill extends StatelessWidget {
@@ -537,42 +437,49 @@ class _GradientScaleBar extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              '<18.5',
-              style: TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textSecondaryOf(context).withOpacity(0.7),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '<18.5',
+                style: TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondaryOf(context).withOpacity(0.7),
+                ),
               ),
-            ),
-            Text(
-              '18.5-24.9',
-              style: TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textSecondaryOf(context).withOpacity(0.7),
+              const SizedBox(width: 8),
+              Text(
+                '18.5-24.9',
+                style: TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondaryOf(context).withOpacity(0.7),
+                ),
               ),
-            ),
-            Text(
-              '25-29.9',
-              style: TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textSecondaryOf(context).withOpacity(0.7),
+              const SizedBox(width: 8),
+              Text(
+                '25-29.9',
+                style: TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondaryOf(context).withOpacity(0.7),
+                ),
               ),
-            ),
-            Text(
-              '>30',
-              style: TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textSecondaryOf(context).withOpacity(0.7),
+              const SizedBox(width: 8),
+              Text(
+                '>30',
+                style: TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondaryOf(context).withOpacity(0.7),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ],
     );

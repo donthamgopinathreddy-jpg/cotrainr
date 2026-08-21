@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../repositories/coach_notes_repository.dart';
 import '../../theme/design_tokens.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/profile/account_hub_widgets.dart';
 import 'client_monitoring_theme.dart';
 
@@ -146,10 +147,9 @@ class _ClientCoachNotesPageState extends State<ClientCoachNotesPage> {
     final name = widget.clientName.trim().isEmpty ? 'Client' : widget.clientName.trim();
     return Scaffold(
       backgroundColor: ClientMonitoringUi.pageBg(context),
-      appBar: AppBar(
+      appBar: CotrainrAppBar(
         backgroundColor: ClientMonitoringUi.pageBg(context),
-        elevation: 0,
-        title: Column(
+        titleWidget: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(

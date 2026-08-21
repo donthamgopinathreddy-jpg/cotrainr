@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme/account_hub_theme.dart';
+import '../../../widgets/common/cotrainr_back_button.dart';
 import '../../../widgets/profile/account_hub_widgets.dart';
 
 class UnitsPage extends StatelessWidget {
@@ -11,10 +12,9 @@ class UnitsPage extends StatelessWidget {
     final bg = AccountHubTheme.pageBg(context);
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
+      appBar: CotrainrAppBar(
+        title: 'Units',
         backgroundColor: bg,
-        elevation: 0,
-        title: const Text('Units'),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),

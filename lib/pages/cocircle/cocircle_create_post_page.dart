@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/common/modern_input_box.dart';
 import '../../services/storage_service.dart';
 import '../../repositories/profile_repository.dart';
@@ -309,10 +311,7 @@ class _CocircleCreatePostPageState extends State<CocircleCreatePostPage> {
               AppBar(
                 backgroundColor: Colors.transparent,
                 elevation: 0,
-                leading: IconButton(
-                  icon: Icon(Icons.arrow_back, color: colorScheme.onBackground),
-                  onPressed: () => Navigator.pop(context),
-                ),
+                leading: CotrainrBackButton(color: colorScheme.onBackground),
                 title: ShaderMask(
                   shaderCallback: (rect) => cocircleGradient.createShader(rect),
                   child: Text(

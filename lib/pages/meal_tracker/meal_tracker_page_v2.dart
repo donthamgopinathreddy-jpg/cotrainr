@@ -869,6 +869,8 @@ class _MealTrackerPageV2State extends State<MealTrackerPageV2>
                     surface: _getSurface(context),
                     textPrimary: _getTextPrimary(context),
                     textSecondary: _getTextSecondary(context),
+                    resolvedExtent:
+                        _DayNavigatorDelegate.computeExtent(context),
                   ),
                 ),
                 // Daily Summary
@@ -1148,6 +1150,8 @@ class _DayNavigatorDelegate extends SliverPersistentHeaderDelegate {
   final Color surface;
   final Color textPrimary;
   final Color textSecondary;
+  // Resolved once per frame and stored so extent getters can return it.
+  final double resolvedExtent;
 
   _DayNavigatorDelegate({
     required this.selectedDate,
@@ -1157,7 +1161,19 @@ class _DayNavigatorDelegate extends SliverPersistentHeaderDelegate {
     required this.surface,
     required this.textPrimary,
     required this.textSecondary,
+    required this.resolvedExtent,
   });
+
+  /// Compute the extent for the current context so the sliver grows with
+  /// text scale, keeping ≥ 48 dp touch target + 12 dp vertical breathing room.
+  static double computeExtent(BuildContext context) {
+    final scale = MediaQuery.textScalerOf(context).scale(1.0);
+    // Two text lines: 16 px + 2 px gap + 13 px, each growing with text scale.
+    final contentHeight = (16 * scale) + 2 + (13 * scale);
+    // 12 dp outer vertical padding (6 top + 6 bottom) + 8 dp breathing room.
+    const chrome = 12.0 + 8.0;
+    return (contentHeight + chrome).clamp(64.0, 120.0);
+  }
 
   @override
   Widget build(
@@ -1171,6 +1187,7 @@ class _DayNavigatorDelegate extends SliverPersistentHeaderDelegate {
         color: surface,
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             IconButton(
               onPressed: onPrevious,
@@ -1183,15 +1200,19 @@ class _DayNavigatorDelegate extends SliverPersistentHeaderDelegate {
                   onTap: onDateTap,
                   borderRadius: BorderRadius.circular(16),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    padding: const EdgeInsets.symmetric(vertical: 4),
                     child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
                           weekday,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w800,
+                            height: 1.15,
                             color: textPrimary,
                           ),
                         ),
@@ -1199,12 +1220,17 @@ class _DayNavigatorDelegate extends SliverPersistentHeaderDelegate {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Text(
-                              dateLine,
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: textSecondary,
+                            Flexible(
+                              child: Text(
+                                dateLine,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  height: 1.15,
+                                  color: textSecondary,
+                                ),
                               ),
                             ),
                             if (isToday) ...[
@@ -1224,6 +1250,7 @@ class _DayNavigatorDelegate extends SliverPersistentHeaderDelegate {
                                   style: TextStyle(
                                     fontSize: 10,
                                     fontWeight: FontWeight.w800,
+                                    height: 1.15,
                                     color: MealTrackerTokens.accent,
                                   ),
                                 ),
@@ -1279,14 +1306,15 @@ class _DayNavigatorDelegate extends SliverPersistentHeaderDelegate {
   }
 
   @override
-  double get maxExtent => 72;
+  double get maxExtent => resolvedExtent;
 
   @override
-  double get minExtent => 72;
+  double get minExtent => resolvedExtent;
 
   @override
   bool shouldRebuild(covariant _DayNavigatorDelegate oldDelegate) {
-    return oldDelegate.selectedDate != selectedDate;
+    return oldDelegate.selectedDate != selectedDate ||
+        oldDelegate.resolvedExtent != resolvedExtent;
   }
 }
 

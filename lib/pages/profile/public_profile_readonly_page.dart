@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,14 +18,14 @@ import '../../repositories/subscriptions_repository.dart';
 import '../../services/leads_service.dart';
 import '../../services/messaging_policy_service.dart';
 import '../../theme/design_tokens.dart';
-import '../../theme/app_colors.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
-import '../../widgets/provider/provider_avatar.dart';
+import '../../widgets/provider/public_provider_profile_header.dart';
 import '../../widgets/provider/inline_provider_review_editor.dart';
 import '../../widgets/subscription/nutritionist_upgrade_sheet.dart';
 import '../../widgets/subscription/connection_limit_sheet.dart';
 
-/// Public provider profile — Cotrainr dark UI (hero + stats + Request + tabs).
+/// Public provider profile — identity header, connection CTA, and three tabs.
 ///
 /// UI always paints immediately from fallbacks; network fills in afterwards.
 class PublicProfileReadonlyPage extends ConsumerStatefulWidget {
@@ -60,7 +59,6 @@ class _PublicProfileReadonlyPageState
   /// Never gates the scaffold — only shows a small refresh indicator.
   bool _refreshing = false;
   String? _username;
-  String? _coverUrl;
   int _clientCount = 0;
   bool _bioExpanded = false;
   List<ProviderReview> _reviews = [];
@@ -84,8 +82,7 @@ class _PublicProfileReadonlyPageState
       SubscriptionPlans.canConnectToNutritionist(_clientPlan);
 
   static const _tabs = [
-    'About',
-    'Expertise',
+    'Profile',
     'Services',
     'Reviews',
   ];
@@ -169,6 +166,7 @@ class _PublicProfileReadonlyPageState
             providerType: widget.providerType ?? 'trainer',
             fullName: publicName ?? widget.titleFallback ?? 'Provider',
             avatarUrl: publicAvatar,
+            coverUrl: coverUrl,
             bio: publicBio,
           );
 
@@ -180,7 +178,10 @@ class _PublicProfileReadonlyPageState
       final needsAvatar =
           (resolved.avatarUrl == null || resolved.avatarUrl!.trim().isEmpty) &&
               (publicAvatar?.trim().isNotEmpty ?? false);
-      if (needsName || needsBio || needsAvatar) {
+      final needsCover =
+          (resolved.coverUrl == null || resolved.coverUrl!.trim().isEmpty) &&
+              (coverUrl?.trim().isNotEmpty ?? false);
+      if (needsName || needsBio || needsAvatar || needsCover) {
         resolved = ProviderProfessionalProfile(
           userId: resolved.userId,
           providerType: resolved.providerType,
@@ -200,6 +201,7 @@ class _PublicProfileReadonlyPageState
               ? (publicName ?? widget.titleFallback)
               : resolved.fullName,
           avatarUrl: needsAvatar ? publicAvatar : resolved.avatarUrl,
+          coverUrl: needsCover ? coverUrl : resolved.coverUrl,
           primaryLocationLabel: resolved.primaryLocationLabel,
           coverageKm: resolved.coverageKm,
         );
@@ -307,9 +309,6 @@ class _PublicProfileReadonlyPageState
         _profile = resolved;
         _certs = certs;
         _username = username;
-        _coverUrl = (coverUrl != null && coverUrl.trim().isNotEmpty)
-            ? coverUrl.trim()
-            : null;
         _clientCount = clientCount;
         _reviews = reviews;
         _canRate = canRate;
@@ -507,196 +506,65 @@ class _PublicProfileReadonlyPageState
     final p = _profile;
     final title =
         p.fullName ?? _username ?? widget.titleFallback ?? 'Provider';
-    // Real cover only — never reuse avatar. Null → branded default asset.
-    final heroUrl = (_coverUrl != null && _coverUrl!.trim().isNotEmpty)
-        ? _coverUrl
-        : null;
+    final professionalTitle =
+        (p.professionalHeadline ?? '').trim().isNotEmpty
+            ? p.professionalHeadline!.trim()
+            : p.roleLabel;
+    final experienceValue =
+        (p.experienceYears != null && p.experienceYears! > 0)
+            ? '${p.experienceYears} yrs'
+            : '—';
+    final reviewsValue =
+        p.totalReviews > 0 ? p.rating.toStringAsFixed(1) : '—';
 
-    return Scaffold(
-      backgroundColor: bg,
-      body: RefreshIndicator(
-        color: DesignTokens.accentOrange,
-        backgroundColor: cardBg,
-        onRefresh: _load,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(
-            parent: BouncingScrollPhysics(),
-          ),
-          padding: EdgeInsets.zero,
-          children: [
-            // —— Hero ——
-            SizedBox(
-              height: 240,
-              width: double.infinity,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  _HeroImage(url: heroUrl),
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.black.withValues(alpha: 0.35),
-                          Colors.transparent,
-                          bg,
-                        ],
-                        stops: const [0, 0.4, 1],
-                      ),
-                    ),
-                  ),
-                  SafeArea(
-                    bottom: false,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      child: Row(
-                        children: [
-                          const Spacer(),
-                          if (_refreshing)
-                            const Padding(
-                              padding: EdgeInsets.only(right: 8),
-                              child: SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: DesignTokens.accentOrange,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+    return CotrainrPopScope(
+      fallbackRoute: '/home',
+      child: Scaffold(
+        backgroundColor: bg,
+        body: RefreshIndicator(
+          color: DesignTokens.accentOrange,
+          backgroundColor: cardBg,
+          onRefresh: _load,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
             ),
-
-            // —— Identity ——
-            Transform.translate(
-              offset: const Offset(0, -28),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: EdgeInsets.zero,
+            children: [
+              SafeArea(
+                bottom: false,
                 child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    ProviderAvatar(
-                      imageUrl: p.avatarUrl,
-                      name: title,
-                      size: 72,
-                      borderRadius: 16,
-                      verified: false,
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    title,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: GoogleFonts.montserrat(
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.w800,
-                                      color: textPrimary,
-                                      letterSpacing: -0.4,
-                                    ),
-                                  ),
-                                ),
-                                if (p.verified) ...[
-                                  const SizedBox(width: 6),
-                                  Icon(
-                                    Icons.verified_rounded,
-                                    size: 20,
-                                    color: DesignTokens.accentOrange,
-                                  ),
-                                ],
-                              ],
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              (p.professionalHeadline ?? p.roleLabel).trim(),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: textSecondary,
-                              ),
-                            ),
-                            if ((_username ?? '').isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                '@$_username',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: textSecondary.withValues(alpha: 0.85),
-                                ),
-                              ),
-                            ],
-                          ],
+                    const CotrainrBackButton(fallbackRoute: '/home'),
+                    const Spacer(),
+                    if (_refreshing)
+                      const Padding(
+                        padding: EdgeInsets.only(right: 16),
+                        child: SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: DesignTokens.accentOrange,
+                          ),
                         ),
                       ),
-                    ),
                   ],
                 ),
               ),
-            ),
-
-            // —— Stats (single accent) ——
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
-              child: Row(
-                children: [
-                  _StatCell(
-                    icon: Icons.star_rounded,
-                    value: p.totalReviews > 0
-                        ? p.rating.toStringAsFixed(1)
-                        : 'New',
-                    label: p.totalReviews > 0
-                        ? '${p.totalReviews} reviews'
-                        : 'No reviews',
-                    textPrimary: textPrimary,
-                    textSecondary: textSecondary,
-                  ),
-                  _StatCell(
-                    icon: Icons.work_outline_rounded,
-                    value: (p.experienceYears != null &&
-                            p.experienceYears! > 0)
-                        ? '${p.experienceYears} yrs'
-                        : '—',
-                    label: 'Experience',
-                    textPrimary: textPrimary,
-                    textSecondary: textSecondary,
-                  ),
-                  _StatCell(
-                    icon: Icons.groups_rounded,
-                    value: '$_clientCount',
-                    label: 'Clients',
-                    textPrimary: textPrimary,
-                    textSecondary: textSecondary,
-                  ),
-                  _StatCell(
-                    icon: Icons.place_outlined,
-                    value: _shortLoc(p.primaryLocationLabel),
-                    label: 'Location',
-                    textPrimary: textPrimary,
-                    textSecondary: textSecondary,
-                  ),
-                ],
+              PublicProviderIdentityHeader(
+                name: title,
+                username: _username,
+                professionalTitle: professionalTitle,
+                avatarUrl: p.avatarUrl,
+                verified: p.verified,
+                isNutritionist: _isNutritionist,
               ),
-            ),
+              PublicProviderHeaderStats(
+                experienceValue: experienceValue,
+                clientsValue: '$_clientCount',
+                reviewsValue: reviewsValue,
+              ),
 
             // —— Actions ——
             Padding(
@@ -745,8 +613,7 @@ class _PublicProfileReadonlyPageState
               color: bg,
               child: TabBar(
                 controller: _tabController,
-                isScrollable: true,
-                tabAlignment: TabAlignment.start,
+                isScrollable: false,
                 labelColor: DesignTokens.accentOrange,
                 unselectedLabelColor: textSecondary,
                 indicatorColor: DesignTokens.accentOrange,
@@ -783,6 +650,7 @@ class _PublicProfileReadonlyPageState
           ],
         ),
       ),
+      ),
     );
   }
 
@@ -795,158 +663,43 @@ class _PublicProfileReadonlyPageState
   }) {
     switch (_tabController.index) {
       case 1:
-        return _ExpertiseBody(
-          specialties: p.specialtyLabels,
-          certs: _certs,
-          languages: p.languages,
-          textPrimary: textPrimary,
-          textSecondary: textSecondary,
-          chipBg: chipBg,
-        );
-      case 2:
         return _ServicesBody(
           sessionModes: p.sessionModes,
           providerType: p.providerType,
-          location: p.primaryLocationLabel,
-          accepting: p.acceptingNewClients,
-          hourlyRate: p.hourlyRate,
           textPrimary: textPrimary,
           textSecondary: textSecondary,
           cardBg: cardBg,
         );
-      case 3:
+      case 2:
         return _ReviewsBody(
           reviews: _reviews,
           rating: p.rating,
           total: p.totalReviews,
           canRate: _canRate,
           onRate: _toggleReviewEditor,
+          roleLabel: p.roleLabel,
           textPrimary: textPrimary,
           textSecondary: textSecondary,
           cardBg: cardBg,
         );
       case 0:
       default:
-        return _AboutBody(
+        return _ProfileTabBody(
           bio: p.bio,
           expanded: _bioExpanded,
           onToggleBio: () => setState(() => _bioExpanded = !_bioExpanded),
-          experienceYears: p.experienceYears,
-          sessionModes: p.sessionModes,
-          providerType: p.providerType,
-          clientCount: _clientCount,
           languages: p.languages,
           specialties: p.specialtyLabels,
-          location: p.primaryLocationLabel,
-          coverageKm: p.coverageKm,
-          accepting: p.acceptingNewClients,
-          hourlyRate: p.hourlyRate,
+          certs: _certs,
           textPrimary: textPrimary,
           textSecondary: textSecondary,
-          cardBg: cardBg,
           chipBg: chipBg,
         );
     }
   }
-
-  String _shortLoc(String? location) {
-    final loc = (location ?? '').trim();
-    if (loc.isEmpty) return '—';
-    return loc.length > 10 ? '${loc.substring(0, 9)}…' : loc;
-  }
 }
 
 // —— Small shared pieces ——
-
-class _HeroImage extends StatelessWidget {
-  static const defaultCoverAsset = 'assets/images/cotrainr_default_cover.png';
-
-  final String? url;
-  const _HeroImage({this.url});
-
-  @override
-  Widget build(BuildContext context) {
-    final u = url?.trim();
-    if (u != null && u.isNotEmpty) {
-      return CachedNetworkImage(
-        imageUrl: u,
-        fit: BoxFit.cover,
-        width: double.infinity,
-        height: double.infinity,
-        placeholder: (_, _) => _defaultCover(),
-        errorWidget: (_, _, _) => _defaultCover(),
-      );
-    }
-    return _defaultCover();
-  }
-
-  Widget _defaultCover() {
-    return Image.asset(
-      defaultCoverAsset,
-      fit: BoxFit.cover,
-      width: double.infinity,
-      height: double.infinity,
-      errorBuilder: (_, _, _) => Container(
-        color: const Color(0xFF0A0A0A),
-        alignment: Alignment.center,
-        child: Icon(
-          Icons.fitness_center_rounded,
-          size: 48,
-          color: DesignTokens.accentOrange.withValues(alpha: 0.35),
-        ),
-      ),
-    );
-  }
-}
-
-class _StatCell extends StatelessWidget {
-  final IconData icon;
-  final String value;
-  final String label;
-  final Color textPrimary;
-  final Color textSecondary;
-
-  const _StatCell({
-    required this.icon,
-    required this.value,
-    required this.label,
-    required this.textPrimary,
-    required this.textSecondary,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Column(
-        children: [
-          Icon(icon, size: 18, color: DesignTokens.accentOrange),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: GoogleFonts.montserrat(
-              fontSize: 14,
-              fontWeight: FontWeight.w800,
-              color: textPrimary,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: textSecondary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _ActionRow extends StatelessWidget {
   final String relationship;
@@ -1127,7 +880,6 @@ class _ActionRow extends StatelessWidget {
         ] else if (relationship == 'none') ...[
           const SizedBox(height: 10),
           Row(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
                 Icons.lock_outline_rounded,
@@ -1135,12 +887,16 @@ class _ActionRow extends StatelessWidget {
                 color: requestPal.accent.withValues(alpha: 0.9),
               ),
               const SizedBox(width: 6),
-              Text(
-                'Connect to message and work together.',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: requestPal.accent.withValues(alpha: 0.95),
+              Flexible(
+                child: Text(
+                  'Connect to message and work together.',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: requestPal.accent.withValues(alpha: 0.95),
+                  ),
                 ),
               ),
             ],
@@ -1150,17 +906,23 @@ class _ActionRow extends StatelessWidget {
           const SizedBox(height: 8),
           TextButton(
             onPressed: onRate,
-            child: ShaderMask(
-              blendMode: BlendMode.srcIn,
-              shaderCallback: (bounds) =>
-                  AppColors.stepsGradient.createShader(bounds),
-              child: Text(
-                'Review $roleLabel',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.star_rounded,
+                  size: 18,
+                  color: DesignTokens.accentOrange,
                 ),
-              ),
+                const SizedBox(width: 6),
+                Text(
+                  'Review $roleLabel',
+                  style: const TextStyle(
+                    color: DesignTokens.accentOrange,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -1287,54 +1049,32 @@ class _TranslucentActionButton extends StatelessWidget {
 
 // —— Tab bodies ——
 
-class _AboutBody extends StatelessWidget {
+class _ProfileTabBody extends StatelessWidget {
   final String? bio;
   final bool expanded;
   final VoidCallback onToggleBio;
-  final int? experienceYears;
-  final List<String> sessionModes;
-  final String providerType;
-  final int clientCount;
   final List<String> languages;
   final List<String> specialties;
-  final String? location;
-  final double? coverageKm;
-  final bool accepting;
-  final double? hourlyRate;
+  final List<ProviderCertification> certs;
   final Color textPrimary;
   final Color textSecondary;
-  final Color cardBg;
   final Color chipBg;
 
-  const _AboutBody({
+  const _ProfileTabBody({
     required this.bio,
     required this.expanded,
     required this.onToggleBio,
-    required this.experienceYears,
-    required this.sessionModes,
-    required this.providerType,
-    required this.clientCount,
     required this.languages,
     required this.specialties,
-    required this.location,
-    required this.coverageKm,
-    required this.accepting,
-    required this.hourlyRate,
+    required this.certs,
     required this.textPrimary,
     required this.textSecondary,
-    required this.cardBg,
     required this.chipBg,
   });
 
   @override
   Widget build(BuildContext context) {
     final bioText = (bio ?? '').trim();
-    final trainingType = sessionModes.isEmpty
-        ? '—'
-        : sessionModes
-            .map((m) => ProviderSessionModes.labelFor(m, role: providerType))
-            .join(' & ');
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1380,236 +1120,7 @@ class _AboutBody extends StatelessWidget {
               ),
             ),
         ],
-        const SizedBox(height: 20),
-        Text(
-          'Highlights',
-          style: GoogleFonts.montserrat(
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-            color: textPrimary,
-          ),
-        ),
-        const SizedBox(height: 12),
-        GridView.count(
-          crossAxisCount: 2,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 10,
-          crossAxisSpacing: 10,
-          childAspectRatio: 2.2,
-          children: [
-            _HighlightTile(
-              icon: Icons.work_outline_rounded,
-              title: (experienceYears != null && experienceYears! > 0)
-                  ? '$experienceYears years'
-                  : '—',
-              subtitle: 'Experience',
-              cardBg: cardBg,
-              textPrimary: textPrimary,
-              textSecondary: textSecondary,
-            ),
-            _HighlightTile(
-              icon: Icons.fitness_center_rounded,
-              title: trainingType,
-              subtitle: 'Training Type',
-              cardBg: cardBg,
-              textPrimary: textPrimary,
-              textSecondary: textSecondary,
-            ),
-            _HighlightTile(
-              icon: Icons.person_outline_rounded,
-              title: '$clientCount',
-              subtitle: 'Clients',
-              cardBg: cardBg,
-              textPrimary: textPrimary,
-              textSecondary: textSecondary,
-            ),
-            _HighlightTile(
-              icon: Icons.chat_bubble_outline_rounded,
-              title: languages.isEmpty ? '—' : languages.join(', '),
-              subtitle: 'Languages',
-              cardBg: cardBg,
-              textPrimary: textPrimary,
-              textSecondary: textSecondary,
-            ),
-          ],
-        ),
-        if (specialties.isNotEmpty) ...[
-          const SizedBox(height: 20),
-          Text(
-            'Specializations',
-            style: GoogleFonts.montserrat(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: textPrimary,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: specialties
-                .map(
-                  (s) => Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: chipBg,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.bolt_rounded,
-                          size: 14,
-                          color: DesignTokens.accentOrange,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          s,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: textPrimary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-                .toList(),
-          ),
-        ],
-        if ((location ?? '').trim().isNotEmpty ||
-            (coverageKm != null && coverageKm! > 0) ||
-            (hourlyRate != null && hourlyRate! > 0)) ...[
-          const SizedBox(height: 20),
-          Text(
-            'Where We Can Meet',
-            style: GoogleFonts.montserrat(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: textPrimary,
-            ),
-          ),
-          const SizedBox(height: 10),
-          if ((location ?? '').trim().isNotEmpty)
-            Text(
-              location!,
-              style: TextStyle(
-                color: textSecondary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          Text(
-            accepting ? 'Accepting new clients' : 'Not accepting new clients',
-            style: TextStyle(
-              color: accepting ? DesignTokens.accentGreen : textSecondary,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-class _HighlightTile extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Color cardBg;
-  final Color textPrimary;
-  final Color textSecondary;
-
-  const _HighlightTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.cardBg,
-    required this.textPrimary,
-    required this.textSecondary,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isLight = Theme.of(context).brightness == Brightness.light;
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: cardBg,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: isLight
-            ? [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ]
-            : null,
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: DesignTokens.accentOrange, size: 20),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    color: textPrimary,
-                  ),
-                ),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ExpertiseBody extends StatelessWidget {
-  final List<String> specialties;
-  final List<ProviderCertification> certs;
-  final List<String> languages;
-  final Color textPrimary;
-  final Color textSecondary;
-  final Color chipBg;
-
-  const _ExpertiseBody({
-    required this.specialties,
-    required this.certs,
-    required this.languages,
-    required this.textPrimary,
-    required this.textSecondary,
-    required this.chipBg,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+        const SizedBox(height: 24),
         Text(
           'Specializations',
           style: GoogleFonts.montserrat(
@@ -1630,78 +1141,120 @@ class _ExpertiseBody extends StatelessWidget {
             runSpacing: 8,
             children: specialties
                 .map(
-                  (s) => Chip(
-                    avatar: const Icon(
-                      Icons.bolt_rounded,
-                      size: 14,
-                      color: DesignTokens.accentOrange,
+                  (s) => ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.sizeOf(context).width - 64,
                     ),
-                    label: Text(s),
-                    backgroundColor: chipBg,
-                    labelStyle: TextStyle(
-                      color: textPrimary,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: chipBg,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.bolt_rounded,
+                            size: 14,
+                            color: DesignTokens.accentOrange,
+                          ),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              s,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: textPrimary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    side: BorderSide.none,
                   ),
                 )
                 .toList(),
           ),
-        if (languages.isNotEmpty) ...[
-          const SizedBox(height: 20),
-          Text(
-            'Languages',
-            style: GoogleFonts.montserrat(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: textPrimary,
-            ),
+        const SizedBox(height: 24),
+        Text(
+          'Languages',
+          style: GoogleFonts.montserrat(
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            color: textPrimary,
           ),
-          const SizedBox(height: 8),
-          Text(
-            languages.join(', '),
-            style: TextStyle(
-              color: textSecondary,
-              fontWeight: FontWeight.w600,
-            ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          languages.isEmpty ? '—' : languages.join(', '),
+          style: TextStyle(
+            color: textSecondary,
+            fontWeight: FontWeight.w600,
+            height: 1.4,
           ),
-        ],
-        if (certs.isNotEmpty) ...[
-          const SizedBox(height: 20),
-          Text(
-            'Certifications',
-            style: GoogleFonts.montserrat(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              color: textPrimary,
-            ),
+        ),
+        const SizedBox(height: 24),
+        Text(
+          'Certifications',
+          style: GoogleFonts.montserrat(
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            color: textPrimary,
           ),
-          const SizedBox(height: 10),
+        ),
+        const SizedBox(height: 10),
+        if (certs.isEmpty)
+          Text(
+            'No certifications listed yet.',
+            style: TextStyle(color: textSecondary),
+          )
+        else
           ...certs.map(
-            (c) => ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(
-                Icons.verified_outlined,
-                color: DesignTokens.accentOrange,
-              ),
-              title: Text(
-                c.name,
-                style: TextStyle(
-                  color: textPrimary,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              subtitle: Text(
-                [
-                  if (c.issuingOrganization != null) c.issuingOrganization!,
-                  if (c.issueYear != null) '${c.issueYear}',
-                ].join(' · '),
-                style: TextStyle(color: textSecondary),
+            (c) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.verified_outlined,
+                    color: DesignTokens.accentOrange,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          c.name,
+                          style: TextStyle(
+                            color: textPrimary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        if ((c.issuingOrganization ?? '').trim().isNotEmpty ||
+                            c.issueYear != null)
+                          Text(
+                            [
+                              if ((c.issuingOrganization ?? '').trim().isNotEmpty)
+                                c.issuingOrganization!.trim(),
+                              if (c.issueYear != null) '${c.issueYear}',
+                            ].join(' · '),
+                            style: TextStyle(color: textSecondary),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
-        ],
       ],
     );
   }
@@ -1710,9 +1263,6 @@ class _ExpertiseBody extends StatelessWidget {
 class _ServicesBody extends StatelessWidget {
   final List<String> sessionModes;
   final String providerType;
-  final String? location;
-  final bool accepting;
-  final double? hourlyRate;
   final Color textPrimary;
   final Color textSecondary;
   final Color cardBg;
@@ -1720,9 +1270,6 @@ class _ServicesBody extends StatelessWidget {
   const _ServicesBody({
     required this.sessionModes,
     required this.providerType,
-    required this.location,
-    required this.accepting,
-    required this.hourlyRate,
     required this.textPrimary,
     required this.textSecondary,
     required this.cardBg,
@@ -1752,6 +1299,7 @@ class _ServicesBody extends StatelessWidget {
             (m) => Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Container(
+                width: double.infinity,
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                   color: cardBg,
@@ -1765,11 +1313,14 @@ class _ServicesBody extends StatelessWidget {
                       size: 18,
                     ),
                     const SizedBox(width: 10),
-                    Text(
-                      ProviderSessionModes.labelFor(m, role: providerType),
-                      style: TextStyle(
-                        color: textPrimary,
-                        fontWeight: FontWeight.w700,
+                    Expanded(
+                      child: Text(
+                        ProviderSessionModes.labelFor(m, role: providerType),
+                        style: TextStyle(
+                          color: textPrimary,
+                          fontWeight: FontWeight.w700,
+                          height: 1.25,
+                        ),
                       ),
                     ),
                   ],
@@ -1777,24 +1328,6 @@ class _ServicesBody extends StatelessWidget {
               ),
             ),
           ),
-        if ((location ?? '').trim().isNotEmpty) ...[
-          const SizedBox(height: 16),
-          Text(
-            location!,
-            style: TextStyle(
-              color: textSecondary,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-        const SizedBox(height: 12),
-        Text(
-          accepting ? 'Accepting new clients' : 'Not accepting new clients',
-          style: TextStyle(
-            color: accepting ? DesignTokens.accentGreen : textSecondary,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
       ],
     );
   }
@@ -1806,6 +1339,7 @@ class _ReviewsBody extends StatelessWidget {
   final int total;
   final bool canRate;
   final VoidCallback onRate;
+  final String roleLabel;
   final Color textPrimary;
   final Color textSecondary;
   final Color cardBg;
@@ -1816,6 +1350,7 @@ class _ReviewsBody extends StatelessWidget {
     required this.total,
     required this.canRate,
     required this.onRate,
+    required this.roleLabel,
     required this.textPrimary,
     required this.textSecondary,
     required this.cardBg,
@@ -1845,17 +1380,23 @@ class _ReviewsBody extends StatelessWidget {
             if (canRate)
               TextButton(
                 onPressed: onRate,
-                child: ShaderMask(
-                  blendMode: BlendMode.srcIn,
-                  shaderCallback: (bounds) =>
-                      AppColors.stepsGradient.createShader(bounds),
-                  child: const Text(
-                    'Review',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.star_rounded,
+                      size: 18,
+                      color: DesignTokens.accentOrange,
                     ),
-                  ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Review $roleLabel',
+                      style: const TextStyle(
+                        color: DesignTokens.accentOrange,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
                 ),
               ),
           ],

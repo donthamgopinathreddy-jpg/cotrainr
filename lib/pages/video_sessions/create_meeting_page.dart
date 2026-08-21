@@ -7,6 +7,7 @@ import '../../models/video_session_models.dart';
 import '../../services/meeting_storage_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 
 class CreateMeetingPage extends StatefulWidget {
   final Role userRole;
@@ -418,12 +419,9 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
       backgroundColor: isDark
           ? const Color(0xFF1A0F2E) // Purple-black mix background (not too dark)
           : const Color(0xFFF0EBFF), // More vibrant light purple background
-      appBar: AppBar(
-        title: const Text(
-          'Create Meeting',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-        ),
-        elevation: 0,
+      appBar: CotrainrAppBar(
+        title: 'Create Meeting',
+        fallbackRoute: '/video',
         backgroundColor: Colors.transparent,
       ),
       body: Form(

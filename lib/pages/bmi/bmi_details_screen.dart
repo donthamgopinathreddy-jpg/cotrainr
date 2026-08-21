@@ -2,8 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:go_router/go_router.dart';
 
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/home_v3/bmi_card_v3.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
 import '../../theme/text_styles.dart';
@@ -32,7 +32,7 @@ class BmiDetailsArgs {
 String bmiCategoryFromValue(double bmi) {
   if (bmi <= 0) return '';
   if (bmi < 18.5) return 'Underweight';
-  if (bmi < 25) return 'Healthy';
+  if (bmi < 25) return 'Normal';
   if (bmi < 30) return 'Overweight';
   return 'Obese';
 }
@@ -99,20 +99,12 @@ class _BmiDetailsScreenState extends State<BmiDetailsScreen>
   @override
   void initState() {
     super.initState();
-    final h = widget.args.heightCm ?? 0;
-    _simWeightKg = widget.args.weightKg ??
-        (h > 0 ? 22 * (h / 100) * (h / 100) : 70);
+    _simWeightKg = widget.args.weightKg ?? 0;
     _pulseCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 900),
+      duration: const Duration(milliseconds: 1),
     );
-    _pulseAnim = Tween<double>(begin: 1.0, end: 1.12).animate(
-      CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut),
-    );
-    _pulseCtrl.repeat(reverse: true);
-    Future.delayed(const Duration(milliseconds: 1200), () {
-      if (mounted) _pulseCtrl.stop();
-    });
+    _pulseAnim = const AlwaysStoppedAnimation<double>(1);
   }
 
   @override
@@ -135,10 +127,8 @@ class _BmiDetailsScreenState extends State<BmiDetailsScreen>
             pinned: true,
             backgroundColor: bg.withValues(alpha: 0.92),
             elevation: 0,
-            leading: IconButton(
-              icon: Icon(Icons.arrow_back_ios_new_rounded,
-                  color: HomePremiumTheme.primaryText(isLight), size: 20),
-              onPressed: () => context.pop(),
+            leading: CotrainrBackButton(
+              color: HomePremiumTheme.primaryText(isLight),
             ),
             title: Text(
               'BMI Details',
@@ -163,15 +153,18 @@ class _BmiDetailsScreenState extends State<BmiDetailsScreen>
                 const SizedBox(height: 12),
                 _HealthyRangeCard(args: widget.args),
                 const SizedBox(height: 12),
-                _WeightGoalSimulator(
-                  args: widget.args,
-                  simWeightKg: _simWeightKg,
-                  onWeightChanged: (w) {
-                    HapticFeedback.selectionClick();
-                    setState(() => _simWeightKg = w);
-                  },
-                ),
-                const SizedBox(height: 12),
+                if ((widget.args.weightKg ?? 0) > 0 &&
+                    (widget.args.heightCm ?? 0) > 0) ...[
+                  _WeightGoalSimulator(
+                    args: widget.args,
+                    simWeightKg: _simWeightKg,
+                    onWeightChanged: (w) {
+                      HapticFeedback.selectionClick();
+                      setState(() => _simWeightKg = w);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 const _BmiEducationAccordion(),
                 const SizedBox(height: 12),
                 const _BmiDisclaimerCard(),
@@ -374,7 +367,7 @@ class _BmiRangeBar extends StatelessWidget {
     this.animateDot = true,
   });
 
-  static const _zones = ['Underweight', 'Healthy', 'Overweight', 'Obese'];
+  static const _zones = ['Underweight', 'Normal', 'Overweight', 'Obese'];
   static const _zoneColors = [
     Color(0xFF3FA9F5),
     Color(0xFF22C55E),
@@ -908,7 +901,7 @@ class _BmiEducationAccordionState extends State<_BmiEducationAccordion> {
 
   static const _categories = [
     ('Underweight', 'Below 18.5'),
-    ('Healthy', '18.5 – 24.9'),
+    ('Normal', '18.5 – 24.9'),
     ('Overweight', '25 – 29.9'),
     ('Obese', '30+'),
   ];

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/common/follow_button.dart';
 import '../../widgets/common/pressable_card.dart';
 import '../../repositories/profile_repository.dart';
@@ -339,16 +340,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
         backgroundColor: backgroundColor,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
-        leading: IconButton(
-          icon: Icon(
-            Icons.arrow_back,
-            color: colorScheme.onSurface,
-          ),
-          onPressed: () {
-            HapticFeedback.lightImpact();
-            context.pop();
-          },
-        ),
+        leading: CotrainrBackButton(color: colorScheme.onSurface),
         title: Text(
           _fullName ?? _username ?? widget.userName ?? 'User',
           style: TextStyle(

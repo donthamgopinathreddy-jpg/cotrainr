@@ -6,6 +6,7 @@ import '../../../services/privacy_preferences_service.dart';
 import '../../../theme/account_hub_theme.dart';
 import '../../../utils/launch_utils.dart';
 import '../../../utils/page_transitions.dart';
+import '../../../widgets/common/cotrainr_back_button.dart';
 import '../../../widgets/profile/account_hub_widgets.dart';
 import 'change_password_page.dart';
 import 'info_pages.dart';
@@ -112,10 +113,9 @@ class _PrivacySecurityPageState extends State<PrivacySecurityPage>
 
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
+      appBar: CotrainrAppBar(
+        title: 'Privacy & Security',
         backgroundColor: bg,
-        elevation: 0,
-        title: const Text('Privacy & Security'),
         actions: [
           TextButton(
             onPressed: _saving || _loading ? null : _save,

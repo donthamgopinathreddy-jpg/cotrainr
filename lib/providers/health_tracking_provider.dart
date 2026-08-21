@@ -42,7 +42,6 @@ class DailyMetricsNotifier extends StateNotifier<AsyncValue<DailyMetricsSnapshot
   }
 
   Future<void> refresh() async {
-    state = const AsyncValue.loading();
     await _update();
   }
 

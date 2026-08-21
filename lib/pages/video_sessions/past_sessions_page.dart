@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../repositories/video_sessions_repository.dart';
-import '../../theme/design_tokens.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/video_sessions/video_session_people_sheet.dart';
 import '../../widgets/video_sessions/video_session_theme.dart';
+import 'session_detail_page.dart';
 
 class PastSessionsPage extends StatelessWidget {
   final List<VideoSession> sessions;
@@ -16,13 +16,10 @@ class PastSessionsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: VideoSessionUi.pageBg(context),
-      appBar: AppBar(
+      appBar: CotrainrAppBar(
+        title: 'Past Sessions',
+        fallbackRoute: '/video',
         backgroundColor: VideoSessionUi.pageBg(context),
-        elevation: 0,
-        title: const Text(
-          'Past Sessions',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-        ),
       ),
       body: sessions.isEmpty
           ? Center(
@@ -38,8 +35,13 @@ class PastSessionsPage extends StatelessWidget {
               itemBuilder: (context, index) {
                 return PastSessionRow(
                   session: sessions[index],
-                  onTap: () =>
-                      context.push('/video/session/${sessions[index].id}'),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => SessionDetailPage(
+                        sessionId: sessions[index].id,
+                      ),
+                    ),
+                  ),
                 );
               },
             ),

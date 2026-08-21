@@ -10,6 +10,7 @@ import '../../../theme/design_tokens.dart';
 import '../../../utils/launch_utils.dart';
 import '../../../widgets/auth/auth_ui.dart';
 import '../../../widgets/common/app_form_fields.dart';
+import '../../../widgets/common/cotrainr_back_button.dart';
 import '../../../widgets/legal/legal_document.dart';
 import '../../../widgets/profile/account_hub_widgets.dart';
 
@@ -187,10 +188,9 @@ class _FeedbackFormPageState extends State<_FeedbackFormPage> {
 
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
+      appBar: CotrainrAppBar(
+        title: 'Feedback',
         backgroundColor: bg,
-        elevation: 0,
-        title: const Text('Feedback'),
       ),
       body: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
@@ -345,10 +345,9 @@ class _ReportProblemFormPageState extends State<_ReportProblemFormPage> {
 
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
+      appBar: CotrainrAppBar(
+        title: 'Report a Problem',
         backgroundColor: bg,
-        elevation: 0,
-        title: const Text('Report a Problem'),
       ),
       body: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../theme/account_hub_theme.dart';
 import '../../theme/auth_theme.dart';
 import '../../utils/launch_utils.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 
 class LegalSectionData {
   const LegalSectionData({
@@ -478,10 +479,9 @@ class _LegalDocumentPageState extends State<LegalDocumentPage> {
     final bg = AccountHubTheme.pageBg(context);
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
+      appBar: CotrainrAppBar(
+        title: widget.title,
         backgroundColor: bg,
-        elevation: 0,
-        title: Text(widget.title),
       ),
       body: SelectionArea(
         child: SingleChildScrollView(

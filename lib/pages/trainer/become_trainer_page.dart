@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../theme/design_tokens.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
 
 /// Honest Become Trainer hub (Option B).
@@ -31,17 +32,10 @@ class BecomeTrainerPage extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
+      appBar: CotrainrAppBar(
+        title: isProvider ? 'Provider setup' : 'Become a trainer',
         backgroundColor: bg,
-        elevation: 0,
-        title: Text(
-          isProvider ? 'Provider setup' : 'Become a trainer',
-          style: GoogleFonts.montserrat(
-            fontWeight: FontWeight.w700,
-            color: textPrimary,
-          ),
-        ),
-        iconTheme: IconThemeData(color: textPrimary),
+        foregroundColor: textPrimary,
       ),
       body: Padding(
         padding: const EdgeInsets.all(24),

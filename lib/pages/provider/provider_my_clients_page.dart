@@ -4,8 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../providers/accepted_client_trainers_provider.dart';
-import '../../providers/leads_provider.dart';
 import '../../providers/provider_practice_provider.dart';
 import '../../services/leads_models.dart' show Lead;
 import '../../services/leads_service.dart';
@@ -141,9 +139,7 @@ class _ProviderMyClientsPageState extends ConsumerState<ProviderMyClientsPage> {
 
   void _invalidateCounts() {
     try {
-      ref.invalidate(providerPracticeSummaryProvider);
-      ref.invalidate(leadsProvider);
-      ref.invalidate(acceptedClientTrainersProvider);
+      invalidateProviderHomeCounts(ref);
     } catch (_) {}
   }
 

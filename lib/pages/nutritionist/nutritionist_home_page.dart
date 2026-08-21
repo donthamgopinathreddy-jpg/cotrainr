@@ -9,11 +9,14 @@ import '../../providers/health_tracking_provider.dart';
 import '../../providers/quest_provider.dart';
 import '../../providers/unread_notifications_count_provider.dart';
 import '../../providers/provider_practice_provider.dart';
+import '../../providers/video_sessions_provider.dart';
 import '../../repositories/profile_repository.dart';
 import '../../repositories/metrics_repository.dart';
 import '../../services/user_goals_service.dart';
 import '../../services/streak_service.dart';
 import '../../services/metrics_sync_service.dart';
+import '../../services/water_intake_service.dart';
+import '../../utils/health_metric_display.dart';
 import '../../widgets/home_v3/hero_header_v3.dart';
 import '../../widgets/home_v3/unified_metrics_tile_v3.dart';
 import '../../widgets/home_v3/coaching_insight_builder.dart';
@@ -24,7 +27,7 @@ import '../../repositories/meal_repository.dart';
 import '../../widgets/home_v3/bmi_card_v3.dart';
 import '../../widgets/home_v3/quick_access_v3.dart';
 import '../../widgets/home_v3/home_nav_hint_cards.dart';
-import '../../widgets/home_v3/nearby_preview_v3.dart';
+import '../../widgets/home_v3/home_centers_preview.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
 import '../../widgets/provider/provider_clients_summary.dart';
 import '../bmi/bmi_details_screen.dart';
@@ -52,7 +55,9 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
 
-  String _nutritionistName = 'Nutritionist';
+  String _nutritionistName = '';
+  bool _nameLoading = true;
+  bool _goalsReady = false;
   int _streakDays = 0;
 
   int _goalSteps = 10000;
@@ -91,9 +96,13 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
     _loadData();
     _loadCoachingData();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       ref.read(healthTrackingServiceProvider).initialize();
+      try {
+        await ref.read(metricsSyncServiceProvider).syncNow();
+      } catch (_) {}
+      if (mounted) await _loadData();
     });
   }
 
@@ -116,6 +125,7 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
         _goalWater = water;
         _goalCalories = calories;
         _goalDistance = distance;
+        _goalsReady = true;
       });
     }
   }
@@ -171,9 +181,10 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
 
       if (!mounted) return;
       setState(() {
-        _nutritionistName = profile?['full_name'] as String? ??
-            profile?['username'] as String? ??
-            'Nutritionist';
+        _nutritionistName = ((profile?['full_name'] as String?)?.trim().isNotEmpty == true)
+            ? (profile!['full_name'] as String).trim()
+            : ((profile?['username'] as String?)?.trim() ?? '');
+        _nameLoading = false;
         _currentSteps = (todayMetrics?['steps'] as num?)?.toInt() ?? 0;
         _currentCalories =
             (todayMetrics?['calories_burned'] as num?)?.toDouble() ?? 0;
@@ -223,7 +234,9 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
           _bmiStatus = ProfileRepository.getBMIStatus(_bmi);
         }
       });
-    } catch (_) {}
+    } catch (_) {
+      if (mounted) setState(() => _nameLoading = false);
+    }
   }
 
   Future<void> _refreshNotificationBadge() async {
@@ -282,7 +295,8 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
       _loadGoals(),
       _loadCoachingData(),
     ]);
-    ref.invalidate(providerPracticeSummaryProvider);
+    invalidateProviderHomeCounts(ref);
+    ref.invalidate(videoSessionsListProvider);
     ref.read(dailyMetricsProvider.notifier).refresh();
   }
 
@@ -293,17 +307,39 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
     final liveMetrics = ref.watch(dailyMetricsProvider).valueOrNull;
     final practice = ref.watch(providerPracticeSummaryProvider('nutritionist'));
     final summary = practice.valueOrNull ?? ProviderPracticeSummary.empty;
-    final currentSteps = liveMetrics?.steps ?? _currentSteps;
-    final currentCalories =
-        (liveMetrics?.activeCalories ?? _currentCalories).round();
-    final currentDistance = liveMetrics?.distanceKm ?? _currentDistance;
+    final nextSession = nextSessionPreviewFromSessions(
+      ref.watch(videoSessionsListProvider).valueOrNull,
+    );
+    final stepsMetric = resolveHomeSteps(
+      cached: _currentSteps,
+      live: liveMetrics,
+    );
+    final caloriesMetric = resolveHomeCalories(
+      cached: _currentCalories,
+      live: liveMetrics,
+    );
+    final distanceMetric = resolveHomeDistance(
+      cached: _currentDistance,
+      live: liveMetrics,
+    );
+    final currentSteps = stepsMetric.value.round();
+    final currentCalories = caloriesMetric.value.round();
+    final currentDistance = distanceMetric.value;
     final caloriesSourceNote = MetricsSourceLabels.caloriesNote(liveMetrics);
     final distanceSourceNote = MetricsSourceLabels.distanceNote(liveMetrics);
-    final coachingInsights = _coachingInsights(
-      steps: currentSteps,
-      calories: currentCalories,
-      water: _currentWater,
-    );
+    final coachingInsights = _goalsReady
+        ? _coachingInsights(
+            steps: currentSteps,
+            calories: currentCalories,
+            water: _currentWater,
+          )
+        : const <CoachingInsight>[];
+
+    ref.listen(unreadNotificationsCountProvider, (prev, next) {
+      final previous = prev?.maybeWhen(data: (c) => c, orElse: () => 0) ?? 0;
+      final current = next.maybeWhen(data: (c) => c, orElse: () => 0);
+      if (current > previous) invalidateProviderHomeCounts(ref);
+    });
 
     return Scaffold(
       backgroundColor: bg,
@@ -322,6 +358,7 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
                 child: _animated(
                   HeroHeaderV3(
                     username: _nutritionistName,
+                    usernameLoading: _nameLoading,
                     notificationCount: ref.watch(unreadNotificationsCountProvider).maybeWhen(
                       data: (c) => c,
                       orElse: () => 0,
@@ -345,6 +382,7 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
                     _safeSection(
                       context,
                       UnifiedMetricsTileV3(
+                        goalsLoading: !_goalsReady,
                         metrics: [
                           UnifiedMetricViewModel(
                             label: 'STEPS',
@@ -352,12 +390,15 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
                             selectedIcon: Icons.directions_walk,
                             ringGradient: AppColors.stepsGradient,
                             barColor: AppColors.orange,
-                            progress: _goalSteps > 0
-                                ? (currentSteps / _goalSteps).clamp(0.0, 1.0)
+                            progress: stepsMetric.available
+                                ? safeMetricProgress(
+                                    currentSteps.toDouble(),
+                                    _goalSteps.toDouble(),
+                                  )
                                 : 0.0,
-                            mainValue: currentSteps >= 1000
-                                ? '${(currentSteps / 1000).toStringAsFixed(1)}k'
-                                : '$currentSteps',
+                            mainValue: stepsMetric.available
+                                ? stepsMetric.displayInt
+                                : '—',
                             subValue:
                                 'of ${_goalSteps >= 1000 ? '${(_goalSteps / 1000).toStringAsFixed(1)}k' : '$_goalSteps'} steps',
                             weekly: List<double>.from(_stepsWeeklyData),
@@ -370,10 +411,15 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
                             selectedIcon: Icons.local_fire_department,
                             ringGradient: AppColors.caloriesGradient,
                             barColor: const Color(0xFFFF6B6B),
-                            progress: _goalCalories > 0
-                                ? (currentCalories / _goalCalories).clamp(0.0, 1.0)
+                            progress: caloriesMetric.available
+                                ? safeMetricProgress(
+                                    currentCalories.toDouble(),
+                                    _goalCalories.toDouble(),
+                                  )
                                 : 0.0,
-                            mainValue: '$currentCalories',
+                            mainValue: caloriesMetric.available
+                                ? '$currentCalories'
+                                : '—',
                             subValue: 'kcal · goal $_goalCalories',
                             sourceNote: caloriesSourceNote,
                             weekly: List<double>.from(_caloriesWeeklyData),
@@ -386,9 +432,10 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
                             selectedIcon: Icons.water_drop,
                             ringGradient: AppColors.waterGradient,
                             barColor: AppColors.cyan,
-                            progress: _goalWater > 0
-                                ? (_currentWater / _goalWater).clamp(0.0, 1.0)
-                                : 0.0,
+                            progress: safeMetricProgress(
+                              _currentWater,
+                              _goalWater,
+                            ),
                             mainValue: _currentWater.toStringAsFixed(1),
                             subValue: 'of ${_goalWater.toStringAsFixed(1)} L',
                             weekly: List<double>.from(_waterWeeklyData),
@@ -401,10 +448,15 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
                             selectedIcon: Icons.location_on,
                             ringGradient: AppColors.distanceGradient,
                             barColor: AppColors.purple,
-                            progress: _goalDistance > 0
-                                ? (currentDistance / _goalDistance).clamp(0.0, 1.0)
+                            progress: distanceMetric.available
+                                ? safeMetricProgress(
+                                    currentDistance,
+                                    _goalDistance,
+                                  )
                                 : 0.0,
-                            mainValue: currentDistance.toStringAsFixed(1),
+                            mainValue: distanceMetric.available
+                                ? distanceMetric.displayOneDecimal
+                                : '—',
                             subValue:
                                 'km · goal ${_goalDistance.toStringAsFixed(1)}',
                             sourceNote: distanceSourceNote,
@@ -417,16 +469,18 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
                         onAddWater: () async {
                           const add = 0.25;
                           final old = _currentWater;
-                          final neu = (_currentWater + add).clamp(0.0, _goalWater);
-                          setState(() => _currentWater = neu);
-                          try {
-                            await MetricsRepository().updateTodayMetrics(
-                              waterIntakeLiters: neu,
-                            );
-                            ref.read(questProgressSyncServiceProvider).onWaterUpdated(neu);
-                          } catch (_) {
-                            if (mounted) setState(() => _currentWater = old);
+                          setState(() => _currentWater = _currentWater + add);
+                          final newWater =
+                              await WaterIntakeService.instance.addWater(add);
+                          if (!mounted) return;
+                          if (newWater == null) {
+                            setState(() => _currentWater = old);
+                            return;
                           }
+                          setState(() => _currentWater = newWater);
+                          ref
+                              .read(questProgressSyncServiceProvider)
+                              .onWaterUpdated(newWater);
                         },
                       ),
                     ),
@@ -478,9 +532,15 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
                         requestCount: summary.requestCount,
                         clients: summary.clients,
                         loading: practice.isLoading && practice.valueOrNull == null,
+                        nextSession: nextSession,
                         onOpenClients: () => _openClientsTab(tab: 0),
                         onOpenRequests: () => _openClientsTab(tab: 1),
                         onOpenNotes: _openClientNotes,
+                        onOpenNextSession: nextSession == null
+                            ? null
+                            : () => context.push(
+                                  '/video/session/${nextSession.sessionId}',
+                                ),
                         onOpenClient: (c) {
                           if (c.id.isEmpty) return;
                           context.push('/nutritionist/clients/${c.id}');
@@ -503,7 +563,7 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: _animated(
-                    _safeSection(context, const NearbyPreviewV3()),
+                    _safeSection(context, const HomeCentersPreview()),
                     260,
                   ),
                 ),

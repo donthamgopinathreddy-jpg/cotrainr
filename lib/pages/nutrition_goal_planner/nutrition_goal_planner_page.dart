@@ -6,6 +6,7 @@ import '../../repositories/nutrition_goal_planner_repository.dart';
 import '../../services/nutrition_goal_calculator.dart';
 import '../../services/nutrition_planner_local_storage.dart';
 import '../../utils/unit_conversion.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/common/pressable_card.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
 import '../../theme/design_tokens.dart';
@@ -608,10 +609,7 @@ class _NutritionGoalPlannerPageState extends State<NutritionGoalPlannerPage>
         scrolledUnderElevation: 0,
         backgroundColor: isLight ? Colors.white : HomePremiumTheme.darkCard,
         foregroundColor: HomePremiumTheme.primaryText(isLight),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: _backStep,
-        ),
+        leading: CotrainrBackButton(onPressed: _backStep),
       ),
       body: _loadingProfile
           ? const Center(child: CircularProgressIndicator())

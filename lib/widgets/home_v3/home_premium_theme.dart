@@ -152,6 +152,21 @@ class HomePremiumTheme {
 
   static Color secondaryText(bool isLight) =>
       isLight ? const Color(0xFF6F7683) : const Color(0xFF9CA3AF);
+
+  /// Soft lavender for provider Clients management tile (not a saturated fill).
+  static Color clientsManagementSurface(bool isLight) => isLight
+      ? const Color(0xFFF3F0FB)
+      : const Color(0xFF1A1724);
+
+  /// Soft peach for Recent clients rows.
+  static Color recentClientSurface(bool isLight) => isLight
+      ? const Color(0xFFFFF4EB)
+      : const Color(0xFF241A14);
+
+  static Color clientsManagementAccent(bool isLight) =>
+      DesignTokens.videoSessionsAccent;
+
+  static Color recentClientAccent(bool isLight) => DesignTokens.accentOrange;
 }
 
 class MetricPalette {

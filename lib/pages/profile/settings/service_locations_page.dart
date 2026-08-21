@@ -16,6 +16,7 @@ import '../../../providers/provider_locations_provider.dart';
 import '../../../services/nominatim_search_service.dart';
 import '../../../theme/app_colors.dart';
 import '../../../theme/design_tokens.dart';
+import '../../../widgets/common/cotrainr_back_button.dart';
 
 /// Service Locations: single-page design with hero, list, and inline add/edit form.
 class ServiceLocationsPage extends ConsumerStatefulWidget {
@@ -551,17 +552,7 @@ class _ServiceLocationsPageState extends ConsumerState<ServiceLocationsPage> {
       pinned: true,
       stretch: true,
       backgroundColor: colorScheme.surface,
-      leading: IconButton(
-        icon: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Icon(Icons.arrow_back_rounded, color: colorScheme.onSurface, size: 22),
-        ),
-        onPressed: () => Navigator.pop(context),
-      ),
+      leading: CotrainrBackButton(color: colorScheme.onSurface),
       flexibleSpace: FlexibleSpaceBar(
         titlePadding: const EdgeInsets.only(left: 56, bottom: 16),
         title: Text(
@@ -941,10 +932,7 @@ class _ServiceLocationsPageState extends ConsumerState<ServiceLocationsPage> {
     return AppBar(
       elevation: 0,
       backgroundColor: Colors.transparent,
-      leading: IconButton(
-        icon: Icon(Icons.arrow_back_rounded, color: colorScheme.onSurface),
-        onPressed: () => Navigator.pop(context),
-      ),
+      leading: CotrainrBackButton(color: colorScheme.onSurface),
       title: Text(
         'Service Locations',
         style: GoogleFonts.poppins(

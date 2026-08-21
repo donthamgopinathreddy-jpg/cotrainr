@@ -6,6 +6,7 @@ import '../../../theme/account_hub_theme.dart';
 import '../../../theme/design_tokens.dart';
 import '../../../utils/launch_utils.dart';
 import '../../../utils/page_transitions.dart';
+import '../../../widgets/common/cotrainr_back_button.dart';
 import '../../../widgets/profile/account_hub_widgets.dart';
 import 'change_password_page.dart';
 import 'health_devices_page.dart';
@@ -91,10 +92,9 @@ class _HelpCenterPageState extends State<HelpCenterPage> {
 
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
+      appBar: CotrainrAppBar(
+        title: 'Help Center',
         backgroundColor: bg,
-        elevation: 0,
-        title: const Text('Help Center'),
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),

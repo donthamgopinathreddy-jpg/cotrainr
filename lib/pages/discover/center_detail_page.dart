@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:go_router/go_router.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 
 class CenterDetailPage extends StatelessWidget {
   final String centerId;
@@ -38,16 +38,7 @@ class CenterDetailPage extends StatelessWidget {
         backgroundColor: colorScheme.surface,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
-        leading: IconButton(
-          icon: Icon(
-            Icons.arrow_back,
-            color: colorScheme.onSurface,
-          ),
-          onPressed: () {
-            HapticFeedback.lightImpact();
-            context.pop();
-          },
-        ),
+        leading: CotrainrBackButton(color: colorScheme.onSurface),
         title: Text(
           centerName,
           style: TextStyle(
@@ -104,18 +95,6 @@ class CenterDetailPage extends StatelessWidget {
                           ),
                         ),
                       ],
-                    ),
-                  ),
-                  Positioned(
-                    bottom: 16,
-                    right: 16,
-                    child: FloatingActionButton(
-                      onPressed: () {
-                        HapticFeedback.mediumImpact();
-                        // TODO: Open in external maps app
-                      },
-                      backgroundColor: AppColors.orange,
-                      child: const Icon(Icons.navigation, color: Colors.white),
                     ),
                   ),
                 ],
@@ -199,60 +178,69 @@ class CenterDetailPage extends StatelessWidget {
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.star_rounded,
-                        size: 20,
-                        color: AppColors.orange,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        rating > 0 ? rating.toStringAsFixed(1) : '—',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          color: colorScheme.onSurface,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        rating > 0 ? '($reviews reviews)' : 'New partner',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      const Spacer(),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: AppColors.green.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.location_on_rounded,
-                              size: 14,
-                              color: AppColors.green,
+                  if (rating > 0 ||
+                      (distance.isFinite && distance > 0)) ...[
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        if (rating > 0) ...[
+                          Icon(
+                            Icons.star_rounded,
+                            size: 20,
+                            color: AppColors.orange,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            rating.toStringAsFixed(1),
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: colorScheme.onSurface,
                             ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${distance.toStringAsFixed(1)} km',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.green,
-                              ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '($reviews reviews)',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: colorScheme.onSurfaceVariant,
                             ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                          ),
+                        ],
+                        const Spacer(),
+                        if (distance.isFinite && distance > 0)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.green.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.location_on_rounded,
+                                  size: 14,
+                                  color: AppColors.green,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '${distance.toStringAsFixed(1)} km',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.green,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
                   const SizedBox(height: 24),
                   Divider(color: colorScheme.outline.withValues(alpha: 0.1)),
                   const SizedBox(height: 24),

@@ -6,6 +6,7 @@ import '../../../services/os_notification_permission_status.dart';
 import '../../../services/video_session_notification_prefs.dart';
 import '../../../theme/account_hub_theme.dart';
 import '../../../theme/design_tokens.dart';
+import '../../../widgets/common/cotrainr_back_button.dart';
 import '../../../widgets/profile/account_hub_widgets.dart';
 
 class NotificationsPage extends StatefulWidget {
@@ -132,10 +133,9 @@ class _NotificationsPageState extends State<NotificationsPage>
 
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
+      appBar: CotrainrAppBar(
+        title: 'Notifications',
         backgroundColor: bg,
-        elevation: 0,
-        title: const Text('Notifications'),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

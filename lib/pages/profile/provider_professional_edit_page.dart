@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../providers/provider_professional_provider.dart';
 import '../../theme/design_tokens.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
 import '../../widgets/provider/provider_professional_form_fields.dart';
 import '../../widgets/provider/provider_professional_form_validation.dart';
@@ -146,17 +146,10 @@ class _ProviderProfessionalEditPageState
 
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
+      appBar: CotrainrAppBar(
+        title: 'Professional profile',
         backgroundColor: bg,
-        elevation: 0,
-        title: Text(
-          'Professional profile',
-          style: GoogleFonts.montserrat(
-            fontWeight: FontWeight.w700,
-            color: textPrimary,
-          ),
-        ),
-        iconTheme: IconThemeData(color: textPrimary),
+        foregroundColor: textPrimary,
         actions: [
           TextButton(
             onPressed: _saving ? null : _save,

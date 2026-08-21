@@ -8,12 +8,15 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../models/coaching_insight.dart';
 import '../../theme/app_colors.dart';
+import '../../widgets/branding/cotrainr_logo.dart';
+import '../common/shimmer_skeleton.dart';
 import 'coaching_insight_carousel.dart';
 
 /// Premium layered hero: welcome (top-left), bell (top-right), avatar right,
 /// compact streak pill (bottom-left).
 class HeroHeaderV3 extends StatefulWidget {
   final String username;
+  final bool usernameLoading;
   final int notificationCount;
   final String? coverImageUrl;
   final String? avatarUrl;
@@ -24,6 +27,7 @@ class HeroHeaderV3 extends StatefulWidget {
   const HeroHeaderV3({
     super.key,
     required this.username,
+    this.usernameLoading = false,
     required this.notificationCount,
     this.coverImageUrl,
     this.avatarUrl,
@@ -35,10 +39,6 @@ class HeroHeaderV3 extends StatefulWidget {
   @override
   State<HeroHeaderV3> createState() => _HeroHeaderV3State();
 }
-
-/// Curated fitness atmosphere (runner / golden hour). Replace with asset when available.
-const String _kDefaultHeroImageUrl =
-    'https://images.unsplash.com/photo-1476480862126-209bfaa8edc8?auto=format&fit=crop&w=1400&q=85';
 
 /// Slight desaturation to quiet busy photography behind text.
 const List<double> _kDesaturateMatrix = <double>[
@@ -94,37 +94,70 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
     );
   }
 
-  Widget _buildCoverImage() {
-    final url = widget.coverImageUrl;
+  bool get _hasRealCover {
+    final url = widget.coverImageUrl?.trim();
+    return url != null && url.isNotEmpty;
+  }
+
+  Widget _buildCoverImage(BuildContext context) {
+    final url = widget.coverImageUrl?.trim();
     if (url != null && url.isNotEmpty && !url.startsWith('http')) {
       return Image.file(
         File(url),
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => _gradientFallback(),
+        errorBuilder: (_, __, ___) => _brandedFallback(context),
       );
     }
-    final networkUrl =
-        (url != null && url.isNotEmpty) ? url : _kDefaultHeroImageUrl;
-    return CachedNetworkImage(
-      imageUrl: networkUrl,
-      fit: BoxFit.cover,
-      fadeInDuration: const Duration(milliseconds: 280),
-      placeholder: (_, __) => _gradientFallback(),
-      errorWidget: (_, __, ___) => _gradientFallback(),
-    );
+    if (url != null &&
+        url.isNotEmpty &&
+        (url.startsWith('http://') || url.startsWith('https://'))) {
+      return CachedNetworkImage(
+        imageUrl: url,
+        fit: BoxFit.cover,
+        fadeInDuration: const Duration(milliseconds: 280),
+        placeholder: (_, __) => _brandedFallback(context),
+        errorWidget: (_, __, ___) => _brandedFallback(context),
+      );
+    }
+    return _brandedFallback(context);
   }
 
-  Widget _gradientFallback() {
-    return Container(
-      decoration: const BoxDecoration(
+  Widget _brandedFallback(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final logo = CotrainrLogo(
+      height: 88,
+      variant: CotrainrLogoVariant.white,
+    );
+    return DecoratedBox(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF1A237E),
-            Color(0xFF4A148C),
-            Color(0xFFBF360C),
-          ],
+          colors: isLight
+              ? const [
+                  Color(0xFFF8F9FB),
+                  Color(0xFFF2F2F7),
+                  Color(0xFFE8E8ED),
+                ]
+              : const [
+                  Color(0xFF1A237E),
+                  Color(0xFF4A148C),
+                  Color(0xFFBF360C),
+                ],
+        ),
+      ),
+      child: Center(
+        child: Opacity(
+          opacity: isLight ? 0.5 : 0.55,
+          child: isLight
+              ? ColorFiltered(
+                  colorFilter: const ColorFilter.mode(
+                    Colors.black,
+                    BlendMode.srcIn,
+                  ),
+                  child: logo,
+                )
+              : logo,
         ),
       ),
     );
@@ -154,13 +187,17 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    ImageFiltered(
-                      imageFilter: ImageFilter.blur(sigmaX: 1.4, sigmaY: 1.4),
-                      child: ColorFiltered(
-                        colorFilter: ColorFilter.matrix(_kDesaturateMatrix),
-                        child: _buildCoverImage(),
-                      ),
-                    ),
+                    _hasRealCover
+                        ? ImageFiltered(
+                            imageFilter:
+                                ImageFilter.blur(sigmaX: 1.4, sigmaY: 1.4),
+                            child: ColorFiltered(
+                              colorFilter:
+                                  ColorFilter.matrix(_kDesaturateMatrix),
+                              child: _buildCoverImage(context),
+                            ),
+                          )
+                        : _buildCoverImage(context),
                     // Dark cinematic scrim for depth + readability
                     DecoratedBox(
                       decoration: BoxDecoration(
@@ -267,6 +304,15 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
                               ),
                             ),
                             const SizedBox(height: 4),
+                            if (widget.usernameLoading)
+                              const ShimmerBox(
+                                width: 140,
+                                height: 24,
+                                radius: 8,
+                              )
+                            else if (widget.username.trim().isEmpty)
+                              const SizedBox(height: 24)
+                            else
                             Text(
                               widget.username,
                               style: GoogleFonts.plusJakartaSans(

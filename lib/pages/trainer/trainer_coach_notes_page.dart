@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../repositories/coach_notes_repository.dart';
 import '../../services/leads_service.dart';
 import '../../services/leads_models.dart' show Lead;
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/common/pressable_card.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
 import '../../widgets/trainer/trainer_theme.dart';
@@ -173,13 +174,8 @@ class _TrainerCoachNotesPageState extends State<TrainerCoachNotesPage> {
 
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
-        title: Text(
-          'Client Notes',
-          style: GoogleFonts.montserrat(fontWeight: FontWeight.w600, fontSize: 17),
-        ),
-        centerTitle: true,
-        elevation: 0,
+      appBar: CotrainrAppBar(
+        title: 'Client Notes',
         backgroundColor: isLight ? Colors.white : HomePremiumTheme.darkCard,
         foregroundColor: HomePremiumTheme.primaryText(isLight),
       ),

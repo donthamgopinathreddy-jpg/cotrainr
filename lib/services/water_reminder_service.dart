@@ -35,7 +35,7 @@ class WaterReminderService {
   static const title = 'Hydration check';
   static const body = 'Time for some water';
   static const expandedFallback =
-      'Stay on track with your daily goal. Log a quick drink below.';
+      'Log your hydration in Cotrainr.';
 
   static const reminderNotificationId = 9100;
   static const testNotificationId = 9099;

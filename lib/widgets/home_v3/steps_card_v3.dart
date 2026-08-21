@@ -61,9 +61,12 @@ class StepsCardV3 extends StatelessWidget {
           const SizedBox(height: 10),
           Text(
             '${(steps / 1000).toStringAsFixed(1)}k / ${(goal / 1000).toStringAsFixed(1)}k',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.w800,
+              height: 1.1,
               color: Colors.white,
             ),
           ),

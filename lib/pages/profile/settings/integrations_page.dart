@@ -1,30 +1,75 @@
 import 'package:flutter/material.dart';
 
+import '../../../repositories/profile_repository.dart';
 import '../../../repositories/video_sessions_repository.dart';
 import '../../../theme/account_hub_theme.dart';
 import '../../../theme/design_tokens.dart';
+import '../../../widgets/common/cotrainr_back_button.dart';
 import '../../../widgets/profile/account_hub_widgets.dart';
 import '../../video_sessions/create_session_sheet.dart';
 
 /// Settings → Integrations → Google Meet.
+///
+/// Only trainers and nutritionists may access this page.
+/// Clients are redirected back on direct navigation.
 class IntegrationsPage extends StatefulWidget {
-  const IntegrationsPage({super.key});
+  const IntegrationsPage({
+    super.key,
+    this.profileRepository,
+    this.videoSessionsRepository,
+  });
+
+  /// Optional override for tests.
+  final ProfileRepository? profileRepository;
+
+  /// Optional override for tests.
+  final VideoSessionsRepository? videoSessionsRepository;
 
   @override
   State<IntegrationsPage> createState() => _IntegrationsPageState();
 }
 
 class _IntegrationsPageState extends State<IntegrationsPage> {
-  final _repo = VideoSessionsRepository();
+  late final ProfileRepository _profileRepo;
+  late final VideoSessionsRepository _repo;
   GoogleMeetIntegrationStatus _status =
       GoogleMeetIntegrationStatus.disconnected();
   bool _loading = true;
   bool _busy = false;
+  // Tri-state: null = checking, true = allowed, false = blocked.
+  bool? _accessAllowed;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _profileRepo = widget.profileRepository ?? ProfileRepository();
+    _repo = widget.videoSessionsRepository ?? VideoSessionsRepository();
+    _checkAccess();
+  }
+
+  Future<void> _checkAccess() async {
+    try {
+      final profile = await _profileRepo.fetchMyProfile();
+      final role = profile?['role'] as String?;
+      final allowed = role == 'trainer' || role == 'nutritionist';
+      if (!mounted) return;
+      setState(() => _accessAllowed = allowed);
+      if (allowed) {
+        _load();
+      } else {
+        // Block client access — pop back to Settings immediately.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) Navigator.of(context).pop();
+        });
+      }
+    } catch (_) {
+      // On error, fail closed: deny access.
+      if (!mounted) return;
+      setState(() => _accessAllowed = false);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) Navigator.of(context).pop();
+      });
+    }
   }
 
   Future<void> _load() async {
@@ -72,13 +117,19 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
   @override
   Widget build(BuildContext context) {
     final bg = AccountHubTheme.pageBg(context);
+
+    // While the role check is in progress, show a blank page.
+    // If access is denied the page will pop before the user sees anything.
+    if (_accessAllowed != true) {
+      return Scaffold(backgroundColor: bg);
+    }
+
     final ready = _status.connected && !_status.reconnectRequired;
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
+      appBar: CotrainrAppBar(
+        title: 'Integrations',
         backgroundColor: bg,
-        elevation: 0,
-        title: const Text('Integrations'),
       ),
       body: _loading
           ? const Center(

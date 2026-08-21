@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../common/cotrainr_back_button.dart';
+
 /// Shared level info model for quest levels across client, trainer, nutritionist.
 class LevelInfo {
   final int level;
@@ -256,10 +258,7 @@ class _LevelsPageState extends State<LevelsPage> with SingleTickerProviderStateM
       appBar: AppBar(
         backgroundColor: cs.surface,
         elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: cs.onBackground),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        leading: CotrainrBackButton(color: cs.onBackground),
         title: Text('Levels', style: TextStyle(color: cs.onBackground, fontWeight: FontWeight.w700)),
       ),
       body: widget.levels.isEmpty || tierGroups.isEmpty

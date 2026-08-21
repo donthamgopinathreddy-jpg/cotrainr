@@ -33,7 +33,10 @@ enum DiscoverLocationState {
 }
 
 class DiscoverPage extends StatefulWidget {
-  const DiscoverPage({super.key});
+  /// 0 trainers, 1 nutritionists, 2 centers. Query param `discover=` still wins.
+  final int? initialDiscoverTab;
+
+  const DiscoverPage({super.key, this.initialDiscoverTab});
 
   @override
   State<DiscoverPage> createState() => _DiscoverPageState();
@@ -92,6 +95,10 @@ class _DiscoverPageState extends State<DiscoverPage>
     );
     _fadeController.forward();
     _searchController.addListener(_onSearchChanged);
+    final seeded = widget.initialDiscoverTab;
+    if (seeded != null) {
+      _selectedTabIndex = seeded.clamp(0, 2);
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final discoverTab =

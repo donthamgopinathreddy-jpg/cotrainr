@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:path/path.dart' as path;
 
+import '../utils/provider_cover_url.dart';
 import 'chat_media_storage.dart';
 
 /// Service for uploading files to Supabase Storage
@@ -75,9 +76,10 @@ class StorageService {
         ),
       );
 
-      // Get public URL
+      // Same storage path on each cover upsert — bust the URL so public
+      // profile CachedNetworkImage picks up the new bytes.
       final url = _supabase.storage.from('avatars').getPublicUrl(filePath);
-      return url;
+      return cacheBustedMediaUrl(url);
     } catch (e) {
       print('Error uploading cover image: $e');
       rethrow;

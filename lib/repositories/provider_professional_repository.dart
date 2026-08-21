@@ -68,6 +68,7 @@ class ProviderProfessionalRepository {
       totalReviews: (row['total_reviews'] as num?)?.toInt() ?? 0,
       fullName: row['full_name'] as String?,
       avatarUrl: row['avatar_url'] as String?,
+      coverUrl: row['cover_url'] as String?,
       primaryLocationLabel: row['primary_location_label'] as String?,
       coverageKm: (row['coverage_km'] as num?)?.toDouble(),
     );
@@ -160,6 +161,7 @@ class ProviderProfessionalRepository {
       totalReviews: (prov['total_reviews'] as num?)?.toInt() ?? 0,
       fullName: identity.fullName,
       avatarUrl: identity.avatarUrl,
+      coverUrl: identity.coverUrl,
       primaryLocationLabel:
           (locationLabel != null && locationLabel.isNotEmpty)
               ? locationLabel
@@ -202,6 +204,7 @@ class ProviderProfessionalRepository {
         totalReviews: (prov?['total_reviews'] as num?)?.toInt() ?? 0,
         fullName: identity.fullName,
         avatarUrl: identity.avatarUrl,
+        coverUrl: identity.coverUrl,
       );
     } catch (e) {
       debugPrint('ProviderProfessionalRepository._fetchMinimalFallback: $e');
@@ -209,8 +212,14 @@ class ProviderProfessionalRepository {
     }
   }
 
-  Future<({String? fullName, String? avatarUrl, String? bio, String? username})>
-      _loadPublicIdentity(String userId) async {
+  Future<
+      ({
+        String? fullName,
+        String? avatarUrl,
+        String? coverUrl,
+        String? bio,
+        String? username,
+      })> _loadPublicIdentity(String userId) async {
     try {
       final list = (await _supabase.rpc(
         'get_public_profile',
@@ -222,12 +231,19 @@ class ProviderProfessionalRepository {
         return (
           fullName: row['full_name'] as String?,
           avatarUrl: row['avatar_url'] as String?,
+          coverUrl: row['cover_url'] as String?,
           bio: row['bio'] as String?,
           username: row['username'] as String?,
         );
       }
     } catch (_) {}
-    return (fullName: null, avatarUrl: null, bio: null, username: null);
+    return (
+      fullName: null,
+      avatarUrl: null,
+      coverUrl: null,
+      bio: null,
+      username: null,
+    );
   }
 
   List<String> _asStringList(dynamic raw) {

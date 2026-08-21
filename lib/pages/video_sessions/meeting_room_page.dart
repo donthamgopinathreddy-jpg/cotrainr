@@ -7,6 +7,7 @@ import '../../models/video_session_models.dart';
 import '../../services/meeting_storage_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 
 class MeetingRoomPage extends StatefulWidget {
   final String meetingId;
@@ -554,14 +555,10 @@ class _MeetingRoomPageState extends State<MeetingRoomPage>
           child: Row(
             children: [
               // Back Button
-              IconButton(
-                icon: const Icon(Icons.arrow_back_rounded, size: 20),
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? Colors.white
-                    : Colors.black,
+              CotrainrBackButton(
                 onPressed: () {
                   HapticFeedback.mediumImpact();
-                  context.pop();
+                  CotrainrBackButton.popOrFallback(context, fallbackRoute: '/video');
                 },
               ),
               const SizedBox(width: 8),

@@ -12,11 +12,12 @@ import '../../repositories/notifications_repository.dart';
 import '../../repositories/profile_repository.dart';
 import '../../config/feature_flags.dart';
 import '../../providers/accepted_client_trainers_provider.dart';
-import '../../providers/leads_provider.dart';
 import '../../providers/profile_role_provider.dart';
+import '../../providers/provider_practice_provider.dart';
 import '../../providers/unread_notifications_count_provider.dart';
 import '../../services/leads_service.dart';
 import '../../utils/lead_request_ui_state.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/notifications/lead_request_notification_actions.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -411,10 +412,8 @@ class _NotificationPageState extends ConsumerState<NotificationPage> {
         }
         _busyLeadIds.remove(leadId);
       });
-      ref.invalidate(leadsProvider);
-      ref.invalidate(incomingLeadsProvider);
-      ref.invalidate(acceptedClientTrainersProvider);
       ref.invalidate(unreadNotificationsCountProvider);
+      invalidateProviderHomeCounts(ref);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Connection accepted')),
       );
@@ -447,9 +446,8 @@ class _NotificationPageState extends ConsumerState<NotificationPage> {
         }
         _busyLeadIds.remove(leadId);
       });
-      ref.invalidate(leadsProvider);
-      ref.invalidate(incomingLeadsProvider);
       ref.invalidate(unreadNotificationsCountProvider);
+      invalidateProviderHomeCounts(ref);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Request declined')),
       );
@@ -480,24 +478,10 @@ class _NotificationPageState extends ConsumerState<NotificationPage> {
         backgroundColor: pageBg,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
-        leading: Padding(
-          padding: const EdgeInsets.only(left: 4),
-          child: IconButton(
-            onPressed: () {
-              HapticFeedback.lightImpact();
-              context.pop();
-            },
-            icon: ShaderMask(
-              shaderCallback: (bounds) => AppColors.stepsGradient.createShader(bounds),
-              child: const Icon(
-                Icons.arrow_back_ios_new_rounded,
-                color: Colors.white,
-                size: 22,
-              ),
-            ),
-          ),
+        leadingWidth: CotrainrBackButton.tapTarget + 8,
+        leading: CotrainrBackButton(
+          fallbackRoute: '/home',
         ),
-        leadingWidth: 48,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,

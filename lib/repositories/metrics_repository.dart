@@ -14,7 +14,6 @@ class MetricsRepository {
   /// Get today's metrics for the current user
   Future<Map<String, dynamic>?> getTodayMetrics() async {
     if (_currentUserId == null) {
-      print('MetricsRepository: Cannot fetch metrics - user not authenticated');
       return null;
     }
 
@@ -23,7 +22,6 @@ class MetricsRepository {
       final todayDate = DateTime(today.year, today.month, today.day);
       final dateString = todayDate.toIso8601String().split('T')[0];
 
-      print('MetricsRepository: Fetching metrics for user: $_currentUserId, date: $dateString');
       final response = await _supabase
           .from('metrics_daily')
           .select()
@@ -31,16 +29,12 @@ class MetricsRepository {
           .eq('date', dateString)
           .maybeSingle();
 
-      if (response != null) {
-        print('MetricsRepository: Found metrics - steps: ${response['steps']}, calories: ${response['calories_burned']}, water: ${response['water_intake_liters']}');
-      } else {
-        print('MetricsRepository: No metrics found for today');
-      }
-
       return response;
     } catch (e, stackTrace) {
-      print('MetricsRepository: Error fetching today metrics: $e');
-      print('MetricsRepository: Stack trace: $stackTrace');
+      if (kDebugMode) {
+        debugPrint('MetricsRepository: today metrics failed');
+        debugPrint('$stackTrace');
+      }
       return null;
     }
   }
@@ -62,7 +56,7 @@ class MetricsRepository {
 
       return response;
     } catch (e) {
-      print('Error fetching metrics for date: $e');
+      if (kDebugMode) debugPrint('MetricsRepository: date fetch failed');
       return null;
     }
   }
@@ -95,7 +89,7 @@ class MetricsRepository {
       }
       return rows;
     } catch (e) {
-      print('Error fetching weekly metrics: $e');
+      if (kDebugMode) debugPrint('MetricsRepository: weekly fetch failed');
       return [];
     }
   }
@@ -119,7 +113,7 @@ class MetricsRepository {
 
       return (response as List).cast<Map<String, dynamic>>();
     } catch (e) {
-      print('Error fetching metrics for $days days: $e');
+      if (kDebugMode) debugPrint('MetricsRepository: days fetch failed');
       return [];
     }
   }
@@ -143,7 +137,7 @@ class MetricsRepository {
 
       return (response as List).cast<Map<String, dynamic>>();
     } catch (e) {
-      print('Error fetching monthly metrics: $e');
+      if (kDebugMode) debugPrint('MetricsRepository: monthly fetch failed');
       return [];
     }
   }
@@ -193,7 +187,7 @@ class MetricsRepository {
         });
       }
     } catch (e) {
-      print('Error updating metrics for date: $e');
+      if (kDebugMode) debugPrint('MetricsRepository: date update failed');
       rethrow;
     }
   }
@@ -220,7 +214,6 @@ class MetricsRepository {
   /// Returns `true` when the write succeeds for an authenticated user.
   Future<bool> incrementWater(double liters) async {
     if (_currentUserId == null) {
-      print('MetricsRepository: incrementWater skipped — not authenticated');
       return false;
     }
     if (liters <= 0) return false;
@@ -233,19 +226,15 @@ class MetricsRepository {
 
       await updateTodayMetrics(waterIntakeLiters: newWater);
 
-      // Verify write landed.
       final verify = await getTodayMetrics();
       final verified =
           (verify?['water_intake_liters'] as num?)?.toDouble() ?? 0.0;
-      if (verified + 0.0001 < newWater) {
-        print(
-          'MetricsRepository: incrementWater verify mismatch '
-          'expected=$newWater actual=$verified',
-        );
+      if (verified + 0.0001 < newWater && kDebugMode) {
+        debugPrint('MetricsRepository: incrementWater verify mismatch');
       }
       return true;
     } catch (e) {
-      print('Error incrementing water: $e');
+      if (kDebugMode) debugPrint('MetricsRepository: incrementWater failed');
       return false;
     }
   }
@@ -263,7 +252,7 @@ class MetricsRepository {
           .maybeSingle();
       return response;
     } catch (e) {
-      print('Error fetching client metrics: $e');
+      if (kDebugMode) debugPrint('MetricsRepository: client metrics failed');
       return null;
     }
   }
@@ -283,7 +272,7 @@ class MetricsRepository {
           .order('date', ascending: true);
       return (response as List).cast<Map<String, dynamic>>();
     } catch (e) {
-      print('Error fetching client weekly metrics: $e');
+      if (kDebugMode) debugPrint('MetricsRepository: client weekly failed');
       return [];
     }
   }

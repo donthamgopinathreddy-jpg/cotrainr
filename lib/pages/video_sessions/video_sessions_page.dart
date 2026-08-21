@@ -9,6 +9,7 @@ import '../../services/notification_service.dart';
 import '../../pages/notifications/notification_page.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 
 class VideoSessionsPage extends StatefulWidget {
   final Role role;
@@ -193,10 +194,7 @@ class _VideoSessionsPageState extends State<VideoSessionsPage>
         ),
         elevation: 0,
         backgroundColor: Colors.transparent,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.pop(),
-        ),
+        leading: const CotrainrBackButton(fallbackRoute: '/home'),
         actions: const [],
       ),
       body: Column(

@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../providers/accepted_client_trainers_provider.dart';
+import '../../providers/profile_role_provider.dart';
 import '../../providers/unread_video_session_notifications_provider.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
 import '../../theme/text_styles.dart';
 import '../../utils/client_notes_grouping.dart';
 import '../common/pressable_card.dart';
+import '../common/shimmer_skeleton.dart';
 import 'home_premium_theme.dart';
 
 const _exploreHeaderGradient = LinearGradient(
@@ -29,12 +30,6 @@ class QuickAccessV3 extends ConsumerStatefulWidget {
 class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
   static const double _tileRadius = 28;
   static const double _tileGap = 10;
-
-  String get _role =>
-      Supabase.instance.client.auth.currentUser?.userMetadata?['role']
-          ?.toString()
-          .toLowerCase() ??
-      'client';
 
   String _providersSubtitle(int trainerCount, int nutritionistCount) {
     final total = trainerCount + nutritionistCount;
@@ -59,11 +54,13 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
         icon: Icons.track_changes_rounded,
         accent: Color(0xFF2EBD85),
       ),
-      'Video Sessions': const _ExploreTileData(
+      'Video Sessions': _ExploreTileData(
         title: 'Video Sessions',
-        subtitle: 'Join live sessions with your trainer.',
+        subtitle: (isTrainer || isNutritionist)
+            ? 'Schedule and manage video sessions'
+            : 'Join live sessions with your trainer.',
         icon: Icons.videocam_rounded,
-        accent: Color(0xFF8B7CF6),
+        accent: const Color(0xFF8B7CF6),
       ),
     };
 
@@ -126,18 +123,32 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
   @override
   Widget build(BuildContext context) {
     final isLight = Theme.of(context).brightness == Brightness.light;
+    final userAsync = ref.watch(currentUserProvider);
+    final user = userAsync.valueOrNull;
+    if (userAsync.isLoading && user == null) {
+      return const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ShimmerBox(width: 120, height: 22, radius: 8),
+          SizedBox(height: 14),
+          ShimmerBox(height: 168, radius: 28),
+        ],
+      );
+    }
+    if (user == null) return const SizedBox.shrink();
+    final role = user.role.toLowerCase().trim();
     final trainerCount = ref.watch(acceptedClientTrainersCountProvider);
     final nutritionistCount =
         ref.watch(acceptedClientNutritionistsCountProvider);
     final videoUnread = ref.watch(unreadVideoSessionNotificationsProvider)
         .maybeWhen(data: (n) => n, orElse: () => 0);
     // Ensure realtime/list provider is warm for clients.
-    if (_role != 'trainer' && _role != 'nutritionist') {
+    if (role != 'trainer' && role != 'nutritionist') {
       ref.watch(acceptedClientTrainersProvider);
       ref.watch(acceptedClientNutritionistsProvider);
     }
     final tiles = _tilesForRole(
-      _role,
+      role,
       acceptedTrainerCount: trainerCount,
       acceptedNutritionistCount: nutritionistCount,
     );
@@ -164,7 +175,7 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
           _ExploreBentoGrid(
             tiles: tiles,
             isLight: isLight,
-            role: _role,
+            role: role,
             videoUnread: videoUnread,
             onTileTap: (tile) => _routeFor(context, tile.title)?.call(),
           ),

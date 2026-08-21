@@ -8,6 +8,7 @@ import '../../repositories/partner_centers_repository.dart';
 import '../../repositories/subscriptions_repository.dart';
 import '../../theme/design_tokens.dart';
 import '../../widgets/branding/cotrainr_logo.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 
 class CotrainrPassPage extends StatefulWidget {
   const CotrainrPassPage({super.key});
@@ -145,6 +146,8 @@ class _CotrainrPassPageState extends State<CotrainrPassPage> {
                         scrolledUnderElevation: 0,
                         backgroundColor: bg,
                         surfaceTintColor: Colors.transparent,
+                        automaticallyImplyLeading: false,
+                        leading: CotrainrBackButton(color: onSurface),
                         title: Text(
                           'Cotrainr Pass',
                           style: TextStyle(
@@ -152,7 +155,6 @@ class _CotrainrPassPageState extends State<CotrainrPassPage> {
                             color: onSurface,
                           ),
                         ),
-                        iconTheme: IconThemeData(color: onSurface),
                       ),
                       SliverPadding(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),

@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../models/provider_professional_profile.dart';
 import '../../providers/provider_professional_provider.dart';
 import '../../theme/design_tokens.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
 
 class ProviderCertificationsPage extends ConsumerStatefulWidget {
@@ -30,7 +31,7 @@ class _ProviderCertificationsPageState
     if (uid == null) {
       return Scaffold(
         backgroundColor: bg,
-        appBar: AppBar(title: const Text('Certifications')),
+        appBar: CotrainrAppBar(title: 'Certifications', backgroundColor: bg),
         body: const Center(child: Text('Sign in required')),
       );
     }
@@ -41,17 +42,10 @@ class _ProviderCertificationsPageState
 
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
+      appBar: CotrainrAppBar(
+        title: 'Certifications',
         backgroundColor: bg,
-        elevation: 0,
-        title: Text(
-          'Certifications',
-          style: GoogleFonts.montserrat(
-            fontWeight: FontWeight.w700,
-            color: textPrimary,
-          ),
-        ),
-        iconTheme: IconThemeData(color: textPrimary),
+        foregroundColor: textPrimary,
         actions: [
           IconButton(
             onPressed: () => _showEditor(context, uid),

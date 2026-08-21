@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Repository for managing user profile data
@@ -13,7 +14,6 @@ class ProfileRepository {
   /// Fetch current user's profile (RPC get_my_profile)
   Future<Map<String, dynamic>?> fetchMyProfile() async {
     if (_currentUserId == null) {
-      print('ProfileRepository: User not authenticated');
       throw Exception('User not authenticated');
     }
 
@@ -132,14 +132,15 @@ class ProfileRepository {
     }
 
     try {
-      print('ProfileRepository: Updating profile for user: $_currentUserId');
-      print('ProfileRepository: Updates: $updates');
-      // Use RPC to handle missing profile (new users) and ensure avatar/cover save works
       await _supabase.rpc('update_my_profile', params: {'p_updates': updates});
-      final response = await fetchMyProfile();
-      print('ProfileRepository: Profile updated successfully: $response');
+      await fetchMyProfile();
+      if (kDebugMode) {
+        debugPrint('ProfileRepository: Profile updated');
+      }
     } catch (e) {
-      print('ProfileRepository: Error updating profile: $e');
+      if (kDebugMode) {
+        debugPrint('ProfileRepository: Error updating profile');
+      }
       throw Exception('Failed to update profile: $e');
     }
   }

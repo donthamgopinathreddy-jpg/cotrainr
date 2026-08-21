@@ -40,7 +40,7 @@ class MetricsSyncService {
 
   /// Start periodic sync of health metrics to Supabase
   void startSync() {
-    print('MetricsSyncService: Starting sync...');
+    if (kDebugMode) debugPrint('MetricsSyncService: starting sync');
     _syncTimer?.cancel(); // Cancel any existing timer
     _syncTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
       _syncMetrics();
@@ -50,7 +50,7 @@ class MetricsSyncService {
 
   /// Stop periodic sync
   void stopSync() {
-    print('MetricsSyncService: Stopping sync.');
+    if (kDebugMode) debugPrint('MetricsSyncService: stopping sync');
     _syncTimer?.cancel();
     _syncTimer = null;
   }
@@ -58,42 +58,31 @@ class MetricsSyncService {
   /// Sync current health metrics to Supabase
   Future<void> _syncMetrics() async {
     if (_isSyncing) {
-      print('MetricsSyncService: Sync already in progress, skipping...');
       return;
     }
 
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null) {
-      print('MetricsSyncService: User not authenticated, skipping sync.');
       return;
     }
 
     _isSyncing = true;
     try {
-      print('MetricsSyncService: Syncing metrics to Supabase...');
+      if (kDebugMode) debugPrint('MetricsSyncService: syncing');
       
       // Ensure health service is initialized and height is set for distance estimation.
       final healthService = HealthTrackingService();
       final initialized = await healthService.initialize();
       await _applyProfileHeight(healthService);
-      if (!initialized) {
-        print('MetricsSyncService: WARNING - Health service failed to initialize');
-        // Check permissions
-        final permissions = await healthService.checkPermissions();
-        print('MetricsSyncService: Permissions status: $permissions');
+      if (!initialized && kDebugMode) {
+        debugPrint('MetricsSyncService: health source not ready');
       }
 
-      // Test sensors periodically (every 10 syncs = ~5 minutes)
       _syncCount++;
-      if (_syncCount % 10 == 1) {
-        print('MetricsSyncService: Running sensor diagnostics...');
-        final sensorTest = await healthService.testSensors();
-        print('MetricsSyncService: Sensor test results: $sensorTest');
-      }
-
-      // Get unified snapshot from the single active source.
       if (kDebugMode) {
-        debugPrint('[Metrics] Sync via ${healthService.activeSourceLabel}');
+        debugPrint(
+          '[Metrics] Sync via ${healthService.activeSourceLabel}',
+        );
       }
 
       final snapshot = await healthService.getTodaySnapshot();
@@ -101,17 +90,6 @@ class MetricsSyncService {
       final calories = snapshot.activeCalories;
       final distance = snapshot.distanceKm;
       final waterFromHealth = snapshot.waterLiters;
-
-      print(
-        'MetricsSyncService: ${healthService.activeSourceLabel} — '
-        'Steps: $steps, Calories: $calories (${snapshot.caloriesSource.name}), '
-        'Distance: $distance km (${snapshot.distanceSource.name}), Water: $waterFromHealth L',
-      );
-
-      if (steps == 0 && calories == 0 && distance == 0 && waterFromHealth == 0) {
-        print('MetricsSyncService: WARNING - All metrics returned 0. '
-            'Active source: ${healthService.activeSourceLabel}');
-      }
 
       // Merge water: use max(health, manual) to avoid overwriting manual logs with 0 from health
       final metricsRepo = MetricsRepository();
@@ -127,7 +105,7 @@ class MetricsSyncService {
         waterIntakeLiters: waterToSave,
       );
 
-      print('MetricsSyncService: Metrics synced successfully to Supabase');
+      if (kDebugMode) debugPrint('MetricsSyncService: sync complete');
 
       // Backfill last 6 prior days from Health Connect so weekly charts
       // are not empty when only today was ever written.
@@ -137,8 +115,10 @@ class MetricsSyncService {
         force: false,
       );
     } catch (e, stackTrace) {
-      print('MetricsSyncService: Error syncing metrics: $e');
-      print('MetricsSyncService: Stack trace: $stackTrace');
+      if (kDebugMode) {
+        debugPrint('MetricsSyncService: sync failed');
+        debugPrint('$stackTrace');
+      }
     } finally {
       _isSyncing = false;
     }

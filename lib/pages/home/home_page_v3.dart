@@ -13,13 +13,15 @@ import '../../models/daily_metrics_snapshot.dart';
 import '../../repositories/meal_repository.dart';
 import '../../providers/profile_images_provider.dart';
 import '../../providers/health_tracking_provider.dart';
+import '../../utils/health_metric_display.dart';
 import '../../widgets/home_v3/hero_header_v3.dart';
 import '../../widgets/home_v3/unified_metrics_tile_v3.dart';
 import '../../widgets/home_v3/bmi_card_v3.dart';
 import '../bmi/bmi_details_screen.dart';
 import '../../widgets/home_v3/quick_access_v3.dart';
 import '../../widgets/home_v3/home_nav_hint_cards.dart';
-import '../../widgets/home_v3/nearby_preview_v3.dart';
+import '../../widgets/home_v3/home_centers_preview.dart';
+import '../../widgets/home_v3/home_section_error.dart';
 import '../insights/insights_detail_page.dart';
 import '../../services/streak_service.dart';
 import '../../services/user_goals_service.dart';
@@ -51,7 +53,11 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
   late Animation<double> _fadeAnimation;
 
   // Real data from Supabase
-  String _username = 'Loading...';
+  String _username = '';
+  bool _profileLoading = true;
+  bool _profileError = false;
+  bool _goalsReady = false;
+  bool _metricsError = false;
   String? _avatarUrl;
   String? _coverImageUrl;
   int _streakDays = 0;
@@ -116,23 +122,18 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
       final currentUser = supabase.auth.currentUser;
       
       if (currentUser == null) {
-        print('HOME_V3 ERROR: currentUser is null');
         if (mounted) {
           setState(() {
-            _username = 'Not logged in';
+            _username = '';
+            _profileLoading = false;
+            _profileError = true;
           });
         }
         return;
       }
       
-      final uid = currentUser.id;
-      print('HOME_V3: Fetching profile for user ID: $uid');
-      
-      // Fetch profile directly from Supabase
       final list = (await supabase.rpc('get_my_profile') as List).cast<Map<String, dynamic>>();
       final profile = list.isNotEmpty ? list.first : null;
-      
-      print('HOME_V3 profile query result: $profile');
       
       if (!mounted) return;
       
@@ -157,25 +158,18 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
           } catch (_) {}
         }
         
-        // Use same logic as Profile page
         final newUsername = fullName != null && fullName.trim().isNotEmpty
             ? fullName.trim()
             : (username != null && username.isNotEmpty
                 ? username
-                : 'User');
+                : '');
         
-        // Calculate BMI
         double newBmi = 0.0;
         String newBmiStatus = '';
         if (heightCm != null && heightCm > 0 && weightKg != null && weightKg > 0) {
           newBmi = ProfileRepository.calculateBMI(heightCm, weightKg);
           newBmiStatus = ProfileRepository.getBMIStatus(newBmi);
-          print('HOME_V3: Calculated BMI: $newBmi ($newBmiStatus) from height: $heightCm cm, weight: $weightKg kg');
-        } else {
-          print('HOME_V3: Cannot calculate BMI - height: $heightCm, weight: $weightKg');
         }
-        
-        print('HOME_V3: Loaded - name: "$newUsername", avatar: "$avatarUrl", cover: "$coverUrl"');
         
         setState(() {
           _username = newUsername;
@@ -187,11 +181,12 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
           _weightKg = weightKg;
           _gender = gender;
           _age = age;
+          _profileLoading = false;
+          _profileError = false;
         });
 
         ref.read(healthTrackingServiceProvider).setUserHeightCm(heightCm);
         
-        // Update profile images provider if URLs exist
         if (avatarUrl != null && avatarUrl.isNotEmpty) {
           ref.read(profileImagesProvider.notifier).updateProfileImage(avatarUrl);
         }
@@ -199,19 +194,24 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
           ref.read(profileImagesProvider.notifier).updateCoverImage(coverUrl);
         }
       } else {
-        print('HOME_V3 ERROR: Profile not found');
         if (mounted) {
           setState(() {
-            _username = 'Profile not found';
+            _username = '';
+            _profileLoading = false;
+            _profileError = true;
           });
         }
       }
     } catch (e, stackTrace) {
-      print('HOME_V3 ERROR loading profile: $e');
-      print('HOME_V3 stack trace: $stackTrace');
+      if (kDebugMode) {
+        debugPrint('HomePageV3: profile load failed');
+        debugPrint('$stackTrace');
+      }
       if (mounted) {
         setState(() {
-          _username = 'Error loading profile';
+          _username = '';
+          _profileLoading = false;
+          _profileError = true;
         });
       }
     }
@@ -222,18 +222,28 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
   }
 
   Future<void> _loadGoals() async {
-    final goalsService = UserGoalsService();
-    final stepsGoal = await goalsService.getStepsGoal();
-    final waterGoal = await goalsService.getWaterGoal();
-    final caloriesGoal = await goalsService.getCaloriesGoal();
-    final distanceGoal = await goalsService.getDistanceGoal();
-    if (mounted) {
-      setState(() {
-        _goalSteps = stepsGoal;
-        _goalWater = waterGoal;
-        _goalCalories = caloriesGoal;
-        _goalDistance = distanceGoal;
-      });
+    try {
+      final goalsService = UserGoalsService();
+      final stepsGoal = await goalsService.getStepsGoal();
+      final waterGoal = await goalsService.getWaterGoal();
+      final caloriesGoal = await goalsService.getCaloriesGoal();
+      final distanceGoal = await goalsService.getDistanceGoal();
+      if (mounted) {
+        setState(() {
+          _goalSteps = stepsGoal;
+          _goalWater = waterGoal;
+          _goalCalories = caloriesGoal;
+          _goalDistance = distanceGoal;
+          _goalsReady = true;
+        });
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('HomePageV3: goals load failed');
+      if (mounted) {
+        setState(() {
+          _goalsReady = true;
+        });
+      }
     }
   }
 
@@ -257,7 +267,7 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
         _proteinGoal = goals.goalProtein;
       });
     } catch (e) {
-      print('HomePageV3: Error loading coaching data: $e');
+      if (kDebugMode) debugPrint('HomePageV3: coaching data load failed');
     }
   }
 
@@ -321,6 +331,7 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
       if (!mounted) return;
 
       setState(() {
+        _metricsError = false;
         if (todayMetrics != null) {
           _currentSteps = (todayMetrics['steps'] as int?) ?? 0;
           _currentCalories =
@@ -328,14 +339,8 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
           _currentDistance =
               (todayMetrics['distance_km'] as num?)?.toDouble() ?? 0.0;
           _currentWater = todayWater;
-          print(
-            'HomePageV3: Loaded metrics from Supabase - Steps: $_currentSteps, Water: $_currentWater L, Calories: $_currentCalories, Distance: $_currentDistance km',
-          );
         } else {
           _currentWater = todayWater;
-          print(
-            'HomePageV3: No metrics found for today, keeping current values',
-          );
         }
 
         _stepsWeeklyData
@@ -374,7 +379,10 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
         }
       });
     } catch (e) {
-      print('HomePageV3: Error loading metrics: $e');
+      if (kDebugMode) debugPrint('HomePageV3: metrics load failed');
+      if (mounted) {
+        setState(() => _metricsError = true);
+      }
     }
   }
 
@@ -443,21 +451,32 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
     final metricsAsync = ref.watch(dailyMetricsProvider);
     final liveMetrics = metricsAsync.valueOrNull;
 
-    // Prefer live Health Connect snapshot; fall back to Supabase cache while loading.
-    final currentSteps = liveMetrics?.steps ?? _currentSteps;
-    final currentCalories =
-        (liveMetrics?.activeCalories ?? _currentCalories).round();
-    final currentDistance =
-        liveMetrics?.distanceKm ?? _currentDistance;
+    final stepsMetric = resolveHomeSteps(
+      cached: _currentSteps,
+      live: liveMetrics,
+    );
+    final caloriesMetric = resolveHomeCalories(
+      cached: _currentCalories,
+      live: liveMetrics,
+    );
+    final distanceMetric = resolveHomeDistance(
+      cached: _currentDistance,
+      live: liveMetrics,
+    );
+    final currentSteps = stepsMetric.value.round();
+    final currentCalories = caloriesMetric.value.round();
+    final currentDistance = distanceMetric.value;
 
     final caloriesSourceNote = MetricsSourceLabels.caloriesNote(liveMetrics);
     final distanceSourceNote = MetricsSourceLabels.distanceNote(liveMetrics);
 
-    final coachingInsights = _coachingInsights(
-      steps: currentSteps,
-      calories: currentCalories,
-      water: _currentWater,
-    );
+    final coachingInsights = _goalsReady
+        ? _coachingInsights(
+            steps: currentSteps,
+            calories: currentCalories,
+            water: _currentWater,
+          )
+        : const <CoachingInsight>[];
 
     return FadeTransition(
       opacity: _fadeAnimation,
@@ -476,6 +495,7 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
             child: _animated(
               HeroHeaderV3(
                 username: _username,
+                usernameLoading: _profileLoading,
                 notificationCount: ref.watch(unreadNotificationsCountProvider).maybeWhen(
                       data: (c) => c,
                       orElse: () => 0,
@@ -496,6 +516,16 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
               0,
             ),
           ),
+          if (_profileError)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: HomeSectionError(
+                  message: 'Couldn’t load profile',
+                  onRetry: _loadProfileData,
+                ),
+              ),
+            ),
           SliverToBoxAdapter(
             child: Transform.translate(
               offset: const Offset(0, -8),
@@ -505,6 +535,7 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                   _safeSection(
                     context,
                     UnifiedMetricsTileV3(
+                      goalsLoading: !_goalsReady,
                       metrics: [
                         UnifiedMetricViewModel(
                           label: 'STEPS',
@@ -512,12 +543,15 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                           selectedIcon: Icons.directions_walk,
                           ringGradient: AppColors.stepsGradient,
                           barColor: AppColors.orange,
-                          progress: _goalSteps > 0
-                              ? (currentSteps / _goalSteps).clamp(0.0, 1.0)
+                          progress: stepsMetric.available
+                              ? safeMetricProgress(
+                                  currentSteps.toDouble(),
+                                  _goalSteps.toDouble(),
+                                )
                               : 0.0,
-                          mainValue: currentSteps >= 1000
-                              ? '${(currentSteps / 1000).toStringAsFixed(1)}k'
-                              : '$currentSteps',
+                          mainValue: stepsMetric.available
+                              ? stepsMetric.displayInt
+                              : '—',
                           subValue:
                               'of ${_goalSteps >= 1000 ? '${(_goalSteps / 1000).toStringAsFixed(1)}k' : '$_goalSteps'} steps',
                           weekly: List<double>.from(_stepsWeeklyData),
@@ -530,11 +564,15 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                           selectedIcon: Icons.local_fire_department,
                           ringGradient: AppColors.caloriesGradient,
                           barColor: const Color(0xFFFF6B6B),
-                          progress: _goalCalories > 0
-                              ? (currentCalories / _goalCalories)
-                                  .clamp(0.0, 1.0)
+                          progress: caloriesMetric.available
+                              ? safeMetricProgress(
+                                  currentCalories.toDouble(),
+                                  _goalCalories.toDouble(),
+                                )
                               : 0.0,
-                          mainValue: '$currentCalories',
+                          mainValue: caloriesMetric.available
+                              ? '$currentCalories'
+                              : '—',
                           subValue: 'kcal · goal $_goalCalories',
                           sourceNote: caloriesSourceNote,
                           weekly: List<double>.from(_caloriesWeeklyData),
@@ -547,9 +585,10 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                           selectedIcon: Icons.water_drop,
                           ringGradient: AppColors.waterGradient,
                           barColor: AppColors.cyan,
-                          progress: _goalWater > 0
-                              ? (_currentWater / _goalWater).clamp(0.0, 1.0)
-                              : 0.0,
+                          progress: safeMetricProgress(
+                            _currentWater,
+                            _goalWater,
+                          ),
                           mainValue: _currentWater.toStringAsFixed(1),
                           subValue: 'of ${_goalWater.toStringAsFixed(1)} L',
                           weekly: List<double>.from(_waterWeeklyData),
@@ -562,11 +601,15 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                           selectedIcon: Icons.location_on,
                           ringGradient: AppColors.distanceGradient,
                           barColor: AppColors.purple,
-                          progress: _goalDistance > 0
-                              ? (currentDistance / _goalDistance)
-                                  .clamp(0.0, 1.0)
+                          progress: distanceMetric.available
+                              ? safeMetricProgress(
+                                  currentDistance,
+                                  _goalDistance,
+                                )
                               : 0.0,
-                          mainValue: currentDistance.toStringAsFixed(1),
+                          mainValue: distanceMetric.available
+                              ? distanceMetric.displayOneDecimal
+                              : '—',
                           subValue:
                               'km · goal ${_goalDistance.toStringAsFixed(1)}',
                           sourceNote: distanceSourceNote,
@@ -657,8 +700,7 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
                         const waterToAdd = 0.25;
                         final oldWater = _currentWater;
                         setState(
-                          () => _currentWater = (_currentWater + waterToAdd)
-                              .clamp(0.0, _goalWater),
+                          () => _currentWater = _currentWater + waterToAdd,
                         );
                         final newWater =
                             await WaterIntakeService.instance.addWater(
@@ -681,6 +723,21 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
               ),
             ),
           ),
+          if (_metricsError)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: HomeSectionError(
+                  message: 'Couldn’t load health metrics',
+                  onRetry: () async {
+                    try {
+                      await ref.read(metricsSyncServiceProvider).syncNow();
+                    } catch (_) {}
+                    await _loadMetrics();
+                  },
+                ),
+              ),
+            ),
           const SliverToBoxAdapter(child: SizedBox(height: 12)),
           SliverToBoxAdapter(
             child: Padding(
@@ -723,7 +780,7 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child:
-                  _animated(_safeSection(context, const NearbyPreviewV3()), 260),
+                  _animated(_safeSection(context, const HomeCentersPreview()), 260),
             ),
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 16)),

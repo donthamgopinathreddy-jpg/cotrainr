@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -13,6 +12,7 @@ import '../../theme/account_hub_theme.dart';
 import '../../theme/design_tokens.dart';
 import '../../utils/meeting_link_rules.dart';
 import '../../video_sessions/video_session_notification_logic.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/profile/account_hub_widgets.dart';
 import '../../widgets/video_sessions/video_session_avatar.dart';
 import '../../widgets/video_sessions/video_session_people_sheet.dart';
@@ -41,6 +41,7 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
   bool _responding = false;
   bool _handledInitialAction = false;
   String? _error;
+  Timer? _statusTimer;
 
   @override
   void initState() {
@@ -70,6 +71,7 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
         if (session == null) _error = 'Session not found';
       });
       if (session != null) {
+        _scheduleStatusRefresh(session);
         NotificationsRepository().markVideoSessionNotificationsRead(
           sessionId: session.id,
         );
@@ -86,6 +88,26 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
         _error = message;
       });
     }
+  }
+
+  void _scheduleStatusRefresh(VideoSession session) {
+    _statusTimer?.cancel();
+    if (session.isPast) return;
+    final wait = session.endsAt.difference(DateTime.now()) +
+        const Duration(seconds: 1);
+    if (wait.isNegative) {
+      if (mounted) setState(() {});
+      return;
+    }
+    _statusTimer = Timer(wait, () {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _statusTimer?.cancel();
+    super.dispose();
   }
 
   void _runInitialAction(VideoSession session) {
@@ -213,7 +235,7 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
       await _repo.cancelSession(widget.sessionId);
       if (!mounted) return;
       showHubSnackBar(context, 'Session cancelled');
-      context.pop();
+      CotrainrBackButton.popOrFallback(context, fallbackRoute: '/video');
     } catch (_) {
       if (mounted) {
         showHubSnackBar(context, 'Could not cancel session');
@@ -225,7 +247,9 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
 
   Future<void> _edit() async {
     final session = _session;
-    if (session == null || !session.isScheduled || _saving) return;
+    if (session == null || !session.isScheduled || session.isPast || _saving) {
+      return;
+    }
 
     final titleCtrl = TextEditingController(text: session.title);
     final notesCtrl = TextEditingController(text: session.description ?? '');
@@ -399,20 +423,15 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
     final session = _session;
     final isHost = session != null && session.hostId == me;
 
-    return Scaffold(
-      backgroundColor: bg,
-      appBar: AppBar(
+    return CotrainrPopScope(
+      fallbackRoute: '/video',
+      child: Scaffold(
         backgroundColor: bg,
-        elevation: 0,
-        title: const Text(
-          'Session',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+        appBar: CotrainrAppBar(
+          title: 'Session',
+          fallbackRoute: '/video',
+          backgroundColor: bg,
         ),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => context.pop(),
-        ),
-      ),
       body: _loading
           ? const Center(
               child: CircularProgressIndicator(
@@ -538,7 +557,7 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
                           ],
                         ),
                       ),
-                      if (session.isScheduled) ...[
+                      if (session.isScheduled && !session.isPast) ...[
                         const SizedBox(height: 10),
                         TextButton(
                           onPressed: _responding ? null : _reject,
@@ -615,7 +634,7 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
                         icon: const Icon(Icons.copy_rounded, size: 18),
                         label: const Text('Copy meeting link'),
                       ),
-                      if (session.isScheduled) ...[
+                      if (session.isScheduled && !session.isPast) ...[
                         const SizedBox(height: 8),
                         OutlinedButton.icon(
                           onPressed: _saving ? null : _edit,
@@ -643,6 +662,7 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
                     ],
                   ],
                 ),
+    ),
     );
   }
 
@@ -682,10 +702,9 @@ class _StatusChip extends StatelessWidget {
         ? 'Rejected'
         : session.isCancelled
             ? 'Cancelled'
-            : session.isPast
-                ? null
-                : 'Upcoming';
-    if (label == null) return const SizedBox.shrink();
+        : session.isPast
+            ? 'Completed'
+            : 'Upcoming';
     final color = videoSessionStatusColor(context, label);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

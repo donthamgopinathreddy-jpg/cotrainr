@@ -5,11 +5,11 @@ import '../../repositories/video_sessions_repository.dart';
 import '../../services/leads_models.dart';
 import '../../services/leads_service.dart';
 import '../../theme/design_tokens.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/profile/account_hub_widgets.dart';
 import '../../widgets/video_sessions/video_session_avatar.dart';
 import '../../widgets/video_sessions/video_session_theme.dart';
 import '../../widgets/video_sessions/video_session_when_cards.dart';
-import 'create_session_sheet.dart';
 
 class ScheduleSessionPage extends StatefulWidget {
   final GoogleMeetIntegrationStatus googleStatus;
@@ -298,13 +298,10 @@ class _ScheduleSessionPageState extends State<ScheduleSessionPage> {
       data: vsTheme,
       child: Scaffold(
         backgroundColor: VideoSessionUi.pageBg(context),
-        appBar: AppBar(
+        appBar: CotrainrAppBar(
+          title: 'Schedule Session',
+          fallbackRoute: '/video',
           backgroundColor: VideoSessionUi.pageBg(context),
-          elevation: 0,
-          title: const Text(
-            'Schedule Session',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-          ),
         ),
         body: _leadsLoading
             ? const Center(

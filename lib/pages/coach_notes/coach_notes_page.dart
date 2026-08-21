@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../repositories/coach_notes_repository.dart';
 import '../../theme/design_tokens.dart';
 import '../../utils/client_notes_grouping.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/common/pressable_card.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
 import '../../widgets/video_sessions/video_session_avatar.dart';
@@ -83,10 +84,8 @@ class _CoachNotesPageState extends State<CoachNotesPage> {
 
     return Scaffold(
       backgroundColor: VideoSessionUi.pageBg(context),
-      appBar: AppBar(
-        title: const Text(kClientNotesScreenTitle),
-        centerTitle: true,
-        elevation: 0,
+      appBar: CotrainrAppBar(
+        title: kClientNotesScreenTitle,
         backgroundColor: VideoSessionUi.pageBg(context),
         foregroundColor: HomePremiumTheme.primaryText(isLight),
         actions: [
@@ -367,10 +366,8 @@ class ClientAllNotesPage extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: VideoSessionUi.pageBg(context),
-      appBar: AppBar(
-        title: const Text('All notes'),
-        centerTitle: true,
-        elevation: 0,
+      appBar: CotrainrAppBar(
+        title: 'All notes',
         backgroundColor: VideoSessionUi.pageBg(context),
         foregroundColor: HomePremiumTheme.primaryText(isLight),
       ),

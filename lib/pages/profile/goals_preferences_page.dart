@@ -8,6 +8,7 @@ import '../../services/nutrition_planner_local_storage.dart';
 import '../../services/user_goals_service.dart';
 import '../../theme/account_hub_theme.dart';
 import '../../theme/design_tokens.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/profile/account_hub_widgets.dart';
 
 class GoalsPreferencesPage extends StatefulWidget {
@@ -108,10 +109,9 @@ class _GoalsPreferencesPageState extends State<GoalsPreferencesPage> {
     final bg = AccountHubTheme.pageBg(context);
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
+      appBar: CotrainrAppBar(
+        title: 'Goals & Preferences',
         backgroundColor: bg,
-        elevation: 0,
-        title: const Text('Goals & Preferences'),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

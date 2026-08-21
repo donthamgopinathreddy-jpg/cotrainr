@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:crop_your_image/crop_your_image.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../providers/profile_images_provider.dart';
 import '../../services/nutrition_planner_local_storage.dart';
@@ -13,6 +14,7 @@ import '../../repositories/profile_repository.dart';
 import '../../theme/account_hub_theme.dart';
 import '../../theme/design_tokens.dart';
 import '../../theme/text_styles.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/common/pressable_card.dart';
 import '../../widgets/profile/account_hub_widgets.dart';
 import 'edit_profile_save_state.dart';
@@ -496,6 +498,11 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
     try {
       final url = await _storageService.uploadCoverImage(imageFile);
       if (url != null && mounted) {
+        await CachedNetworkImage.evictFromCache(url);
+        final withoutQuery = Uri.tryParse(url)?.replace(queryParameters: {}).toString();
+        if (withoutQuery != null && withoutQuery != url) {
+          await CachedNetworkImage.evictFromCache(withoutQuery);
+        }
         await _profileRepo.updateProfile({'cover_url': url});
         ref.read(profileImagesProvider.notifier).updateCoverImage(url);
         if (mounted && scaffoldMessenger != null) {
@@ -710,10 +717,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
       appBar: AppBar(
         backgroundColor: bgColor,
         elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: colorScheme.onBackground),
-          onPressed: () => Navigator.pop(context),
-        ),
+        leading: const CotrainrBackButton(),
         title: Text(
           'Edit Profile',
           style: AppTextStyles.screenTitle(context),

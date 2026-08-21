@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../theme/meal_tracker_tokens.dart';
 import '../../theme/text_styles.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../repositories/meal_repository.dart';
 import 'dart:math' as math;
 
@@ -307,10 +308,7 @@ class _WeeklyInsightsPageState extends State<WeeklyInsightsPage>
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
                 child: Row(
                   children: [
-                    IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: Icon(Icons.arrow_back_rounded, color: textPrimary),
-                    ),
+                    CotrainrBackButton(color: textPrimary),
                     const SizedBox(width: 4),
                     Expanded(
                       child: Column(

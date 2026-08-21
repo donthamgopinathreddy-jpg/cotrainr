@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../repositories/metrics_repository.dart';
 import '../../services/user_goals_service.dart';
 import '../../widgets/home_v3/metric_center_widget.dart';
@@ -79,14 +79,7 @@ class WeeklyInsightsPage extends ConsumerWidget {
             children: [
               Row(
                 children: [
-                  IconButton(
-                    onPressed: () => context.pop(),
-                    icon: const Icon(
-                      Icons.arrow_back_ios_new_rounded,
-                      color: AppColors.textPrimary,
-                      size: 20,
-                    ),
-                  ),
+                  CotrainrBackButton(color: AppColors.textPrimary),
                   const SizedBox(width: 4),
                   const Text(
                     'Weekly Insights',

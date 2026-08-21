@@ -8,6 +8,7 @@ import '../../../services/health_connect_settings_info.dart';
 import '../../../services/health_tracking_service.dart';
 import '../../../services/metrics_sync_service.dart';
 import '../../../theme/account_hub_theme.dart';
+import '../../../widgets/common/cotrainr_back_button.dart';
 import '../../../widgets/profile/account_hub_widgets.dart';
 
 class HealthDevicesPage extends ConsumerStatefulWidget {
@@ -158,10 +159,9 @@ class _HealthDevicesPageState extends ConsumerState<HealthDevicesPage>
 
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
+      appBar: CotrainrAppBar(
+        title: title,
         backgroundColor: bg,
-        elevation: 0,
-        title: Text(title),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

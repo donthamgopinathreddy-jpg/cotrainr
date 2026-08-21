@@ -30,7 +30,7 @@ class MetricProgressRing extends StatefulWidget {
 
 class _MetricProgressRingState extends State<MetricProgressRing>
     with SingleTickerProviderStateMixin {
-  static const _duration = Duration(milliseconds: 800);
+  static const _duration = Duration(milliseconds: 400);
   static const _overlapCap = 0.25;
   static const _minJunctionCover = 0.045;
   static const _basePhasePortion = 0.58;
@@ -45,22 +45,29 @@ class _MetricProgressRingState extends State<MetricProgressRing>
   double get _effectiveStroke =>
       (widget.strokeWidth * 0.78).clamp(8.0, 10.0);
 
+  static double _sanitize(double value) {
+    if (!value.isFinite) return 0;
+    return value.clamp(0, 400);
+  }
+
   @override
   void initState() {
     super.initState();
-    _toPercent = widget.progressPercent;
+    _toPercent = _sanitize(widget.progressPercent);
+    _fromPercent = _toPercent;
     _controller = AnimationController(vsync: this, duration: _duration);
     _curve = CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic);
-    _controller.forward();
+    _controller.value = 1;
   }
 
   @override
   void didUpdateWidget(covariant MetricProgressRing oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.progressPercent != widget.progressPercent) {
+    final next = _sanitize(widget.progressPercent);
+    if (_sanitize(oldWidget.progressPercent) != next) {
       _fromPercent =
           _fromPercent + (_toPercent - _fromPercent) * _controller.value;
-      _toPercent = widget.progressPercent;
+      _toPercent = next;
       _controller.forward(from: 0);
     }
   }

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 
 class JoinMeetingPage extends StatefulWidget {
   const JoinMeetingPage({super.key});
@@ -101,12 +102,9 @@ class _JoinMeetingPageState extends State<JoinMeetingPage>
       backgroundColor: isDark
           ? const Color(0xFF1A0F2E) // Purple-black mix background (not too dark)
           : const Color(0xFFF0EBFF), // More vibrant light purple background
-      appBar: AppBar(
-        title: const Text(
-          'Join Meeting',
-          style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-        ),
-        elevation: 0,
+      appBar: CotrainrAppBar(
+        title: 'Join Meeting',
+        fallbackRoute: '/video',
         backgroundColor: Colors.transparent,
       ),
       body: Form(

@@ -10,6 +10,7 @@ import '../../core/auth/auth_error_mapper.dart';
 import '../../theme/account_hub_theme.dart';
 import '../../theme/auth_theme.dart';
 import '../../widgets/auth/auth_screen_background.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/auth/auth_ui.dart';
 import '../../widgets/auth/forgot_password_sheet.dart';
 
@@ -203,15 +204,9 @@ class _LoginPageState extends State<LoginPage>
               children: [
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: IconButton(
-                    icon: Icon(
-                      Icons.arrow_back_ios_new_rounded,
-                      size: 20,
-                      color: iconColor,
-                    ),
-                    onPressed: () => context.canPop()
-                        ? context.pop()
-                        : context.go('/welcome'),
+                  child: CotrainrBackButton(
+                    fallbackRoute: '/welcome',
+                    color: iconColor,
                   ),
                 ),
                 Expanded(

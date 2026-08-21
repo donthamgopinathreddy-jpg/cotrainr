@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../../theme/app_colors.dart';
 import '../common/animated_number.dart';
+import '../common/shimmer_skeleton.dart';
 import 'home_premium_theme.dart';
 import 'metric_center_widget.dart';
 
@@ -46,12 +47,14 @@ class UnifiedMetricsTileV3 extends StatefulWidget {
   final List<UnifiedMetricViewModel> metrics;
   final ValueChanged<int> onMetricTap;
   final VoidCallback? onAddWater;
+  final bool goalsLoading;
 
   const UnifiedMetricsTileV3({
     super.key,
     required this.metrics,
     required this.onMetricTap,
     this.onAddWater,
+    this.goalsLoading = false,
   }) : assert(metrics.length == 4);
 
   @override
@@ -166,6 +169,10 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.goalsLoading) {
+      return const ShimmerBox(height: 248, radius: 28);
+    }
+
     final cs = Theme.of(context).colorScheme;
     final isLight = Theme.of(context).brightness == Brightness.light;
 
@@ -306,70 +313,102 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
                                             8,
                                         top: 4,
                                         bottom: 4,
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          children: [
-                                            Text(
-                                              item.label,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                fontSize:
-                                                    isSelected ? 13 : 12,
-                                                fontWeight: FontWeight.w700,
-                                                letterSpacing: 0.6,
-                                                color: HomePremiumTheme
-                                                    .secondaryText(isLight),
-                                              ),
-                                            ),
-                                            SizedBox(
-                                                height: isSelected ? 4 : 3),
-                                            AnimatedNumber(
-                                              value: display.numericValue,
-                                              format: (v) =>
-                                                  _formatMainValue(
-                                                      logical, v),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                fontSize:
-                                                    isSelected ? 26 : 22,
-                                                fontWeight: FontWeight.w800,
-                                                height: 1.0,
-                                                letterSpacing: -0.5,
-                                                color: HomePremiumTheme
-                                                    .primaryText(isLight),
-                                              ),
-                                            ),
-                                            SizedBox(
-                                                height: isSelected ? 3 : 2),
-                                            Text(
-                                              display.subValue,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                fontSize:
-                                                    isSelected ? 12 : 11,
-                                                fontWeight: FontWeight.w600,
-                                                color: HomePremiumTheme
-                                                    .secondaryText(isLight),
-                                              ),
-                                            ),
-                                            if (display.sourceNote != null &&
-                                                display.sourceNote!.isNotEmpty) ...[
-                                              SizedBox(
-                                                  height: isSelected ? 2 : 1),
+                                        child: FittedBox(
+                                          fit: BoxFit.scaleDown,
+                                          alignment: Alignment.centerLeft,
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            mainAxisSize: MainAxisSize.min,
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
                                               Text(
-                                                display.sourceNote!,
+                                                item.label,
                                                 maxLines: 1,
                                                 overflow: TextOverflow.ellipsis,
                                                 style: TextStyle(
                                                   fontSize:
-                                                      isSelected ? 10 : 9,
-                                                  fontWeight: FontWeight.w500,
+                                                      isSelected ? 13 : 12,
+                                                  fontWeight: FontWeight.w700,
+                                                  letterSpacing: 0.6,
+                                                  color: HomePremiumTheme
+                                                      .secondaryText(isLight),
+                                                ),
+                                              ),
+                                              SizedBox(
+                                                  height: isSelected ? 4 : 3),
+                                              display.mainValue == '—' ||
+                                                      display.mainValue == '--'
+                                                  ? Text(
+                                                      display.mainValue,
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      style: TextStyle(
+                                                        fontSize: isSelected
+                                                            ? 26
+                                                            : 22,
+                                                        fontWeight:
+                                                            FontWeight.w800,
+                                                        height: 1.0,
+                                                        letterSpacing: -0.5,
+                                                        color: HomePremiumTheme
+                                                            .primaryText(
+                                                                isLight),
+                                                      ),
+                                                    )
+                                                  : AnimatedNumber(
+                                                      value:
+                                                          display.numericValue,
+                                                      format: (v) =>
+                                                          _formatMainValue(
+                                                              logical, v),
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      style: TextStyle(
+                                                        fontSize: isSelected
+                                                            ? 26
+                                                            : 22,
+                                                        fontWeight:
+                                                            FontWeight.w800,
+                                                        height: 1.0,
+                                                        letterSpacing: -0.5,
+                                                        color: HomePremiumTheme
+                                                            .primaryText(
+                                                                isLight),
+                                                      ),
+                                                    ),
+                                              SizedBox(
+                                                  height: isSelected ? 3 : 2),
+                                              Text(
+                                                display.subValue,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  fontSize:
+                                                      isSelected ? 12 : 11,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: HomePremiumTheme
+                                                      .secondaryText(isLight),
+                                                ),
+                                              ),
+                                              if (display.sourceNote != null &&
+                                                  display
+                                                      .sourceNote!.isNotEmpty) ...[
+                                                SizedBox(
+                                                    height:
+                                                        isSelected ? 2 : 1),
+                                                Text(
+                                                  display.sourceNote!,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    fontSize:
+                                                        isSelected ? 10 : 9,
+                                                    fontWeight: FontWeight.w500,
                                                   color: HomePremiumTheme
                                                       .secondaryText(isLight)
                                                       .withValues(alpha: 0.75),
@@ -377,6 +416,7 @@ class _UnifiedMetricsTileV3State extends State<UnifiedMetricsTileV3> {
                                               ),
                                             ],
                                           ],
+                                        ),
                                         ),
                                       ),
                                       Positioned(

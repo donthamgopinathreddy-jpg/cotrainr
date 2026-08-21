@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../theme/account_hub_theme.dart';
+import '../../../widgets/common/cotrainr_back_button.dart';
 import '../../../widgets/profile/account_hub_widgets.dart';
 
 class ChangePasswordPage extends StatefulWidget {
@@ -54,10 +55,9 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
+      appBar: CotrainrAppBar(
+        title: 'Change Password',
         backgroundColor: bg,
-        elevation: 0,
-        title: const Text('Change Password'),
         actions: [
           TextButton(
             onPressed: _loading ? null : _save,

@@ -17,6 +17,7 @@ class ProviderProfessionalProfile {
   final int totalReviews;
   final String? fullName;
   final String? avatarUrl;
+  final String? coverUrl;
   final String? primaryLocationLabel;
   final double? coverageKm;
 
@@ -37,6 +38,7 @@ class ProviderProfessionalProfile {
     this.totalReviews = 0,
     this.fullName,
     this.avatarUrl,
+    this.coverUrl,
     this.primaryLocationLabel,
     this.coverageKm,
   });
@@ -100,6 +102,7 @@ class ProviderProfessionalProfile {
       totalReviews: totalReviews,
       fullName: fullName,
       avatarUrl: avatarUrl,
+      coverUrl: coverUrl,
       primaryLocationLabel: primaryLocationLabel ?? this.primaryLocationLabel,
       coverageKm: coverageKm ?? this.coverageKm,
     );

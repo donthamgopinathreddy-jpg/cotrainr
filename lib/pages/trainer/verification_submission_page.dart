@@ -11,6 +11,7 @@ import '../../providers/provider_professional_provider.dart';
 import '../../repositories/verification_repository.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
+import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/provider/provider_professional_form_fields.dart';
 import '../../widgets/provider/provider_professional_form_validation.dart';
 
@@ -345,12 +346,9 @@ class _VerificationSubmissionPageState
     if (_isLoading) {
       return Scaffold(
         backgroundColor: colorScheme.surface,
-        appBar: AppBar(
-          title: Text(
-            _pageTitle,
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-          ),
-          elevation: 0,
+        appBar: CotrainrAppBar(
+          title: _pageTitle,
+          fallbackRoute: '/home',
           backgroundColor: Colors.transparent,
         ),
         body: const Center(child: CircularProgressIndicator()),
@@ -360,10 +358,10 @@ class _VerificationSubmissionPageState
     if (_loadError != null && !_hydrated) {
       return Scaffold(
         backgroundColor: colorScheme.surface,
-        appBar: AppBar(
-          title: Text(_pageTitle),
+        appBar: CotrainrAppBar(
+          title: _pageTitle,
+          fallbackRoute: '/home',
           backgroundColor: Colors.transparent,
-          elevation: 0,
         ),
         body: Center(
           child: Padding(
@@ -448,19 +446,15 @@ class _VerificationSubmissionPageState
         ),
         elevation: 0,
         backgroundColor: Colors.transparent,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded),
+        leading: CotrainrBackButton(
+          fallbackRoute: '/home',
           onPressed: () {
             HapticFeedback.lightImpact();
             if (_phase == 1) {
               setState(() => _phase = 0);
               return;
             }
-            if (context.canPop()) {
-              context.pop();
-            } else {
-              context.go('/home');
-            }
+            CotrainrBackButton.popOrFallback(context, fallbackRoute: '/home');
           },
         ),
       ),
@@ -754,12 +748,9 @@ class _VerificationSubmissionPageState
   }) {
     return Scaffold(
       backgroundColor: Theme.of(context).colorScheme.surface,
-      appBar: AppBar(
-        title: Text(
-          _pageTitle,
-          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-        ),
-        elevation: 0,
+      appBar: CotrainrAppBar(
+        title: _pageTitle,
+        fallbackRoute: '/home',
         backgroundColor: Colors.transparent,
       ),
       body: Center(

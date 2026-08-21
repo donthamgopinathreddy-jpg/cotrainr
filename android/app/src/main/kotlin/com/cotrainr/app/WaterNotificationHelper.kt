@@ -33,7 +33,7 @@ object WaterNotificationHelper {
     private const val PREFS_NAME = "cotrainr_hydration"
     private const val KEY_CONSUMED_ML = "consumed_ml"
     private const val KEY_GOAL_ML = "goal_ml"
-    private const val KEY_UPDATED_AT = "updated_at_ms"
+    private const val KEY_INTERVAL_MINUTES = "interval_minutes"
 
     // Matches DesignTokens.accentOrange
     private val ACCENT_ORANGE = Color.parseColor("#FF8A00")
@@ -118,6 +118,7 @@ object WaterNotificationHelper {
 
     fun scheduleRepeating(context: Context, intervalMinutes: Int) {
         cancelSchedule(context)
+        persistInterval(context, intervalMinutes)
         if (intervalMinutes <= 0) return
 
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
@@ -152,6 +153,22 @@ object WaterNotificationHelper {
         )
         alarmManager.cancel(pendingIntent)
         cancel(context, REMINDER_NOTIFICATION_ID)
+        persistInterval(context, 0)
+    }
+
+    fun rescheduleAfterBoot(context: Context) {
+        val minutes = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getInt(KEY_INTERVAL_MINUTES, 0)
+        if (minutes > 0) {
+            scheduleRepeating(context, minutes)
+        }
+    }
+
+    private fun persistInterval(context: Context, intervalMinutes: Int) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putInt(KEY_INTERVAL_MINUTES, intervalMinutes.coerceAtLeast(0))
+            .apply()
     }
 
     private fun buildHydrationNotification(
@@ -176,7 +193,7 @@ object WaterNotificationHelper {
                 val remaining = (snapshot.goalMl - snapshot.consumedMl).coerceAtLeast(0)
                 "You have ${formatMl(remaining)} left to reach today’s goal. Log a quick drink below."
             }
-            else -> "Stay on track with your daily goal. Log a quick drink below."
+            else -> "Log your hydration in Cotrainr."
         }
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
