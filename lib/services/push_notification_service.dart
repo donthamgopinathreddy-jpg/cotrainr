@@ -12,6 +12,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../router/app_router.dart';
 import '../video_sessions/video_session_notification_logic.dart';
 import 'local_notification_router.dart';
+import 'notification_session_cleanup.dart';
 import 'video_session_notification_actions.dart';
 
 /// Top-level isolate entry for FCM. Must stay a top-level function.
@@ -99,6 +100,7 @@ Future<void> _showActionableVideoLocalNotification(
 class PushNotificationService {
   static final PushNotificationService _instance =
       PushNotificationService._internal();
+  static PushNotificationService get instance => _instance;
   factory PushNotificationService() => _instance;
   PushNotificationService._internal();
 
@@ -173,13 +175,15 @@ class PushNotificationService {
       FirebaseMessaging.onMessage.listen(_showForegroundNotification);
       FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationTap);
 
-      _authSub ??= Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      _authSub ??=
+          Supabase.instance.client.auth.onAuthStateChange.listen((data) {
         if (data.session != null) {
-          unawaited(_registerTokenIfPermitted());
+          unawaited(NotificationSessionCleanup.onAccountSignedIn());
         }
       });
 
       unawaited(_consumeLaunchIntents());
+      unawaited(_processInitialMessage());
       unawaited(_registerTokenIfPermitted());
       debugPrint('[BOOT] push init complete');
     } catch (e, st) {
@@ -199,6 +203,23 @@ class PushNotificationService {
     }
   }
 
+  /// Cold-start FCM tap — independent of permission/token registration.
+  Future<void> _processInitialMessage() async {
+    try {
+      final messaging = _messaging;
+      if (messaging == null) return;
+      final initial = await messaging.getInitialMessage().timeout(
+            const Duration(seconds: 3),
+            onTimeout: () => null,
+          );
+      if (initial != null) {
+        _handleNotificationTap(initial);
+      }
+    } catch (e) {
+      debugPrint('[BOOT] initial message handling failed: $e');
+    }
+  }
+
   Future<void> _registerTokenIfPermitted() async {
     try {
       final messaging = _messaging;
@@ -208,14 +229,11 @@ class PushNotificationService {
           );
       if (settings.authorizationStatus == AuthorizationStatus.denied ||
           settings.authorizationStatus == AuthorizationStatus.notDetermined) {
-        debugPrint('[BOOT] skip FCM token; permission=${settings.authorizationStatus}');
+        debugPrint(
+          '[BOOT] skip FCM token; permission=${settings.authorizationStatus}',
+        );
         return;
       }
-      final initial = await messaging.getInitialMessage().timeout(
-            const Duration(seconds: 3),
-            onTimeout: () => null,
-          );
-      if (initial != null) _handleNotificationTap(initial);
       final token = await messaging.getToken().timeout(const Duration(seconds: 8));
       if (token != null) await saveDeviceToken(token);
     } catch (e) {
@@ -305,8 +323,7 @@ class PushNotificationService {
       debugPrint('Error saving device token: $e');
       if (e is PostgrestException && e.code == 'PGRST205') {
         debugPrint(
-          '[BOOT] device_tokens table missing — apply migration '
-          '20260821_video_session_names_and_push.sql',
+          '[BOOT] device_tokens table missing — apply migrations',
         );
       }
     }

@@ -47,6 +47,7 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
   late final Animation<Offset> _welcomeSlide;
   bool _showWelcomeBubble = false;
   RealtimeChannel? _badgeChannel;
+  StreamSubscription<AuthState>? _authSub;
 
   /// 0 Home, 1 Discover/My Clients, 2 Messages, 3 Meals, 4 Profile
   List<NavigationItem> get _navigationItems {
@@ -161,6 +162,15 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
       if (mounted) _subscribeBadgeRealtime();
       unawaited(_applyPendingVideoSessionAction());
     });
+    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      if (!mounted) return;
+      if (data.session == null) {
+        unawaited(VideoSessionPendingNavigation.clear());
+      }
+      ref.invalidate(unreadMessagesCountProvider);
+      ref.invalidate(unreadNotificationsCountProvider);
+      ref.invalidate(unreadVideoSessionNotificationsProvider);
+    });
     unawaited(_guardIncompleteOnboarding());
   }
 
@@ -249,6 +259,7 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _authSub?.cancel();
     _badgeChannel?.unsubscribe();
     _welcomeController.dispose();
     super.dispose();

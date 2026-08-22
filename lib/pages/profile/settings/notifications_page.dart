@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../../services/fitness_notification_preferences_service.dart';
 import '../../../services/os_notification_permission_status.dart';
+import '../../../services/push_notification_service.dart';
 import '../../../services/video_session_notification_prefs.dart';
 import '../../../theme/account_hub_theme.dart';
 import '../../../theme/design_tokens.dart';
@@ -80,9 +81,15 @@ class _NotificationsPageState extends State<NotificationsPage>
   }
 
   Future<void> _refreshOsPermission() async {
+    final previous = _osLabel;
     final osLabel = await _osPermission.readLabel();
     if (!mounted) return;
     setState(() => _osLabel = osLabel);
+    final nowGranted = osLabel == OsNotificationAccessLabel.allowed;
+    final wasNotGranted = previous != OsNotificationAccessLabel.allowed;
+    if (nowGranted && wasNotGranted) {
+      await PushNotificationService.instance.registerToken();
+    }
   }
 
   Future<void> _persist(FitnessNotificationPreferences next) async {
@@ -180,7 +187,7 @@ class _NotificationsPageState extends State<NotificationsPage>
                   animationDelayMs: 40,
                   child: HubToggleRow(
                     title: 'All notifications',
-                    subtitle: 'Master switch for notifications',
+                    subtitle: 'Master switch for push notifications from Cotrainr',
                     value: _prefs.all,
                     enabled: !_saving,
                     onChanged: (v) => _persist(_prefs.copyWith(all: v)),

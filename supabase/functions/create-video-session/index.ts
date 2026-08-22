@@ -11,7 +11,7 @@ import {
   jsonError,
   jsonResponse,
 } from "../_shared/google_meet.ts"
-import { deliverNotificationRows } from "../_shared/push_deliver.ts"
+// Push: notifications INSERT → webhook send-push-notification → FCM (single authority).
 
 function isHttpsUrl(value: string): boolean {
   try {
@@ -385,15 +385,8 @@ async function notifySessionCreated(
     event: "notification_event_inserted",
     session_id: sessionId,
     count: rows.length,
+    push_via: "notifications_insert_webhook",
   }))
-  try {
-    await deliverNotificationRows(rows)
-  } catch (e) {
-    console.error(JSON.stringify({
-      event: "fcm_send_attempted",
-      errorCode: String(e).slice(0, 200),
-    }))
-  }
 }
 
 async function upsertParticipants(

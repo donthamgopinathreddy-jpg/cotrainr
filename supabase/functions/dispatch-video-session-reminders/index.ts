@@ -3,7 +3,7 @@
 // @ts-nocheck
 
 import { createClient } from "jsr:@supabase/supabase-js@2"
-import { deliverNotificationRows } from "../_shared/push_deliver.ts"
+// Sole reminder poller. Inserts notifications; FCM via notifications INSERT webhook only.
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -46,9 +46,9 @@ Deno.serve(async (req) => {
     const rows = Array.isArray(data) ? data : []
     console.log(JSON.stringify({
       event: "reminder_dispatch",
-      sent: rows.length,
+      notifications_inserted: rows.length,
+      push_via: "notifications_insert_webhook",
     }))
-    await deliverNotificationRows(rows)
     return new Response(JSON.stringify({ sent: rows.length }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },

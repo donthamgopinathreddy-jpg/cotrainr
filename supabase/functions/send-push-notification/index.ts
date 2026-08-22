@@ -1,5 +1,6 @@
 // Sends FCM push when a notification is inserted.
-// Triggered by Database Webhook on notifications INSERT, or called internally.
+// AUTHORITATIVE PATH: notifications INSERT → this webhook → deliverNotificationPush → FCM.
+// Do NOT call deliverNotificationPush/deliverNotificationRows from other Edge Functions.
 // Requires secrets: FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY
 
 import { deliverNotificationPush } from "../_shared/push_deliver.ts"

@@ -14,6 +14,7 @@ import 'services/push_notification_service.dart';
 import 'services/water_notification_handler.dart';
 import 'services/water_notification_platform.dart';
 import 'services/water_reminder_service.dart';
+import 'widgets/app_update/app_version_gate.dart';
 import 'widgets/app_link_handler.dart';
 import 'widgets/hydration/hydration_lifecycle_refresher.dart';
 import 'widgets/privacy/privacy_preferences_sync_initializer.dart';
@@ -103,42 +104,44 @@ class MyApp extends ConsumerWidget {
       child: PrivacyPreferencesSyncInitializer(
         child: QuestSyncInitializer(
           child: HydrationLifecycleRefresher(
-            child: MaterialApp.router(
-              title: 'Cotrainr',
-              debugShowCheckedModeBanner: false,
-              theme: AppTheme.lightTheme,
-              darkTheme: AppTheme.darkTheme,
-              themeMode: themeMode,
-              routerConfig: appRouter,
-              builder: (context, child) {
-                final brightness = Theme.of(context).brightness;
-                final isDark = brightness == Brightness.dark;
-                final overlay = SystemUiOverlayStyle(
-                  statusBarColor: Colors.transparent,
-                  statusBarIconBrightness:
-                      isDark ? Brightness.light : Brightness.dark,
-                  statusBarBrightness:
-                      isDark ? Brightness.dark : Brightness.light,
-                  systemNavigationBarColor: isDark
-                      ? const Color(0xFF000000)
-                      : const Color(0xFFFFFFFF),
-                  systemNavigationBarIconBrightness:
-                      isDark ? Brightness.light : Brightness.dark,
-                  systemNavigationBarDividerColor: Colors.transparent,
-                );
-                return AnnotatedRegion<SystemUiOverlayStyle>(
-                  value: overlay,
-                  child: MediaQuery(
-                    data: MediaQuery.of(context).copyWith(
-                      textScaler: MediaQuery.of(context).textScaler.clamp(
-                        minScaleFactor: 0.8,
-                        maxScaleFactor: 1.2,
+            child: AppVersionGate(
+              child: MaterialApp.router(
+                title: 'Cotrainr',
+                debugShowCheckedModeBanner: false,
+                theme: AppTheme.lightTheme,
+                darkTheme: AppTheme.darkTheme,
+                themeMode: themeMode,
+                routerConfig: appRouter,
+                builder: (context, child) {
+                  final brightness = Theme.of(context).brightness;
+                  final isDark = brightness == Brightness.dark;
+                  final overlay = SystemUiOverlayStyle(
+                    statusBarColor: Colors.transparent,
+                    statusBarIconBrightness:
+                        isDark ? Brightness.light : Brightness.dark,
+                    statusBarBrightness:
+                        isDark ? Brightness.dark : Brightness.light,
+                    systemNavigationBarColor: isDark
+                        ? const Color(0xFF000000)
+                        : const Color(0xFFFFFFFF),
+                    systemNavigationBarIconBrightness:
+                        isDark ? Brightness.light : Brightness.dark,
+                    systemNavigationBarDividerColor: Colors.transparent,
+                  );
+                  return AnnotatedRegion<SystemUiOverlayStyle>(
+                    value: overlay,
+                    child: MediaQuery(
+                      data: MediaQuery.of(context).copyWith(
+                        textScaler: MediaQuery.of(context).textScaler.clamp(
+                          minScaleFactor: 0.8,
+                          maxScaleFactor: 1.2,
+                        ),
                       ),
+                      child: child ?? const SizedBox.shrink(),
                     ),
-                    child: child ?? const SizedBox.shrink(),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
           ),
         ),

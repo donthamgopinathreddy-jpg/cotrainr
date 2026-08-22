@@ -101,7 +101,7 @@ async function sendFcmMessage(
   title: string,
   body: string,
   data: Record<string, string> = {},
-): Promise<{ ok: boolean; status: number }> {
+): Promise<{ ok: boolean; status: number; permanentTokenFailure: boolean }> {
   const actionable = isActionableVideoReminder(data.type || "")
   // Data-only for JOIN/REJECT reminders so Android does not auto-render a
   // button-less system notification that would duplicate our local one.
@@ -142,15 +142,23 @@ async function sendFcmMessage(
   )
   if (!res.ok) {
     const err = await res.text()
+    const errLower = err.toLowerCase()
+    const permanentTokenFailure =
+      res.status === 404 ||
+      errLower.includes("unregistered") ||
+      errLower.includes("registration token") ||
+      (res.status === 400 && errLower.includes("invalid_argument"))
     console.error(
       JSON.stringify({
         event: "fcm_failure",
         status: res.status,
+        permanent_token_failure: permanentTokenFailure,
         body: err.slice(0, 300),
       }),
     )
+    return { ok: false, status: res.status, permanentTokenFailure }
   }
-  return { ok: res.ok, status: res.status }
+  return { ok: res.ok, status: res.status, permanentTokenFailure: false }
 }
 
 export async function deliverNotificationPush(
@@ -285,7 +293,27 @@ export async function deliverNotificationPush(
       record.body,
       dataPayload,
     )
-    if (result.ok) sent++
+    if (result.ok) {
+      sent++
+    } else if (result.permanentTokenFailure) {
+      const { error: deleteErr } = await supabase
+        .from("device_tokens")
+        .delete()
+        .eq("user_id", record.user_id)
+        .eq("token", row.token)
+      if (deleteErr) {
+        console.error(JSON.stringify({
+          event: "device_token_delete_failed",
+          code: deleteErr.code,
+        }))
+      } else {
+        console.log(JSON.stringify({
+          event: "device_token_removed",
+          reason: "fcm_permanent_failure",
+          user_id: record.user_id,
+        }))
+      }
+    }
   }
 
   console.log(JSON.stringify({
@@ -298,6 +326,7 @@ export async function deliverNotificationPush(
   return { attempted: true, tokenCount, sent }
 }
 
+// Deprecated for Edge Function callers — use notifications INSERT webhook instead.
 export async function deliverNotificationRows(
   rows: Array<{
     notification_id?: string

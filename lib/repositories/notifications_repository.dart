@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import '../config/feature_flags.dart';
@@ -35,7 +36,7 @@ class NotificationsRepository {
 
       return (response as List).cast<Map<String, dynamic>>();
     } catch (e) {
-      print('Error fetching notifications: $e');
+      if (kDebugMode) debugPrint('NotificationsRepository: fetch failed');
       return [];
     }
   }
@@ -53,7 +54,7 @@ class NotificationsRepository {
           .eq('user_id', _currentUserId!)
           .eq('read', false);
     } catch (e) {
-      print('Error marking all notifications as read: $e');
+      if (kDebugMode) debugPrint('NotificationsRepository: mark all read failed');
     }
   }
 
@@ -71,7 +72,7 @@ class NotificationsRepository {
           .eq('id', notificationId)
           .eq('user_id', _currentUserId!);
     } catch (e) {
-      print('Error marking notification as read: $e');
+      if (kDebugMode) debugPrint('NotificationsRepository: mark read failed');
     }
   }
 
@@ -86,7 +87,7 @@ class NotificationsRepository {
           .eq('id', notificationId)
           .eq('user_id', _currentUserId!);
     } catch (e) {
-      print('Error deleting notification: $e');
+      if (kDebugMode) debugPrint('NotificationsRepository: delete failed');
     }
   }
 

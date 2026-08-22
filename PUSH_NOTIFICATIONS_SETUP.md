@@ -1,77 +1,55 @@
 # Push Notifications Setup
 
-This guide configures Firebase Cloud Messaging (FCM) for device push notifications.
-
 **App package:** `com.cotrainr.app`
 
-## Quick checklist (you must do these)
+## Push delivery authority (encoded in DB + code)
 
-1. **Replace** `android/app/google-services.json` with the file you downloaded from Firebase
-2. **Link Supabase** (if not done): `supabase link`
-3. **Push migrations**: `supabase db push`
-4. **Set Firebase secrets** in Supabase Dashboard → Project Settings → Edge Functions
-5. **Deploy function**: `supabase functions deploy send-push-notification`
-6. **Create Database Webhook** in Supabase Dashboard → Database → Webhooks (table: `notifications`, event: Insert)
-
-## 1. Firebase Project
-
-1. Go to [Firebase Console](https://console.firebase.google.com/)
-2. Create a project or use an existing one
-3. Enable **Cloud Messaging** (Project Settings → Cloud Messaging)
-
-## 2. Android
-
-1. In Firebase Console, add an **Android app** with package name: `com.cotrainr.app`
-2. Download `google-services.json` and **replace** the file in `android/app/` (overwrite the placeholder)
-3. The Google Services plugin is already configured in `android/app/build.gradle.kts`
-
-## 3. iOS
-
-1. In Firebase Console, add an **iOS app** with bundle ID: `com.example.cotrainrFlutter` (or your actual bundle ID)
-2. Download `GoogleService-Info.plist` and add it to `ios/Runner/` in Xcode
-3. In Xcode: **Signing & Capabilities** → add **Push Notifications** and **Background Modes** (Remote notifications)
-
-## 4. Firebase Service Account (for Edge Function)
-
-1. Firebase Console → Project Settings → **Service accounts**
-2. Click **Generate new private key**
-3. Save the JSON file securely
-4. From the JSON, you need:
-   - `project_id` → `FIREBASE_PROJECT_ID`
-   - `client_email` → `FIREBASE_CLIENT_EMAIL`
-   - `private_key` → `FIREBASE_PRIVATE_KEY` (use as-is, including `\n`)
-
-## 5. Supabase Database
-
-```bash
-supabase db push
+```
+EVENT → notifications INSERT → webhook send-push-notification → deliverNotificationPush → FCM
 ```
 
-This creates the `device_tokens` table.
+- Edge Functions (`create-video-session`, `respond-video-session`, `dispatch-video-session-reminders`) **only INSERT** notification rows.
+- They **must not** call `deliverNotificationRows()` (removed in release pass).
+- Migration `20260824_notifications_release.sql` stores policy in `system_config`.
 
-## 6. Deploy Edge Function
+## Reminder dispatch authority
 
-```bash
-# Set secrets (replace with your values)
-supabase secrets set FIREBASE_PROJECT_ID=your-project-id
-supabase secrets set FIREBASE_CLIENT_EMAIL=your-service-account@project.iam.gserviceaccount.com
-supabase secrets set FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
-
-# Deploy
-supabase functions deploy send-push-notification
+```
+schedule_video_session_notification_jobs()  ← on session create/reschedule (SQL)
+dispatch_video_session_notification_jobs() ← polled ONLY by Edge Function every minute
 ```
 
-## 7. Database Webhook
+- **pg_cron** job `cotrainr-video-session-reminders` is **unscheduled** by migration.
+- Schedule Supabase cron HTTP → `dispatch-video-session-reminders` with `VIDEO_SESSION_CRON_SECRET`.
 
-1. Supabase Dashboard → **Database** → **Webhooks**
-2. **Create webhook**
-3. **HTTP Request** → Edge Function: `send-push-notification`, Method: POST
-4. **Add auth header** with service role key
-5. **Table**: `notifications`, **Events**: Insert
-6. Save
+## Quick checklist
 
-## 8. Test
+1. Replace `android/app/google-services.json` from Firebase
+2. `supabase db push` (includes `20260824_notifications_release.sql`)
+3. Set Firebase secrets on Edge Functions
+4. Deploy:
+   ```bash
+   supabase functions deploy send-push-notification
+   supabase functions deploy dispatch-video-session-reminders
+   supabase functions deploy create-video-session
+   supabase functions deploy respond-video-session
+   ```
+5. **Database Webhook**: table `notifications`, event **Insert** → `send-push-notification`
+6. **Scheduled function**: `dispatch-video-session-reminders` every 1 minute with `x-cron-secret` header
 
-1. Run the app and sign in
-2. Insert a row into `notifications` (Table Editor or SQL)
-3. You should receive a push notification on the device
+## App version config
+
+Table `app_version_config` + RPC `get_app_version_config()`.
+
+Update minimum/recommended versions via Supabase Dashboard (service role) — not from the client.
+
+## iOS (separate readiness)
+
+iOS push requires `GoogleService-Info.plist`, APNs, and foreground actionable handling.
+Not required for Android-only release. See §18 in notifications audit.
+
+## Test
+
+1. Sign in on device
+2. Insert a row into `notifications` for your user
+3. Receive exactly **one** push (not two)

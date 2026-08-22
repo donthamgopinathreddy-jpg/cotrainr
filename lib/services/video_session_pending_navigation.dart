@@ -42,6 +42,12 @@ class VideoSessionPendingNavigation {
     return null;
   }
 
+  static Future<void> clear() async {
+    StartupRouterBridge.setPendingDeepLinkRoute(null);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(prefsKey);
+  }
+
   static Future<String?> consume() async {
     final route = await peek();
     final memory = StartupRouterBridge.pendingDeepLinkRoute;

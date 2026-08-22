@@ -25,7 +25,7 @@ import 'settings/notifications_page.dart';
 import 'settings/privacy_security_page.dart';
 import 'settings/service_locations_page.dart';
 import '../../repositories/profile_repository.dart';
-import '../../services/water_reminder_service.dart';
+import '../../services/notification_session_cleanup.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({
@@ -104,9 +104,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Future<void> _handleLogout(BuildContext context) async {
     HapticFeedback.mediumImpact();
     try {
-      try {
-        await WaterReminderService.instance.cancelAll();
-      } catch (_) {}
+      await NotificationSessionCleanup.prepareForLogout();
       await Supabase.instance.client.auth.signOut();
       if (!mounted) return;
       context.go('/welcome');

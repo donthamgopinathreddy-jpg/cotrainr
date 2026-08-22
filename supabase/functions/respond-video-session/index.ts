@@ -2,7 +2,7 @@
 // @ts-nocheck
 
 import { createClient } from "jsr:@supabase/supabase-js@2"
-import { deliverNotificationRows } from "../_shared/push_deliver.ts"
+// Push: notifications INSERT → webhook send-push-notification → FCM (single authority).
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -80,14 +80,6 @@ Deno.serve(async (req) => {
   }
 
   const rows = Array.isArray(data) ? data : []
-  try {
-    await deliverNotificationRows(rows)
-  } catch (e) {
-    console.error(JSON.stringify({
-      event: "fcm_send_attempted",
-      errorCode: String(e).slice(0, 200),
-    }))
-  }
 
   const snackbarRole =
     rows.find((r) => r?.snackbar_role)?.snackbar_role ||
