@@ -184,6 +184,23 @@ export async function deliverNotificationPush(
   }
 
   const type = record.type || ""
+  if (
+    (type === "message" || type === "new_message") &&
+    profile?.notification_messages === false
+  ) {
+    console.log(JSON.stringify({
+      event: "fcm_skipped",
+      reason: "user_disabled_message_push",
+      notification_id: record.id,
+    }))
+    return {
+      attempted: false,
+      tokenCount: 0,
+      sent: 0,
+      skipped: "user_disabled_message_push",
+    }
+  }
+
   const remindersOff = profile?.notification_video_session_reminders === false
   const sessionsOff = profile?.notification_video_sessions === false
   if (

@@ -37,6 +37,7 @@ class ChatMessageReconciler {
     String? documentName,
     String? documentMime,
     int? documentSizeBytes,
+    DateTime? readAt,
     ChatUploadStatus uploadStatus = ChatUploadStatus.none,
     String? localId,
   }) {
@@ -55,6 +56,7 @@ class ChatMessageReconciler {
         documentName: documentName,
         documentMime: documentMime,
         documentSizeBytes: documentSizeBytes,
+        readAt: readAt,
         uploadStatus: uploadStatus,
       ),
     );
@@ -75,6 +77,7 @@ class ChatMessageReconciler {
     String? documentName,
     String? documentMime,
     int? documentSizeBytes,
+    DateTime? readAt,
   }) {
     if (messageId.isEmpty) return false;
     _canonicalIds.add(messageId);
@@ -82,6 +85,9 @@ class ChatMessageReconciler {
     messages.removeWhere((m) => m.localId == localId);
 
     if (_hasMessageId(messageId)) {
+      if (readAt != null) {
+        applyReadAt(messageId, readAt);
+      }
       return true;
     }
 
@@ -97,6 +103,7 @@ class ChatMessageReconciler {
         documentName: documentName,
         documentMime: documentMime,
         documentSizeBytes: documentSizeBytes,
+        readAt: readAt,
         uploadStatus: ChatUploadStatus.none,
       ),
     );
@@ -143,9 +150,13 @@ class ChatMessageReconciler {
     String? documentName,
     String? documentMime,
     int? documentSizeBytes,
+    DateTime? readAt,
   }) {
     if (messageId.isEmpty) return false;
     if (_canonicalIds.contains(messageId) || _hasMessageId(messageId)) {
+      if (readAt != null) {
+        applyReadAt(messageId, readAt);
+      }
       return false;
     }
     _canonicalIds.add(messageId);
@@ -161,8 +172,20 @@ class ChatMessageReconciler {
         documentName: documentName,
         documentMime: documentMime,
         documentSizeBytes: documentSizeBytes,
+        readAt: readAt,
       ),
     );
+    return true;
+  }
+
+  /// Apply `read_at` from a Realtime UPDATE (Seen indicator).
+  bool applyReadAt(String messageId, DateTime readAt) {
+    if (messageId.isEmpty) return false;
+    final index = messages.indexWhere((m) => m.messageId == messageId);
+    if (index < 0) return false;
+    final m = messages[index];
+    if (m.readAt != null) return false;
+    messages[index] = m.copyWith(readAt: readAt);
     return true;
   }
 
@@ -187,6 +210,7 @@ class ReconciledChatMessage {
   final String? documentName;
   final String? documentMime;
   final int? documentSizeBytes;
+  final DateTime? readAt;
   final ChatUploadStatus uploadStatus;
   final double uploadProgress;
 
@@ -205,9 +229,12 @@ class ReconciledChatMessage {
     this.documentName,
     this.documentMime,
     this.documentSizeBytes,
+    this.readAt,
     this.uploadStatus = ChatUploadStatus.none,
     this.uploadProgress = 0,
   });
+
+  bool get isSeen => readAt != null;
 
   bool get isDocument =>
       (documentUrl != null && documentUrl!.isNotEmpty) ||
@@ -234,6 +261,7 @@ class ReconciledChatMessage {
     String? documentName,
     String? documentMime,
     int? documentSizeBytes,
+    DateTime? readAt,
     ChatUploadStatus? uploadStatus,
     double? uploadProgress,
   }) {
@@ -252,6 +280,7 @@ class ReconciledChatMessage {
       documentName: documentName ?? this.documentName,
       documentMime: documentMime ?? this.documentMime,
       documentSizeBytes: documentSizeBytes ?? this.documentSizeBytes,
+      readAt: readAt ?? this.readAt,
       uploadStatus: uploadStatus ?? this.uploadStatus,
       uploadProgress: uploadProgress ?? this.uploadProgress,
     );

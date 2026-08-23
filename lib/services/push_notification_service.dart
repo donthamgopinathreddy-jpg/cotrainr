@@ -11,7 +11,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../router/app_router.dart';
 import '../video_sessions/video_session_notification_logic.dart';
+import 'active_conversation_tracker.dart';
 import 'local_notification_router.dart';
+import 'message_notification_actions.dart';
 import 'notification_session_cleanup.dart';
 import 'video_session_notification_actions.dart';
 
@@ -256,6 +258,41 @@ class PushNotificationService {
       await _showActionableVideoLocalNotification(_localNotifications, data);
       return;
     }
+
+    if (MessageNotificationActions.isMessageType(type)) {
+      final conversationId =
+          MessageNotificationActions.conversationIdFrom(data);
+      if (conversationId != null &&
+          ActiveConversationTracker.instance.isActive(conversationId)) {
+        return;
+      }
+      final notification = message.notification;
+      final rawTitle =
+          (notification?.title ?? data['title']?.toString() ?? '').trim();
+      final title = rawTitle.isNotEmpty ? rawTitle : 'New message';
+      final body = notification?.body ?? data['body']?.toString() ?? '';
+      final payload = MessageNotificationActions.encodePayload(
+        conversationId: conversationId ?? '',
+        type: type,
+      );
+      await _localNotifications.show(
+        message.hashCode,
+        title,
+        body,
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            _channelId,
+            'Cotrainr Notifications',
+            channelDescription: 'Push notifications from Cotrainr',
+            importance: Importance.high,
+            priority: Priority.high,
+          ),
+        ),
+        payload: payload,
+      );
+      return;
+    }
+
     final notification = message.notification;
     if (notification == null) return;
     final isVideo = type.startsWith('video_session_');
@@ -288,7 +325,13 @@ class PushNotificationService {
   }
 
   void _handleNotificationTap(RemoteMessage message) {
-    VideoSessionNotificationActions.routeFromPushData(message.data);
+    final data = message.data;
+    final type = (data['type'] ?? data['notification_type'] ?? '').toString();
+    if (MessageNotificationActions.isMessageType(type)) {
+      MessageNotificationActions.routeFromPushData(data);
+      return;
+    }
+    VideoSessionNotificationActions.routeFromPushData(data);
   }
 
   Future<void> registerToken() async {

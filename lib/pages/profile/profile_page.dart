@@ -367,8 +367,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                             ),
                           ),
                         _ProfileActionRow(
-                          label: 'Cotrainr Pass',
-                          subtitle: 'Member ID',
+                          label: 'Member Pass',
+                          subtitle: 'ID & plan',
                           icon: Icons.badge_outlined,
                           iconColor: DesignTokens.accentOrange,
                           delayMs: 130,

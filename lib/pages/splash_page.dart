@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../theme/branding_assets.dart';
 import '../theme/design_tokens.dart';
 import '../core/startup/startup_router_bridge.dart';
+import '../services/message_pending_navigation.dart';
 import '../services/video_session_pending_navigation.dart';
 import '../widgets/branding/cotrainr_logo.dart';
 import '../widgets/branding/splash_light_trails.dart';
@@ -158,16 +159,24 @@ class _CotrainrSplashScreenState extends State<CotrainrSplashScreen>
       final session = Supabase.instance.client.auth.currentSession;
       final pending = StartupRouterBridge.pendingDeepLinkRoute;
       final videoAction = await VideoSessionPendingNavigation.peek();
+      final messageAction = await MessagePendingNavigation.peek();
       // Password recovery must never be treated as a normal signed-in continue.
       if (pending == '/auth/reset-password') {
         next = '/auth/reset-password';
       } else if (videoAction != null && session != null) {
         await VideoSessionPendingNavigation.consume();
         next = videoAction;
+      } else if (messageAction != null && session != null) {
+        await MessagePendingNavigation.consume();
+        next = messageAction;
       } else if (pending != null &&
           pending.startsWith('/video') &&
           session != null) {
         // Google Meet OAuth return (cold start) → Video Sessions, not /auth/continue.
+        next = pending;
+      } else if (pending != null &&
+          MessagePendingNavigation.isMessageChatRoute(pending) &&
+          session != null) {
         next = pending;
       } else if (session != null) {
         next = '/auth/continue';

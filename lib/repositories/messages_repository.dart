@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/messaging_policy_service.dart';
 
@@ -24,7 +25,7 @@ class MessagesRepository {
       if (!passesMvpConversationFilter(row)) return null;
       return Map<String, dynamic>.from(row);
     } catch (e) {
-      print('Error fetchConversationById: $e');
+      if (kDebugMode) debugPrint('Error fetchConversationById: $e');
       return null;
     }
   }
@@ -61,7 +62,7 @@ class MessagesRepository {
 
       return totalUnread;
     } catch (e) {
-      print('Error fetching unread messages count: $e');
+      if (kDebugMode) debugPrint('Error fetching unread messages count: $e');
       return 0;
     }
   }
@@ -129,8 +130,8 @@ class MessagesRepository {
 
       return result;
     } catch (e) {
-      print('Error fetching conversations: $e');
-      return [];
+      if (kDebugMode) debugPrint('Error fetching conversations: $e');
+      rethrow;
     }
   }
 
@@ -150,7 +151,7 @@ class MessagesRepository {
 
       return (response as List).cast<Map<String, dynamic>>();
     } catch (e) {
-      print('Error fetching messages: $e');
+      if (kDebugMode) debugPrint('Error fetching messages: $e');
       return [];
     }
   }
@@ -175,7 +176,9 @@ class MessagesRepository {
         conversation: conv,
       );
       if (!allowed) {
-        print('sendMessage blocked by MessagingPolicyService');
+        if (kDebugMode) {
+          debugPrint('sendMessage blocked by MessagingPolicyService');
+        }
         return null;
       }
 
@@ -238,46 +241,66 @@ class MessagesRepository {
               'media_size_bytes': mediaSizeBytes,
             };
           } catch (e2) {
-            print('Error sending document fallback: $e2');
+            if (kDebugMode) debugPrint('Error sending document fallback: $e2');
             rethrow;
           }
         }
         rethrow;
       }
     } catch (e) {
-      print('Error sending message: $e');
+      if (kDebugMode) debugPrint('Error sending message: $e');
       // Attachments need the real error in the UI; text keeps soft-fail.
       if (mediaUrl != null) rethrow;
       return null;
     }
   }
 
-  /// Mark messages from the other participant as read (`read_at`).
-  /// Returns how many rows were updated (0 if none / blocked by RLS).
+  /// Mark messages from the other participant as read via RPC.
+  /// Returns how many rows were updated (0 if none / RPC missing).
   Future<int> markMessagesAsRead(String conversationId) async {
     if (_currentUserId == null) return 0;
 
     try {
-      final conv = await fetchConversationById(conversationId);
-      if (conv == null) return 0;
-
-      final updated = await _supabase
-          .from('messages')
-          .update({'read_at': DateTime.now().toIso8601String()})
-          .eq('conversation_id', conversationId)
-          .isFilter('read_at', null)
-          .neq('sender_id', _currentUserId!)
-          .select('id');
-
-      return (updated as List).length;
+      final result = await _supabase.rpc(
+        'mark_conversation_messages_read',
+        params: {'p_conversation_id': conversationId},
+      );
+      if (result is int) return result;
+      if (result is num) return result.toInt();
+      return 0;
     } catch (e) {
-      print('Error marking messages as read: $e');
-      rethrow;
+      if (_isMissingRpc(e)) {
+        if (kDebugMode) {
+          debugPrint('markMessagesAsRead: RPC missing, returning 0');
+        }
+        return 0;
+      }
+      if (kDebugMode) debugPrint('Error marking messages as read: $e');
+      return 0;
     }
   }
 
+  bool _isMissingRpc(Object e) {
+    if (e is PostgrestException) {
+      final code = e.code ?? '';
+      if (code.startsWith('PGRST')) return true;
+      final msg = (e.message).toLowerCase();
+      if (msg.contains('could not find the function') ||
+          msg.contains('mark_conversation_messages_read')) {
+        return true;
+      }
+    }
+    final s = e.toString().toLowerCase();
+    return s.contains('pgrst') ||
+        s.contains('could not find the function') ||
+        s.contains('mark_conversation_messages_read');
+  }
+
   /// Subscribe to new messages in a conversation
-  RealtimeChannel subscribeToMessages(String conversationId, Function(Map<String, dynamic>) onNewMessage) {
+  RealtimeChannel subscribeToMessages(
+    String conversationId,
+    Function(Map<String, dynamic>) onNewMessage,
+  ) {
     final channel = _supabase
         .channel('messages:$conversationId')
         .onPostgresChanges(
@@ -291,6 +314,31 @@ class MessagesRepository {
           ),
           callback: (payload) {
             onNewMessage(payload.newRecord);
+          },
+        )
+        .subscribe();
+
+    return channel;
+  }
+
+  /// Subscribe to message UPDATE events (e.g. `read_at` for Seen indicators).
+  RealtimeChannel subscribeToMessageUpdates(
+    String conversationId,
+    Function(Map<String, dynamic>) onMessageUpdate,
+  ) {
+    final channel = _supabase
+        .channel('messages-updates:$conversationId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'messages',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'conversation_id',
+            value: conversationId,
+          ),
+          callback: (payload) {
+            onMessageUpdate(payload.newRecord);
           },
         )
         .subscribe();
@@ -316,71 +364,28 @@ class MessagesRepository {
   }
 
   /// Create or find a **provider–client** conversation only (MVP).
-  /// RLS: only the **client** can INSERT a new row (`auth.uid() = client_id`).
-  /// Providers must use an existing row (e.g. created when a lead is accepted via `update_lead_status_tx`).
+  /// Prefers RPC `create_or_find_provider_client_conversation`.
   Future<String?> createOrFindConversation(String otherUserId) async {
     if (_currentUserId == null) return null;
     if (_currentUserId == otherUserId) return null;
 
     try {
-      // Find existing client–provider (both orientations)
-      var existingConv = await _supabase
-          .from('conversations')
-          .select('id, provider_id, client_id, other_user_id')
-          .eq('client_id', _currentUserId!)
-          .eq('provider_id', otherUserId)
-          .maybeSingle();
-
-      if (existingConv != null && passesMvpConversationFilter(Map<String, dynamic>.from(existingConv))) {
-        return existingConv['id'] as String;
+      final result = await _supabase.rpc(
+        'create_or_find_provider_client_conversation',
+        params: {'p_other_user_id': otherUserId},
+      );
+      if (result is String && result.isNotEmpty) return result;
+      if (result != null) {
+        final asString = result.toString();
+        if (asString.isNotEmpty && asString != 'null') return asString;
       }
-
-      existingConv = await _supabase
-          .from('conversations')
-          .select('id, provider_id, client_id, other_user_id')
-          .eq('client_id', otherUserId)
-          .eq('provider_id', _currentUserId!)
-          .maybeSingle();
-
-      if (existingConv != null && passesMvpConversationFilter(Map<String, dynamic>.from(existingConv))) {
-        return existingConv['id'] as String;
-      }
-
-      final myRole = await MessagingPolicyService.fetchUserRole(_supabase, _currentUserId!);
-      final otherRole = await MessagingPolicyService.fetchUserRole(_supabase, otherUserId);
-
-      final iAmProvider = myRole == 'trainer' || myRole == 'nutritionist';
-      final otherIsProvider = otherRole == 'trainer' || otherRole == 'nutritionist';
-
-      // Provider cannot INSERT under current RLS — conversation should exist from lead acceptance.
-      if (iAmProvider && !otherIsProvider) {
-        print('createOrFindConversation: provider cannot create thread; expected existing lead conversation');
-        return null;
-      }
-
-      // Client messaging a provider: INSERT allowed if RLS passes.
-      if (!iAmProvider && otherIsProvider) {
-        final ok = await MessagingPolicyService.clientMayUseMessagingWithProvider(
-          supabase: _supabase,
-          clientId: _currentUserId!,
-          providerId: otherUserId,
-        );
-        if (!ok) {
-          print('createOrFindConversation: client lacks accepted lead or active subscription');
-          return null;
-        }
-        final newConv = await _supabase.from('conversations').insert({
-          'client_id': _currentUserId!,
-          'provider_id': otherUserId,
-        }).select('id').single();
-        return newConv['id'] as String;
-      }
-
-      print('createOrFindConversation: unsupported participant pairing');
       return null;
-    } catch (e, stack) {
-      print('Error creating or finding conversation: $e');
-      print('Stack trace: $stack');
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+          'createOrFindConversation: failed (need accepted lead): $e',
+        );
+      }
       return null;
     }
   }

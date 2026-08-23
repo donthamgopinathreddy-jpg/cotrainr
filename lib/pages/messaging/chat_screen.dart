@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,6 +14,7 @@ import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
 import '../../models/user_safety_models.dart';
 import '../../repositories/messages_repository.dart';
+import '../../services/active_conversation_tracker.dart';
 import '../../services/storage_service.dart';
 import '../../services/messaging_policy_service.dart';
 import '../../services/user_safety_service.dart';
@@ -62,8 +64,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   String? _previewDocumentMime;
   int? _previewDocumentSize;
   bool _attachmentBusy = false;
+  bool _textSending = false;
   bool _isLoading = true;
   RealtimeChannel? _messagesChannel;
+  RealtimeChannel? _messagesUpdateChannel;
   String? _otherUserId;
   bool _canSend = true;
   BlockState _blockState = BlockState.none;
@@ -93,6 +97,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             documentName: m.documentName,
             documentMime: m.documentMime,
             documentSizeBytes: m.documentSizeBytes,
+            readAt: m.readAt,
             uploadStatus: m.uploadStatus,
             uploadProgress: m.uploadProgress,
           ),
@@ -100,9 +105,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       );
   }
 
+  DateTime? _parseReadAt(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is DateTime) return raw;
+    if (raw is String && raw.isNotEmpty) return DateTime.tryParse(raw);
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
+    ActiveConversationTracker.instance.setActive(widget.conversationId);
     _bootstrap();
   }
 
@@ -250,6 +263,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             documentName: media.documentName,
             documentMime: media.documentMime,
             documentSizeBytes: media.documentSizeBytes,
+            readAt: _parseReadAt(msg['read_at']),
           ),
         );
       }
@@ -263,7 +277,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _scrollToBottom();
       }
     } catch (e) {
-      print('Error loading messages: $e');
+      if (kDebugMode) debugPrint('Error loading messages: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -303,6 +317,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           documentName: media.documentName,
           documentMime: media.documentMime,
           documentSizeBytes: media.documentSizeBytes,
+          readAt: _parseReadAt(newMessage['read_at']),
         );
         if (!added) return;
 
@@ -313,13 +328,25 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         }
       }();
     });
+
+    _messagesUpdateChannel = _messagesRepo.subscribeToMessageUpdates(
+      widget.conversationId,
+      (updated) {
+        final messageId = updated['id'] as String?;
+        final readAt = _parseReadAt(updated['read_at']);
+        if (messageId == null || messageId.isEmpty || readAt == null) return;
+        if (_reconciler.applyReadAt(messageId, readAt)) {
+          if (mounted) setState(_syncMessagesFromReconciler);
+        }
+      },
+    );
   }
 
   Future<void> _markMessagesAsRead() async {
     try {
       await _messagesRepo.markMessagesAsRead(widget.conversationId);
     } catch (e) {
-      print('ChatScreen markMessagesAsRead failed: $e');
+      if (kDebugMode) debugPrint('ChatScreen markMessagesAsRead failed: $e');
     } finally {
       if (mounted) {
         ref.invalidate(unreadMessagesCountProvider);
@@ -372,7 +399,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Sending is disabled. Connect with this provider first, or reopen the chat.',
+              'Sending is disabled. An accepted connection is required, or reopen the chat.',
             ),
             duration: Duration(seconds: 3),
           ),
@@ -405,6 +432,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
 
     // Text-only path
+    if (_textSending) return;
+    _textSending = true;
+
     final localId = _reconciler.addOptimistic(
       text: text,
       isSent: true,
@@ -431,7 +461,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Could not send message. Check your connection or try again.'),
+            content: Text(
+              'Could not send message. Check your connection or accepted connection.',
+            ),
             duration: Duration(seconds: 3),
           ),
         );
@@ -448,12 +480,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             text: text,
             isSent: true,
             time: _formatTime(createdAt),
+            readAt: _parseReadAt(sent['read_at']),
           );
           _syncMessagesFromReconciler();
         });
       }
     } catch (e) {
-      print('Error sending message: $e');
+      if (kDebugMode) debugPrint('Error sending message: $e');
       if (mounted) {
         setState(() {
           _reconciler.removeOptimistic(localId);
@@ -466,6 +499,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
         );
       }
+    } finally {
+      _textSending = false;
     }
   }
 
@@ -618,7 +653,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         setState(() => _attachmentBusy = false);
       }
     } catch (e) {
-      print('Error sending attachment: $e');
+      if (kDebugMode) debugPrint('Error sending attachment: $e');
       if (mounted) {
         setState(() {
           _reconciler.updateOptimistic(
@@ -1084,7 +1119,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   void dispose() {
+    if (ActiveConversationTracker.instance.isActive(widget.conversationId)) {
+      ActiveConversationTracker.instance.clear();
+    }
     _messagesChannel?.unsubscribe();
+    _messagesUpdateChannel?.unsubscribe();
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -1689,6 +1728,7 @@ class _ChatMessage {
   final String? documentName;
   final String? documentMime;
   final int? documentSizeBytes;
+  final DateTime? readAt;
   final ChatUploadStatus uploadStatus;
   final double uploadProgress;
   final String? messageId;
@@ -1707,11 +1747,14 @@ class _ChatMessage {
     this.documentName,
     this.documentMime,
     this.documentSizeBytes,
+    this.readAt,
     this.uploadStatus = ChatUploadStatus.none,
     this.uploadProgress = 0,
     this.messageId,
     this.localId,
   });
+
+  bool get isSeen => readAt != null;
 
   bool get isDocument =>
       (documentUrl != null && documentUrl!.isNotEmpty) ||
@@ -1918,128 +1961,150 @@ class _ChatBubbleState extends State<_ChatBubble> {
     final showCaption = msg.text.isNotEmpty &&
         !(hasDocument && msg.text == (msg.documentName ?? ''));
 
+    final metaLabel = msg.isSent
+        ? (msg.isSeen ? '${msg.time} · Seen' : msg.time)
+        : msg.time;
+
     return Align(
       alignment: msg.isSent ? Alignment.centerRight : Alignment.centerLeft,
       child: GestureDetector(
         onLongPress: msg.isSent ? widget.onLongPress : null,
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.75,
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          decoration: BoxDecoration(
-            gradient: msg.isSent ? AppColors.waterGradient : null,
-            color: msg.isSent ? null : AppColors.blue.withOpacity(0.15),
-            borderRadius: BorderRadius.only(
-              topLeft: const Radius.circular(20),
-              topRight: const Radius.circular(20),
-              bottomLeft: Radius.circular(msg.isSent ? 20 : 4),
-              bottomRight: Radius.circular(msg.isSent ? 4 : 20),
-            ),
-          ),
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 12),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment:
+                msg.isSent ? CrossAxisAlignment.end : CrossAxisAlignment.start,
             children: [
-              if (hasImage)
-                GestureDetector(
-                  onTap: () {
-                    ChatImageViewerPage.open(
-                      context,
-                      imageUrl: msg.imageUrl,
-                      imagePath: msg.imagePath,
-                    );
-                  },
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: msg.imagePath != null
-                        ? Image.file(
-                            File(msg.imagePath!),
-                            width: 200,
-                            height: 200,
-                            fit: BoxFit.cover,
-                          )
-                        : CachedNetworkImage(
-                            imageUrl: msg.imageUrl!,
-                            width: 200,
-                            height: 200,
-                            fit: BoxFit.cover,
-                            placeholder: (_, __) => Container(
-                              width: 200,
-                              height: 200,
-                              color: Colors.grey.shade300,
-                              child: const Center(child: CircularProgressIndicator()),
-                            ),
-                            errorWidget: (_, __, ___) => Container(
-                              width: 200,
-                              height: 200,
-                              color: Colors.grey.shade300,
-                              child: const Icon(Icons.broken_image, size: 48),
-                            ),
-                          ),
+              Container(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width * 0.75,
+                ),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  gradient: msg.isSent ? AppColors.waterGradient : null,
+                  color: msg.isSent ? null : AppColors.blue.withOpacity(0.15),
+                  borderRadius: BorderRadius.only(
+                    topLeft: const Radius.circular(20),
+                    topRight: const Radius.circular(20),
+                    bottomLeft: Radius.circular(msg.isSent ? 20 : 4),
+                    bottomRight: Radius.circular(msg.isSent ? 4 : 20),
                   ),
                 ),
-              if (hasVideo)
-                Container(
-                  width: 200,
-                  height: 200,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        AppColors.blue.withOpacity(0.3),
-                        AppColors.cyan.withOpacity(0.3),
-                      ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      Container(
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.2),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (hasImage)
+                      GestureDetector(
+                        onTap: () {
+                          ChatImageViewerPage.open(
+                            context,
+                            imageUrl: msg.imageUrl,
+                            imagePath: msg.imagePath,
+                          );
+                        },
+                        child: ClipRRect(
                           borderRadius: BorderRadius.circular(12),
+                          child: msg.imagePath != null
+                              ? Image.file(
+                                  File(msg.imagePath!),
+                                  width: 200,
+                                  height: 200,
+                                  fit: BoxFit.cover,
+                                )
+                              : CachedNetworkImage(
+                                  imageUrl: msg.imageUrl!,
+                                  width: 200,
+                                  height: 200,
+                                  fit: BoxFit.cover,
+                                  placeholder: (_, __) => Container(
+                                    width: 200,
+                                    height: 200,
+                                    color: Colors.grey.shade300,
+                                    child: const Center(
+                                        child: CircularProgressIndicator()),
+                                  ),
+                                  errorWidget: (_, __, ___) => Container(
+                                    width: 200,
+                                    height: 200,
+                                    color: Colors.grey.shade300,
+                                    child: const Icon(Icons.broken_image,
+                                        size: 48),
+                                  ),
+                                ),
                         ),
                       ),
+                    if (hasVideo)
                       Container(
+                        width: 200,
+                        height: 200,
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.4),
-                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            colors: [
+                              AppColors.blue.withOpacity(0.3),
+                              AppColors.cyan.withOpacity(0.3),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        padding: const EdgeInsets.all(16),
-                        child: const Icon(
-                          Icons.play_arrow_rounded,
-                          color: Colors.white,
-                          size: 40,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Container(
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.4),
+                                shape: BoxShape.circle,
+                              ),
+                              padding: const EdgeInsets.all(16),
+                              child: const Icon(
+                                Icons.play_arrow_rounded,
+                                color: Colors.white,
+                                size: 40,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    if (hasDocument) _buildDocumentCard(cs),
+                    _buildUploadStatus(cs),
+                    if (showCaption) ...[
+                      if (hasImage || hasVideo || hasDocument)
+                        const SizedBox(height: 8),
+                      Text(
+                        msg.text,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w400,
+                          color: msg.isSent ? Colors.white : cs.onSurface,
                         ),
                       ),
                     ],
-                  ),
+                  ],
                 ),
-              if (hasDocument) _buildDocumentCard(cs),
-              _buildUploadStatus(cs),
-              if (showCaption) ...[
-                if (hasImage || hasVideo || hasDocument) const SizedBox(height: 8),
-                Text(
-                  msg.text,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w400,
-                    color: msg.isSent ? Colors.white : cs.onSurface,
-                  ),
-                ),
-              ],
+              ),
               const SizedBox(height: 4),
-              Text(
-                msg.time,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w400,
-                  color: msg.isSent
-                      ? Colors.white.withOpacity(0.7)
-                      : cs.onSurfaceVariant,
+              Align(
+                alignment:
+                    msg.isSent ? Alignment.centerRight : Alignment.centerLeft,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  child: Text(
+                    metaLabel,
+                    key: ValueKey(metaLabel),
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w400,
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
                 ),
               ),
             ],

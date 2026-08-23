@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../models/subscription_plans.dart';
+import '../../models/member_plan_view.dart';
 import '../../repositories/cotrainr_pass_repository.dart';
 import '../../repositories/partner_centers_repository.dart';
 import '../../repositories/subscriptions_repository.dart';
@@ -17,47 +17,127 @@ class CotrainrPassPage extends StatefulWidget {
   State<CotrainrPassPage> createState() => _CotrainrPassPageState();
 }
 
-class _CotrainrPassPageState extends State<CotrainrPassPage> {
+class _CotrainrPassPageState extends State<CotrainrPassPage>
+    with WidgetsBindingObserver {
   final _passRepo = CotrainrPassRepository();
   final _subsRepo = SubscriptionsRepository();
   final _partnerRepo = PartnerCentersRepository();
 
-  bool _loading = true;
-  String? _error;
+  bool _passLoading = true;
+  String? _passError;
   CotrainrPassInfo? _info;
   PartnerCenterApplication? _application;
   bool _termsExpanded = false;
 
+  MemberPlanView _planView = MemberPlanView.loading;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _info != null) {
+      _loadPlanOnly();
+    }
   }
 
   Future<void> _load() async {
     setState(() {
-      _loading = true;
-      _error = null;
+      _passLoading = true;
+      _passError = null;
+      _planView = MemberPlanView.loading;
     });
+
+    // Pass identity and subscription are independent — one failure must not
+    // fabricate Free or wipe the Pass.
+    CotrainrPassInfo? info;
+    String? passError;
+    PartnerCenterApplication? app;
+    MemberPlanView planView = MemberPlanView.loading;
+
     try {
-      final sub = await _subsRepo.fetchMine();
-      final plan =
-          SubscriptionPlans.displayName(sub?.plan ?? SubscriptionPlans.free);
-      final info = await _passRepo.loadPassInfo(planLabel: plan);
-      final app = await _partnerRepo.latestOpenOrRecentApplication();
-      if (!mounted) return;
-      setState(() {
-        _info = info;
-        _application = app;
-        _loading = false;
-      });
+      info = await _passRepo.loadPassInfo(planLabel: 'Free');
+      try {
+        app = await _partnerRepo.latestOpenOrRecentApplication();
+      } catch (_) {}
     } catch (e) {
+      passError = e.toString().replaceFirst('Exception: ', '');
+    }
+
+    try {
+      final sub = await _subsRepo.fetchMineStrict();
+      planView = MemberPlanView.fromSubscription(sub);
+      if (info != null) {
+        info = CotrainrPassInfo(
+          passId: info.passId,
+          passCreatedAt: info.passCreatedAt,
+          memberSince: info.memberSince,
+          fullName: info.fullName,
+          avatarUrl: info.avatarUrl,
+          planLabel: planView.isError
+              ? info.planLabel
+              : (planView.planDisplayName.isEmpty
+                  ? 'Free'
+                  : planView.planDisplayName),
+        );
+      }
+    } catch (_) {
+      planView = MemberPlanView.error;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _info = info;
+      _application = app;
+      _passError = passError;
+      _passLoading = false;
+      _planView = planView;
+    });
+  }
+
+  Future<void> _loadPlanOnly() async {
+    if (!mounted) return;
+    setState(() => _planView = MemberPlanView.loading);
+    try {
+      final sub = await _subsRepo.fetchMineStrict();
+      final planView = MemberPlanView.fromSubscription(sub);
       if (!mounted) return;
       setState(() {
-        _loading = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _planView = planView;
+        final info = _info;
+        if (info != null && !planView.isError) {
+          _info = CotrainrPassInfo(
+            passId: info.passId,
+            passCreatedAt: info.passCreatedAt,
+            memberSince: info.memberSince,
+            fullName: info.fullName,
+            avatarUrl: info.avatarUrl,
+            planLabel: planView.planDisplayName.isEmpty
+                ? 'Free'
+                : planView.planDisplayName,
+          );
+        }
       });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _planView = MemberPlanView.error);
     }
+  }
+
+  Future<void> _openSubscription() async {
+    HapticFeedback.selectionClick();
+    await context.push('/subscription');
+    if (mounted) await _loadPlanOnly();
   }
 
   Future<void> _copyId() async {
@@ -111,9 +191,9 @@ class _CotrainrPassPageState extends State<CotrainrPassPage> {
 
     return Scaffold(
       backgroundColor: bg,
-      body: _loading
+      body: _passLoading
           ? const Center(child: CircularProgressIndicator())
-          : _error != null
+          : _passError != null && _info == null
               ? SafeArea(
                   child: Center(
                     child: Padding(
@@ -121,7 +201,7 @@ class _CotrainrPassPageState extends State<CotrainrPassPage> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(_error!, textAlign: TextAlign.center),
+                          Text(_passError!, textAlign: TextAlign.center),
                           const SizedBox(height: 16),
                           FilledButton(
                             onPressed: _load,
@@ -149,7 +229,7 @@ class _CotrainrPassPageState extends State<CotrainrPassPage> {
                         automaticallyImplyLeading: false,
                         leading: CotrainrBackButton(color: onSurface),
                         title: Text(
-                          'Cotrainr Pass',
+                          'Member Pass',
                           style: TextStyle(
                             fontWeight: FontWeight.w800,
                             color: onSurface,
@@ -161,6 +241,23 @@ class _CotrainrPassPageState extends State<CotrainrPassPage> {
                         sliver: SliverList(
                           delegate: SliverChildListDelegate([
                             _MembershipCard(info: _info!, isLight: isLight),
+                            const SizedBox(height: 20),
+                            Text(
+                              'YOUR PLAN',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.1,
+                                color: muted,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            _YourPlanCard(
+                              view: _planView,
+                              isLight: isLight,
+                              onManage: _openSubscription,
+                              onRetry: _loadPlanOnly,
+                            ),
                             const SizedBox(height: 28),
                             Text(
                               'About your Cotrainr Pass',
@@ -415,6 +512,250 @@ class _CotrainrPassPageState extends State<CotrainrPassPage> {
     'Misuse may result in benefit restrictions or account action.',
     'Your account Terms of Service and Privacy Policy continue to apply.',
   ];
+}
+
+class _YourPlanCard extends StatelessWidget {
+  final MemberPlanView view;
+  final bool isLight;
+  final VoidCallback onManage;
+  final VoidCallback onRetry;
+
+  const _YourPlanCard({
+    required this.view,
+    required this.isLight,
+    required this.onManage,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final onSurface = isLight ? const Color(0xFF141414) : Colors.white;
+    final muted = isLight
+        ? const Color(0xFF6B6560)
+        : Colors.white.withValues(alpha: 0.62);
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 200),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      child: view.isLoading
+          ? _planShell(
+              key: const ValueKey('plan-loading'),
+              isLight: isLight,
+              child: Row(
+                children: [
+                  _shimmerBox(44, 44, radius: 12),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _shimmerBox(120, 14),
+                        const SizedBox(height: 8),
+                        _shimmerBox(80, 12),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            )
+          : view.isError
+              ? _planShell(
+                  key: const ValueKey('plan-error'),
+                  isLight: isLight,
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline_rounded,
+                        color: muted,
+                        size: 22,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Unable to load plan',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: onSurface,
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: onRetry,
+                        style: TextButton.styleFrom(
+                          foregroundColor: DesignTokens.accentOrange,
+                        ),
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                )
+              : _planShell(
+                  key: ValueKey(
+                    '${view.planDisplayName}-${view.statusLabel}-${view.detailLine}',
+                  ),
+                  isLight: isLight,
+                  onTap: onManage,
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: DesignTokens.accentOrange
+                              .withValues(alpha: isLight ? 0.12 : 0.2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          Icons.workspace_premium_rounded,
+                          color: DesignTokens.accentOrange,
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              view.planDisplayName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w900,
+                                color: onSurface,
+                              ),
+                            ),
+                            if (view.detailLine != null) ...[
+                              const SizedBox(height: 3),
+                              Text(
+                                view.detailLine!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: muted,
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 6),
+                            Text(
+                              view.ctaLabel,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: DesignTokens.accentOrange,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      _StatusChip(view: view, isLight: isLight),
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        color: muted,
+                      ),
+                    ],
+                  ),
+                ),
+    );
+  }
+
+  Widget _shimmerBox(double w, double h, {double radius = 6}) {
+    return Container(
+      width: w,
+      height: h,
+      decoration: BoxDecoration(
+        color: (isLight ? Colors.black : Colors.white).withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(radius),
+      ),
+    );
+  }
+
+  Widget _planShell({
+    required Key key,
+    required bool isLight,
+    required Widget child,
+    VoidCallback? onTap,
+  }) {
+    return Material(
+      key: key,
+      color: isLight ? Colors.white : const Color(0xFF141414),
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: isLight
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.04),
+                      blurRadius: 14,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                : null,
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  final MemberPlanView view;
+  final bool isLight;
+
+  const _StatusChip({required this.view, required this.isLight});
+
+  @override
+  Widget build(BuildContext context) {
+    final Color fg;
+    final Color bg;
+    switch (view.state) {
+      case MemberPlanUiState.active:
+      case MemberPlanUiState.trial:
+        fg = const Color(0xFF0FA35F);
+        bg = const Color(0xFF19C37D).withValues(alpha: 0.14);
+        break;
+      case MemberPlanUiState.expired:
+      case MemberPlanUiState.pastDue:
+        fg = const Color(0xFFC62828);
+        bg = const Color(0xFFC62828).withValues(alpha: 0.12);
+        break;
+      case MemberPlanUiState.cancelledActive:
+        fg = DesignTokens.accentOrange;
+        bg = DesignTokens.accentOrange.withValues(alpha: 0.12);
+        break;
+      default:
+        fg = isLight ? const Color(0xFF6B6560) : Colors.white70;
+        bg = (isLight ? Colors.black : Colors.white).withValues(alpha: 0.07);
+    }
+    return Container(
+      margin: const EdgeInsets.only(right: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        view.statusLabel,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          color: fg,
+        ),
+      ),
+    );
+  }
 }
 
 class _ApplicationStatusBanner extends StatelessWidget {

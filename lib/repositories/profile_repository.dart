@@ -66,6 +66,7 @@ class ProfileRepository {
         'achievements': true,
         'videoSessions': true,
         'videoSessionReminders': true,
+        'messages': true,
       };
     }
     try {
@@ -80,6 +81,7 @@ class ProfileRepository {
         'videoSessions': response['notification_video_sessions'] as bool? ?? true,
         'videoSessionReminders':
             response['notification_video_session_reminders'] as bool? ?? true,
+        'messages': response['notification_messages'] as bool? ?? true,
       };
     } catch (e) {
       return _defaultNotificationPrefs;
@@ -93,6 +95,7 @@ class ProfileRepository {
     'achievements': true,
     'videoSessions': true,
     'videoSessionReminders': true,
+    'messages': true,
   };
 
   /// Update notification preferences
@@ -103,6 +106,7 @@ class ProfileRepository {
     required bool achievements,
     bool? videoSessions,
     bool? videoSessionReminders,
+    bool? messages,
   }) async {
     if (_currentUserId == null) return;
     try {
@@ -117,6 +121,9 @@ class ProfileRepository {
       }
       if (videoSessionReminders != null) {
         updates['notification_video_session_reminders'] = videoSessionReminders;
+      }
+      if (messages != null) {
+        updates['notification_messages'] = messages;
       }
       await _supabase.from('profiles').update(updates).eq('id', _currentUserId!);
     } catch (e) {

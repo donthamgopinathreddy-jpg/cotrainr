@@ -6,6 +6,7 @@ import 'water_reminder_service.dart';
 /// Fitness-focused notification categories (device + Supabase master push).
 class FitnessNotificationPreferences {
   final bool all;
+  final bool messageNotifications;
   final bool trainerMessages;
   final bool nutritionistMessages;
   final bool mealReminders;
@@ -16,6 +17,7 @@ class FitnessNotificationPreferences {
 
   const FitnessNotificationPreferences({
     this.all = true,
+    this.messageNotifications = true,
     this.trainerMessages = true,
     this.nutritionistMessages = true,
     this.mealReminders = true,
@@ -27,6 +29,7 @@ class FitnessNotificationPreferences {
 
   FitnessNotificationPreferences copyWith({
     bool? all,
+    bool? messageNotifications,
     bool? trainerMessages,
     bool? nutritionistMessages,
     bool? mealReminders,
@@ -37,6 +40,7 @@ class FitnessNotificationPreferences {
   }) {
     return FitnessNotificationPreferences(
       all: all ?? this.all,
+      messageNotifications: messageNotifications ?? this.messageNotifications,
       trainerMessages: trainerMessages ?? this.trainerMessages,
       nutritionistMessages: nutritionistMessages ?? this.nutritionistMessages,
       mealReminders: mealReminders ?? this.mealReminders,
@@ -49,6 +53,7 @@ class FitnessNotificationPreferences {
 
   Map<String, bool> toJson() => {
         'all': all,
+        'message_notifications': messageNotifications,
         'trainer_messages': trainerMessages,
         'nutritionist_messages': nutritionistMessages,
         'meal_reminders': mealReminders,
@@ -59,10 +64,14 @@ class FitnessNotificationPreferences {
       };
 
   factory FitnessNotificationPreferences.fromJson(Map<String, bool> json) {
+    final messages = json['message_notifications'] ??
+        ((json['trainer_messages'] ?? true) &&
+            (json['nutritionist_messages'] ?? true));
     return FitnessNotificationPreferences(
       all: json['all'] ?? true,
-      trainerMessages: json['trainer_messages'] ?? true,
-      nutritionistMessages: json['nutritionist_messages'] ?? true,
+      messageNotifications: messages,
+      trainerMessages: json['trainer_messages'] ?? messages,
+      nutritionistMessages: json['nutritionist_messages'] ?? messages,
       mealReminders: json['meal_reminders'] ?? true,
       waterReminders: json['water_reminders'] ?? true,
       workoutReminders: json['workout_reminders'] ?? true,
@@ -106,12 +115,18 @@ class FitnessNotificationPreferencesService
     final prefs = await SharedPreferences.getInstance();
     final remote = await _profileRepository.fetchNotificationPreferences();
     final all = remote['push'] ?? prefs.getBool(allKey) ?? true;
+    final messageNotifications = remote['messages'] ??
+        prefs.getBool('${prefix}message_notifications') ??
+        true;
 
     return FitnessNotificationPreferences(
       all: all,
-      trainerMessages: prefs.getBool('${prefix}trainer_messages') ?? true,
+      messageNotifications: messageNotifications,
+      trainerMessages: prefs.getBool('${prefix}trainer_messages') ??
+          messageNotifications,
       nutritionistMessages:
-          prefs.getBool('${prefix}nutritionist_messages') ?? true,
+          prefs.getBool('${prefix}nutritionist_messages') ??
+              messageNotifications,
       mealReminders: prefs.getBool('${prefix}meal_reminders') ??
           (remote['reminders'] ?? true),
       waterReminders: prefs.getBool(waterRemindersKey) ?? true,
@@ -127,10 +142,15 @@ class FitnessNotificationPreferencesService
   Future<void> save(FitnessNotificationPreferences prefs) async {
     final sp = await SharedPreferences.getInstance();
     await sp.setBool(allKey, prefs.all);
-    await sp.setBool('${prefix}trainer_messages', prefs.trainerMessages);
+    await sp.setBool(
+      '${prefix}message_notifications',
+      prefs.messageNotifications,
+    );
+    // Back-compat: keep trainer/nutritionist keys aligned with the single UI toggle.
+    await sp.setBool('${prefix}trainer_messages', prefs.messageNotifications);
     await sp.setBool(
       '${prefix}nutritionist_messages',
-      prefs.nutritionistMessages,
+      prefs.messageNotifications,
     );
     await sp.setBool('${prefix}meal_reminders', prefs.mealReminders);
     await sp.setBool(waterRemindersKey, prefs.waterReminders);
@@ -140,7 +160,8 @@ class FitnessNotificationPreferencesService
 
     await _profileRepository.updateNotificationPreferences(
       push: prefs.all,
-      community: prefs.trainerMessages && prefs.nutritionistMessages,
+      community: prefs.messageNotifications,
+      messages: prefs.messageNotifications,
       reminders: prefs.mealReminders &&
           prefs.waterReminders &&
           prefs.workoutReminders,

@@ -7,6 +7,7 @@ import 'package:cotrainr/pages/profile/settings/notifications_page.dart';
 import 'package:cotrainr/pages/profile/settings_page.dart';
 import 'package:cotrainr/services/fitness_notification_preferences_service.dart';
 import 'package:cotrainr/services/os_notification_permission_status.dart';
+import 'package:cotrainr/services/video_session_notification_prefs.dart';
 import 'package:cotrainr/theme/account_hub_theme.dart';
 import 'package:cotrainr/theme/app_theme.dart';
 import 'package:cotrainr/widgets/profile/account_hub_widgets.dart';
@@ -39,6 +40,18 @@ class _FakeOsGateway extends OsNotificationPermissionGateway {
   @override
   Future<void> manage() async {
     manageCalls++;
+  }
+}
+
+class _FakeVideoPrefsStore implements VideoSessionNotificationPrefsStore {
+  VideoSessionNotificationPrefs value = const VideoSessionNotificationPrefs();
+
+  @override
+  Future<VideoSessionNotificationPrefs> load() async => value;
+
+  @override
+  Future<void> save(VideoSessionNotificationPrefs prefs) async {
+    value = prefs;
   }
 }
 
@@ -97,6 +110,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('All notifications'), findsOneWidget);
+      expect(find.text('Message notifications'), findsOneWidget);
       expect(find.text('Water reminders'), findsOneWidget);
       expect(find.text('Video session notifications'), findsOneWidget);
       expect(find.text('Session reminders'), findsOneWidget);
@@ -178,6 +192,11 @@ void main() {
     });
 
     testWidgets('light and dark themes build; text scale ok', (tester) async {
+      tester.view.physicalSize = const Size(390, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
       for (final theme in [AppTheme.lightTheme, AppTheme.darkTheme]) {
         await tester.pumpWidget(
           MediaQuery(
@@ -187,13 +206,23 @@ void main() {
               home: NotificationsPage(
                 preferencesService: _FakeNotifStore(),
                 osPermissionGateway: _FakeOsGateway(),
+                videoSessionPrefsStore: _FakeVideoPrefsStore(),
               ),
             ),
           ),
         );
         await tester.pumpAndSettle();
         expect(find.text('All notifications'), findsOneWidget);
-        expect(find.byType(Switch), findsNWidgets(4));
+        expect(find.text('Message notifications'), findsOneWidget);
+        expect(find.text('Water reminders'), findsOneWidget);
+        await tester.scrollUntilVisible(
+          find.text('Video session notifications'),
+          80,
+          scrollable: find.byType(Scrollable).first,
+        );
+        expect(find.text('Video session notifications'), findsOneWidget);
+        expect(find.text('Session reminders'), findsOneWidget);
+        expect(find.byType(Switch), findsAtLeastNWidgets(3));
       }
     });
   });

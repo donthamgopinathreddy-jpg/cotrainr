@@ -421,13 +421,9 @@ class _PublicProfileReadonlyPageState
     }
     if (!_canMessage) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text(
-            'Messaging requires an active subscription with this provider.',
-          ),
-          action: SnackBarAction(
-            label: 'Plans',
-            onPressed: () => context.push('/subscription'),
+        const SnackBar(
+          content: Text(
+            'Messaging is available after your connection is accepted.',
           ),
         ),
       );

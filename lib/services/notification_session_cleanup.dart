@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 
 import '../core/startup/startup_router_bridge.dart';
+import 'active_conversation_tracker.dart';
+import 'message_pending_navigation.dart';
 import 'push_notification_service.dart';
 import 'video_session_pending_navigation.dart';
 import 'water_reminder_service.dart';
@@ -16,6 +18,12 @@ abstract final class NotificationSessionCleanup {
     }
     try {
       await VideoSessionPendingNavigation.clear();
+    } catch (_) {}
+    try {
+      await MessagePendingNavigation.clear();
+    } catch (_) {}
+    try {
+      ActiveConversationTracker.instance.clear();
     } catch (_) {}
     try {
       StartupRouterBridge.setPendingDeepLinkRoute(null);

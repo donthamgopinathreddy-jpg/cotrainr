@@ -83,10 +83,10 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
     }
 
     if (!excludeTrainerOnly) {
-      tiles['Subscription'] = const _ExploreTileData(
-        title: 'Subscription',
-        subtitle: 'Manage your plan and member benefits.',
-        icon: Icons.workspace_premium_rounded,
+      tiles['Member Pass'] = const _ExploreTileData(
+        title: 'Member Pass',
+        subtitle: 'Your membership ID, plan, and benefits.',
+        icon: Icons.badge_rounded,
         accent: Color(0xFFE91E8C),
       );
     }
@@ -105,6 +105,8 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
         return () => context.push('/video');
       case 'Nutrition Goals':
         return () => context.push('/nutrition-goals');
+      case 'Member Pass':
+        return () => context.push('/profile/cotrainr-pass');
       case 'Subscription':
         return () => context.push('/subscription');
       case 'Trainers & Nutritionists':
@@ -288,7 +290,7 @@ class _ExploreBentoGrid extends StatelessWidget {
     final coach = _get('Notes')!;
     final video = _get('Video Sessions')!;
     final providers = _get('Trainers & Nutritionists')!;
-    final subscription = _get('Subscription')!;
+    final memberPass = _get('Member Pass')!;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -322,10 +324,10 @@ class _ExploreBentoGrid extends StatelessWidget {
           height: bannerH,
           width: double.infinity,
           child: _ExploreTile(
-            item: subscription,
+            item: memberPass,
             layout: _ExploreTileLayout.banner,
             isLight: isLight,
-            onTap: () => onTileTap(subscription),
+            onTap: () => onTileTap(memberPass),
           ),
         ),
       ],
@@ -518,7 +520,7 @@ class _ExploreTileData {
       'Video Sessions' => const Color(0xFF7C5CFF),
       'My Trainers' || 'Trainers' || 'Trainers & Nutritionists' =>
         const Color(0xFFFF8A00),
-      'Subscription' => const Color(0xFFFF2D95),
+      'Member Pass' || 'Subscription' => const Color(0xFFFF2D95),
       _ => accent,
     };
   }

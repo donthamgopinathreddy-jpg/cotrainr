@@ -114,9 +114,30 @@ void main() {
         isSent: true,
         time: 't',
       );
-      expect(r.upsertCanonical(messageId: 'db-a', text: 'A', isSent: true, time: 't'), isFalse);
-      expect(r.upsertCanonical(messageId: 'db-b', text: 'B', isSent: true, time: 't'), isFalse);
+      expect(
+        r.upsertCanonical(messageId: 'db-a', text: 'A', isSent: true, time: 't'),
+        isFalse,
+      );
+      expect(
+        r.upsertCanonical(messageId: 'db-b', text: 'B', isSent: true, time: 't'),
+        isFalse,
+      );
       expect(r.messages, hasLength(2));
+    });
+
+    test('applyReadAt sets isSeen and is idempotent', () {
+      final r = ChatMessageReconciler();
+      r.upsertCanonical(
+        messageId: 'db-1',
+        text: 'Hi',
+        isSent: true,
+        time: '12:00',
+      );
+      final at = DateTime.utc(2026, 8, 23, 12, 1);
+      expect(r.applyReadAt('db-1', at), isTrue);
+      expect(r.messages.single.isSeen, isTrue);
+      expect(r.messages.single.readAt, at);
+      expect(r.applyReadAt('db-1', DateTime.utc(2026, 8, 23, 12, 2)), isFalse);
     });
   });
 }

@@ -11,21 +11,31 @@ class SubscriptionsRepository {
   String? get _uid => _supabase.auth.currentUser?.id;
 
   /// Paid plan: not `free`. (Plan may arrive as enum string from PostgREST.)
+  /// Returns null when there is no row (treat as Free). On query failure returns
+  /// null for backward compatibility — use [fetchMineStrict] when errors must
+  /// not look like Free.
   Future<SubscriptionRow?> fetchMine() async {
-    final uid = _uid;
-    if (uid == null) return null;
     try {
-      final row = await _supabase
-          .from('subscriptions')
-          .select('plan, status, expires_at')
-          .eq('user_id', uid)
-          .maybeSingle();
-      if (row == null) return null;
-      return SubscriptionRow.fromMap(row);
+      return await fetchMineStrict();
     } catch (e) {
+      // ignore: avoid_print
       print('SubscriptionsRepository.fetchMine: $e');
       return null;
     }
+  }
+
+  /// Same as [fetchMine] but rethrows on network/DB errors.
+  /// Null means no subscription row (Free), not a failure.
+  Future<SubscriptionRow?> fetchMineStrict() async {
+    final uid = _uid;
+    if (uid == null) return null;
+    final row = await _supabase
+        .from('subscriptions')
+        .select('plan, status, expires_at')
+        .eq('user_id', uid)
+        .maybeSingle();
+    if (row == null) return null;
+    return SubscriptionRow.fromMap(row);
   }
 
   /// Messaging: client must have a non-free plan and active (or trialing) status,

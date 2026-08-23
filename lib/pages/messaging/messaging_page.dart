@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -23,9 +24,8 @@ class _MessagingPageState extends ConsumerState<MessagingPage> {
   final MessagesRepository _messagesRepo = MessagesRepository();
   final List<_ConversationItem> _allConversations = [];
   List<_ConversationItem> _filteredConversations = [];
-  _ConversationItem? _deletedConversation;
-  int? _deletedIndex;
   bool _isLoading = true;
+  String? _loadError;
   RealtimeChannel? _conversationsChannel;
   RealtimeChannel? _messagesUnreadChannel;
 
@@ -52,6 +52,7 @@ class _MessagingPageState extends ConsumerState<MessagingPage> {
     if (showLoading) {
       setState(() {
         _isLoading = true;
+        _loadError = null;
       });
     }
 
@@ -68,14 +69,15 @@ class _MessagingPageState extends ConsumerState<MessagingPage> {
 
         if (otherUser == null) continue;
 
-        final name = otherUser['full_name'] as String? ?? 
-                    otherUser['username'] as String? ?? 
-                    'Unknown User';
+        final name = otherUser['full_name'] as String? ??
+            otherUser['username'] as String? ??
+            'Unknown User';
         final avatarUrl = otherUser['avatar_url'] as String?;
-        final lastMessageText = lastMessage?['content'] as String? ?? 'No messages yet';
-        final time = _formatTime(updatedAt ?? lastMessage?['created_at'] as String?);
+        final lastMessageText =
+            lastMessage?['content'] as String? ?? 'No messages yet';
+        final time =
+            _formatTime(updatedAt ?? lastMessage?['created_at'] as String?);
 
-        // Generate gradient based on name hash for consistency
         final gradient = _getGradientForName(name);
 
         items.add(_ConversationItem(
@@ -85,7 +87,7 @@ class _MessagingPageState extends ConsumerState<MessagingPage> {
           time: time,
           unreadCount: unreadCount,
           avatarGradient: gradient,
-          isOnline: false, // TODO: Implement online status
+          isOnline: false,
           avatarUrl: avatarUrl,
         ));
       }
@@ -96,13 +98,16 @@ class _MessagingPageState extends ConsumerState<MessagingPage> {
           _allConversations.addAll(items);
           _filteredConversations = _allConversations;
           _isLoading = false;
+          _loadError = null;
         });
+        _filterConversations();
       }
     } catch (e) {
-      print('Error loading conversations: $e');
+      if (kDebugMode) debugPrint('Error loading conversations: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
+          _loadError = 'Could not load conversations';
         });
       }
     }
@@ -115,7 +120,6 @@ class _MessagingPageState extends ConsumerState<MessagingPage> {
       ref.invalidate(unreadMessagesCountProvider);
     });
 
-    // Message inserts/updates (read_at) should refresh the nav badge + list.
     _messagesUnreadChannel = Supabase.instance.client
         .channel('messaging-page-unread')
         .onPostgresChanges(
@@ -143,7 +147,7 @@ class _MessagingPageState extends ConsumerState<MessagingPage> {
 
   String _formatTime(String? timestamp) {
     if (timestamp == null) return '';
-    
+
     try {
       final dateTime = DateTime.parse(timestamp);
       final now = DateTime.now();
@@ -174,11 +178,26 @@ class _MessagingPageState extends ConsumerState<MessagingPage> {
   LinearGradient _getGradientForName(String name) {
     final hash = name.hashCode;
     final gradients = [
-      LinearGradient(colors: [AppColors.orange, AppColors.pink], begin: Alignment.topLeft, end: Alignment.bottomRight),
-      LinearGradient(colors: [AppColors.blue, AppColors.cyan], begin: Alignment.topLeft, end: Alignment.bottomRight),
-      LinearGradient(colors: [AppColors.green, Color(0xFF65E6B3)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-      LinearGradient(colors: [AppColors.purple, Color(0xFFB38CFF)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-      LinearGradient(colors: [AppColors.orange, AppColors.yellow], begin: Alignment.topLeft, end: Alignment.bottomRight),
+      LinearGradient(
+          colors: [AppColors.orange, AppColors.pink],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight),
+      LinearGradient(
+          colors: [AppColors.blue, AppColors.cyan],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight),
+      LinearGradient(
+          colors: [AppColors.green, Color(0xFF65E6B3)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight),
+      LinearGradient(
+          colors: [AppColors.purple, Color(0xFFB38CFF)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight),
+      LinearGradient(
+          colors: [AppColors.orange, AppColors.yellow],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight),
     ];
     return gradients[hash.abs() % gradients.length];
   }
@@ -196,64 +215,173 @@ class _MessagingPageState extends ConsumerState<MessagingPage> {
     });
   }
 
-  void _deleteConversation(int index) {
-    final conversationToDelete = _filteredConversations[index];
-    final originalIndex = _allConversations.indexOf(conversationToDelete);
+  Widget _buildBody(ColorScheme cs) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
-    setState(() {
-      _deletedConversation = conversationToDelete;
-      _deletedIndex = originalIndex;
-      _allConversations.removeAt(originalIndex);
-      _filteredConversations = _allConversations
-          .where((conv) {
-            if (_searchController.text.isEmpty) return true;
-            return conv.name.toLowerCase().contains(_searchController.text.toLowerCase());
-          })
-          .toList();
-    });
+    if (_loadError != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.error_outline_rounded,
+                size: 48,
+                color: cs.onSurfaceVariant,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                _loadError!,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: cs.onSurface,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () => _loadConversations(showLoading: true),
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Conversation deleted',
-          style: TextStyle(color: Theme.of(context).colorScheme.onInverseSurface),
-        ),
-        action: SnackBarAction(
-          label: 'Undo',
-          textColor: DesignTokens.accentOrange,
-          onPressed: () {
-            if (!mounted) return;
-            if (_deletedConversation != null && _deletedIndex != null) {
-              setState(() {
-                _allConversations.insert(_deletedIndex!, _deletedConversation!);
-                _filteredConversations = _allConversations
-                    .where((conv) {
-                      if (_searchController.text.isEmpty) return true;
-                      return conv.name.toLowerCase().contains(_searchController.text.toLowerCase());
-                    })
-                    .toList();
-                _deletedConversation = null;
-                _deletedIndex = null;
-              });
-            }
-          },
-        ),
-        duration: const Duration(seconds: 3),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: Theme.of(context).colorScheme.inverseSurface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
+    return RefreshIndicator(
+      color: DesignTokens.accentOrange,
+      backgroundColor: DesignTokens.surfaceOf(context),
+      onRefresh: () => _loadConversations(showLoading: false),
+      child: _filteredConversations.isEmpty
+          ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
+              children: [
+                SizedBox(
+                  height: MediaQuery.sizeOf(context).height * 0.35,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.chat_bubble_outline_rounded,
+                        size: 64,
+                        color: cs.onSurfaceVariant,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No messages yet',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: cs.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 32),
+                        child: Text(
+                          'Your conversations with trainers and nutritionists will appear here.',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: cs.onSurfaceVariant,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            )
+          : ListView.separated(
+              physics: const BouncingScrollPhysics(
+                parent: AlwaysScrollableScrollPhysics(),
+              ),
+              padding: EdgeInsets.zero,
+              itemCount: _filteredConversations.length,
+              separatorBuilder: (_, __) => Divider(
+                height: 1,
+                indent: 76,
+                color: AppColors.blue.withOpacity(0.2),
+              ),
+              itemBuilder: (context, index) {
+                final item = _filteredConversations[index];
+                return FadeSlideIn(
+                  index: index,
+                  child: _ConversationTile(
+                    item: item,
+                    onTap: () async {
+                      final originalIndex = _allConversations.indexOf(item);
+                      if (originalIndex != -1 &&
+                          _allConversations[originalIndex].unreadCount > 0) {
+                        setState(() {
+                          _allConversations[originalIndex] = _ConversationItem(
+                            id: _allConversations[originalIndex].id,
+                            name: _allConversations[originalIndex].name,
+                            lastMessage:
+                                _allConversations[originalIndex].lastMessage,
+                            time: _allConversations[originalIndex].time,
+                            unreadCount: 0,
+                            avatarGradient: _allConversations[originalIndex]
+                                .avatarGradient,
+                            isOnline:
+                                _allConversations[originalIndex].isOnline,
+                            avatarUrl:
+                                _allConversations[originalIndex].avatarUrl,
+                          );
+                          _filterConversations();
+                        });
+                      }
+
+                      await Navigator.push(
+                        context,
+                        PageRouteBuilder(
+                          pageBuilder: (context, animation, secondary) =>
+                              ChatScreen(
+                            conversationId: item.id,
+                            userName: item.name,
+                            avatarGradient: item.avatarGradient,
+                            isOnline: item.isOnline,
+                            avatarUrl: item.avatarUrl,
+                          ),
+                          transitionsBuilder:
+                              (context, animation, secondary, child) {
+                            final curved = CurvedAnimation(
+                              parent: animation,
+                              curve: Curves.easeOutCubic,
+                            );
+                            return FadeTransition(
+                              opacity: curved,
+                              child: SlideTransition(
+                                position: Tween<Offset>(
+                                  begin: const Offset(0.04, 0),
+                                  end: Offset.zero,
+                                ).animate(curved),
+                                child: child,
+                              ),
+                            );
+                          },
+                          transitionDuration: const Duration(milliseconds: 260),
+                          reverseTransitionDuration:
+                              const Duration(milliseconds: 220),
+                        ),
+                      );
+
+                      if (!mounted) return;
+                      await _loadConversations(showLoading: false);
+                      ref.invalidate(unreadMessagesCountProvider);
+                    },
+                  ),
+                );
+              },
+            ),
     );
-
-    // Clear deleted conversation after snackbar duration
-    Future.delayed(const Duration(seconds: 3), () {
-      if (mounted) {
-        setState(() {
-          _deletedConversation = null;
-          _deletedIndex = null;
-        });
-      }
-    });
   }
 
   @override
@@ -273,7 +401,6 @@ class _MessagingPageState extends ConsumerState<MessagingPage> {
               title: 'Messages',
               gradient: AppTabPageHeader.messagesGradient,
             ),
-            // Search bar
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
               child: TextField(
@@ -318,142 +445,19 @@ class _MessagingPageState extends ConsumerState<MessagingPage> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(22),
-                    borderSide: const BorderSide(color: AppColors.blue, width: 2),
+                    borderSide:
+                        const BorderSide(color: AppColors.blue, width: 2),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 ),
               ),
             ),
             Expanded(
               child: ContentFade(
-                loading: _isLoading,
-                loadingChild: const Center(
-                  child: CircularProgressIndicator(),
-                ),
-                child: RefreshIndicator(
-                  color: DesignTokens.accentOrange,
-                  backgroundColor: DesignTokens.surfaceOf(context),
-                  onRefresh: () => _loadConversations(showLoading: false),
-                  child: _filteredConversations.isEmpty
-                      ? ListView(
-                          physics: const AlwaysScrollableScrollPhysics(
-                            parent: BouncingScrollPhysics(),
-                          ),
-                          children: [
-                            SizedBox(
-                              height: MediaQuery.sizeOf(context).height * 0.35,
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.chat_bubble_outline_rounded,
-                                    size: 64,
-                                    color: cs.onSurfaceVariant,
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    'No conversations yet',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                      color: cs.onSurfaceVariant,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Start a conversation with your trainer or nutritionist',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: cs.onSurfaceVariant,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        )
-                      : ListView.separated(
-                          physics: const BouncingScrollPhysics(
-                            parent: AlwaysScrollableScrollPhysics(),
-                          ),
-                          padding: EdgeInsets.zero,
-                          itemCount: _filteredConversations.length,
-                          separatorBuilder: (_, __) => Divider(
-                            height: 1,
-                            indent: 76,
-                            color: AppColors.blue.withOpacity(0.2),
-                          ),
-                          itemBuilder: (context, index) {
-                            final item = _filteredConversations[index];
-                  return FadeSlideIn(
-                    index: index,
-                    child: _ConversationTile(
-                            item: item,
-                            onTap: () async {
-                              // Optimistic local clear; ChatScreen marks DB read_at.
-                              final originalIndex = _allConversations.indexOf(item);
-                              if (originalIndex != -1 && _allConversations[originalIndex].unreadCount > 0) {
-                                setState(() {
-                                  _allConversations[originalIndex] = _ConversationItem(
-                                    id: _allConversations[originalIndex].id,
-                                    name: _allConversations[originalIndex].name,
-                                    lastMessage: _allConversations[originalIndex].lastMessage,
-                                    time: _allConversations[originalIndex].time,
-                                    unreadCount: 0,
-                                    avatarGradient: _allConversations[originalIndex].avatarGradient,
-                                    isOnline: _allConversations[originalIndex].isOnline,
-                                    avatarUrl: _allConversations[originalIndex].avatarUrl,
-                                  );
-                                  _filterConversations();
-                                });
-                              }
-                              
-                              await Navigator.push(
-                                context,
-                                PageRouteBuilder(
-                                  pageBuilder: (context, animation, secondary) =>
-                                      ChatScreen(
-                                    conversationId: item.id,
-                                    userName: item.name,
-                                    avatarGradient: item.avatarGradient,
-                                    isOnline: item.isOnline,
-                                    avatarUrl: item.avatarUrl,
-                                  ),
-                                  transitionsBuilder:
-                                      (context, animation, secondary, child) {
-                                    final curved = CurvedAnimation(
-                                      parent: animation,
-                                      curve: Curves.easeOutCubic,
-                                    );
-                                    return FadeTransition(
-                                      opacity: curved,
-                                      child: SlideTransition(
-                                        position: Tween<Offset>(
-                                          begin: const Offset(0.04, 0),
-                                          end: Offset.zero,
-                                        ).animate(curved),
-                                        child: child,
-                                      ),
-                                    );
-                                  },
-                                  transitionDuration:
-                                      const Duration(milliseconds: 260),
-                                  reverseTransitionDuration:
-                                      const Duration(milliseconds: 220),
-                                ),
-                              );
-
-                              if (!mounted) return;
-                              await _loadConversations(showLoading: false);
-                              ref.invalidate(unreadMessagesCountProvider);
-                            },
-                            onLongPress: () => _deleteConversation(index),
-                          ),
-                        );
-                },
-              ),
-                ),
+                loading: false,
+                loadingChild: const SizedBox.shrink(),
+                child: _buildBody(cs),
               ),
             ),
           ],
@@ -466,12 +470,10 @@ class _MessagingPageState extends ConsumerState<MessagingPage> {
 class _ConversationTile extends StatelessWidget {
   final _ConversationItem item;
   final VoidCallback onTap;
-  final VoidCallback onLongPress;
 
   const _ConversationTile({
     required this.item,
     required this.onTap,
-    required this.onLongPress,
   });
 
   @override
@@ -480,7 +482,6 @@ class _ConversationTile extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      onLongPress: onLongPress,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
@@ -535,7 +536,8 @@ class _ConversationTile extends StatelessWidget {
                       ),
                       if (item.unreadCount > 0)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
                             color: AppColors.blue,
                             borderRadius: BorderRadius.circular(10),
@@ -565,8 +567,12 @@ class _ConversationTile extends StatelessWidget {
                     item.lastMessage,
                     style: TextStyle(
                       fontSize: 14,
-                      fontWeight: item.unreadCount > 0 ? FontWeight.w500 : FontWeight.w400,
-                      color: item.unreadCount > 0 ? cs.onSurface : cs.onSurfaceVariant,
+                      fontWeight: item.unreadCount > 0
+                          ? FontWeight.w500
+                          : FontWeight.w400,
+                      color: item.unreadCount > 0
+                          ? cs.onSurface
+                          : cs.onSurfaceVariant,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

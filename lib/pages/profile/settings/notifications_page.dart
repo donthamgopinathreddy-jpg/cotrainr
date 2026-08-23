@@ -185,12 +185,31 @@ class _NotificationsPageState extends State<NotificationsPage>
                 HubSectionCard(
                   title: 'Push notifications',
                   animationDelayMs: 40,
-                  child: HubToggleRow(
-                    title: 'All notifications',
-                    subtitle: 'Master switch for push notifications from Cotrainr',
-                    value: _prefs.all,
-                    enabled: !_saving,
-                    onChanged: (v) => _persist(_prefs.copyWith(all: v)),
+                  child: Column(
+                    children: [
+                      HubToggleRow(
+                        title: 'All notifications',
+                        subtitle:
+                            'Master switch for push notifications from Cotrainr',
+                        value: _prefs.all,
+                        enabled: !_saving,
+                        onChanged: (v) => _persist(_prefs.copyWith(all: v)),
+                      ),
+                      const Divider(height: 1),
+                      HubToggleRow(
+                        title: 'Message notifications',
+                        subtitle: 'Alerts when you receive a chat message',
+                        value: _prefs.messageNotifications,
+                        enabled: dependentsEnabled,
+                        onChanged: (v) => _persist(
+                          _prefs.copyWith(
+                            messageNotifications: v,
+                            trainerMessages: v,
+                            nutritionistMessages: v,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 12),

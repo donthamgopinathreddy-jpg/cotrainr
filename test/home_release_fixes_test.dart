@@ -408,7 +408,8 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Trainers & Nutritionists'), findsOneWidget);
-    expect(find.text('Subscription'), findsOneWidget);
+    expect(find.text('Member Pass'), findsOneWidget);
+    expect(find.text('Subscription'), findsNothing);
     expect(find.text('Join live sessions with your trainer.'), findsOneWidget);
     expect(find.text('Clients'), findsNothing);
   });
@@ -433,6 +434,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Trainers & Nutritionists'), findsNothing);
     expect(find.text('Subscription'), findsNothing);
+    expect(find.text('Member Pass'), findsNothing);
     expect(find.text('Schedule and manage video sessions'), findsOneWidget);
     expect(find.text('Join live sessions with your trainer.'), findsNothing);
   });
@@ -457,6 +459,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Trainers & Nutritionists'), findsNothing);
     expect(find.text('Subscription'), findsNothing);
+    expect(find.text('Member Pass'), findsNothing);
     expect(find.text('Schedule and manage video sessions'), findsOneWidget);
   });
 
