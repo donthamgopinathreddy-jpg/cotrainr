@@ -1,0 +1,35 @@
+=== Cotrainr vector branding build ===
+symbol crop from black lockup: (461, 219) (y 211-430)
+white from orange icon: (729, 414)
+masters saved (1024, 1024)
+wrote SVG c:\Users\HP\Documents\projects\cotrainr_flutter\assets\branding\vector\cotrainr_logo.svg (466 bytes, white=1 orange=yes)
+wrote SVG c:\Users\HP\Documents\projects\cotrainr_flutter\assets\branding\vector\cotrainr_logo_white.svg (416 bytes, white=2 orange=no)
+png c:\Users\HP\Documents\projects\cotrainr_flutter\assets\branding\png\cotrainr_logo_1024.png
+png c:\Users\HP\Documents\projects\cotrainr_flutter\assets\branding\png\cotrainr_logo_512.png
+png c:\Users\HP\Documents\projects\cotrainr_flutter\assets\branding\png\cotrainr_logo_256.png
+png c:\Users\HP\Documents\projects\cotrainr_flutter\assets\branding\png\cotrainr_logo_192.png
+png c:\Users\HP\Documents\projects\cotrainr_flutter\assets\branding\png\cotrainr_logo_144.png
+png c:\Users\HP\Documents\projects\cotrainr_flutter\assets\branding\png\cotrainr_logo_96.png
+png c:\Users\HP\Documents\projects\cotrainr_flutter\assets\branding\png\cotrainr_logo_72.png
+png c:\Users\HP\Documents\projects\cotrainr_flutter\assets\branding\png\cotrainr_logo_48.png
+png c:\Users\HP\Documents\projects\cotrainr_flutter\assets\branding\png\cotrainr_logo_32.png
+png c:\Users\HP\Documents\projects\cotrainr_flutter\assets\branding\png\cotrainr_logo_16.png
+png c:\Users\HP\Documents\projects\cotrainr_flutter\assets\branding\png\color\cotrainr_logo_1024.png
+png c:\Users\HP\Documents\projects\cotrainr_flutter\assets\branding\png\color\cotrainr_logo_512.png
+png c:\Users\HP\Documents\projects\cotrainr_flutter\assets\branding\png\color\cotrainr_logo_256.png
+png c:\Users\HP\Documents\projects\cotrainr_flutter\assets\branding\png\color\cotrainr_logo_192.png
+png c:\Users\HP\Documents\projects\cotrainr_flutter\assets\branding\png\color\cotrainr_logo_144.png
+png c:\Users\HP\Documents\projects\cotrainr_flutter\assets\branding\png\color\cotrainr_logo_96.png
+png c:\Users\HP\Documents\projects\cotrainr_flutter\assets\branding\png\color\cotrainr_logo_72.png
+png c:\Users\HP\Documents\projects\cotrainr_flutter\assets\branding\png\color\cotrainr_logo_48.png
+png c:\Users\HP\Documents\projects\cotrainr_flutter\assets\branding\png\color\cotrainr_logo_32.png
+png c:\Users\HP\Documents\projects\cotrainr_flutter\assets\branding\png\color\cotrainr_logo_16.png
+icons done symbol=656x370
+decor orange_gradient.svg
+decor light_glow.svg
+decor orange_particles.svg
+decor abstract_lines.svg
+decor corner_overlay.svg
+decor orange_smoke.svg
+decor orange_overlays.svg
+DONE
