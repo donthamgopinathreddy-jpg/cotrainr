@@ -49,11 +49,17 @@ class HydrationLocalStore {
     await prefs.setInt(_keyMl, ml.coerceAtLeast(0));
   }
 
-  /// Returns null if [eventId] was already processed (duplicate callback).
+  /// Returns null if [eventId] was already processed (duplicate callback), or
+  /// if [localDate] belongs to an earlier day than today.
+  ///
+  /// [localDate] is the calendar day the drink was actually logged on. Native
+  /// notification actions stamp it at tap time, so a 23:55 tap drained the next
+  /// morning is attributed to the day it happened rather than inflating today.
   Future<int?> applyEvent({
     required String eventId,
     required int amountMl,
     required String source,
+    String? localDate,
   }) async {
     if (amountMl <= 0) return null;
     final prefs = await _prefs;
@@ -67,27 +73,48 @@ class HydrationLocalStore {
       return null;
     }
 
-    final next = (prefs.getInt(_keyMl) ?? 0) + amountMl;
-    await prefs.setInt(_keyMl, next);
+    final today = localDateKey();
+    final eventDate = localDate ?? today;
 
     processed.add(eventId);
-    // Bound memory — keep last 40 ids.
-    while (processed.length > 40) {
+    // Bound memory — keep the most recent ids. Large enough that a burst of
+    // notification taps cannot evict an id before it is acknowledged.
+    while (processed.length > 200) {
       processed.removeAt(0);
     }
     await prefs.setStringList(_keyProcessedIds, processed);
+
+    if (eventDate != today) {
+      // Record it as seen so it is never replayed, but do not credit today.
+      if (kDebugMode) {
+        debugPrint(
+          'HydrationLocalStore: event $eventId is from $eventDate, not today',
+        );
+      }
+      return null;
+    }
+
+    final next = (prefs.getInt(_keyMl) ?? 0) + amountMl;
+    await prefs.setInt(_keyMl, next);
 
     final pending = _readPending(prefs);
     pending.add({
       'eventId': eventId,
       'amountMl': amountMl,
-      'localDate': localDateKey(),
+      'localDate': eventDate,
       'source': source,
       'loggedAt': DateTime.now().toIso8601String(),
     });
     await prefs.setString(_keyPending, jsonEncode(pending));
 
     return next;
+  }
+
+  /// True when [eventId] has already been applied.
+  Future<bool> hasProcessed(String eventId) async {
+    final prefs = await _prefs;
+    return (prefs.getStringList(_keyProcessedIds) ?? const <String>[])
+        .contains(eventId);
   }
 
   Future<List<Map<String, dynamic>>> pendingEvents() async {

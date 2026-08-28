@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../config/feature_flags.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
 import '../../repositories/profile_repository.dart';
@@ -533,11 +534,12 @@ class _ProfileStatsStrip extends StatelessWidget {
             value: level.toString(),
             iconColor: Colors.white,
             textColor: Colors.white,
-            onTap: () {
-              HapticFeedback.lightImpact();
-              // Navigate to quest page
-              context.push('/quest');
-            },
+            onTap: FeatureFlags.enableQuest
+                ? () {
+                    HapticFeedback.lightImpact();
+                    context.push('/quest');
+                  }
+                : null,
           ),
           _StatItem(
             icon: Icons.star_rounded,
@@ -545,11 +547,12 @@ class _ProfileStatsStrip extends StatelessWidget {
             value: _formatXP(xp),
             iconColor: Colors.white,
             textColor: Colors.white,
-            onTap: () {
-              HapticFeedback.lightImpact();
-              // Navigate to quest page
-              context.push('/quest');
-            },
+            onTap: FeatureFlags.enableQuest
+                ? () {
+                    HapticFeedback.lightImpact();
+                    context.push('/quest');
+                  }
+                : null,
           ),
         ],
       ),

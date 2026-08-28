@@ -1,20 +1,45 @@
 # Cotrainr Supabase local/project function config.
 # Full project config may live in the hosted dashboard; this file documents
-# function-specific deploy flags required for Login.
+# function-specific deploy flags.
+#
+# verify_jwt = false removes the API gateway's Supabase-JWT check, so every
+# such function MUST enforce its own caller authentication. Audited below.
+# Functions not listed here default to verify_jwt = true (gateway-enforced
+# Supabase JWT) and take their actor from the JWT, never from the body.
 
 [functions.login-with-identifier]
 # Unauthenticated entrypoint — password login before a session exists.
+# Safe: it is the credential-verification endpoint itself and returns a single
+# opaque `invalid_credentials` code for unknown user and wrong password alike.
 verify_jwt = false
 
 [functions.google-oauth-callback]
 # Google redirects the browser here without a Supabase Authorization header.
-# Auth is enforced inside the function via OAuth state + PKCE (not gateway JWT).
+# Safe: auth is enforced inside the function via a single-use random OAuth
+# state row in `oauth_pending_states` plus PKCE `code_verifier` and expiry.
 verify_jwt = false
 
 [functions.dispatch-video-session-reminders]
-# Invoked by pg_cron / scheduled HTTP, not by signed-in Flutter clients.
+# Invoked by the scheduled trigger, not by signed-in Flutter clients.
+# Safe: VIDEO_SESSION_CRON_SECRET is MANDATORY. The function returns 503 when
+# the env var is absent and 401 on a missing/wrong `x-cron-secret` header,
+# before any service-role client is created.
+verify_jwt = false
+
+[functions.send-push-notification]
+# Invoked by the Supabase Database Webhook on public.notifications INSERT,
+# which cannot present a user JWT.
+# Safe: NOTIFICATION_WEBHOOK_SECRET is MANDATORY. Returns 503 when the env var
+# is absent and 401 on a missing/wrong `x-notification-webhook-secret` header,
+# before the payload is parsed.
 verify_jwt = false
 
 [functions.respond-video-session]
 # Authenticated Flutter clients. Actor is taken from the JWT, not the body.
 verify_jwt = true
+
+# Decommissioned (2026-08-28): zoom-oauth-start, zoom-oauth-callback,
+# zoom-disconnect. The MVP uses Google Meet. The Zoom flow bound OAuth state
+# directly to the user id with no nonce or PKCE, so a forged callback could
+# attach an attacker's Zoom account to another user. Source removed; delete the
+# deployed functions with `supabase functions delete <name>`.

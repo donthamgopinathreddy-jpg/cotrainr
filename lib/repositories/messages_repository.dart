@@ -1,6 +1,14 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/messaging_policy_service.dart';
+import '../utils/chat_message_reconciler.dart' show kDeletedMessageText;
+
+/// Whether a mark-read attempt actually reached the database.
+///
+/// [unsupported] means `mark_conversation_messages_read` is not deployed, so
+/// read state cannot be persisted at all and the UI must not present the
+/// conversation as permanently read.
+enum MarkReadOutcome { success, unsupported, failed }
 
 /// Repository for managing messages and conversations
 class MessagesRepository {
@@ -55,6 +63,7 @@ class MessagesRepository {
             .select('id')
             .eq('conversation_id', convId)
             .isFilter('read_at', null)
+            .isFilter('deleted_for_everyone_at', null)
             .neq('sender_id', _currentUserId!);
 
         totalUnread += (messagesResponse as List).length;
@@ -67,16 +76,80 @@ class MessagesRepository {
     }
   }
 
+  /// Tombstone text shown in place of a message deleted for everyone.
+  static const String deletedMessagePlaceholder = kDeletedMessageText;
+
+  /// True when the server marked this message row as deleted for everyone.
+  static bool isDeletedForEveryone(Map<String, dynamic>? message) {
+    if (message == null) return false;
+    final raw = message['deleted_for_everyone_at'];
+    if (raw == null) return false;
+    if (raw is String) return raw.isNotEmpty;
+    return true;
+  }
+
+  /// Activity timestamp a conversation should be sorted by: newest message
+  /// first, never `created_at`.
+  static DateTime? conversationActivityAt(Map<String, dynamic> convData) {
+    final conv = convData['conversation'];
+    final lastMessage = convData['lastMessage'];
+    final candidates = <dynamic>[
+      convData['lastMessageAt'],
+      if (lastMessage is Map) lastMessage['created_at'],
+      if (conv is Map) conv['last_message_at'],
+      convData['updatedAt'],
+      if (conv is Map) conv['updated_at'],
+    ];
+
+    DateTime? newest;
+    for (final candidate in candidates) {
+      final parsed = candidate is DateTime
+          ? candidate
+          : (candidate is String && candidate.isNotEmpty
+              ? DateTime.tryParse(candidate)
+              : null);
+      if (parsed == null) continue;
+      if (newest == null || parsed.isAfter(newest)) newest = parsed;
+    }
+    return newest;
+  }
+
+  /// Sort newest-activity-first and drop duplicate conversation rows, which
+  /// realtime refetch races can otherwise introduce.
+  static List<Map<String, dynamic>> sortConversationsByActivity(
+    List<Map<String, dynamic>> conversations,
+  ) {
+    final byId = <String, Map<String, dynamic>>{};
+    for (final conv in conversations) {
+      final id = conv['id'];
+      if (id is! String || id.isEmpty) continue;
+      byId[id] = conv;
+    }
+
+    final sorted = byId.values.toList()
+      ..sort((a, b) {
+        final aAt = conversationActivityAt(a);
+        final bAt = conversationActivityAt(b);
+        if (aAt != null && bAt != null) {
+          final byTime = bAt.compareTo(aAt);
+          if (byTime != 0) return byTime;
+        } else if (aAt == null && bAt != null) {
+          return 1;
+        } else if (aAt != null && bAt == null) {
+          return -1;
+        }
+        // Matches the server tiebreaker so both orderings agree exactly.
+        return (b['id'] as String).compareTo(a['id'] as String);
+      });
+    return sorted;
+  }
+
   /// Get conversations for current user with last message and unread count
   Future<List<Map<String, dynamic>>> fetchConversations() async {
     if (_currentUserId == null) return [];
 
     try {
-      final conversations = await _supabase
-          .from('conversations')
-          .select('*')
-          .or('client_id.eq.$_currentUserId,provider_id.eq.$_currentUserId,other_user_id.eq.$_currentUserId')
-          .order('updated_at', ascending: false);
+      final conversations = await _fetchConversationRowsOrdered();
 
       final List<Map<String, dynamic>> result = [];
 
@@ -96,11 +169,14 @@ class MessagesRepository {
             .maybeSingle();
 
         // Get unread count
+        // A message deleted for everyone can never be read, so counting it
+        // would leave a badge the user has no way to clear.
         final unreadResponse = await _supabase
             .from('messages')
             .select('id')
             .eq('conversation_id', convId)
             .isFilter('read_at', null)
+            .isFilter('deleted_for_everyone_at', null)
             .neq('sender_id', _currentUserId!);
 
         final unreadCount = (unreadResponse as List).length;
@@ -125,14 +201,55 @@ class MessagesRepository {
           'unreadCount': unreadCount,
           'otherUser': profileResponse,
           'updatedAt': conv['updated_at'],
+          'lastMessageAt': conv['last_message_at'] ?? lastMessageResponse?['created_at'],
         });
       }
 
-      return result;
+      // Server ordering is authoritative, but re-sort locally so a lagging or
+      // not-yet-migrated `last_message_at` can never leave a fresh chat buried.
+      return sortConversationsByActivity(result);
     } catch (e) {
       if (kDebugMode) debugPrint('Error fetching conversations: $e');
       rethrow;
     }
+  }
+
+  /// Order by `conversations.last_message_at DESC, id DESC`, falling back to
+  /// `updated_at` on deployments where the ordering migration has not been
+  /// applied yet. Both the initial fetch and every realtime refetch go through
+  /// here, so their ordering semantics are identical.
+  Future<List<dynamic>> _fetchConversationRowsOrdered() async {
+    final filter =
+        'client_id.eq.$_currentUserId,provider_id.eq.$_currentUserId,other_user_id.eq.$_currentUserId';
+    try {
+      return await _supabase
+          .from('conversations')
+          .select('*')
+          .or(filter)
+          .order('last_message_at', ascending: false, nullsFirst: false)
+          .order('id', ascending: false);
+    } catch (e) {
+      if (!_isMissingColumn(e, 'last_message_at')) rethrow;
+      if (kDebugMode) {
+        debugPrint(
+          'fetchConversations: last_message_at missing, falling back to updated_at',
+        );
+      }
+      return await _supabase
+          .from('conversations')
+          .select('*')
+          .or(filter)
+          .order('updated_at', ascending: false)
+          .order('id', ascending: false);
+    }
+  }
+
+  bool _isMissingColumn(Object e, String column) {
+    if (e is PostgrestException && e.code == '42703') return true;
+    final s = e.toString().toLowerCase();
+    return s.contains('42703') ||
+        (s.contains(column) &&
+            (s.contains('does not exist') || s.contains('could not find')));
   }
 
   /// Get messages for a conversation
@@ -149,11 +266,60 @@ class MessagesRepository {
           .eq('conversation_id', conversationId)
           .order('created_at', ascending: true);
 
-      return (response as List).cast<Map<String, dynamic>>();
+      final rows = (response as List).cast<Map<String, dynamic>>();
+      final hidden = await fetchHiddenMessageIds();
+      if (hidden.isEmpty) return rows;
+      return rows
+          .where((m) => !hidden.contains(m['id'] as String? ?? ''))
+          .toList();
     } catch (e) {
       if (kDebugMode) debugPrint('Error fetching messages: $e');
       return [];
     }
+  }
+
+  /// Ids the current user hid via "Delete for me". Server-persisted and
+  /// private: RLS restricts `message_hidden` to the owning user.
+  Future<Set<String>> fetchHiddenMessageIds() async {
+    if (_currentUserId == null) return <String>{};
+    try {
+      final rows = await _supabase
+          .from('message_hidden')
+          .select('message_id')
+          .eq('user_id', _currentUserId!);
+      return (rows as List)
+          .map((r) => (r as Map)['message_id'] as String?)
+          .whereType<String>()
+          .toSet();
+    } catch (e) {
+      // Table absent (pre-migration) or unreadable: show everything.
+      if (kDebugMode) debugPrint('fetchHiddenMessageIds failed: $e');
+      return <String>{};
+    }
+  }
+
+  /// Delete for everyone. Server-authoritative: the RPC verifies the caller is
+  /// the sender, archives the original and redacts the row so neither
+  /// participant can read the content afterwards.
+  ///
+  /// Throws [PostgrestException] when the caller is not authorised.
+  Future<bool> deleteMessageForEveryone(String messageId) async {
+    if (_currentUserId == null || messageId.isEmpty) return false;
+    final result = await _supabase.rpc(
+      'delete_message_for_everyone',
+      params: {'p_message_id': messageId},
+    );
+    return result == true;
+  }
+
+  /// Delete for me. Private hide; the other participant is unaffected.
+  Future<bool> hideMessageForMe(String messageId) async {
+    if (_currentUserId == null || messageId.isEmpty) return false;
+    final result = await _supabase.rpc(
+      'hide_message_for_me',
+      params: {'p_message_id': messageId},
+    );
+    return result == true;
   }
 
   /// Send a message
@@ -208,11 +374,9 @@ class MessagesRepository {
             .select()
             .single();
 
-        await _supabase
-            .from('conversations')
-            .update({'updated_at': DateTime.now().toIso8601String()})
-            .eq('id', conversationId);
-
+        // Ordering is bumped by trg_messages_touch_conversation. A client
+        // UPDATE here silently affected zero rows: conversations has RLS on
+        // and no UPDATE policy.
         return response;
       } catch (e) {
         // Fallback when document enum/metadata columns are not migrated yet.
@@ -229,10 +393,6 @@ class MessagesRepository {
                 .insert(fallback)
                 .select()
                 .single();
-            await _supabase
-                .from('conversations')
-                .update({'updated_at': DateTime.now().toIso8601String()})
-                .eq('id', conversationId);
             return {
               ...response,
               'media_kind': 'document',
@@ -255,45 +415,46 @@ class MessagesRepository {
     }
   }
 
-  /// Mark messages from the other participant as read via RPC.
-  /// Returns how many rows were updated (0 if none / RPC missing).
-  Future<int> markMessagesAsRead(String conversationId) async {
-    if (_currentUserId == null) return 0;
+  /// Marks the other participant's messages read on the server.
+  ///
+  /// The caller must be able to tell a real write apart from a silent no-op:
+  /// `read_at` can only be set by `mark_conversation_messages_read`, because
+  /// the broad UPDATE policy on `public.messages` was dropped. If that RPC is
+  /// absent or fails, the badge must NOT be presented as permanently cleared.
+  Future<MarkReadOutcome> markConversationRead(String conversationId) async {
+    if (_currentUserId == null) return MarkReadOutcome.failed;
 
     try {
-      final result = await _supabase.rpc(
+      await _supabase.rpc(
         'mark_conversation_messages_read',
         params: {'p_conversation_id': conversationId},
       );
-      if (result is int) return result;
-      if (result is num) return result.toInt();
-      return 0;
+      return MarkReadOutcome.success;
     } catch (e) {
       if (_isMissingRpc(e)) {
         if (kDebugMode) {
-          debugPrint('markMessagesAsRead: RPC missing, returning 0');
+          debugPrint('markConversationRead: RPC not deployed');
         }
-        return 0;
+        return MarkReadOutcome.unsupported;
       }
-      if (kDebugMode) debugPrint('Error marking messages as read: $e');
-      return 0;
+      if (kDebugMode) debugPrint('markConversationRead failed: $e');
+      return MarkReadOutcome.failed;
     }
   }
 
+  /// Narrow detection of "the function is not deployed".
+  ///
+  /// Deliberately does not treat every `PGRST*` code as missing: PGRST301 is an
+  /// expired JWT and PGRST116 is an empty result, and swallowing those as
+  /// "nothing to mark" is what let read state silently never persist.
   bool _isMissingRpc(Object e) {
     if (e is PostgrestException) {
-      final code = e.code ?? '';
-      if (code.startsWith('PGRST')) return true;
-      final msg = (e.message).toLowerCase();
-      if (msg.contains('could not find the function') ||
-          msg.contains('mark_conversation_messages_read')) {
-        return true;
-      }
+      if (e.code == 'PGRST202') return true;
+      final msg = e.message.toLowerCase();
+      return msg.contains('could not find the function') ||
+          msg.contains('does not exist');
     }
-    final s = e.toString().toLowerCase();
-    return s.contains('pgrst') ||
-        s.contains('could not find the function') ||
-        s.contains('mark_conversation_messages_read');
+    return false;
   }
 
   /// Subscribe to new messages in a conversation

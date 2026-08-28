@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../config/feature_flags.dart';
+
 class DailyStreakCard extends StatelessWidget {
   final int streakDays;
 
@@ -18,10 +20,12 @@ class DailyStreakCard extends StatelessWidget {
         : Colors.white;
 
     return GestureDetector(
-      onTap: () {
-        HapticFeedback.lightImpact();
-        context.push('/quest');
-      },
+      onTap: FeatureFlags.enableQuest
+          ? () {
+              HapticFeedback.lightImpact();
+              context.push('/quest');
+            }
+          : null,
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 16),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),

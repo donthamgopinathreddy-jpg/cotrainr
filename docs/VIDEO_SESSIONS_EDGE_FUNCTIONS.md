@@ -1,13 +1,31 @@
 # Video Sessions Edge Functions – Manual Setup
 
-Create these 4 functions in Supabase Dashboard → Edge Functions.  
-For each function, use the code below as the `index.ts` content.
+> **DECOMMISSIONED (2026-08-28) — HISTORICAL REFERENCE ONLY. DO NOT DEPLOY.**
+>
+> The Zoom sections of this runbook (`zoom-oauth-start`, `zoom-oauth-callback`,
+> `zoom-disconnect`) describe an OAuth flow that binds the OAuth `state`
+> parameter directly to the Supabase user id, with no server-side nonce, no
+> single-use check and no PKCE. A forged callback could therefore attach an
+> attacker-controlled Zoom account to another user's Cotrainr account.
+>
+> The source has been deleted from `supabase/functions/`, and the Android MVP
+> uses Google Meet (`google-oauth-start` / `google-oauth-callback`), which
+> validates a single-use random state row in `oauth_pending_states` together
+> with a PKCE `code_verifier` and an expiry.
+>
+> Do not recreate these functions. If they are still deployed, remove them:
+>
+> ```bash
+> supabase functions delete zoom-oauth-start
+> supabase functions delete zoom-oauth-callback
+> supabase functions delete zoom-disconnect
+> ```
+>
+> The `create-video-session` section below remains current.
 
-**Required secrets** (Project Settings → Edge Functions → Secrets):
-- `ZOOM_CLIENT_ID`
-- `ZOOM_CLIENT_SECRET`
-- `ZOOM_REDIRECT_URI` (e.g. `https://YOUR_PROJECT.supabase.co/functions/v1/zoom-oauth-callback`)
-- `APP_REDIRECT_URI` (optional, defaults to `cotrainr://video/zoom-connected`)
+The Zoom secrets referenced below (`ZOOM_CLIENT_ID`, `ZOOM_CLIENT_SECRET`,
+`ZOOM_REDIRECT_URI`, `APP_REDIRECT_URI`) are no longer required and should be
+unset from the project.
 
 ---
 
@@ -529,9 +547,9 @@ Deno.serve(async (req) => {
 
 ## Function names (exact)
 
-| Function name           | Purpose                                      |
-|------------------------|----------------------------------------------|
-| `zoom-oauth-start`     | Returns Zoom OAuth URL for Connect Zoom      |
-| `zoom-oauth-callback`  | Handles Zoom redirect, stores tokens         |
-| `zoom-disconnect`      | Removes Zoom integration for user            |
-| `create-video-session` | Creates Zoom meeting or external-link session|
+| Function name           | Purpose                                      | Status |
+|------------------------|----------------------------------------------|--------|
+| `zoom-oauth-start`     | Returns Zoom OAuth URL for Connect Zoom      | **Decommissioned 2026-08-28 — do not deploy** |
+| `zoom-oauth-callback`  | Handles Zoom redirect, stores tokens         | **Decommissioned 2026-08-28 — do not deploy** |
+| `zoom-disconnect`      | Removes Zoom integration for user            | **Decommissioned 2026-08-28 — do not deploy** |
+| `create-video-session` | Creates the meeting or external-link session | Current |

@@ -46,7 +46,7 @@ If automated migrations fail due to duplicate version history, run manually in S
 
 ## Video session notifications / reminders
 
-Server-side jobs live in `video_session_notification_jobs`. Created/reschedule/cancel rows go into existing `public.notifications`. Push uses existing `device_tokens` + `send-push-notification` (also invoked directly from `create-video-session` / `dispatch-video-session-reminders`, not only the dashboard webhook).
+Server-side jobs live in `video_session_notification_jobs`. Created/reschedule/cancel rows go into existing `public.notifications`. Push uses existing `device_tokens` + `send-push-notification`, reached **only** through the Supabase Database Webhook on `public.notifications` INSERT.
 
 Dispatch SQL:
 
@@ -59,7 +59,10 @@ supabase functions deploy create-video-session
 supabase functions deploy send-push-notification
 supabase functions deploy dispatch-video-session-reminders --no-verify-jwt
 supabase secrets set VIDEO_SESSION_CRON_SECRET=<random>
+supabase secrets set NOTIFICATION_WEBHOOK_SECRET=<random>
 ```
+
+Both secrets are **mandatory**. `dispatch-video-session-reminders` and `send-push-notification` return `503 configuration_error` when their secret is unset and `401` on a missing or wrong caller secret, so neither can fail open.
 
 Also required for FCM (existing send-push secrets):
 
@@ -67,6 +70,8 @@ Also required for FCM (existing send-push secrets):
 - `FIREBASE_CLIENT_EMAIL`
 - `FIREBASE_PRIVATE_KEY`
 
-Dashboard → Edge Functions → `dispatch-video-session-reminders` → add a scheduled trigger (every 1 minute) with header `x-cron-secret`.
+Dashboard → Edge Functions → `dispatch-video-session-reminders` → add a scheduled trigger (every 1 minute) with header `x-cron-secret: <VIDEO_SESSION_CRON_SECRET>`.
+
+Dashboard → Database → Webhooks → the `public.notifications` INSERT webhook → add header `x-notification-webhook-secret: <NOTIFICATION_WEBHOOK_SECRET>`.
 
 Android reminder/start notifications include Join and Dismiss actions in the foreground local notification. iOS has no custom action buttons in this MVP (tap opens session detail).

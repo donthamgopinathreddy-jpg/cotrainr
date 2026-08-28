@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:path/path.dart' as path;
 
+import '../utils/messaging_error_messages.dart';
 import '../utils/provider_cover_url.dart';
 import 'chat_media_storage.dart';
 
@@ -181,18 +182,16 @@ class StorageService {
                 msg.contains('invalid') ||
                 msg.contains('403') ||
                 msg.contains('400'))) {
-          throw Exception(
-            'Document upload is blocked by storage settings. '
-            'Apply 20260815_chat_attachments_private_bucket.sql.',
-          );
+          throw Exception('chat_document_mime_rejected');
         }
         rethrow;
       }
       onProgress?.call(1.0);
 
       return ChatMediaStorage.storedRefForPath(filePath);
-    } catch (e) {
-      print('Error uploading chat media: $e');
+    } catch (e, s) {
+      // Debug-only: the exception text carries the bucket name and status.
+      MessagingErrorMessages.logMessagingError('uploadChatMedia', e, s);
       rethrow;
     }
   }

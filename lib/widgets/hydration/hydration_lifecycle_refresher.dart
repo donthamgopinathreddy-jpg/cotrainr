@@ -38,8 +38,13 @@ class _HydrationLifecycleRefresherState
 
   Future<void> _refresh() async {
     try {
+      // Apply notification taps first so the flush below pushes them remotely
+      // in the same pass — otherwise the water card shows a stale total.
+      await WaterIntakeService.instance.drainNativeQuickLogs();
       await WaterIntakeService.instance.flushPendingRemoteSync();
       await WaterReminderService.instance.syncHydrationSnapshot();
+      // Heal the alarm chain if the OS dropped it while we were away.
+      await WaterReminderService.instance.ensureScheduleAlive();
       // Notify home / insights listeners even if totals were local-only.
       WaterIntakeService.revision.value++;
     } catch (_) {}

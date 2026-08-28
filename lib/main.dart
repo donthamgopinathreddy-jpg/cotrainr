@@ -55,7 +55,7 @@ void main() async {
   unawaited(_initWaterReminders());
   try {
     WaterNotificationPlatform.ensureQuickLogHandler(
-      handler: WaterNotificationHandler.handleActionId,
+      handler: WaterNotificationHandler.onNativeQuickLogApplied,
     );
   } catch (e) {
     debugPrint('[BOOT] water notification handler failed: $e');
@@ -87,7 +87,10 @@ Future<void> _initPushAfterFirstFrame() async {
 Future<void> _initWaterReminders() async {
   try {
     await WaterReminderService.instance.ensureInitialized();
-    await WaterReminderService.instance.rescheduleIfEnabled();
+    // Heal a dropped alarm chain instead of rescheduling unconditionally:
+    // a full reschedule restarts the countdown, so a user who opens the app
+    // more often than their interval would never receive a reminder.
+    await WaterReminderService.instance.ensureScheduleAlive();
   } catch (e) {
     debugPrint('Water reminder init failed: $e');
   }

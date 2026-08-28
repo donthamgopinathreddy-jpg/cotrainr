@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -21,6 +23,7 @@ import '../../services/user_safety_service.dart';
 import '../../providers/unread_messages_count_provider.dart';
 import '../../utils/chat_attachment_rules.dart';
 import '../../utils/chat_message_reconciler.dart';
+import '../../utils/messaging_error_messages.dart';
 import '../../services/chat_media_storage.dart';
 import '../../widgets/common/app_overlays.dart';
 import '../../widgets/common/cotrainr_back_button.dart';
@@ -98,11 +101,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             documentMime: m.documentMime,
             documentSizeBytes: m.documentSizeBytes,
             readAt: m.readAt,
+            deletedForEveryoneAt: m.deletedForEveryoneAt,
             uploadStatus: m.uploadStatus,
             uploadProgress: m.uploadProgress,
           ),
         ),
       );
+  }
+
+  DateTime? _parseTimestamp(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is DateTime) return raw;
+    if (raw is String && raw.isNotEmpty) return DateTime.tryParse(raw);
+    return null;
   }
 
   DateTime? _parseReadAt(dynamic raw) {
@@ -122,9 +133,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Future<void> _bootstrap() async {
     await _loadConversationAccess();
     if (!mounted) return;
+    // Persist read state before the (slower) message fetch so a quick
+    // tap-and-back still lands the authoritative write.
+    unawaited(_markMessagesAsRead());
     await _loadMessages();
+    if (!mounted) return;
     _setupRealtimeSubscription();
-    _markMessagesAsRead();
   }
 
   Future<void> _loadConversationAccess() async {
@@ -245,6 +259,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         final content = msg['content'] as String? ?? '';
         final createdAt = msg['created_at'] as String?;
         final time = _formatTime(createdAt);
+        final deletedAt = _parseTimestamp(msg['deleted_for_everyone_at']);
+
+        // Server already redacted the row; never resolve or render its media.
+        if (deletedAt != null) {
+          loaded.add(
+            ReconciledChatMessage(
+              text: kDeletedMessageText,
+              isSent: isSent,
+              time: time,
+              messageId: msg['id'] as String?,
+              readAt: _parseReadAt(msg['read_at']),
+              deletedForEveryoneAt: deletedAt,
+            ),
+          );
+          continue;
+        }
+
         final resolved = await ChatMediaStorage.resolveMessageMedia(
           _supabase,
           msg,
@@ -333,8 +364,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       widget.conversationId,
       (updated) {
         final messageId = updated['id'] as String?;
+        if (messageId == null || messageId.isEmpty) return;
+
+        // Delete-for-everyone reaches the other participant as an UPDATE.
+        final deletedAt = _parseTimestamp(updated['deleted_for_everyone_at']);
+        if (deletedAt != null) {
+          if (_reconciler.markDeletedForEveryone(messageId, deletedAt)) {
+            if (mounted) setState(_syncMessagesFromReconciler);
+          }
+          return;
+        }
+
         final readAt = _parseReadAt(updated['read_at']);
-        if (messageId == null || messageId.isEmpty || readAt == null) return;
+        if (readAt == null) return;
         if (_reconciler.applyReadAt(messageId, readAt)) {
           if (mounted) setState(_syncMessagesFromReconciler);
         }
@@ -344,9 +386,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Future<void> _markMessagesAsRead() async {
     try {
-      await _messagesRepo.markMessagesAsRead(widget.conversationId);
-    } catch (e) {
-      if (kDebugMode) debugPrint('ChatScreen markMessagesAsRead failed: $e');
+      await _messagesRepo.markConversationRead(widget.conversationId);
+    } catch (e, s) {
+      MessagingErrorMessages.logMessagingError('markConversationRead', e, s);
     } finally {
       if (mounted) {
         ref.invalidate(unreadMessagesCountProvider);
@@ -652,8 +694,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       } else {
         setState(() => _attachmentBusy = false);
       }
-    } catch (e) {
-      if (kDebugMode) debugPrint('Error sending attachment: $e');
+    } catch (e, s) {
+      MessagingErrorMessages.logMessagingError('sendAttachment', e, s);
       if (mounted) {
         setState(() {
           _reconciler.updateOptimistic(
@@ -663,12 +705,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           _syncMessagesFromReconciler();
           _attachmentBusy = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString().replaceFirst('Exception: ', '')),
-            duration: const Duration(seconds: 4),
-          ),
-        );
+        // The bubble already carries "… sending failed  Retry", so surface a
+        // sanitized line only for connectivity, never the backend exception.
+        if (MessagingErrorMessages.isNetworkError(e)) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(MessagingErrorMessages.network),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
       } else {
         _attachmentBusy = false;
       }
@@ -770,10 +816,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _previewDocumentMime = null;
         _previewDocumentSize = null;
       });
-    } catch (e) {
+    } catch (e, s) {
+      MessagingErrorMessages.logMessagingError('pickGallery', e, s);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error opening gallery: $e')),
+          const SnackBar(content: Text('Could not open the gallery.')),
         );
       }
     }
@@ -873,8 +920,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       });
     } catch (e) {
       if (mounted) {
+        MessagingErrorMessages.logMessagingError('pickDocument', e);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error picking document: $e')),
+          const SnackBar(content: Text('Could not open the file picker.')),
         );
       }
     }
@@ -1015,10 +1063,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         const SnackBar(content: Text('User blocked')),
       );
       await _refreshBlockState();
-    } catch (e) {
+    } catch (e, s) {
+      MessagingErrorMessages.logMessagingError('blockUser', e, s);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+          SnackBar(content: Text(MessagingErrorMessages.forGeneric(e))),
         );
       }
     } finally {
@@ -1056,10 +1105,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         const SnackBar(content: Text('User unblocked')),
       );
       await _refreshBlockState();
-    } catch (e) {
+    } catch (e, s) {
+      MessagingErrorMessages.logMessagingError('unblockUser', e, s);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+          SnackBar(content: Text(MessagingErrorMessages.forGeneric(e))),
         );
       }
     } finally {
@@ -1068,11 +1118,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _showDeleteOptions(BuildContext context, int index) {
+    if (index < 0 || index >= _messages.length) return;
+    final message = _messages[index];
+    final messageId = message.messageId;
+
+    // Unsent/optimistic bubbles have no server row to delete.
+    if (messageId == null || messageId.isEmpty) return;
+    if (message.isDeletedForEveryone) return;
+
     HapticFeedback.mediumImpact();
 
     showModalBottomSheet(
       context: context,
-      builder: (context) => Container(
+      builder: (sheetContext) => Container(
         padding: const EdgeInsets.symmetric(vertical: 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1082,38 +1140,80 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               title: const Text('Delete for me'),
               onTap: () {
                 HapticFeedback.lightImpact();
-                Navigator.pop(context);
-                setState(() {
-                  _messages.removeAt(index);
-                });
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Message deleted for you'),
-                    duration: Duration(seconds: 2),
-                  ),
-                );
+                Navigator.pop(sheetContext);
+                _deleteForMe(messageId);
               },
             ),
-            ListTile(
-              leading: const Icon(Icons.delete_forever, color: AppColors.red),
-              title: const Text('Delete for everyone', style: TextStyle(color: AppColors.red)),
-              onTap: () {
-                HapticFeedback.mediumImpact();
-                Navigator.pop(context);
-                setState(() {
-                  _messages.removeAt(index);
-                });
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Message deleted for everyone'),
-                    duration: Duration(seconds: 2),
-                  ),
-                );
-              },
-            ),
+            if (message.isSent)
+              ListTile(
+                leading: const Icon(Icons.delete_forever, color: AppColors.red),
+                title: const Text('Delete for everyone',
+                    style: TextStyle(color: AppColors.red)),
+                onTap: () {
+                  HapticFeedback.mediumImpact();
+                  Navigator.pop(sheetContext);
+                  _deleteForEveryone(messageId);
+                },
+              ),
           ],
         ),
       ),
+    );
+  }
+
+  Future<void> _deleteForMe(String messageId) async {
+    try {
+      final ok = await _messagesRepo.hideMessageForMe(messageId);
+      if (!mounted) return;
+      if (!ok) {
+        _showDeleteError(MessagingErrorMessages.deleteFailed);
+        return;
+      }
+      setState(() {
+        _reconciler.removeCanonical(messageId);
+        _syncMessagesFromReconciler();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Message deleted for you'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e, s) {
+      MessagingErrorMessages.logMessagingError('deleteForMe', e, s);
+      if (mounted) _showDeleteError(MessagingErrorMessages.forDelete(e));
+    }
+  }
+
+  Future<void> _deleteForEveryone(String messageId) async {
+    try {
+      final ok = await _messagesRepo.deleteMessageForEveryone(messageId);
+      if (!mounted) return;
+      if (!ok) {
+        _showDeleteError(MessagingErrorMessages.deleteFailed);
+        return;
+      }
+      setState(() {
+        _reconciler.markDeletedForEveryone(messageId, DateTime.now());
+        _syncMessagesFromReconciler();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Message deleted for everyone'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e, s) {
+      MessagingErrorMessages.logMessagingError('deleteForEveryone', e, s);
+      if (mounted) {
+        _showDeleteError(MessagingErrorMessages.forDelete(e));
+      }
+    }
+  }
+
+  void _showDeleteError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 3)),
     );
   }
 
@@ -1334,9 +1434,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               final message = _messages[index];
                               return _ChatBubble(
                                 message: message,
-                                onLongPress: message.isSent
-                                    ? () => _showDeleteOptions(context, index)
-                                    : null,
+                                // Both sides can "Delete for me"; the sheet
+                                // gates "Delete for everyone" to the sender.
+                                onLongPress: () =>
+                                    _showDeleteOptions(context, index),
                                 onRetry: message.uploadStatus == ChatUploadStatus.failed
                                     ? () => _retryUpload(message)
                                     : null,
@@ -1729,6 +1830,7 @@ class _ChatMessage {
   final String? documentMime;
   final int? documentSizeBytes;
   final DateTime? readAt;
+  final DateTime? deletedForEveryoneAt;
   final ChatUploadStatus uploadStatus;
   final double uploadProgress;
   final String? messageId;
@@ -1748,6 +1850,7 @@ class _ChatMessage {
     this.documentMime,
     this.documentSizeBytes,
     this.readAt,
+    this.deletedForEveryoneAt,
     this.uploadStatus = ChatUploadStatus.none,
     this.uploadProgress = 0,
     this.messageId,
@@ -1755,6 +1858,8 @@ class _ChatMessage {
   });
 
   bool get isSeen => readAt != null;
+
+  bool get isDeletedForEveryone => deletedForEveryoneAt != null;
 
   bool get isDocument =>
       (documentUrl != null && documentUrl!.isNotEmpty) ||
@@ -1923,13 +2028,18 @@ class _ChatBubbleState extends State<_ChatBubble> {
     }
 
     if (msg.uploadStatus == ChatUploadStatus.failed) {
+      final kind = msg.videoPath != null || msg.videoUrl != null
+          ? ChatMediaKind.video
+          : (msg.documentPath != null || msg.documentUrl != null
+              ? ChatMediaKind.document
+              : ChatMediaKind.image);
       return Padding(
         padding: const EdgeInsets.only(top: 4),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Upload failed',
+              MessagingErrorMessages.bubbleLabelFor(kind),
               style: TextStyle(fontSize: 11, color: fgMuted),
             ),
             if (widget.onRetry != null)
@@ -1951,10 +2061,79 @@ class _ChatBubbleState extends State<_ChatBubble> {
     return const SizedBox.shrink();
   }
 
+  /// Neutral placeholder for a message deleted for everyone. Renders no
+  /// content and no attachment affordance for either participant.
+  Widget _buildTombstone(BuildContext context, _ChatMessage msg) {
+    final cs = Theme.of(context).colorScheme;
+    final muted = cs.onSurface.withOpacity(0.6);
+
+    return Align(
+      alignment: msg.isSent ? Alignment.centerRight : Alignment.centerLeft,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Column(
+          crossAxisAlignment:
+              msg.isSent ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+            Container(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 0.75,
+              ),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: cs.onSurface.withOpacity(0.06),
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(20),
+                  topRight: const Radius.circular(20),
+                  bottomLeft: Radius.circular(msg.isSent ? 20 : 4),
+                  bottomRight: Radius.circular(msg.isSent ? 4 : 20),
+                ),
+                border: Border.all(color: cs.onSurface.withOpacity(0.12)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.block, size: 14, color: muted),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      kDeletedMessageText,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontStyle: FontStyle.italic,
+                        color: muted,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                msg.time,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: cs.onSurface.withOpacity(0.5),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final msg = widget.message;
+
+    if (msg.isDeletedForEveryone) {
+      return _buildTombstone(context, msg);
+    }
+
     final hasImage = msg.imagePath != null || msg.imageUrl != null;
     final hasVideo = msg.videoPath != null || msg.videoUrl != null;
     final hasDocument = msg.isDocument;
@@ -1968,7 +2147,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
     return Align(
       alignment: msg.isSent ? Alignment.centerRight : Alignment.centerLeft,
       child: GestureDetector(
-        onLongPress: msg.isSent ? widget.onLongPress : null,
+        onLongPress: msg.isDeletedForEveryone ? null : widget.onLongPress,
         child: Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: Column(

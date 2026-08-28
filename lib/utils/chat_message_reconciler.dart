@@ -178,6 +178,29 @@ class ChatMessageReconciler {
     return true;
   }
 
+  /// Apply a server "deleted for everyone" tombstone. Clears text and every
+  /// attachment reference so the bubble can never render the original.
+  bool markDeletedForEveryone(String messageId, DateTime deletedAt) {
+    if (messageId.isEmpty) return false;
+    final index = messages.indexWhere((m) => m.messageId == messageId);
+    if (index < 0) return false;
+    final m = messages[index];
+    if (m.deletedForEveryoneAt != null) return false;
+    messages[index] = m.asDeletedForEveryone(deletedAt);
+    return true;
+  }
+
+  /// Drop a confirmed server message locally ("Delete for me"). The id is
+  /// released so a later canonical fetch can legitimately re-add it.
+  bool removeCanonical(String messageId) {
+    if (messageId.isEmpty) return false;
+    final index = messages.indexWhere((m) => m.messageId == messageId);
+    _canonicalIds.remove(messageId);
+    if (index < 0) return false;
+    messages.removeAt(index);
+    return true;
+  }
+
   /// Apply `read_at` from a Realtime UPDATE (Seen indicator).
   bool applyReadAt(String messageId, DateTime readAt) {
     if (messageId.isEmpty) return false;
@@ -195,6 +218,9 @@ class ChatMessageReconciler {
 
 enum ChatUploadStatus { none, uploading, failed }
 
+/// Tombstone rendered in place of a message deleted for everyone.
+const String kDeletedMessageText = 'This message was deleted';
+
 class ReconciledChatMessage {
   final String text;
   final bool isSent;
@@ -211,6 +237,7 @@ class ReconciledChatMessage {
   final String? documentMime;
   final int? documentSizeBytes;
   final DateTime? readAt;
+  final DateTime? deletedForEveryoneAt;
   final ChatUploadStatus uploadStatus;
   final double uploadProgress;
 
@@ -230,11 +257,28 @@ class ReconciledChatMessage {
     this.documentMime,
     this.documentSizeBytes,
     this.readAt,
+    this.deletedForEveryoneAt,
     this.uploadStatus = ChatUploadStatus.none,
     this.uploadProgress = 0,
   });
 
   bool get isSeen => readAt != null;
+
+  bool get isDeletedForEveryone => deletedForEveryoneAt != null;
+
+  /// Rebuild as a tombstone. Built from the constructor rather than [copyWith]
+  /// so media references are actually cleared, not merged.
+  ReconciledChatMessage asDeletedForEveryone(DateTime deletedAt) {
+    return ReconciledChatMessage(
+      text: kDeletedMessageText,
+      isSent: isSent,
+      time: time,
+      messageId: messageId,
+      localId: localId,
+      readAt: readAt,
+      deletedForEveryoneAt: deletedAt,
+    );
+  }
 
   bool get isDocument =>
       (documentUrl != null && documentUrl!.isNotEmpty) ||
@@ -262,6 +306,7 @@ class ReconciledChatMessage {
     String? documentMime,
     int? documentSizeBytes,
     DateTime? readAt,
+    DateTime? deletedForEveryoneAt,
     ChatUploadStatus? uploadStatus,
     double? uploadProgress,
   }) {
@@ -281,6 +326,7 @@ class ReconciledChatMessage {
       documentMime: documentMime ?? this.documentMime,
       documentSizeBytes: documentSizeBytes ?? this.documentSizeBytes,
       readAt: readAt ?? this.readAt,
+      deletedForEveryoneAt: deletedForEveryoneAt ?? this.deletedForEveryoneAt,
       uploadStatus: uploadStatus ?? this.uploadStatus,
       uploadProgress: uploadProgress ?? this.uploadProgress,
     );

@@ -59,38 +59,63 @@ class _MessagingPageState extends ConsumerState<MessagingPage> {
     try {
       final conversations = await _messagesRepo.fetchConversations();
       final List<_ConversationItem> items = [];
+      final seenIds = <String>{};
 
       for (final convData in conversations) {
         final conv = convData['conversation'] as Map<String, dynamic>;
         final lastMessage = convData['lastMessage'] as Map<String, dynamic>?;
         final unreadCount = convData['unreadCount'] as int? ?? 0;
         final otherUser = convData['otherUser'] as Map<String, dynamic>?;
-        final updatedAt = convData['updatedAt'] as String?;
 
         if (otherUser == null) continue;
+
+        // Realtime refetch races must never produce two rows for one chat.
+        final id = conv['id'] as String;
+        if (!seenIds.add(id)) continue;
 
         final name = otherUser['full_name'] as String? ??
             otherUser['username'] as String? ??
             'Unknown User';
         final avatarUrl = otherUser['avatar_url'] as String?;
-        final lastMessageText =
-            lastMessage?['content'] as String? ?? 'No messages yet';
-        final time =
-            _formatTime(updatedAt ?? lastMessage?['created_at'] as String?);
+        final lastMessageText = lastMessage == null
+            ? 'No messages yet'
+            : (MessagesRepository.isDeletedForEveryone(lastMessage)
+                ? MessagesRepository.deletedMessagePlaceholder
+                : (lastMessage['content'] as String? ?? ''));
+
+        final activityAt = MessagesRepository.conversationActivityAt(convData);
+        final time = _formatTime(activityAt?.toIso8601String());
 
         final gradient = _getGradientForName(name);
 
         items.add(_ConversationItem(
-          id: conv['id'] as String,
+          id: id,
           name: name,
           lastMessage: lastMessageText,
           time: time,
+          activityAt: activityAt,
           unreadCount: unreadCount,
           avatarGradient: gradient,
           isOnline: false,
           avatarUrl: avatarUrl,
         ));
       }
+
+      // fetchConversations already sorts; re-assert here so the rendered list
+      // is newest-first regardless of how items were assembled.
+      items.sort((a, b) {
+        final aAt = a.activityAt;
+        final bAt = b.activityAt;
+        if (aAt != null && bAt != null) {
+          final byTime = bAt.compareTo(aAt);
+          if (byTime != 0) return byTime;
+        } else if (aAt == null && bAt != null) {
+          return 1;
+        } else if (aAt != null && bAt == null) {
+          return -1;
+        }
+        return b.id.compareTo(a.id);
+      });
 
       if (mounted) {
         setState(() {
@@ -334,6 +359,8 @@ class _MessagingPageState extends ConsumerState<MessagingPage> {
                                 _allConversations[originalIndex].isOnline,
                             avatarUrl:
                                 _allConversations[originalIndex].avatarUrl,
+                            activityAt: _allConversations[originalIndex]
+                                .activityAt,
                           );
                           _filterConversations();
                         });
@@ -373,6 +400,12 @@ class _MessagingPageState extends ConsumerState<MessagingPage> {
                         ),
                       );
 
+                      if (!mounted) return;
+                      // The chat screen's mark-read is fire-and-forget, so
+                      // await an idempotent one here before refetching.
+                      // Otherwise the refetch can read pre-mark state and the
+                      // badge reappears.
+                      await _messagesRepo.markConversationRead(item.id);
                       if (!mounted) return;
                       await _loadConversations(showLoading: false);
                       ref.invalidate(unreadMessagesCountProvider);
@@ -592,6 +625,9 @@ class _ConversationItem {
   final String name;
   final String lastMessage;
   final String time;
+
+  /// Sort key: latest message/activity timestamp, never conversation creation.
+  final DateTime? activityAt;
   final int unreadCount;
   final LinearGradient avatarGradient;
   final bool isOnline;
@@ -602,6 +638,7 @@ class _ConversationItem {
     required this.name,
     required this.lastMessage,
     required this.time,
+    this.activityAt,
     required this.unreadCount,
     required this.avatarGradient,
     this.isOnline = false,

@@ -13,7 +13,16 @@ class WaterReminderAlarmReceiver : BroadcastReceiver() {
             "com.htc.intent.action.QUICKBOOT_POWERON" -> {
                 WaterNotificationHelper.rescheduleAfterBoot(context)
             }
-            else -> WaterNotificationHelper.showScheduledReminder(context)
+            else -> {
+                // Re-arm first: reminders are a chain of one-shot alarms, so
+                // the chain must continue even if posting the notification
+                // throws (channel blocked, notifications revoked, OOM).
+                WaterNotificationHelper.armNextFromReceiver(context)
+                try {
+                    WaterNotificationHelper.showScheduledReminder(context)
+                } catch (_: Throwable) {
+                }
+            }
         }
     }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import '../../config/feature_flags.dart';
 import '../../theme/design_tokens.dart';
 import '../common/glass_card.dart';
 import '../common/gradient_icon_blob.dart';
@@ -39,10 +40,12 @@ class _StreakCardV2State extends State<StreakCardV2>
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () {
-        HapticFeedback.lightImpact();
-        context.push('/quest');
-      },
+      onTap: FeatureFlags.enableQuest
+          ? () {
+              HapticFeedback.lightImpact();
+              context.push('/quest');
+            }
+          : null,
       onLongPress: () {
         HapticFeedback.mediumImpact();
         // TODO: Open streak history

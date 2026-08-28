@@ -60,16 +60,17 @@ class WaterNotificationHandler {
     await handle(response);
   }
 
-  /// Main-isolate entry used by [WaterNotificationPlatform] / MainActivity.
-  static Future<void> handleActionId(String actionId) async {
-    await handle(
-      NotificationResponse(
-        notificationResponseType:
-            NotificationResponseType.selectedNotificationAction,
-        actionId: actionId,
-        id: WaterReminderService.reminderNotificationId,
-      ),
-    );
+  /// Android: the native receiver already committed the increment, so this
+  /// only reconciles it into the Dart store. It must never add water itself.
+  static Future<void> onNativeQuickLogApplied() async {
+    try {
+      final applied = await WaterIntakeService.instance.drainNativeQuickLogs();
+      if (applied > 0) {
+        await WaterIntakeService.instance.flushPendingRemoteSync();
+      }
+    } catch (e) {
+      debugPrint('WaterNotificationHandler: native drain failed: $e');
+    }
   }
 
   static Future<void> handle(NotificationResponse response) async {

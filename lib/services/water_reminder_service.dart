@@ -75,8 +75,9 @@ class WaterReminderService {
     );
 
     if (Platform.isAndroid) {
+      // Android quick logs are applied natively; Dart only reconciles them.
       WaterNotificationPlatform.ensureQuickLogHandler(
-        handler: WaterNotificationHandler.handleActionId,
+        handler: WaterNotificationHandler.onNativeQuickLogApplied,
       );
       final android = _plugin.resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>();
@@ -121,7 +122,11 @@ class WaterReminderService {
           contentTitle: goalComplete ? 'Hydration goal complete' : title,
           summaryText: 'Cotrainr',
         ),
-        actions: goalComplete ? const [] : WaterNotificationActions.androidActions,
+        // Android reminders are posted natively with broadcast-backed actions,
+        // so the plugin must not attach a second, activity-backed set.
+        actions: (goalComplete || Platform.isAndroid)
+            ? const []
+            : WaterNotificationActions.androidActions,
         autoCancel: true,
         onlyAlertOnce: true,
         showProgress: showProgress,
@@ -358,22 +363,10 @@ class WaterReminderService {
             ? 'You have ${_fmtMl((snap.goalMl - snap.consumedMl).clamp(0, snap.goalMl))} left to reach today’s goal. Log a quick drink below.'
             : expandedFallback);
 
-    // Plugin show works from the background notification isolate.
-    await _plugin.show(
-      reminderNotificationId,
-      collapsedTitle,
-      collapsedBody,
-      _pluginNotificationDetails(
-        expandedText: expanded,
-        goalComplete: goalComplete,
-        consumedMl: snap.consumedMl,
-        goalMl: snap.goalMl,
-      ),
-      payload: WaterNotificationActions.openWaterPayload,
-    );
-
-    // Keep native AlarmManager snapshot/notification in sync when possible.
     if (Platform.isAndroid) {
+      // Native owns the reminder notification id on Android. Posting through
+      // the plugin as well would replace it with a copy whose actions route
+      // back into Dart, double-counting every tap.
       try {
         if (goalComplete) {
           await WaterNotificationPlatform.show(
@@ -387,20 +380,38 @@ class WaterReminderService {
             body: collapsedBody,
           );
         }
-        if (addedMl != null) {
-          final minutes = await getIntervalMinutes();
-          final allowed = await FitnessNotificationPreferencesService
-              .allowsWaterReminders();
-          if (minutes > 0 && allowed) {
-            await WaterNotificationPlatform.scheduleRepeating(minutes);
-          }
-        }
       } catch (e) {
         if (kDebugMode) {
           debugPrint('WaterReminderService: native refresh skipped: $e');
         }
       }
+      return;
     }
+
+    await _plugin.show(
+      reminderNotificationId,
+      collapsedTitle,
+      collapsedBody,
+      _pluginNotificationDetails(
+        expandedText: expanded,
+        goalComplete: goalComplete,
+        consumedMl: snap.consumedMl,
+        goalMl: snap.goalMl,
+      ),
+      payload: WaterNotificationActions.openWaterPayload,
+    );
+  }
+
+  /// Re-arms the Android alarm chain if the OS dropped it. Safe to call often —
+  /// native only arms when reminders are enabled and nothing is pending.
+  Future<void> ensureScheduleAlive() async {
+    if (!Platform.isAndroid) return;
+    final minutes = await getIntervalMinutes();
+    if (minutes <= 0) return;
+    final allowed =
+        await FitnessNotificationPreferencesService.allowsWaterReminders();
+    if (!allowed) return;
+    await WaterNotificationPlatform.ensureSchedule();
   }
 
   Future<void> showFailureNotification() async {

@@ -1,9 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/config/supabase_config.dart';
 import '../repositories/metrics_repository.dart';
 import 'hydration_local_store.dart';
+import 'water_notification_platform.dart';
 import 'water_reminder_service.dart';
 
 /// Single source of truth for adding water (in-app + notification quick actions).
@@ -76,6 +79,54 @@ class WaterIntakeService {
     }
   }
 
+  /// Applies +250/+500 taps that the Android notification receiver committed
+  /// natively while the Flutter process was not running.
+  ///
+  /// Idempotent: each native event carries a stable id, and
+  /// [HydrationLocalStore.applyEvent] refuses ids it has already seen, so a
+  /// drain that fails midway can safely be retried.
+  Future<int> drainNativeQuickLogs() async {
+    if (!Platform.isAndroid) return 0;
+
+    final events = await WaterNotificationPlatform.drainPendingQuickLogs();
+    if (events.isEmpty) return 0;
+
+    final acknowledged = <String>[];
+    var applied = 0;
+
+    for (final event in events) {
+      final eventId = event['eventId'] as String?;
+      final amountMl = (event['amountMl'] as num?)?.toInt();
+      final localDate = event['localDate'] as String?;
+      if (eventId == null || eventId.isEmpty) continue;
+      if (amountMl == null || amountMl <= 0) {
+        acknowledged.add(eventId);
+        continue;
+      }
+
+      try {
+        final total = await _local.applyEvent(
+          eventId: eventId,
+          amountMl: amountMl,
+          source: 'notification',
+          localDate: localDate,
+        );
+        acknowledged.add(eventId);
+        if (total != null) applied++;
+      } catch (e) {
+        debugPrint('WaterIntakeService: failed to apply $eventId: $e');
+        // Leave it queued natively for the next drain.
+      }
+    }
+
+    await WaterNotificationPlatform.clearPendingQuickLogs(acknowledged);
+
+    if (applied > 0) {
+      revision.value++;
+    }
+    return applied;
+  }
+
   /// Flush pending notification/offline events to Supabase (app resume).
   Future<void> flushPendingRemoteSync() async {
     await _ensureSupabaseReady();
@@ -85,11 +136,19 @@ class WaterIntakeService {
       return;
     }
 
+    final today = _local.localDateKey();
     final pending = await _local.pendingEvents();
     for (final event in pending) {
       final eventId = event['eventId'] as String?;
       final amountMl = (event['amountMl'] as num?)?.toInt();
       if (eventId == null || amountMl == null || amountMl <= 0) continue;
+
+      // incrementWater only ever writes today's metrics_daily row. Dropping a
+      // stale event is better than crediting it to the wrong calendar day.
+      if ((event['localDate'] as String?) != today) {
+        await _local.removePendingEvent(eventId);
+        continue;
+      }
 
       final ok = await _metricsRepo.incrementWater(amountMl / 1000.0);
       if (ok) {
