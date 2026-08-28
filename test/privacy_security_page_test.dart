@@ -87,7 +87,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Privacy Policy'), findsOneWidget);
-    expect(find.text('Terms & Conditions'), findsOneWidget);
+    expect(find.text('Terms of Service'), findsOneWidget);
     expect(find.text('Download My Data'), findsOneWidget);
     expect(find.text('Coming soon'), findsOneWidget);
     expect(find.text('Request Account Deletion'), findsOneWidget);

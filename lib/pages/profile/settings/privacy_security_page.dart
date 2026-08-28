@@ -236,7 +236,7 @@ class _PrivacySecurityPageState extends State<PrivacySecurityPage>
                       const Divider(height: 1),
                       HubActionRow(
                         icon: Icons.description_outlined,
-                        title: 'Terms & Conditions',
+                        title: 'Terms of Service',
                         onTap: () => Navigator.push(
                           context,
                           MaterialPageRoute(

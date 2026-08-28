@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:cotrainr/legal/legal_document_meta.dart';
 import 'package:cotrainr/pages/profile/settings/info_pages.dart';
 import 'package:cotrainr/utils/launch_utils.dart';
 
@@ -18,7 +19,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Privacy Policy'), findsWidgets);
-    expect(find.textContaining('2026-08-01'), findsWidgets);
+    expect(find.textContaining(LegalDocumentMeta.version), findsWidgets);
     expect(find.text('noreply@cotrainr.com'), findsNothing);
     await tester.scrollUntilVisible(
       find.text(LaunchUtils.supportEmail),

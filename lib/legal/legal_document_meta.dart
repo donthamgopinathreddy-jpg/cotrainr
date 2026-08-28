@@ -4,9 +4,9 @@
 class LegalDocumentMeta {
   LegalDocumentMeta._();
 
-  static const String version = '2026-08-01';
-  static const String effectiveDateLabel = '1 August 2026';
-  static const String lastUpdatedLabel = '1 August 2026';
+  static const String version = '2026-08-28';
+  static const String effectiveDateLabel = '28 August 2026';
+  static const String lastUpdatedLabel = '28 August 2026';
 
   /// User-facing privacy/legal contact (not transactional noreply).
   static const String supportEmail = 'support@cotrainr.com';

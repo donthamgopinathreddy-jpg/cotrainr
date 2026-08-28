@@ -22,6 +22,7 @@ import '../../services/pending_referral_service.dart';
 import '../../repositories/referral_repository.dart';
 import '../../models/fitness_goal_taxonomy.dart';
 import '../../models/onboarding_specialty_options.dart';
+import '../../legal/legal_document_meta.dart';
 import '../../pages/profile/settings/info_pages.dart';
 
 class SignupWizardPage extends StatefulWidget {
@@ -64,8 +65,8 @@ class _SignupWizardPageState extends State<SignupWizardPage>
   bool _showAllSet = false;
   bool _transitionForward = true;
   bool _showSlowHint = false;
-  String _termsVersion = '2026-08-01';
-  String _privacyVersion = '2026-08-01';
+  String _termsVersion = LegalDocumentMeta.version;
+  String _privacyVersion = LegalDocumentMeta.version;
   Timer? _slowHintTimer;
 
   // Step 2
