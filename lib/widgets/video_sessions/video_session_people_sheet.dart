@@ -8,6 +8,7 @@ import 'video_session_theme.dart';
 Future<void> showVideoSessionPeopleSheet({
   required BuildContext context,
   required VideoSession session,
+  String? myUserId,
 }) {
   final people = session.people.isNotEmpty
       ? session.people
@@ -89,6 +90,12 @@ Future<void> showVideoSessionPeopleSheet({
                             name,
                             style: const TextStyle(fontWeight: FontWeight.w600),
                           ),
+                          trailing: VideoSessionResponseChip(
+                            responseStatus: session.responseStatusFor(
+                              person,
+                              myUserId: myUserId,
+                            ),
+                          ),
                         );
                       },
                     ),
@@ -105,11 +112,17 @@ Future<void> showVideoSessionPeopleSheet({
 
 class VideoSessionWithLine extends StatelessWidget {
   final VideoSession session;
+  final String? myUserId;
 
-  const VideoSessionWithLine({super.key, required this.session});
+  const VideoSessionWithLine({
+    super.key,
+    required this.session,
+    this.myUserId,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final summary = session.participantResponseSummary;
     return Semantics(
       button: true,
       label: 'Participants: ${session.withLine}',
@@ -117,17 +130,32 @@ class VideoSessionWithLine extends StatelessWidget {
         onTap: () => showVideoSessionPeopleSheet(
           context: context,
           session: session,
+          myUserId: myUserId,
         ),
         borderRadius: BorderRadius.circular(8),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 2),
-          child: Text(
-            session.withLine,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-              color: VideoSessionUi.secondaryText(context),
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                session.withLine,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: VideoSessionUi.secondaryText(context),
+                ),
+              ),
+              if (summary != null)
+                Text(
+                  summary,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: VideoSessionUi.secondaryText(context),
+                  ),
+                ),
+            ],
           ),
         ),
       ),
@@ -135,9 +163,59 @@ class VideoSessionWithLine extends StatelessWidget {
   }
 }
 
+/// Per-participant attendance response.
+///
+/// Renders nothing when the response is unknown or still pending, so an
+/// unanswered invite is never shown as a decision.
+class VideoSessionResponseChip extends StatelessWidget {
+  final String? responseStatus;
+
+  const VideoSessionResponseChip({super.key, this.responseStatus});
+
+  @override
+  Widget build(BuildContext context) {
+    final status = responseStatus?.trim().toLowerCase();
+    final String label;
+    final Color color;
+    switch (status) {
+      case 'rejected':
+        label = 'Declined';
+        color = const Color(0xFFDC2626);
+        break;
+      case 'accepted':
+        label = 'Accepted';
+        color = DesignTokens.videoSessionsAccent;
+        break;
+      default:
+        return const SizedBox.shrink();
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
+      ),
+    );
+  }
+}
+
+/// Session-level status label, or null when the session is simply upcoming.
+///
+/// A single decline in a group session is a participant fact, not a session
+/// fact, so it must not label the whole session.
 String? videoSessionMeaningfulStatus(VideoSession session) {
   if (session.isCancelled) return 'Cancelled';
-  if (session.hasRejected || session.counterpartRejected) return 'Rejected';
+  if (session.hasRejected || session.counterpartRejectedOneToOne) {
+    return 'Rejected';
+  }
   return null;
 }
 

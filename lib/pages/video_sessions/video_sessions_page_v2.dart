@@ -16,12 +16,13 @@ import '../../repositories/notifications_repository.dart';
 import '../../repositories/video_sessions_repository.dart';
 import '../../services/profile_role_service.dart';
 import '../../theme/design_tokens.dart';
+import '../../utils/video_session_error_messages.dart';
 import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/profile/account_hub_widgets.dart';
 import '../../widgets/video_sessions/video_session_card_actions.dart';
 import '../../widgets/video_sessions/video_session_people_sheet.dart';
 import '../../widgets/video_sessions/video_session_theme.dart';
-import 'create_session_sheet.dart';
+import 'google_meet_oauth_launcher.dart';
 import 'past_sessions_page.dart';
 import 'schedule_session_page.dart';
 
@@ -41,7 +42,7 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
   String _userRole = 'client';
   List<VideoSession> _sessions = [];
   GoogleMeetIntegrationStatus _googleStatus =
-      GoogleMeetIntegrationStatus.disconnected();
+      GoogleMeetIntegrationStatus.loading();
   bool _loading = true;
   bool _googleLoading = false;
   String? _error;
@@ -69,13 +70,25 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
       StartupRouterBridge.setPendingDeepLinkRoute(null);
       setState(() => _googleLoading = false);
       _refreshGoogleStatus();
-      final err = widget.uri?.queryParameters['google_error'];
-      if (err != null && err.isNotEmpty && mounted) {
-        showHubSnackBar(context, 'Google Meet: ${Uri.decodeComponent(err)}');
-      } else if (mounted) {
-        showHubSnackBar(context, 'Google Meet connected');
-      }
+      _showGoogleCallbackResult(widget.uri?.queryParameters['google_error']);
     }
+  }
+
+  /// The callback appends a diagnostic slug, never user copy.
+  void _showGoogleCallbackResult(String? rawSlug) {
+    if (!mounted) return;
+    if (rawSlug == null || rawSlug.isEmpty) {
+      showHubSnackBar(context, 'Google Meet connected');
+      return;
+    }
+    String slug;
+    try {
+      slug = Uri.decodeComponent(rawSlug);
+    } catch (_) {
+      slug = rawSlug;
+    }
+    VideoSessionErrorMessages.log('googleOAuthCallback', slug);
+    showHubSnackBar(context, VideoSessionErrorMessages.forOAuthSlug(slug));
   }
 
   void _handleQueryParams() {
@@ -87,12 +100,7 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
       StartupRouterBridge.setPendingDeepLinkRoute(null);
       setState(() => _googleLoading = false);
       _refreshGoogleStatus();
-      final err = uri.queryParameters['google_error'];
-      if (err != null && err.isNotEmpty && mounted) {
-        showHubSnackBar(context, 'Google Meet: ${Uri.decodeComponent(err)}');
-      } else if (mounted) {
-        showHubSnackBar(context, 'Google Meet connected');
-      }
+      _showGoogleCallbackResult(uri.queryParameters['google_error']);
     }
     if (openCreate && _isHost) {
       _openCreateSession(preselectedClientId: clientId);
@@ -103,7 +111,15 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
     try {
       final status = await _repo.getGoogleMeetStatus();
       if (mounted) setState(() => _googleStatus = status);
-    } catch (_) {}
+    } catch (e, s) {
+      VideoSessionErrorMessages.log('getGoogleMeetStatus', e, s);
+      if (mounted) {
+        setState(() {
+          _googleStatus =
+              GoogleMeetIntegrationStatus.unknown(lastKnown: _googleStatus);
+        });
+      }
+    }
   }
 
   Future<void> _load() async {
@@ -116,12 +132,14 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
       final roleLower = role?.toLowerCase() ?? 'client';
       final isHost = roleLower == 'trainer' || roleLower == 'nutritionist';
       final sessions = await _repo.listSessions();
-      GoogleMeetIntegrationStatus google =
-          GoogleMeetIntegrationStatus.disconnected();
+      var google = _googleStatus;
       if (isHost) {
         try {
           google = await _repo.getGoogleMeetStatus();
-        } catch (_) {}
+        } catch (e, s) {
+          VideoSessionErrorMessages.log('getGoogleMeetStatus', e, s);
+          google = GoogleMeetIntegrationStatus.unknown(lastKnown: _googleStatus);
+        }
       }
       unawaited(NotificationsRepository().markVideoSessionNotificationsRead());
       if (!mounted) return;
@@ -135,20 +153,17 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
       ref.invalidate(unreadNotificationsCountProvider);
     } catch (e) {
       if (!mounted) return;
-      var message = 'Could not load sessions. Pull to retry.';
       if (kDebugMode && e is PostgrestException) {
-        message =
-            'Could not load sessions (${e.code ?? 'error'}): ${e.message}';
         debugPrint(
           '[VideoSessionsPage] list failed code=${e.code} '
           'message=${e.message} details=${e.details} hint=${e.hint}',
         );
-      } else if (kDebugMode) {
-        debugPrint('[VideoSessionsPage] list failed: $e');
+      } else {
+        VideoSessionErrorMessages.log('listSessions', e);
       }
       setState(() {
         _loading = false;
-        _error = message;
+        _error = VideoSessionErrorMessages.forLoadSessions(e);
       });
     }
   }
@@ -185,6 +200,7 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
                 googleStatus: _googleStatus,
                 googleConnecting: _googleLoading,
                 onConnectGoogle: _connectGoogle,
+                onRetryGoogleStatus: _refreshGoogleStatus,
               ),
             ),
           );
@@ -336,6 +352,8 @@ class _VideoSessionsPageV2State extends ConsumerState<VideoSessionsPageV2> {
                             padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
                             child: _UpcomingSessionCard(
                               session: s,
+                              myUserId: Supabase
+                                  .instance.client.auth.currentUser?.id,
                               onDetails: () =>
                                   context.push('/video/session/${s.id}'),
                               onJoin: s.canJoin
@@ -469,11 +487,13 @@ class _UpcomingSessionCard extends StatelessWidget {
   final VideoSession session;
   final VoidCallback onDetails;
   final VoidCallback? onJoin;
+  final String? myUserId;
 
   const _UpcomingSessionCard({
     required this.session,
     required this.onDetails,
     this.onJoin,
+    this.myUserId,
   });
 
   @override
@@ -522,7 +542,7 @@ class _UpcomingSessionCard extends StatelessWidget {
                     ),
                 ],
               ),
-              VideoSessionWithLine(session: session),
+              VideoSessionWithLine(session: session, myUserId: myUserId),
               const SizedBox(height: 4),
               Text(
                 '$when · ${session.durationMinutes} min',

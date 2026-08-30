@@ -35,24 +35,51 @@ supabase functions deploy create-video-session
 
 ## SQL
 
-If automated migrations fail due to duplicate version history, run manually in SQL editor:
+> **Do not run `supabase db push`.** The migration history has duplicate
+> version prefixes, so a push can replay historical migrations. Apply SQL by
+> hand in the SQL Editor, in order.
+>
+> **Never run `supabase/migrations/20250215_video_sessions_zoom.sql` against
+> production.** Its first statements are
+> `DROP TABLE IF EXISTS public.video_session_participants CASCADE;`,
+> `... video_session_host_meta CASCADE;` and `... video_sessions CASCADE;`,
+> and it then recreates the obsolete Zoom shape (`user_integrations_zoom`).
+> Replaying it destroys every live session, participant row, attendance
+> response and dependent policy. The same applies to
+> `20250127_complete_wipe_and_recreate.sql`.
 
-1. `supabase/migrations/20260816_video_sessions_mvp_hardening.sql` (if not applied)
+Apply in this order if not already applied:
+
+1. `supabase/migrations/20260816_video_sessions_mvp_hardening.sql`
 2. `supabase/migrations/20260817_google_meet_integration.sql`
 3. `supabase/migrations/20260818_video_sessions_rls_no_recursion.sql`
 4. `supabase/migrations/20260819_video_sessions_drop_client_id_refs.sql`
-5. `supabase/migrations/20260820_video_session_notifications.sql` (optional if 20260821 applied)
+5. `supabase/migrations/20260820_video_session_notifications.sql` (superseded by 20260821; skip if 20260821 is applied)
 6. **`supabase/migrations/20260821_video_session_names_and_push.sql` (required)**
+7. **`supabase/migrations/20260822_video_session_attendance_reminders.sql` (required)** — attendance responses (`response_status`, `respond_to_video_session`), the reminder jobs, and the current `list_my_video_sessions` / `get_my_video_session` / `list_my_video_session_people` read RPCs.
+8. **`supabase/migrations/20260824_notifications_release.sql` (required)** — notification release state that the video-session producers depend on.
+
+Optional hardening, manual only:
+
+- `supabase/manual/20260829_video_session_privilege_hardening.sql` — revokes
+  client privileges on `profile_display_name` and on the Google
+  credential/OAuth-state tables. Revokes and read-only checks only.
 
 ## Video session notifications / reminders
 
-Server-side jobs live in `video_session_notification_jobs`. Created/reschedule/cancel rows go into existing `public.notifications`. Push uses existing `device_tokens` + `send-push-notification`, reached **only** through the Supabase Database Webhook on `public.notifications` INSERT.
+Server-side jobs live in `video_session_notification_jobs`. Created / reschedule / cancel rows go into `public.notifications`. Push uses `device_tokens` + `send-push-notification`, reached **only** through the notifications INSERT dispatcher, so there is exactly one push producer.
 
-Dispatch SQL:
+**Scheduling authority: the `dispatch-video-session-reminders` Edge Function.**
+`20260822` schedules pg_cron (`* * * * *`) only when the extension is present,
+and production does not rely on it — the Edge Function's scheduled trigger is
+the authority, and `dispatch_video_session_notification_jobs()` is idempotent
+(`video_session_notification_log` dedupes), so a stray cron run cannot double
+send. Run the dispatch manually with:
 
 `SELECT public.dispatch_video_session_notification_jobs();`
 
-pg_cron is scheduled in the migration when the extension exists (`* * * * *`). If pg_cron is unavailable, deploy and schedule the Edge Function every minute:
+If you enable pg_cron as well, keep both pointed at the same function; do not
+add a second producer.
 
 ```bash
 supabase functions deploy create-video-session

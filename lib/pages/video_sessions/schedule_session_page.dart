@@ -5,6 +5,7 @@ import '../../repositories/video_sessions_repository.dart';
 import '../../services/leads_models.dart';
 import '../../services/leads_service.dart';
 import '../../theme/design_tokens.dart';
+import '../../utils/video_session_error_messages.dart';
 import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/profile/account_hub_widgets.dart';
 import '../../widgets/video_sessions/video_session_avatar.dart';
@@ -14,6 +15,9 @@ import '../../widgets/video_sessions/video_session_when_cards.dart';
 class ScheduleSessionPage extends StatefulWidget {
   final GoogleMeetIntegrationStatus googleStatus;
   final VoidCallback? onConnectGoogle;
+
+  /// Re-runs the server status check after a failed check.
+  final VoidCallback? onRetryGoogleStatus;
   final bool googleConnecting;
   final String? preselectedClientId;
 
@@ -21,6 +25,7 @@ class ScheduleSessionPage extends StatefulWidget {
     super.key,
     required this.googleStatus,
     this.onConnectGoogle,
+    this.onRetryGoogleStatus,
     this.googleConnecting = false,
     this.preselectedClientId,
   });
@@ -50,8 +55,36 @@ class _ScheduleSessionPageState extends State<ScheduleSessionPage> {
   String? _requestId;
   String? _whenError;
 
+  /// Set once this page re-checks the status itself, so a retry is visible
+  /// without rebuilding the pushed route from the parent.
+  GoogleMeetIntegrationStatus? _statusOverride;
+  bool _retryingStatus = false;
+
+  GoogleMeetIntegrationStatus get _googleStatus =>
+      _statusOverride ?? widget.googleStatus;
+
   bool get _googleReady =>
-      widget.googleStatus.connected && !widget.googleStatus.reconnectRequired;
+      _googleStatus.connected && !_googleStatus.reconnectRequired;
+
+  Future<void> _retryGoogleStatus() async {
+    if (_retryingStatus) return;
+    setState(() => _retryingStatus = true);
+    try {
+      final status = await _repo.getGoogleMeetStatus();
+      if (mounted) setState(() => _statusOverride = status);
+    } catch (e, s) {
+      VideoSessionErrorMessages.log('getGoogleMeetStatus', e, s);
+      if (mounted) {
+        setState(() {
+          _statusOverride =
+              GoogleMeetIntegrationStatus.unknown(lastKnown: _googleStatus);
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _retryingStatus = false);
+      widget.onRetryGoogleStatus?.call();
+    }
+  }
 
   @override
   void initState() {
@@ -241,15 +274,10 @@ class _ScheduleSessionPageState extends State<ScheduleSessionPage> {
       );
       if (!mounted) return;
       Navigator.pop(context, session);
-    } on VideoSessionCreateException catch (e) {
+    } catch (e, s) {
+      VideoSessionErrorMessages.log('createSession', e, s);
       if (!mounted) return;
-      showHubSnackBar(context, e.message);
-    } catch (e) {
-      if (!mounted) return;
-      showHubSnackBar(
-        context,
-        e.toString().replaceFirst('Exception: ', ''),
-      );
+      showHubSnackBar(context, VideoSessionErrorMessages.forCreate(e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -314,9 +342,11 @@ class _ScheduleSessionPageState extends State<ScheduleSessionPage> {
                 children: [
                   if (!_googleReady) ...[
                     _CompactGooglePrompt(
-                      status: widget.googleStatus,
+                      status: _googleStatus,
                       connecting: widget.googleConnecting,
+                      retrying: _retryingStatus,
                       onConnect: widget.onConnectGoogle,
+                      onRetryStatus: _retryGoogleStatus,
                     ),
                     const SizedBox(height: 20),
                   ],
@@ -724,54 +754,81 @@ class _DurationCard extends StatelessWidget {
 class _CompactGooglePrompt extends StatelessWidget {
   final GoogleMeetIntegrationStatus status;
   final bool connecting;
+  final bool retrying;
   final VoidCallback? onConnect;
+  final VoidCallback? onRetryStatus;
 
   const _CompactGooglePrompt({
     required this.status,
     required this.connecting,
+    this.retrying = false,
     this.onConnect,
+    this.onRetryStatus,
   });
 
   @override
   Widget build(BuildContext context) {
+    // A failed or pending status check is not a disconnected account, so it
+    // must not tell the host to connect something that may already be linked.
+    final checking = status.isLoading;
+    final unknown = status.isUnknown;
+    final heading = checking
+        ? 'Checking Google Meet'
+        : unknown
+            ? VideoSessionErrorMessages.googleStatusUnknown
+            : 'Connect Google Meet';
+    final body = checking
+        ? 'Checking your Google Meet connection…'
+        : unknown
+            ? 'You can still try to schedule, or retry the check.'
+            : status.reconnectRequired
+                ? 'Reconnect Google Meet to schedule video sessions.'
+                : 'Connect Google Meet to create session links.';
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: VideoSessionUi.cardBox(context),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Connect Google Meet',
-            style: TextStyle(fontWeight: FontWeight.w700),
+          Text(
+            heading,
+            style: const TextStyle(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 4),
           Text(
-            status.reconnectRequired
-                ? 'Reconnect Google Meet to schedule video sessions.'
-                : 'Connect Google Meet to create session links.',
+            body,
             style: TextStyle(
               fontSize: 13,
               color: VideoSessionUi.secondaryText(context),
             ),
           ),
-          if (onConnect != null) ...[
+          if ((unknown ? onRetryStatus : onConnect) != null && !checking) ...[
             const SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
               height: 44,
               child: ElevatedButton(
-                onPressed: connecting ? null : onConnect,
+                onPressed: (connecting || retrying)
+                    ? null
+                    : unknown
+                        ? onRetryStatus
+                        : onConnect,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: DesignTokens.videoSessionsAccent,
                   foregroundColor: Colors.white,
                   elevation: 0,
                 ),
                 child: Text(
-                  connecting
-                      ? 'Connecting…'
-                      : status.reconnectRequired
-                          ? 'Reconnect Google Meet'
-                          : 'Connect Google Meet',
+                  retrying
+                      ? 'Checking…'
+                      : connecting
+                          ? 'Connecting…'
+                          : unknown
+                              ? 'Retry'
+                              : status.reconnectRequired
+                              ? 'Reconnect Google Meet'
+                              : 'Connect Google Meet',
                 ),
               ),
             ),

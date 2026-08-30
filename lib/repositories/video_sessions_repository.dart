@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../utils/meeting_link_rules.dart';
+import '../utils/video_session_error_messages.dart';
 import '../video_sessions/video_session_notification_logic.dart';
 
 /// Columns safe for authenticated clients (no obsolete client_id, no token embeds).
@@ -36,12 +37,24 @@ class VideoSessionPerson {
   final String? avatarUrl;
   final String role;
 
+  /// This participant's own attendance response, when the server provides it.
+  ///
+  /// Null means "not known" — the people RPC does not always project it. Null
+  /// must render as no state at all rather than being assumed to be pending,
+  /// so a group session never implies a response nobody gave.
+  final String? responseStatus;
+
   const VideoSessionPerson({
     required this.userId,
     required this.displayName,
     this.avatarUrl,
     this.role = 'participant',
+    this.responseStatus,
   });
+
+  bool get isHost => role == 'host';
+  bool get rejected => responseStatus == 'rejected';
+  bool get accepted => responseStatus == 'accepted';
 }
 
 /// Supabase-backed provider-neutral video session.
@@ -188,6 +201,62 @@ class VideoSession {
   bool get hasRejected => myResponseStatus == 'rejected';
   bool get counterpartRejected => counterpartResponseStatus == 'rejected';
 
+  /// Invitees excluding the host.
+  ///
+  /// Takes the larger of the two sources: either can be incomplete, and
+  /// under-counting would let a group session be treated as a 1:1.
+  int get inviteeCount {
+    final fromPeople = people.where((p) => !p.isHost).length;
+    return fromPeople > participantCount ? fromPeople : participantCount;
+  }
+
+  /// True when more than one person was invited alongside the host.
+  ///
+  /// `counterpart_response_status` is a single scalar: for a host it is the
+  /// first invitee's row only, not an aggregate. Treating it as the session's
+  /// status is therefore wrong once there are several invitees.
+  bool get isGroupSession => inviteeCount > 1;
+
+  /// Counterpart rejection is only a session-level fact in a 1:1.
+  bool get counterpartRejectedOneToOne =>
+      !isGroupSession && counterpartRejected;
+
+  /// Per-participant response state, resolved only from authoritative data.
+  ///
+  /// Returns null when the server did not tell us this person's response.
+  String? responseStatusFor(VideoSessionPerson person, {String? myUserId}) {
+    if (person.responseStatus != null) return person.responseStatus;
+    if (myUserId != null && person.userId == myUserId) return myResponseStatus;
+    if (!isGroupSession &&
+        myUserId != null &&
+        person.userId != myUserId &&
+        counterpartResponseStatus != null) {
+      return counterpartResponseStatus;
+    }
+    return null;
+  }
+
+  /// Compact summary for group sessions, e.g. "2 accepted · 1 declined".
+  ///
+  /// Built only from responses the server actually reported. When the people
+  /// RPC omits per-participant state we can still say that someone declined
+  /// (the scalar proves at least one did) without inventing a count.
+  String? get participantResponseSummary {
+    if (!isGroupSession) return null;
+    final known = people.where((p) => !p.isHost && p.responseStatus != null);
+    if (known.isEmpty) {
+      return counterpartRejected ? 'Someone declined' : null;
+    }
+    final declined = known.where((p) => p.rejected).length;
+    final accepted = known.where((p) => p.accepted).length;
+    final parts = <String>[
+      if (accepted > 0) '$accepted accepted',
+      if (declined > 0) '$declined declined',
+    ];
+    if (parts.isEmpty) return null;
+    return parts.join(' · ');
+  }
+
   DateTime get endsAt =>
       scheduledStart.add(Duration(minutes: durationMinutes));
 
@@ -243,21 +312,49 @@ class VideoSession {
       provider == 'google_meet' || provider == 'meet';
 }
 
+/// Whether the Google Meet connection state is known.
+///
+/// A failed status check is [unknown], never `disconnected` — otherwise a
+/// network blip silently tells a connected host to reconnect.
+enum GoogleMeetStatusPhase { loading, ready, unknown }
+
 class GoogleMeetIntegrationStatus {
   final bool connected;
   final bool reconnectRequired;
   final String? googleEmail;
   final DateTime? connectedAt;
+  final GoogleMeetStatusPhase phase;
 
   const GoogleMeetIntegrationStatus({
     required this.connected,
     this.reconnectRequired = false,
     this.googleEmail,
     this.connectedAt,
+    this.phase = GoogleMeetStatusPhase.ready,
   });
 
   factory GoogleMeetIntegrationStatus.disconnected() =>
       const GoogleMeetIntegrationStatus(connected: false);
+
+  /// Not checked yet.
+  factory GoogleMeetIntegrationStatus.loading() =>
+      const GoogleMeetIntegrationStatus(
+        connected: false,
+        phase: GoogleMeetStatusPhase.loading,
+      );
+
+  /// The check failed. Carries the last known values so a transient failure
+  /// does not erase a connection we already confirmed.
+  factory GoogleMeetIntegrationStatus.unknown({
+    GoogleMeetIntegrationStatus? lastKnown,
+  }) =>
+      GoogleMeetIntegrationStatus(
+        connected: lastKnown?.connected ?? false,
+        reconnectRequired: lastKnown?.reconnectRequired ?? false,
+        googleEmail: lastKnown?.googleEmail,
+        connectedAt: lastKnown?.connectedAt,
+        phase: GoogleMeetStatusPhase.unknown,
+      );
 
   factory GoogleMeetIntegrationStatus.fromJson(Map<String, dynamic> json) {
     final connectedAtRaw = json['connected_at'] as String?;
@@ -272,13 +369,23 @@ class GoogleMeetIntegrationStatus {
   }
 
   bool get needsConnect => !connected || reconnectRequired;
+  bool get isLoading => phase == GoogleMeetStatusPhase.loading;
+  bool get isUnknown => phase == GoogleMeetStatusPhase.unknown;
+
+  /// True only when we positively know Google is unusable.
+  bool get confirmedNotConnected =>
+      phase == GoogleMeetStatusPhase.ready && needsConnect;
 }
 
-class VideoSessionCreateException implements Exception {
+class VideoSessionCreateException
+    implements Exception, VideoSessionResponseCode {
   final String message;
   final String? code;
 
   VideoSessionCreateException(this.message, {this.code});
+
+  @override
+  String? get responseCode => code;
 
   @override
   String toString() => message;
@@ -290,13 +397,27 @@ class VideoSessionsRepository {
 
   final SupabaseClient _supabase;
 
+  /// Server-authoritative Google Meet connection state.
+  ///
+  /// Throws when the status could not be determined. A genuinely disconnected
+  /// account still returns 200 with `connected: false`, so a non-200 or an
+  /// unreadable body means "unknown", and callers must not downgrade that to
+  /// "disconnected".
   Future<GoogleMeetIntegrationStatus> getGoogleMeetStatus() async {
     final res = await _supabase.functions.invoke('google-integration-status');
     if (res.status != 200) {
-      return GoogleMeetIntegrationStatus.disconnected();
+      throw VideoSessionCreateException(
+        'google_status_unavailable',
+        code: 'GOOGLE_STATUS_UNAVAILABLE',
+      );
     }
     final data = res.data;
-    if (data is! Map) return GoogleMeetIntegrationStatus.disconnected();
+    if (data is! Map) {
+      throw VideoSessionCreateException(
+        'google_status_unreadable',
+        code: 'GOOGLE_STATUS_UNAVAILABLE',
+      );
+    }
     return GoogleMeetIntegrationStatus.fromJson(
       Map<String, dynamic>.from(data),
     );
@@ -387,6 +508,10 @@ class VideoSessionsRepository {
                 displayName: (map['display_name'] as String?)?.trim() ?? '',
                 avatarUrl: map['avatar_url'] as String?,
                 role: map['role'] as String? ?? 'participant',
+                responseStatus:
+                    (map['response_status'] as String?)?.trim().isEmpty ?? true
+                        ? null
+                        : (map['response_status'] as String).trim(),
               ),
             );
       }
@@ -577,15 +702,37 @@ class VideoSessionsRepository {
     });
   }
 
+  /// Cancels a session the caller hosts.
+  ///
+  /// The `host_id` filter is defence-in-depth only; RLS is the real gate. An
+  /// RLS denial or a non-existent id updates zero rows and returns no error,
+  /// so the affected rows are checked explicitly rather than reporting success
+  /// for a write that never happened.
   Future<void> cancelSession(String sessionId) async {
-    await _supabase
+    final me = _supabase.auth.currentUser?.id;
+    if (me == null) {
+      throw VideoSessionCreateException(
+        'cancel_not_authenticated',
+        code: 'UNAUTHORIZED',
+      );
+    }
+
+    final rows = await _supabase
         .from('video_sessions')
         .update({
           'status': 'cancelled',
           'updated_at': DateTime.now().toUtc().toIso8601String(),
         })
         .eq('id', sessionId)
-        .eq('host_id', _supabase.auth.currentUser!.id);
+        .eq('host_id', me)
+        .select('id');
+
+    if (rows is! List || rows.isEmpty) {
+      throw VideoSessionCreateException(
+        'cancel_not_applied',
+        code: 'CANCEL_NOT_APPLIED',
+      );
+    }
   }
 
   /// Host update of scheduling fields. Preserves join_url / Meet space.

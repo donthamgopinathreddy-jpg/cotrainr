@@ -11,6 +11,7 @@ import '../../repositories/video_sessions_repository.dart';
 import '../../theme/account_hub_theme.dart';
 import '../../theme/design_tokens.dart';
 import '../../utils/meeting_link_rules.dart';
+import '../../utils/video_session_error_messages.dart';
 import '../../video_sessions/video_session_notification_logic.dart';
 import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/profile/account_hub_widgets.dart';
@@ -77,15 +78,12 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
         );
         _runInitialAction(session);
       }
-    } catch (e) {
+    } catch (e, s) {
       if (!mounted) return;
-      var message = 'Could not load session';
-      if (e is PostgrestException) {
-        message = 'Could not load session (${e.code ?? 'error'}): ${e.message}';
-      }
+      VideoSessionErrorMessages.log('getSession', e, s);
       setState(() {
         _loading = false;
-        _error = message;
+        _error = VideoSessionErrorMessages.forLoadSession(e);
       });
     }
   }
@@ -181,10 +179,11 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
         context,
         VideoSessionNotificationLogic.notifiedSnackbar(role),
       );
-    } on VideoSessionCreateException catch (e) {
-      if (mounted) showHubSnackBar(context, e.message);
-    } catch (_) {
-      if (mounted) showHubSnackBar(context, 'Could not save response');
+    } catch (e, s) {
+      VideoSessionErrorMessages.log('rejectSession', e, s);
+      if (mounted) {
+        showHubSnackBar(context, VideoSessionErrorMessages.forResponse(e));
+      }
     } finally {
       if (mounted) setState(() => _responding = false);
     }
@@ -236,9 +235,10 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
       if (!mounted) return;
       showHubSnackBar(context, 'Session cancelled');
       CotrainrBackButton.popOrFallback(context, fallbackRoute: '/video');
-    } catch (_) {
+    } catch (e, s) {
+      VideoSessionErrorMessages.log('cancelSession', e, s);
       if (mounted) {
-        showHubSnackBar(context, 'Could not cancel session');
+        showHubSnackBar(context, VideoSessionErrorMessages.forCancel(e));
       }
     } finally {
       if (mounted) setState(() => _cancelling = false);
@@ -406,8 +406,11 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
             counterpartyName: session.counterpartyName,
           ));
       showHubSnackBar(context, 'Session updated');
-    } catch (_) {
-      if (mounted) showHubSnackBar(context, 'Could not update session');
+    } catch (e, s) {
+      VideoSessionErrorMessages.log('updateSession', e, s);
+      if (mounted) {
+        showHubSnackBar(context, VideoSessionErrorMessages.forUpdate(e));
+      }
     } finally {
       titleCtrl.dispose();
       notesCtrl.dispose();
@@ -491,9 +494,23 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
                                         style: AccountHubTheme.rowTitle(context),
                                       ),
                                     ),
+                                    VideoSessionResponseChip(
+                                      responseStatus:
+                                          session.responseStatusFor(
+                                        person,
+                                        myUserId: me,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
+                            if (session.participantResponseSummary != null) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                session.participantResponseSummary!,
+                                style: AccountHubTheme.rowSubtitle(context),
+                              ),
+                            ],
                           ] else ...[
                             const SizedBox(height: 8),
                             _MetaRow(
@@ -567,7 +584,7 @@ class _SessionDetailPageState extends State<SessionDetailPage> {
                           child: const Text('Change response'),
                         ),
                       ],
-                    ] else if (session.counterpartRejected) ...[
+                    ] else if (session.counterpartRejectedOneToOne) ...[
                       Container(
                         width: double.infinity,
                         padding: const EdgeInsets.all(14),
@@ -698,7 +715,7 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = session.hasRejected || session.counterpartRejected
+    final label = session.hasRejected || session.counterpartRejectedOneToOne
         ? 'Rejected'
         : session.isCancelled
             ? 'Cancelled'

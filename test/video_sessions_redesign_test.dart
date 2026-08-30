@@ -71,11 +71,17 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.scrollUntilVisible(
-      find.text('Session reminders'),
-      80,
-    );
-    await tester.tap(find.widgetWithText(SwitchListTile, 'Session reminders'));
+    // scrollUntilVisible stops as soon as the target is attached, which can
+    // leave it under the viewport edge; ensureVisible finishes the job so the
+    // tap actually lands on the switch.
+    final reminderSwitch =
+        find.widgetWithText(SwitchListTile, 'Session reminders');
+    await tester.scrollUntilVisible(reminderSwitch, 80);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(reminderSwitch);
+    await tester.pumpAndSettle();
+    expect(reminderSwitch, findsOneWidget);
+    await tester.tap(reminderSwitch);
     await tester.pumpAndSettle();
 
     expect(video.value.reminders, isFalse);

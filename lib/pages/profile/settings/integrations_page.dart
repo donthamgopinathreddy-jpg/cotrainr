@@ -6,7 +6,8 @@ import '../../../theme/account_hub_theme.dart';
 import '../../../theme/design_tokens.dart';
 import '../../../widgets/common/cotrainr_back_button.dart';
 import '../../../widgets/profile/account_hub_widgets.dart';
-import '../../video_sessions/create_session_sheet.dart';
+import '../../../utils/video_session_error_messages.dart';
+import '../../video_sessions/google_meet_oauth_launcher.dart';
 
 /// Settings → Integrations → Google Meet.
 ///
@@ -81,9 +82,13 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
         _status = status;
         _loading = false;
       });
-    } catch (_) {
+    } catch (e, s) {
+      VideoSessionErrorMessages.log('getGoogleMeetStatus', e, s);
       if (!mounted) return;
-      setState(() => _loading = false);
+      setState(() {
+        _status = GoogleMeetIntegrationStatus.unknown(lastKnown: _status);
+        _loading = false;
+      });
     }
   }
 
@@ -102,12 +107,10 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
       await _repo.disconnectGoogleMeet();
       await _load();
       if (mounted) showHubSnackBar(context, 'Google Meet disconnected');
-    } catch (e) {
+    } catch (e, s) {
+      VideoSessionErrorMessages.log('disconnectGoogleMeet', e, s);
       if (mounted) {
-        showHubSnackBar(
-          context,
-          e.toString().replaceFirst('Exception: ', ''),
-        );
+        showHubSnackBar(context, VideoSessionErrorMessages.forDisconnect(e));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -146,7 +149,11 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        ready ? 'Connected' : 'Not connected',
+                        ready
+                            ? 'Connected'
+                            : _status.isUnknown
+                                ? 'Status unavailable'
+                                : 'Not connected',
                         style: AccountHubTheme.rowTitle(context),
                       ),
                       const SizedBox(height: 4),
@@ -154,13 +161,32 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
                         ready
                             ? (_status.googleEmail ??
                                 'Ready to create Meet links for Video Sessions.')
-                            : _status.reconnectRequired
-                                ? 'Reconnect Google Meet to schedule video sessions.'
-                                : 'Connect Google Meet to automatically create session links.',
+                            : _status.isUnknown
+                                ? '${VideoSessionErrorMessages.googleStatusUnknown} Try again in a moment.'
+                                : _status.reconnectRequired
+                                    ? 'Reconnect Google Meet to schedule video sessions.'
+                                    : 'Connect Google Meet to automatically create session links.',
                         style: AccountHubTheme.rowSubtitle(context),
                       ),
                       const SizedBox(height: 12),
-                      if (!ready)
+                      if (ready)
+                        TextButton(
+                          onPressed: _busy ? null : _disconnect,
+                          style: TextButton.styleFrom(
+                            foregroundColor: AccountHubTheme.dangerRed,
+                          ),
+                          child: const Text('Disconnect'),
+                        )
+                      else if (_status.isUnknown)
+                        SizedBox(
+                          width: double.infinity,
+                          height: 48,
+                          child: OutlinedButton(
+                            onPressed: _busy ? null : _load,
+                            child: const Text('Retry'),
+                          ),
+                        )
+                      else
                         SizedBox(
                           width: double.infinity,
                           height: 48,
@@ -178,14 +204,6 @@ class _IntegrationsPageState extends State<IntegrationsPage> {
                                       : 'Connect Google Meet',
                             ),
                           ),
-                        )
-                      else
-                        TextButton(
-                          onPressed: _busy ? null : _disconnect,
-                          style: TextButton.styleFrom(
-                            foregroundColor: AccountHubTheme.dangerRed,
-                          ),
-                          child: const Text('Disconnect'),
                         ),
                     ],
                   ),
