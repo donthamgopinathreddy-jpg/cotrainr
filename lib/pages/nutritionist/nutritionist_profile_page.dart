@@ -1,14 +1,16 @@
 import 'dart:ui';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../config/feature_flags.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
 import '../../repositories/profile_repository.dart';
+import '../../repositories/verification_repository.dart';
+import '../../widgets/provider/provider_verification_card.dart';
 import '../../utils/page_transitions.dart';
 import '../../widgets/common/pressable_card.dart';
 import '../../widgets/common/cover_with_blur_bridge.dart';
@@ -28,18 +30,18 @@ class NutritionistProfilePage extends ConsumerStatefulWidget {
 
 class _NutritionistProfilePageState extends ConsumerState<NutritionistProfilePage>
     with SingleTickerProviderStateMixin {
+  final VerificationRepository _verificationRepo = VerificationRepository();
   String _username = 'Nutritionist';
   String _handle = '@user';
   final bool _isSubscribed = false;
-  String? _verificationStatus;
+  ProviderVerificationStatus? _verificationStatus;
+  bool _verificationLoadFailed = false;
 
   String get _role => 'nutritionist';
 
-  bool get _isPending => _verificationStatus == 'pending';
-
-  bool get _needsVerification {
-    return _verificationStatus != 'verified';
-  }
+  bool get _needsVerification =>
+      _verificationStatus != null &&
+      _verificationStatus != ProviderVerificationStatus.verified;
 
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
@@ -62,11 +64,8 @@ class _NutritionistProfilePageState extends ConsumerState<NutritionistProfilePag
   Future<void> _loadProfile() async {
     try {
       final profile = await ProfileRepository().fetchMyProfile();
-      final supabase = Supabase.instance.client;
-      final user = supabase.auth.currentUser;
-      final status = user?.userMetadata?['verification_status']
-          ?.toString()
-          .toLowerCase();
+      // Server-authoritative: never auth userMetadata (client-writable/stale).
+      final status = await _verificationRepo.getProviderVerificationStatus();
       if (!mounted) return;
       setState(() {
         _username = profile?['full_name'] as String? ??
@@ -76,8 +75,15 @@ class _NutritionistProfilePageState extends ConsumerState<NutritionistProfilePag
             ? '@${profile!['username']}'
             : '@user';
         _verificationStatus = status;
+        _verificationLoadFailed = false;
       });
-    } catch (_) {}
+    } catch (e, s) {
+      if (kDebugMode) {
+        debugPrint('NutritionistProfile: verification load failed: $e\n$s');
+      }
+      if (!mounted) return;
+      setState(() => _verificationLoadFailed = true);
+    }
   }
 
   @override
@@ -138,16 +144,26 @@ class _NutritionistProfilePageState extends ConsumerState<NutritionistProfilePag
                         child: const AppearanceToggle(),
                       ),
                       const SizedBox(height: 10),
-                      // Verification Card for Trainers/Nutritionists
-                      if ((_role == 'trainer' || _role == 'nutritionist') && _needsVerification) ...[
+                      // Verification card — server-authoritative state.
+                      if (_verificationLoadFailed) ...[
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: _VerificationCard(
-                            isPending: _isPending,
+                          child: ProviderVerificationErrorCard(
+                            onRetry: _loadProfile,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                      ] else if (_needsVerification) ...[
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: ProviderVerificationCard(
+                            status: _verificationStatus!,
                             role: _role,
-                            onTap: () {
+                            onTap: () async {
                               HapticFeedback.lightImpact();
-                              context.push('/verification');
+                              await context.push('/verification');
+                              if (!mounted) return;
+                              _loadProfile();
                             },
                           ),
                         ),
@@ -701,111 +717,3 @@ class _FullLengthButton extends StatelessWidget {
   }
 }
 
-class _VerificationCard extends StatelessWidget {
-  final bool isPending;
-  final String role;
-  final VoidCallback onTap;
-
-  const _VerificationCard({
-    required this.isPending,
-    required this.role,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final roleLabel = role == 'nutritionist' ? 'Nutritionist' : 'Trainer';
-
-    return PressableCard(
-      onTap: onTap,
-      borderRadius: 24,
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          gradient: isPending
-              ? LinearGradient(
-                  colors: [
-                    AppColors.orange.withOpacity(0.1),
-                    AppColors.orange.withOpacity(0.05),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                )
-              : LinearGradient(
-                  colors: [
-                    AppColors.orange.withOpacity(0.15),
-                    AppColors.orange.withOpacity(0.08),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: isPending
-                ? AppColors.orange.withOpacity(0.3)
-                : AppColors.orange.withOpacity(0.4),
-            width: 1.5,
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                gradient: isPending
-                    ? LinearGradient(
-                        colors: [
-                          AppColors.orange.withOpacity(0.2),
-                          AppColors.orange.withOpacity(0.1),
-                        ],
-                      )
-                    : AppColors.stepsGradient,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                isPending ? Icons.hourglass_empty : Icons.verified_user_outlined,
-                color: isPending ? AppColors.orange : Colors.white,
-                size: 24,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    isPending
-                        ? 'Verification Pending'
-                        : 'Verify Your $roleLabel Account',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: colorScheme.onSurface,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    isPending
-                        ? 'Documents submitted. Please wait up to 24 hours for verification.'
-                        : 'Submit documents to verify your $roleLabel account and unlock all features.',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: colorScheme.onSurface.withOpacity(0.7),
-                      height: 1.3,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              Icons.chevron_right,
-              color: colorScheme.onSurface.withOpacity(0.5),
-              size: 22,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/auth/verification_error_messages.dart';
 import '../../models/provider_professional_profile.dart';
 import '../../providers/provider_professional_provider.dart';
 import '../../theme/design_tokens.dart';
@@ -55,7 +56,21 @@ class _ProviderCertificationsPageState
       ),
       body: certsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Could not load: $e')),
+        error: (e, s) {
+          VerificationErrorMessages.log('loadCertifications', e, s);
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                VerificationErrorMessages.forLoadStatus(e) ==
+                        VerificationErrorMessages.network
+                    ? VerificationErrorMessages.network
+                    : VerificationErrorMessages.loadCertifications,
+                textAlign: TextAlign.center,
+              ),
+            ),
+          );
+        },
         data: (certs) {
           if (certs.isEmpty) {
             return Center(

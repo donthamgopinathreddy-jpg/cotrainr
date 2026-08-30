@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -273,8 +275,14 @@ void main() {
       expect(SignupMode.values, containsAll([SignupMode.email, SignupMode.social]));
     });
 
-    test('complete-profile is a thin shared social wizard wrapper', () {
-      expect(const CompleteProfilePage(), isA<StatelessWidget>());
+    test('complete-profile guards the shared social wizard', () {
+      // Stateful since it must verify server-side onboarding completeness
+      // before letting anyone (re)enter onboarding.
+      expect(const CompleteProfilePage(), isA<StatefulWidget>());
+      final source =
+          File('lib/pages/auth/complete_profile_page.dart').readAsStringSync();
+      expect(source.contains('OnboardingStateService.fetch'), isTrue);
+      expect(source.contains('SignupMode.social'), isTrue);
     });
   });
 }

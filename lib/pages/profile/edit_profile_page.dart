@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -169,18 +170,10 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
         if (!mounted) return;
       }
 
-      // Debug: Print current user ID
-      print(
-        'EditProfilePage: user=${Supabase.instance.client.auth.currentUser?.id}',
-      );
-
       // Hard timeout on profile fetch
       final profile = await _profileRepo.fetchMyProfile().timeout(
         const Duration(seconds: 8),
       );
-
-      // Debug: Print profile data
-      print('EditProfilePage: profile=$profile');
 
       if (!mounted) return;
 
@@ -268,13 +261,14 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
         }
       }
     } catch (e, st) {
-      print('EditProfilePage: Error loading profile data: $e');
-      print(st);
+      if (kDebugMode) {
+        debugPrint('EditProfilePage: load failed: $e\n$st');
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error loading profile: $e'),
-            duration: const Duration(seconds: 3),
+          const SnackBar(
+            content: Text('We couldn’t load your profile. Try again.'),
+            duration: Duration(seconds: 3),
           ),
         );
       }
@@ -471,7 +465,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
         }
       }
     } catch (e) {
-      print('EditProfilePage: Avatar upload error: $e');
+      if (kDebugMode) debugPrint('EditProfilePage: avatar upload failed: $e');
       if (mounted && scaffoldMessenger != null) {
         scaffoldMessenger.showSnackBar(
           const SnackBar(
@@ -515,7 +509,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
         }
       }
     } catch (e) {
-      print('EditProfilePage: Cover upload error: $e');
+      if (kDebugMode) debugPrint('EditProfilePage: cover upload failed: $e');
       if (mounted && scaffoldMessenger != null) {
         scaffoldMessenger.showSnackBar(
           const SnackBar(
@@ -550,9 +544,10 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
               .trim();
 
       // Prepare update data
+      // profiles.email is server-owned (frozen by enforce_profiles_fields and
+      // stripped by update_my_profile) — auth.updateUser below owns changes.
       final updates = <String, dynamic>{
         'full_name': fullName,
-        'email': _emailController.text.trim(), // Update email in profiles table
         'phone': _phoneController.text.trim(),
         'gender': _selectedGender,
       };
@@ -567,10 +562,11 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
           await Supabase.instance.client.auth.updateUser(
             UserAttributes(email: newEmail),
           );
-          print('EditProfilePage: Updated email in auth.users');
         } catch (e) {
-          print('EditProfilePage: Error updating email in auth.users: $e');
-          // Continue even if email update in auth fails
+          // Never log the address itself.
+          if (kDebugMode) {
+            debugPrint('EditProfilePage: auth email update failed: $e');
+          }
         }
       }
 
@@ -618,9 +614,7 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
       }
 
       // Update profile in Supabase
-      print('EditProfilePage: Saving profile updates to Supabase: $updates');
       await _profileRepo.updateProfile(updates);
-      print('EditProfilePage: Profile saved successfully to Supabase');
 
       final goalWeight = double.tryParse(_goalWeightController.text.trim());
       if (goalWeight != null && goalWeight > 0) {
@@ -665,22 +659,22 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
           navigator.pop();
         } catch (e) {
           // Widget was disposed, ignore
-          print('Widget disposed during save completion: $e');
+          if (kDebugMode) debugPrint('EditProfilePage: save completion: $e');
         }
       }
-    } catch (e) {
-      print('Error saving profile: $e');
+    } catch (e, st) {
+      if (kDebugMode) debugPrint('EditProfilePage: save failed: $e\n$st');
       if (mounted) {
         try {
           scaffoldMessenger.showSnackBar(
-            SnackBar(
-              content: Text('Error saving profile: $e'),
-              duration: const Duration(seconds: 3),
+            const SnackBar(
+              content: Text('We couldn’t save your profile. Try again.'),
+              duration: Duration(seconds: 3),
             ),
           );
         } catch (e2) {
           // Widget was disposed, ignore
-          print('Widget disposed during error handling: $e2');
+          if (kDebugMode) debugPrint('EditProfilePage: error handling: $e2');
         }
       }
     } finally {
@@ -1124,11 +1118,11 @@ class _CropDialogState extends State<_CropDialog> {
                             context,
                           );
                           scaffoldMessenger.showSnackBar(
-                            SnackBar(
+                            const SnackBar(
                               content: Text(
-                                'Error cropping image: ${e.toString()}',
+                                'We couldn’t edit that image. Try again.',
                               ),
-                              duration: const Duration(seconds: 2),
+                              duration: Duration(seconds: 2),
                             ),
                           );
                         }

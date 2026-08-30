@@ -1,12 +1,27 @@
 import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/auth/user_role.dart';
 import '../services/storage_service.dart';
 
+/// Server-authoritative provider verification state.
+///
+/// There is deliberately no `unknown` member: a failed lookup throws so callers
+/// must render a retry/error state instead of silently showing "not verified".
 enum ProviderVerificationStatus {
   verified,
   pending,
   rejected,
   notSubmitted,
+}
+
+/// Thrown when the provider role cannot be resolved from the server.
+class VerificationRoleUnresolved implements Exception {
+  const VerificationRoleUnresolved(this.reason);
+
+  final String reason;
+
+  @override
+  String toString() => 'VerificationRoleUnresolved($reason)';
 }
 
 /// Repository for verification submissions
@@ -22,46 +37,50 @@ class VerificationRepository {
 
   String? get _currentUserId => _supabase.auth.currentUser?.id;
 
-  /// Get user role from profile or providers (nutritionist | trainer)
+  /// Server-authoritative provider role (`nutritionist` | `trainer`).
+  ///
+  /// Fails closed: throws [VerificationRoleUnresolved] when the role cannot be
+  /// resolved. Never defaults to `trainer` — a nutritionist must not be able to
+  /// submit or display as a trainer because a lookup failed.
   Future<String> getProviderRole() async {
-    if (_currentUserId == null) throw Exception('User not authenticated');
-    try {
-      final profile = await _supabase.rpc('get_my_profile');
-      final list = (profile as List).cast<Map<String, dynamic>>();
-      if (list.isNotEmpty) {
-        final role = list.first['role']?.toString().toLowerCase();
-        if (role == 'nutritionist') return 'nutritionist';
-        if (role == 'trainer') return 'trainer';
-      }
-    } catch (_) {}
-    try {
-      final prov = await _supabase
-          .from('providers')
-          .select('provider_type')
-          .eq('user_id', _currentUserId!)
-          .maybeSingle();
-      final pt = prov?['provider_type']?.toString().toLowerCase();
-      if (pt == 'nutritionist') return 'nutritionist';
-      if (pt == 'trainer') return 'trainer';
-    } catch (_) {}
-    return 'trainer';
+    if (_currentUserId == null) {
+      throw VerificationRoleUnresolved('not_authenticated');
+    }
+
+    final profile = await _supabase.rpc('get_my_profile');
+    if (profile is List && profile.isNotEmpty) {
+      final row = Map<String, dynamic>.from(profile.first as Map);
+      final role = UserRoleParser.parse(row['role']);
+      if (role != null && role.isProvider) return role.dbValue;
+      if (role != null) throw VerificationRoleUnresolved('not_a_provider');
+    }
+
+    final prov = await _supabase
+        .from('providers')
+        .select('provider_type')
+        .eq('user_id', _currentUserId!)
+        .maybeSingle();
+    final providerType = UserRoleParser.parse(prov?['provider_type']);
+    if (providerType != null && providerType.isProvider) {
+      return providerType.dbValue;
+    }
+
+    throw VerificationRoleUnresolved('role_unresolved');
   }
 
-  /// Fetch current user's latest verification submission
+  /// Fetch current user's latest verification submission.
+  ///
+  /// Throws on infrastructure failure — a network error must not be reported to
+  /// the UI as "nothing submitted".
   Future<Map<String, dynamic>?> getMyLatestSubmission() async {
     if (_currentUserId == null) return null;
-    try {
-      final res = await _supabase
-          .from('verification_submissions')
-          .select()
-          .eq('user_id', _currentUserId!)
-          .order('submitted_at', ascending: false)
-          .limit(1)
-          .maybeSingle();
-      return res;
-    } catch (_) {
-      return null;
-    }
+    return await _supabase
+        .from('verification_submissions')
+        .select()
+        .eq('user_id', _currentUserId!)
+        .order('submitted_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
   }
 
   /// Check if user has a pending submission (blocks new submit)
@@ -71,22 +90,23 @@ class VerificationRepository {
   }
 
   /// Resolved provider verification for profile UI.
+  ///
+  /// Throws when the server cannot be reached or read. Callers must show a
+  /// retry/error state rather than assuming the provider is unverified.
   Future<ProviderVerificationStatus> getProviderVerificationStatus() async {
     if (_currentUserId == null) return ProviderVerificationStatus.notSubmitted;
 
-    try {
-      final prov = await _supabase
-          .from('providers')
-          .select('verified')
-          .eq('user_id', _currentUserId!)
-          .maybeSingle();
-      if (prov?['verified'] == true) {
-        return ProviderVerificationStatus.verified;
-      }
-    } catch (_) {}
+    final prov = await _supabase
+        .from('providers')
+        .select('verified')
+        .eq('user_id', _currentUserId!)
+        .maybeSingle();
+    if (prov?['verified'] == true) {
+      return ProviderVerificationStatus.verified;
+    }
 
     final latest = await getMyLatestSubmission();
-    switch (latest?['status'] as String?) {
+    switch (latest?['status']?.toString().trim().toLowerCase()) {
       case 'approved':
         return ProviderVerificationStatus.verified;
       case 'pending':

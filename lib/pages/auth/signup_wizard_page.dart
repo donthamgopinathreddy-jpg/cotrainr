@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/auth/auth_deep_link.dart';
 import '../../core/auth/signup_error_mapper.dart';
 import '../../core/auth/signup_mode.dart';
+import '../../core/auth/user_role.dart';
 import '../../core/auth/username_availability.dart';
 import '../../theme/auth_theme.dart';
 import '../../theme/design_tokens.dart';
@@ -184,8 +185,65 @@ class _SignupWizardPageState extends State<SignupWizardPage>
         _lastAvailableNormalized =
             UsernameAvailability.normalize(_userId.text).toLowerCase();
       }
+      _hydrateExistingProfileValues(profile);
     } catch (_) {}
     if (mounted) setState(() {});
+  }
+
+  /// Resume-safe hydration: keeps already-persisted onboarding values instead
+  /// of restarting the wizard with placeholder defaults.
+  void _hydrateExistingProfileValues(Map<String, dynamic>? profile) {
+    if (profile == null) return;
+
+    final fullName = profile['full_name']?.toString().trim() ?? '';
+    if (fullName.isNotEmpty && _first.text.isEmpty && _last.text.isEmpty) {
+      final parts = fullName.split(RegExp(r'\s+'));
+      _first.text = parts.first;
+      if (parts.length > 1) _last.text = parts.sublist(1).join(' ');
+    }
+
+    final phone = profile['phone']?.toString().trim() ?? '';
+    if (phone.isNotEmpty && _phone.text.isEmpty) {
+      _phone.text = phone.replaceAll(RegExp(r'^\+\d{1,3}'), '').trim();
+    }
+
+    final dob = DateTime.tryParse(profile['date_of_birth']?.toString() ?? '');
+    if (dob != null) _dob = dob;
+
+    final gender = profile['gender']?.toString().trim();
+    if (gender != null && gender.isNotEmpty) {
+      for (final option in const ['Male', 'Female', 'Other']) {
+        if (option.toLowerCase() == gender.toLowerCase()) {
+          _gender = option;
+          break;
+        }
+      }
+    }
+
+    final heightCm = (profile['height_cm'] as num?)?.toDouble();
+    if (heightCm != null && heightCm > 0) {
+      _heightCm = heightCm;
+      _feet = (heightCm / 30.48).floor();
+      _inch = ((heightCm - (_feet * 30.48)) / 2.54).round();
+    }
+
+    final weightKg = (profile['weight_kg'] as num?)?.toDouble();
+    if (weightKg != null && weightKg > 0) {
+      _weightKg = weightKg;
+      _weightLbs = weightKg / 0.45359237;
+    }
+
+    // Role is server-authoritative; only canonical values are accepted.
+    switch (UserRoleParser.parse(profile['role'])) {
+      case UserRole.client:
+        _role = 'Client';
+      case UserRole.trainer:
+        _role = 'Trainer';
+      case UserRole.nutritionist:
+        _role = 'Nutritionist';
+      case null:
+        break;
+    }
   }
 
   Future<void> _initReferralCode() async {

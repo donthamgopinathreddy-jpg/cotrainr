@@ -12,6 +12,8 @@ import '../../pages/auth/permissions_page.dart';
 import '../../pages/auth/reset_password_page.dart';
 import '../../pages/auth/post_auth_continue_page.dart';
 import '../../pages/auth/complete_profile_page.dart';
+import '../../pages/auth/account_restricted_page.dart';
+import '../core/startup/go_router_auth_refresh.dart';
 import '../../pages/splash_page.dart';
 import '../../pages/home/home_shell_page.dart';
 import '../../pages/notifications/notification_page.dart';
@@ -50,7 +52,11 @@ import '../../pages/profile/partner_center_application_page.dart';
 final GoRouter appRouter = GoRouter(
   initialLocation: '/splash',
   debugLogDiagnostics: true,
+  // Re-evaluates redirects on sign-in / sign-out / token invalidation so a
+  // logged-out user leaves protected routes without any navigation action.
+  refreshListenable: goRouterAuthRefresh,
   redirect: (BuildContext context, GoRouterState state) {
+    goRouterAuthRefresh.bindAuthIfReady();
     final supabase = Supabase.instance.client;
     final session = supabase.auth.currentSession;
     final isLoggedIn = session != null;
@@ -243,6 +249,14 @@ final GoRouter appRouter = GoRouter(
       ),
     ),
     GoRoute(
+      path: '/account-restricted',
+      name: 'accountRestricted',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const AccountRestrictedPage(),
+        state: state,
+      ),
+    ),
+    GoRoute(
       path: '/welcome-animation',
       name: 'welcomeAnimation',
       pageBuilder: (context, state) => _fadeSlidePage(
@@ -318,6 +332,16 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/ai-planner',
       name: 'aiPlanner',
+      // Not part of the Android MVP: unreachable (including by deep link)
+      // while the flag is off. Code/data intentionally retained.
+      redirect: (context, state) {
+        if (FeatureFlags.enableAiPlanner) return null;
+        FeatureFlags.logBlockedOnce(
+          'ai-planner',
+          'AI Planner route blocked (enableAiPlanner=false)',
+        );
+        return '/home';
+      },
       pageBuilder: (context, state) => _fadeSlidePage(
         child: const AiPlannerPage(),
         state: state,

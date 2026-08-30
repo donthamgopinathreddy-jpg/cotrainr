@@ -138,7 +138,9 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
       );
     }
     if (user == null) return const SizedBox.shrink();
-    final role = user.role.toLowerCase().trim();
+    // Unknown role fails closed: show no role-specific quick access tiles.
+    final role = user.roleValue;
+    if (role == null) return const SizedBox.shrink();
     final trainerCount = ref.watch(acceptedClientTrainersCountProvider);
     final nutritionistCount =
         ref.watch(acceptedClientNutritionistsCountProvider);

@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// User-safe auth failure categories for Login / OAuth / related auth UI.
 enum AuthUserErrorKind {
   invalidCredentials,
+  emailNotConfirmed,
   network,
   timeout,
   rateLimited,
@@ -38,6 +39,16 @@ class AuthErrorMapper {
     kind: AuthUserErrorKind.invalidCredentials,
     title: 'Incorrect email or password.',
     detail: 'Check your details and try again.',
+  );
+
+  /// Distinct from [invalidCredentials]: the credentials were accepted but the
+  /// address is unconfirmed, so telling the user to re-check their password is
+  /// wrong. Only reachable for email/password sign-in — OAuth users arrive with
+  /// a provider-confirmed address.
+  static const emailNotConfirmed = AuthUserMessage(
+    kind: AuthUserErrorKind.emailNotConfirmed,
+    title: 'Please verify your email before signing in.',
+    detail: 'Open the confirmation link we sent to your inbox.',
   );
 
   static const network = AuthUserMessage(
@@ -103,8 +114,10 @@ class AuthErrorMapper {
       case AuthUserErrorKind.cancelled:
         return cancelled;
       case AuthUserErrorKind.invalidCredentials:
+      case AuthUserErrorKind.emailNotConfirmed:
       case AuthUserErrorKind.serviceUnavailable:
       case AuthUserErrorKind.unknown:
+        // Password reset must never enumerate accounts or confirmation state.
         return passwordResetFailed;
     }
   }
@@ -123,6 +136,7 @@ class AuthErrorMapper {
     }
 
     final text = error.toString().toLowerCase();
+    if (_looksEmailNotConfirmed(text)) return emailNotConfirmed;
     if (_looksCancelled(text)) return cancelled;
     if (_looksRateLimited(text)) return rateLimited;
     if (_looksTimeout(text)) return timeout;
@@ -138,6 +152,7 @@ class AuthErrorMapper {
     final code = '${dyn.code ?? ''} ${dyn.statusCode ?? ''} ${error.message}'
         .toLowerCase();
 
+    if (_looksEmailNotConfirmed(code)) return emailNotConfirmed;
     if (_looksCancelled(code)) return cancelled;
     if (_looksRateLimited(code)) return rateLimited;
     if (_looksNetwork(code)) return network;
@@ -162,6 +177,11 @@ class AuthErrorMapper {
     if (_looksTimeout(details)) return timeout;
     return unknown;
   }
+
+  static bool _looksEmailNotConfirmed(String text) =>
+      text.contains('email not confirmed') ||
+      text.contains('email_not_confirmed') ||
+      text.contains('email address not confirmed');
 
   static bool _looksCancelled(String text) =>
       text.contains('cancel') ||
@@ -200,7 +220,6 @@ class AuthErrorMapper {
       text.contains('invalid_credentials') ||
       text.contains('invalid login') ||
       text.contains('invalid email or password') ||
-      text.contains('email not confirmed') ||
       text.contains('user not found') ||
       text.contains('wrong password') ||
       text.contains('invalid_grant');

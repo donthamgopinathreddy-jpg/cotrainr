@@ -12,6 +12,9 @@ class FeatureFlags {
   static const bool enableLeaderboards = false;
   static const bool enableSocialProfiles = false;
 
+  /// AI Planner is deferred past the Android MVP (route + UI entry points off).
+  static const bool enableAiPlanner = false;
+
   static final Set<String> _loggedBlocks = {};
 
   /// Debug-only log when a disabled feature path is skipped (once per [key]).

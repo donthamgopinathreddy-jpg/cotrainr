@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/auth/user_role.dart';
 import '../core/startup/go_router_auth_refresh.dart';
 import '../core/startup/network_probe.dart';
 import '../core/startup/startup_failure.dart';
@@ -254,10 +255,10 @@ class StartupBootstrapNotifier extends StateNotifier<StartupState> {
           .getCurrentUserProfile()
           .timeout(kStartupNetworkTimeout);
       if (profile == null) {
-        _log('[STARTUP] profile null — ensureProfileExists');
-        await service
-            .ensureProfileExists()
-            .timeout(kStartupNetworkTimeout);
+        // Profile rows are created server-side (handle_new_user /
+        // complete_cotrainr_profile). Re-read once instead of inserting a
+        // client-authored role.
+        _log('[STARTUP] profile null — re-reading');
         profile = await service
             .getCurrentUserProfile()
             .timeout(kStartupNetworkTimeout);
@@ -486,7 +487,7 @@ CurrentUser? currentUserFromStartup(StartupState state) {
   if (state.userId == null || state.role == null) return null;
   return CurrentUser(
     id: state.userId!,
-    role: state.role!,
+    role: UserRoleParser.parse(state.role),
     fullName: state.fullName,
     avatarUrl: state.avatarUrl,
   );

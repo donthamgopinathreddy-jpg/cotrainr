@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -133,7 +134,9 @@ class _PermissionsPageState extends State<PermissionsPage> {
             // Handle "Permission launcher not found" error gracefully
             // This happens when the health package can't open system settings
             // User can still grant permission manually through app settings
-            print('Health permission request error (non-critical): $e');
+            if (kDebugMode) {
+              debugPrint('PermissionsPage: health request failed: $e');
+            }
             // Try to open app settings as fallback
             try {
               await openAppSettings();
@@ -148,7 +151,9 @@ class _PermissionsPageState extends State<PermissionsPage> {
             ? PermissionStatus.granted 
             : PermissionStatus.denied;
       } catch (e) {
-        print('Error checking health permissions: $e');
+        if (kDebugMode) {
+          debugPrint('PermissionsPage: health check failed: $e');
+        }
         status = PermissionStatus.denied;
       }
     } else if (item.permission == Permission.location) {

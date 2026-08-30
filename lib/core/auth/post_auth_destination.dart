@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../repositories/verification_repository.dart';
+import 'account_status.dart';
 import 'onboarding_state_service.dart';
+import 'user_role.dart';
 
 /// Authoritative post-auth destination for Login / OAuth / cold start / signup.
 class PostAuthDestination {
@@ -13,6 +15,9 @@ class PostAuthDestination {
   final String? reason;
 
   static const networkTimeout = Duration(seconds: 15);
+
+  /// Route for suspended / banned accounts.
+  static const accountRestrictedRoute = '/account-restricted';
 
   /// Resolves where an authenticated user must go next.
   static Future<String> resolve({
@@ -32,8 +37,18 @@ class PostAuthDestination {
       }
 
       final profile = await _fetchMyProfile(supabase).timeout(networkTimeout);
-      final role = (profile?['role'] as String?)?.toLowerCase() ?? '';
-      if (role == 'trainer' || role == 'nutritionist') {
+      // Unreadable profile must not fall through to /home: the moderation and
+      // provider gates below depend on it.
+      if (profile == null) return '/auth/continue';
+
+      // Moderation gate before any protected destination.
+      if (AccountStatusParser.fromProfile(profile).isRestricted) {
+        return accountRestrictedRoute;
+      }
+
+      // Fail-closed role parsing: unknown roles are not treated as providers,
+      // and are never mapped to client/trainer.
+      if (UserRoleParser.isProviderRole(profile['role'])) {
         final status = await (verificationRepo ?? VerificationRepository())
             .getProviderVerificationStatus()
             .timeout(networkTimeout);

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ProfileRoleService {
@@ -30,26 +31,25 @@ class ProfileRoleService {
     }
   }
 
-  Future<void> ensureProfileExists() async {
+  /// Reports whether a profile row exists for the signed-in user.
+  ///
+  /// Deliberately does NOT create one from client-writable auth metadata:
+  /// `profiles.role` is authoritative and is owned by the server (the
+  /// `handle_new_user` trigger for signups and `complete_cotrainr_profile` for
+  /// social onboarding). A client-side insert would let user metadata become an
+  /// uncontrolled role authority.
+  Future<bool> profileExists() async {
     try {
       final user = _supabase.auth.currentUser;
-      if (user == null) return;
-
-      final role = user.userMetadata?['role']?.toString().toLowerCase();
-      if (role == null) return;
-
-      final list = (await _supabase.rpc('get_my_profile') as List).cast<Map<String, dynamic>>();
-      final existing = list.isNotEmpty ? list.first : null;
-
-      if (existing == null) {
-        await _supabase.from('profiles').insert({
-          'id': user.id,
-          'role': role,
-          'full_name': user.userMetadata?['full_name'] ?? '',
-        });
-      }
+      if (user == null) return false;
+      final list = (await _supabase.rpc('get_my_profile') as List)
+          .cast<Map<String, dynamic>>();
+      return list.isNotEmpty;
     } catch (e) {
-      // Silently fail - profile might already exist or will be created by trigger
+      if (kDebugMode) {
+        debugPrint('ProfileRoleService: profileExists check failed: $e');
+      }
+      return false;
     }
   }
 }

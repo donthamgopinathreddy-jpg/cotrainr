@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/auth/verification_error_messages.dart';
 import '../../theme/account_hub_theme.dart';
 import '../../theme/design_tokens.dart';
 import '../../utils/page_transitions.dart';
@@ -108,9 +109,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       await Supabase.instance.client.auth.signOut();
       if (!mounted) return;
       context.go('/welcome');
-    } catch (e) {
+    } catch (e, s) {
+      VerificationErrorMessages.log('logout', e, s);
       if (!mounted) return;
-      showHubSnackBar(context, 'Logout failed: $e');
+      showHubSnackBar(context, VerificationErrorMessages.forLogout(e));
     }
   }
 

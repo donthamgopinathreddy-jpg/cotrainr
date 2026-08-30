@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -18,8 +19,7 @@ import '../../pages/trainer/become_trainer_page.dart';
 import '../../pages/refer/refer_friend_page.dart';
 import '../profile/settings_page.dart';
 import '../../widgets/profile/appearance_toggle.dart';
-import '../../theme/account_hub_theme.dart';
-
+import '../../widgets/provider/provider_verification_card.dart';
 class TrainerProfilePage extends ConsumerStatefulWidget {
   const TrainerProfilePage({super.key});
 
@@ -33,15 +33,15 @@ class _TrainerProfilePageState extends ConsumerState<TrainerProfilePage>
   String _username = 'Trainer';
   String _handle = '@user';
   final bool _isSubscribed = false;
-  ProviderVerificationStatus _verificationStatus =
-      ProviderVerificationStatus.notSubmitted;
+  ProviderVerificationStatus? _verificationStatus;
+  bool _verificationLoadFailed = false;
 
   String get _role => 'trainer';
 
   bool get _isVerified =>
       _verificationStatus == ProviderVerificationStatus.verified;
 
-  bool get _showVerificationCard => !_isVerified;
+  bool get _showVerificationCard => _verificationStatus != null && !_isVerified;
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
 
@@ -70,9 +70,17 @@ class _TrainerProfilePageState extends ConsumerState<TrainerProfilePage>
           _username = profile?['full_name'] as String? ?? profile?['username'] as String? ?? 'Trainer';
           _handle = profile?['username'] != null ? '@${profile!['username']}' : '@user';
           _verificationStatus = status;
+          _verificationLoadFailed = false;
         });
       }
-    } catch (_) {}
+    } catch (e, s) {
+      if (kDebugMode) {
+        debugPrint('TrainerProfile: verification load failed: $e\n$s');
+      }
+      if (mounted) {
+        setState(() => _verificationLoadFailed = true);
+      }
+    }
   }
 
   @override
@@ -134,11 +142,19 @@ class _TrainerProfilePageState extends ConsumerState<TrainerProfilePage>
                         child: const AppearanceToggle(),
                       ),
                       const SizedBox(height: 10),
-                      if (_showVerificationCard) ...[
+                      if (_verificationLoadFailed) ...[
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: _VerificationCard(
-                            status: _verificationStatus,
+                          child: ProviderVerificationErrorCard(
+                            onRetry: _loadProfile,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                      ] else if (_showVerificationCard) ...[
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: ProviderVerificationCard(
+                            status: _verificationStatus!,
                             role: _role,
                             onTap: () async {
                               HapticFeedback.lightImpact();
@@ -716,110 +732,3 @@ class _FullLengthButton extends StatelessWidget {
   }
 }
 
-class _VerificationCard extends StatelessWidget {
-  final ProviderVerificationStatus status;
-  final String role;
-  final VoidCallback onTap;
-
-  const _VerificationCard({
-    required this.status,
-    required this.role,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final roleLabel = role == 'nutritionist' ? 'Nutritionist' : 'Trainer';
-    final isPending = status == ProviderVerificationStatus.pending;
-    final isRejected = status == ProviderVerificationStatus.rejected;
-
-    return PressableCard(
-      onTap: onTap,
-      borderRadius: 24,
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              AppColors.orange.withOpacity(isPending ? 0.1 : 0.15),
-              AppColors.orange.withOpacity(isPending ? 0.05 : 0.08),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: AppColors.orange.withOpacity(isPending ? 0.3 : 0.4),
-            width: 1.5,
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                gradient: isPending
-                    ? LinearGradient(
-                        colors: [
-                          AppColors.orange.withOpacity(0.2),
-                          AppColors.orange.withOpacity(0.1),
-                        ],
-                      )
-                    : AppColors.stepsGradient,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                isPending
-                    ? Icons.hourglass_empty
-                    : isRejected
-                        ? Icons.error_outline_rounded
-                        : Icons.verified_user_outlined,
-                color: isPending ? AppColors.orange : Colors.white,
-                size: 24,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    isPending
-                        ? 'Verification Pending'
-                        : isRejected
-                            ? 'Verification Rejected'
-                            : 'Verify Your $roleLabel Account',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: colorScheme.onSurface,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    isPending
-                        ? 'Documents submitted. Please wait up to 24 hours for verification.'
-                        : isRejected
-                            ? 'Tap to review feedback and submit new documents.'
-                            : 'Submit documents to verify your $roleLabel account and unlock all features.',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: colorScheme.onSurface.withOpacity(0.7),
-                      height: 1.3,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              Icons.chevron_right,
-              color: colorScheme.onSurface.withValues(alpha: 0.5),
-              size: 22,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

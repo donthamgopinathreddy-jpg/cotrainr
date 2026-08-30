@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:cotrainr/core/auth/user_role.dart';
 import 'package:cotrainr/models/member_plan_view.dart';
 import 'package:cotrainr/providers/accepted_client_trainers_provider.dart';
 import 'package:cotrainr/providers/profile_role_provider.dart';
@@ -23,7 +24,7 @@ class _FixedUser extends CurrentUserNotifier {
 
 CurrentUser _user(String role) => CurrentUser(
       id: 'u-$role',
-      role: role,
+      role: UserRoleParser.parse(role),
       fullName: role,
     );
 

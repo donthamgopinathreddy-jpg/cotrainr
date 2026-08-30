@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cotrainr/core/auth/user_role.dart';
 import 'package:cotrainr/providers/accepted_client_trainers_provider.dart';
 import 'package:cotrainr/providers/partner_centers_provider.dart';
 import 'package:cotrainr/providers/profile_role_provider.dart';
@@ -48,7 +49,7 @@ class _FixedUser extends CurrentUserNotifier {
 
 CurrentUser _user(String role) => CurrentUser(
       id: 'u1',
-      role: role,
+      role: UserRoleParser.parse(role),
       fullName: 'Ada',
     );
 

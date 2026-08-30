@@ -1,5 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/auth/user_role.dart';
 import '../services/profile_role_service.dart';
 
 final profileRoleServiceProvider = Provider<ProfileRoleService>((ref) {
@@ -13,7 +13,8 @@ class CurrentUserNotifier extends AsyncNotifier<CurrentUser?> {
     final profile = await service.getCurrentUserProfile();
     
     if (profile == null) {
-      await service.ensureProfileExists();
+      // Profile creation is server-owned; re-read instead of inserting a
+      // client-authored role from auth metadata.
       final retry = await service.getCurrentUserProfile();
       if (retry == null) return null;
       return CurrentUser.fromJson(retry);
@@ -39,7 +40,10 @@ final currentUserProvider = AsyncNotifierProvider<CurrentUserNotifier, CurrentUs
 
 class CurrentUser {
   final String id;
-  final String role;
+
+  /// Canonical role, or null when the stored value is not recognised.
+  /// Unknown roles fail closed: no role-specific capability is granted.
+  final UserRole? role;
   final String? fullName;
   final String? avatarUrl;
   final String? city;
@@ -57,7 +61,7 @@ class CurrentUser {
   factory CurrentUser.fromJson(Map<String, dynamic> json) {
     return CurrentUser(
       id: json['id'] as String,
-      role: json['role'] as String,
+      role: UserRoleParser.parse(json['role']),
       fullName: json['full_name'] as String?,
       avatarUrl: json['avatar_url'] as String?,
       city: json['city'] as String?,
@@ -65,8 +69,11 @@ class CurrentUser {
     );
   }
 
-  bool get isClient => role == 'client';
-  bool get isTrainer => role == 'trainer';
-  bool get isNutritionist => role == 'nutritionist';
-  bool get isProvider => isTrainer || isNutritionist;
+  /// Canonical database string, or null when the role is unknown.
+  String? get roleValue => role?.dbValue;
+
+  bool get isClient => role == UserRole.client;
+  bool get isTrainer => role == UserRole.trainer;
+  bool get isNutritionist => role == UserRole.nutritionist;
+  bool get isProvider => role?.isProvider ?? false;
 }

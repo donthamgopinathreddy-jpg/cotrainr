@@ -5,8 +5,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/auth/post_auth_destination.dart';
+import '../../core/auth/user_role.dart';
+import '../../core/auth/verification_error_messages.dart';
 import '../../providers/provider_professional_provider.dart';
 import '../../repositories/verification_repository.dart';
 import '../../theme/app_colors.dart';
@@ -59,7 +61,9 @@ class _VerificationSubmissionPageState
   bool _isLoading = true;
   bool _hydrated = false;
   String? _loadError;
-  String _providerRole = 'trainer';
+  // Fail closed: null until the server resolves the role. Never defaults to
+  // 'trainer' — a nutritionist must not submit or display as a trainer.
+  String? _providerRole;
   String? _submissionStatus;
   String? _rejectionNotes;
 
@@ -68,8 +72,12 @@ class _VerificationSubmissionPageState
   bool _existingAccepting = true;
 
   bool get _isNutritionist => _providerRole == 'nutritionist';
-  String get _pageTitle =>
-      _isNutritionist ? 'Nutritionist Verification' : 'Trainer Verification';
+  bool get _roleResolved => _providerRole != null;
+  String get _pageTitle => !_roleResolved
+      ? 'Verification'
+      : _isNutritionist
+          ? 'Nutritionist Verification'
+          : 'Trainer Verification';
   String get _credentialLabel =>
       _isNutritionist ? 'Upload License/Degree' : 'Upload Training Certificate';
 
@@ -107,17 +115,20 @@ class _VerificationSubmissionPageState
       if (!mounted) return;
       setState(() {
         _providerRole = role;
-        _submissionStatus = sub?['status'] as String?;
+        _submissionStatus = sub?['status']?.toString().trim().toLowerCase();
         _rejectionNotes = sub?['rejection_notes'] as String?;
         _isLoading = false;
       });
       _hydrateProfessional();
-    } catch (e) {
+    } catch (e, s) {
+      VerificationErrorMessages.log('verificationBootstrap', e, s);
       if (!mounted) return;
       setState(() {
-        _providerRole = 'trainer';
+        _providerRole = null;
         _isLoading = false;
-        _loadError = e.toString().replaceFirst('Exception: ', '');
+        _loadError = e is VerificationRoleUnresolved
+            ? VerificationErrorMessages.loadRole
+            : VerificationErrorMessages.forLoadStatus(e);
       });
     }
   }
@@ -126,7 +137,10 @@ class _VerificationSubmissionPageState
     if (_hydrated) return;
     final profile = ref.read(myProviderProfessionalProvider).valueOrNull;
     if (profile != null) {
-      _providerRole = profile.providerType;
+      _providerRole = UserRoleParser.parse(profile.providerType)?.isProvider ==
+              true
+          ? UserRoleParser.normalize(profile.providerType)
+          : _providerRole;
       if ((profile.professionalHeadline ?? '').trim().isNotEmpty) {
         _headlineCtrl.text = profile.professionalHeadline!.trim();
       }
@@ -160,16 +174,8 @@ class _VerificationSubmissionPageState
       return;
     }
 
-    // No provider row yet — fall back to auth metadata role + empty form
-    final meta = Supabase.instance.client.auth.currentUser?.userMetadata;
-    final metaRole = meta?['role']?.toString().toLowerCase();
-    if (metaRole == 'nutritionist' || metaRole == 'trainer') {
-      _providerRole = metaRole!;
-    }
-    final specs = meta?['specialization'];
-    if (specs is List && _specialties.isEmpty) {
-      _specialties.addAll(specs.map((e) => e.toString()));
-    }
+    // No provider row yet — empty form. The role stays whatever the server
+    // resolved; client-writable auth metadata is never trusted for role.
     _hydrated = true;
   }
 
@@ -187,12 +193,18 @@ class _VerificationSubmissionPageState
       return;
     }
 
+    final role = _providerRole;
+    if (role == null) {
+      _showSnack(VerificationErrorMessages.loadRole);
+      return;
+    }
+
     setState(() => _isSavingProfessional = true);
     HapticFeedback.mediumImpact();
     try {
       final exp = int.parse(_experienceCtrl.text.trim());
       await ref.read(myProviderProfessionalProvider.notifier).save(
-            providerType: _providerRole,
+            providerType: role,
             professionalHeadline: _headlineCtrl.text.trim(),
             bio: _bioCtrl.text.trim(),
             experienceYears: exp,
@@ -207,12 +219,11 @@ class _VerificationSubmissionPageState
         _isSavingProfessional = false;
         _phase = 1;
       });
-    } catch (e) {
+    } catch (e, s) {
+      VerificationErrorMessages.log('saveProfessional', e, s);
       if (!mounted) return;
       setState(() => _isSavingProfessional = false);
-      _showSnack(
-        'Could not save professional profile: ${e.toString().replaceFirst('Exception: ', '')}',
-      );
+      _showSnack(VerificationErrorMessages.forSaveProfessional(e));
     }
   }
 
@@ -247,13 +258,18 @@ class _VerificationSubmissionPageState
       _showSnack('Please upload government ID image');
       return;
     }
+    final role = _providerRole;
+    if (role == null) {
+      _showSnack(VerificationErrorMessages.loadRole);
+      return;
+    }
 
     setState(() => _isSubmitting = true);
     HapticFeedback.mediumImpact();
 
     try {
       await _verificationRepo.submitVerification(
-        providerType: _providerRole,
+        providerType: role,
         govIdType: _selectedGovIdType!,
         certificateFile: _certificateImage!,
         govIdFile: _govIdImage!,
@@ -267,12 +283,34 @@ class _VerificationSubmissionPageState
         });
         _showSuccessDialog();
       }
-    } catch (e) {
+    } catch (e, s) {
+      VerificationErrorMessages.log('submitVerification', e, s);
       if (mounted) {
         setState(() => _isSubmitting = false);
-        _showSnack(e.toString().replaceFirst('Exception: ', ''));
+        _showSnack(VerificationErrorMessages.forSubmit(e));
       }
     }
+  }
+
+  /// Leaves verification through the authoritative post-auth destination.
+  ///
+  /// Pushed instances simply pop back to the caller (their host route was
+  /// already resolved by the gate); root instances resolve server state.
+  Future<void> _leaveThroughPostAuthGate() async {
+    if (!mounted) return;
+    if (context.canPop()) {
+      context.pop();
+      return;
+    }
+    String destination;
+    try {
+      destination = await PostAuthDestination.resolve();
+    } catch (e, s) {
+      VerificationErrorMessages.log('postAuthResolve', e, s);
+      destination = '/auth/continue';
+    }
+    if (!mounted) return;
+    context.go(destination);
   }
 
   void _showSnack(String msg) {
@@ -314,11 +352,9 @@ class _VerificationSubmissionPageState
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              if (context.canPop()) {
-                context.pop();
-              } else {
-                context.go('/home');
-              }
+              // Single routing authority: never jump straight to /home.
+              // The post-auth gate decides pending / rejected / verified.
+              _leaveThroughPostAuthGate();
             },
             child: Text(
               'OK',
@@ -355,7 +391,9 @@ class _VerificationSubmissionPageState
       );
     }
 
-    if (_loadError != null && !_hydrated) {
+    // Fail closed: without a server-resolved provider role we show retry
+    // instead of guessing (and never assume trainer).
+    if (_loadError != null || !_roleResolved) {
       return Scaffold(
         backgroundColor: colorScheme.surface,
         appBar: CotrainrAppBar(
@@ -369,7 +407,10 @@ class _VerificationSubmissionPageState
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(_loadError!, textAlign: TextAlign.center),
+                Text(
+                  _loadError ?? VerificationErrorMessages.loadRole,
+                  textAlign: TextAlign.center,
+                ),
                 const SizedBox(height: 16),
                 FilledButton(
                   onPressed: _bootstrap,
@@ -504,7 +545,7 @@ class _VerificationSubmissionPageState
             maxLength: ProviderProfessionalFormValidation.headlineMaxLen,
             decoration: _decoration(
               ProviderProfessionalFormValidation.headlinePlaceholder(
-                _providerRole,
+                _providerRole!,
               ),
             ),
           ),
@@ -532,7 +573,7 @@ class _VerificationSubmissionPageState
         _field(
           label: 'Specialties',
           child: ProviderSpecialtySelector(
-            providerType: _providerRole,
+            providerType: _providerRole!,
             selectedIds: _specialties,
             onChanged: (next) => setState(() {
               _specialties
@@ -556,7 +597,7 @@ class _VerificationSubmissionPageState
         _field(
           label: 'Session modes',
           child: ProviderSessionModeSelector(
-            providerType: _providerRole,
+            providerType: _providerRole!,
             selectedIds: _sessionModes,
             onChanged: (next) => setState(() {
               _sessionModes

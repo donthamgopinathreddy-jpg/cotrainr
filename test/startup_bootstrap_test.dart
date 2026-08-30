@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:cotrainr/core/startup/startup_failure.dart';
 import 'package:cotrainr/core/startup/startup_state.dart';
-import 'package:cotrainr/providers/profile_role_provider.dart';
 import 'package:cotrainr/providers/startup_bootstrap_provider.dart';
 
 void main() {
