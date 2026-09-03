@@ -61,11 +61,17 @@ Deno.serve(async (req) => {
 
     let isAdmin = false;
     if (!isOwner) {
-      const { data: adminRow } = await admin
+      const { data: adminRow, error: adminError } = await admin
         .from('admin_users')
-        .select('user_id')
-        .eq('user_id', user.id)
+        .select('id')
+        .eq('id', user.id)
+        .eq('is_active', true)
         .maybeSingle();
+
+      if (adminError) {
+        return json(403, { error: 'Forbidden' });
+      }
+
       isAdmin = adminRow != null;
     }
 

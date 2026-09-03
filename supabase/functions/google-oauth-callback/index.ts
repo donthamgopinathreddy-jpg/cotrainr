@@ -11,6 +11,24 @@ import {
 
 const APP_REDIRECT_DEFAULT = "cotrainr://video/google-connected"
 
+function accountStatusIsRestricted(
+  status: unknown,
+  suspendedUntil: unknown,
+): boolean {
+  const raw = typeof status === "string" ? status.trim().toLowerCase() : ""
+  if (raw === "banned") return true
+  if (raw === "suspended") {
+    if (suspendedUntil == null || String(suspendedUntil).trim() === "") {
+      return true
+    }
+    const untilMs = Date.parse(String(suspendedUntil))
+    if (Number.isNaN(untilMs)) return true
+    return untilMs > Date.now()
+  }
+  if (raw === "active") return false
+  return true
+}
+
 function buildAppUri(base: string, params: Record<string, string>) {
   // Avoid URL() for custom schemes — some runtimes normalize incorrectly.
   const u = new URL(base.includes("://") ? base : APP_REDIRECT_DEFAULT)
@@ -129,6 +147,26 @@ Deno.serve(async (req) => {
     if (new Date(pending.expires_at).getTime() < Date.now()) {
       console.log("[google-oauth-callback] state_expired")
       return redirectApp(appRedirect, { error: "state_expired" })
+    }
+
+    const ownerId = pending.user_id
+    if (typeof ownerId !== "string" || ownerId.length === 0) {
+      console.log("[google-oauth-callback] account_restricted")
+      return redirectApp(appRedirect, { error: "account_restricted" })
+    }
+
+    const { data: profile, error: profileErr } = await admin
+      .from("profiles")
+      .select("account_status, suspended_until")
+      .eq("id", ownerId)
+      .maybeSingle()
+    if (
+      profileErr ||
+      !profile ||
+      accountStatusIsRestricted(profile.account_status, profile.suspended_until)
+    ) {
+      console.log("[google-oauth-callback] account_restricted")
+      return redirectApp(appRedirect, { error: "account_restricted" })
     }
 
     const redirectUri = requireEnv("GOOGLE_OAUTH_REDIRECT_URI")

@@ -14,6 +14,42 @@ import {
   sha256Base64Url,
 } from "../_shared/google_meet.ts"
 
+function accountStatusIsRestricted(
+  status: unknown,
+  suspendedUntil: unknown,
+): boolean {
+  const raw = typeof status === "string" ? status.trim().toLowerCase() : ""
+  if (raw === "banned") return true
+  if (raw === "suspended") {
+    if (suspendedUntil == null || String(suspendedUntil).trim() === "") {
+      return true
+    }
+    const untilMs = Date.parse(String(suspendedUntil))
+    if (Number.isNaN(untilMs)) return true
+    return untilMs > Date.now()
+  }
+  if (raw === "active") return false
+  return true
+}
+
+async function rejectIfAccountRestricted(
+  admin: ReturnType<typeof createClient>,
+  userId: string,
+): Promise<Response | null> {
+  const { data, error } = await admin
+    .from("profiles")
+    .select("account_status, suspended_until")
+    .eq("id", userId)
+    .maybeSingle()
+  if (error || !data) {
+    return jsonError("Account restricted", 403, "ACCOUNT_RESTRICTED")
+  }
+  if (accountStatusIsRestricted(data.account_status, data.suspended_until)) {
+    return jsonError("Account restricted", 403, "ACCOUNT_RESTRICTED")
+  }
+  return null
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders })
@@ -34,6 +70,9 @@ Deno.serve(async (req) => {
       supabaseUrl,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     )
+
+    const restricted = await rejectIfAccountRestricted(admin, user.id)
+    if (restricted) return restricted
 
     // Providers only
     const { data: providerRow } = await admin
