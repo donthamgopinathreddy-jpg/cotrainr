@@ -18,7 +18,9 @@ import '../../services/metrics_sync_service.dart';
 import '../../services/water_intake_service.dart';
 import '../../utils/health_metric_display.dart';
 import '../../widgets/home_v3/hero_header_v3.dart';
+import '../../widgets/home_v3/home_community_event_card.dart';
 import '../../widgets/home_v3/unified_metrics_tile_v3.dart';
+import '../../providers/community_events_provider.dart';
 import '../../widgets/home_v3/coaching_insight_builder.dart';
 import '../../widgets/home_v3/metrics_source_labels.dart';
 import '../../models/coaching_insight.dart';
@@ -297,6 +299,7 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
     ]);
     invalidateProviderHomeCounts(ref);
     ref.invalidate(videoSessionsListProvider);
+    ref.invalidate(homeCommunityEventProvider);
     ref.read(dailyMetricsProvider.notifier).refresh();
   }
 
@@ -373,6 +376,15 @@ class _NutritionistHomePageState extends ConsumerState<NutritionistHomePage>
                     },
                   ),
                   0,
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                  child: _animated(
+                    _safeSection(context, const HomeCommunityEventCard()),
+                    40,
+                  ),
                 ),
               ),
               SliverToBoxAdapter(

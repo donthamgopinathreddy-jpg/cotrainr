@@ -15,7 +15,9 @@ import '../../providers/profile_images_provider.dart';
 import '../../providers/health_tracking_provider.dart';
 import '../../utils/health_metric_display.dart';
 import '../../widgets/home_v3/hero_header_v3.dart';
+import '../../widgets/home_v3/home_community_event_card.dart';
 import '../../widgets/home_v3/unified_metrics_tile_v3.dart';
+import '../../providers/community_events_provider.dart';
 import '../../widgets/home_v3/bmi_card_v3.dart';
 import '../bmi/bmi_details_screen.dart';
 import '../../widgets/home_v3/quick_access_v3.dart';
@@ -527,6 +529,17 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
               ),
             ),
           SliverToBoxAdapter(
+            child: Padding(
+              // Top 12 below strip; bottom 24 offsets Steps' Transform.translate(-8)
+              // so painted gap to Steps stays ~16 without changing Steps itself.
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+              child: _animated(
+                _safeSection(context, const HomeCommunityEventCard()),
+                40,
+              ),
+            ),
+          ),
+          SliverToBoxAdapter(
             child: Transform.translate(
               offset: const Offset(0, -8),
               child: Padding(
@@ -825,5 +838,6 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
     
     // Refresh health tracking data
     ref.read(dailyMetricsProvider.notifier).refresh();
+    ref.invalidate(homeCommunityEventProvider);
   }
 }

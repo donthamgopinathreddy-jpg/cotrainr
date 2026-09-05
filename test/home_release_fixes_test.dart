@@ -150,6 +150,7 @@ void main() {
       expect(src.contains('Power Gym'), isFalse);
       expect(src.contains('Zen Yoga Studio'), isFalse);
       expect(src.contains('HomeCentersPreview'), isTrue);
+      expect(src.contains('HomeCommunityEventCard'), isTrue);
     }
   });
 

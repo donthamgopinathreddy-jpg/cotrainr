@@ -46,6 +46,8 @@ import '../../pages/profile/public_profile_readonly_page.dart';
 import '../../pages/profile/settings/service_locations_page.dart';
 import '../../pages/profile/cotrainr_pass_page.dart';
 import '../../pages/profile/partner_center_application_page.dart';
+import '../../pages/events/event_details_page.dart';
+import '../../models/community_event.dart';
 
 /// Session-based redirect. Post-auth routing uses /auth/continue
 /// (complete-profile / verification / home) — never blind /home.
@@ -556,6 +558,22 @@ final GoRouter appRouter = GoRouter(
         return _fadeSlidePage(
           child: BmiDetailsScreen(
             args: args ?? const BmiDetailsArgs(bmi: 0, bmiStatus: ''),
+          ),
+          state: state,
+        );
+      },
+    ),
+    GoRoute(
+      path: '/events/:eventId',
+      name: 'communityEventDetails',
+      pageBuilder: (context, state) {
+        final eventId = state.pathParameters['eventId'];
+        final extra = state.extra;
+        final data = extra is CommunityEventCardData ? extra : null;
+        return _fadeSlidePage(
+          child: EventDetailsPage(
+            eventId: eventId,
+            initialData: data,
           ),
           state: state,
         );

@@ -15,6 +15,29 @@ class LaunchUtils {
     await _launch(context, uri);
   }
 
+  /// Opens an admin-provided Google Maps (or https) URL externally.
+  /// Returns false if [url] is missing/invalid or launch fails.
+  static Future<bool> openMapUrl(
+    BuildContext context,
+    String? url, {
+    bool showFailure = true,
+  }) async {
+    final raw = url?.trim() ?? '';
+    if (raw.isEmpty) return false;
+    final uri = Uri.tryParse(raw);
+    if (uri == null ||
+        !(uri.isScheme('https') || uri.isScheme('http')) ||
+        uri.host.isEmpty) {
+      if (showFailure && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Map link is unavailable.')),
+        );
+      }
+      return false;
+    }
+    return _launch(context, uri, showGenericFailure: showFailure);
+  }
+
   /// Opens the device mail composer. Returns `true` only if launch succeeded.
   /// Does not imply the email was sent or received.
   static Future<bool> sendEmail(
