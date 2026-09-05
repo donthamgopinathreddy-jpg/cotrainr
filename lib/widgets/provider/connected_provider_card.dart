@@ -8,6 +8,7 @@ import '../home_v3/home_premium_theme.dart';
 import 'provider_avatar.dart';
 
 class ConnectedProviderCardData {
+  final String leadId;
   final String providerId;
   final String fullName;
   final String roleLabel;
@@ -20,6 +21,7 @@ class ConnectedProviderCardData {
   final int? myRating;
 
   const ConnectedProviderCardData({
+    required this.leadId,
     required this.providerId,
     required this.fullName,
     required this.roleLabel,
@@ -39,6 +41,7 @@ class ConnectedProviderCard extends StatelessWidget {
   final bool isLight;
   final VoidCallback onViewProfile;
   final VoidCallback onRate;
+  final VoidCallback? onEndConnection;
 
   const ConnectedProviderCard({
     super.key,
@@ -46,6 +49,7 @@ class ConnectedProviderCard extends StatelessWidget {
     required this.isLight,
     required this.onViewProfile,
     required this.onRate,
+    this.onEndConnection,
   });
 
   @override
@@ -178,6 +182,44 @@ class ConnectedProviderCard extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (onEndConnection != null)
+                  PopupMenuButton<String>(
+                    tooltip: 'More',
+                    padding: EdgeInsets.zero,
+                    icon: Icon(
+                      Icons.more_vert_rounded,
+                      size: 22,
+                      color: textSecondary,
+                    ),
+                    onSelected: (value) {
+                      if (value == 'end') {
+                        HapticFeedback.selectionClick();
+                        onEndConnection!();
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      PopupMenuItem<String>(
+                        value: 'end',
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.link_off_rounded,
+                              size: 18,
+                              color: Theme.of(context).colorScheme.error,
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              'End connection',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
               ],
             ),
             const SizedBox(height: 8),

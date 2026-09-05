@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../theme/design_tokens.dart';
+import '../../utils/trainer_type_icons.dart';
 import '../provider/provider_avatar.dart';
 
 const _kStatIconSize = 22.0;
 const _kTypeIconSize = 16.0;
-const _kWatermarkOpacity = 0.08;
+const _kWatermarkOpacity = 0.18;
 const _kHideWatermarkBelow = 360.0;
 
 /// Public trainer/nutritionist identity: photo, name, username, title pill.
@@ -14,6 +15,9 @@ class PublicProviderIdentityHeader extends StatelessWidget {
   final String name;
   final String? username;
   final String professionalTitle;
+  /// Specialty id or freeform title used to pick the trainer-type badge icon.
+  /// Ignored for nutritionists (restaurant icon is kept).
+  final String? trainerType;
   final String? avatarUrl;
   final bool verified;
   final bool isNutritionist;
@@ -22,15 +26,17 @@ class PublicProviderIdentityHeader extends StatelessWidget {
     super.key,
     required this.name,
     required this.professionalTitle,
+    this.trainerType,
     this.username,
     this.avatarUrl,
     this.verified = false,
     this.isNutritionist = false,
   });
 
-  IconData get _roleIcon => isNutritionist
-      ? Icons.restaurant_rounded
-      : Icons.fitness_center_rounded;
+  IconData get _roleIcon {
+    if (isNutritionist) return Icons.restaurant_rounded;
+    return trainerTypeIcon(trainerType ?? professionalTitle);
+  }
 
   @override
   Widget build(BuildContext context) {

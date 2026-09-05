@@ -1,7 +1,12 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'leads_models.dart'
-    show Lead, CreateLeadResult, UpdateLeadResult, AcceptedTrainer, AcceptedProvider;
+    show Lead,
+        CreateLeadResult,
+        UpdateLeadResult,
+        EndConnectionResult,
+        AcceptedTrainer,
+        AcceptedProvider;
 
 class LeadsService {
   final SupabaseClient _supabase;
@@ -73,6 +78,57 @@ class LeadsService {
         rethrow;
       }
       throw Exception('Failed to update lead: $e');
+    }
+  }
+
+  /// Ends an accepted connection via live RPC `end_connection_tx`.
+  /// Allowance restoration is decided server-side only.
+  Future<EndConnectionResult> endConnection({
+    required String leadId,
+    required String reason,
+  }) async {
+    try {
+      final raw = await _supabase.rpc(
+        'end_connection_tx',
+        params: {
+          'p_lead_id': leadId,
+          // Live Wave 2A–tested param name (not p_reason).
+          'p_end_reason': reason,
+        },
+      );
+
+      if (raw is! Map) {
+        throw Exception('Failed to end connection');
+      }
+
+      final data = Map<String, dynamic>.from(raw);
+      final error = data['error'] as String?;
+      if (error != null) {
+        throw Exception(error);
+      }
+      if (data['ok'] == false) {
+        final message = data['message'] as String?;
+        final code = data['error_code'] as String?;
+        throw Exception(
+          (message != null && message.isNotEmpty)
+              ? message
+              : (code != null && code.isNotEmpty)
+                  ? code
+                  : 'Failed to end connection',
+        );
+      }
+
+      return EndConnectionResult.fromJson(data);
+    } catch (e) {
+      debugPrint('LeadsService.endConnection error: $e');
+      // Business errors from RPC JSON (`error` / `ok:false`) are already
+      // Exception(message) — rethrow those. Transport/DB errors stay sanitized.
+      if (e is Exception &&
+          e is! PostgrestException &&
+          !e.toString().startsWith('Exception: Failed to end connection')) {
+        rethrow;
+      }
+      throw Exception('Failed to end connection');
     }
   }
 

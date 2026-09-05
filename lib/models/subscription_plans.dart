@@ -1,9 +1,12 @@
-/// Display + rules for Cotrainr client subscription tiers.
+/// Display + product metadata for Cotrainr client subscription tiers.
 ///
 /// DB / internal IDs:
 /// - [free] → `'free'`
 /// - [basic] → `'basic'`
 /// - [unlimited] → `'premium'` (user-facing label: Ultimate)
+///
+/// Entitlement limits and nutritionist connect eligibility are owned by
+/// PostgreSQL (`get_member_entitlements`) — not encoded here.
 abstract final class SubscriptionPlans {
   static const free = 'free';
   static const basic = 'basic';
@@ -18,19 +21,6 @@ abstract final class SubscriptionPlans {
 
   /// Short label for nutritionist premium access chips.
   static const nutritionistAccessPlansLabel = 'Basic & Ultimate';
-
-  /// Monthly NEW unique provider connection requests (calendar month).
-  /// `null` = unlimited (Ultimate / premium).
-  static int? monthlyConnectionRequestLimit(String plan) {
-    final p = plan.toLowerCase();
-    if (p == free) return 5;
-    if (p == basic) return 15;
-    if (p == unlimited) return null;
-    return 5;
-  }
-
-  static bool hasUnlimitedConnectionRequests(String plan) =>
-      monthlyConnectionRequestLimit(plan) == null;
 
   static const freeBenefits = [
     'Browse trainers & nutritionists in Discover',
@@ -69,12 +59,6 @@ abstract final class SubscriptionPlans {
 
   /// Free / Basic / Ultimate — browse nutritionists is always allowed.
   static bool canBrowseNutritionists(String plan) => true;
-
-  /// Plan eligibility to connect to nutritionists (separate from monthly quota).
-  static bool canConnectToNutritionist(String plan) {
-    final p = plan.toLowerCase();
-    return p == basic || p == unlimited;
-  }
 
   /// Free tier caps nearby **trainer** Discover results only.
   static int? discoverResultCap(String plan) =>

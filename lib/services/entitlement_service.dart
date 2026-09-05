@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class EntitlementService {
@@ -14,108 +15,88 @@ class EntitlementService {
       );
 
       if (response.status != 200) {
-        throw Exception('Failed to get entitlements: ${response.data}');
+        if (kDebugMode) {
+          debugPrint('getEntitlements non-200: status=${response.status}');
+        }
+        throw Exception('Failed to get entitlements');
       }
 
-      final data = response.data as Map<String, dynamic>;
-      return Entitlements.fromJson(data);
+      final raw = response.data;
+      if (raw is! Map) {
+        if (kDebugMode) {
+          debugPrint('getEntitlements unexpected payload type: ${raw.runtimeType}');
+        }
+        throw Exception('Failed to get entitlements');
+      }
+
+      return Entitlements.fromJson(Map<String, dynamic>.from(raw));
+    } on Exception {
+      rethrow;
     } catch (e) {
-      throw Exception('Failed to get entitlements: $e');
+      if (kDebugMode) {
+        debugPrint('getEntitlements failed: $e');
+      }
+      throw Exception('Failed to get entitlements');
     }
   }
 }
 
 class Entitlements {
   final String plan;
-  final String status;
-  /// Calendar month start (yyyy-MM-dd). Legacy field name `weekStart` may mirror this.
-  final String monthStart;
-  final EntitlementLimits limits;
-  final EntitlementUsed used;
-  final EntitlementRemaining remaining;
+  final String planDisplayName;
+  final String subscriptionStatus;
+  final String periodKey;
+  final String periodKind;
+  final DateTime? periodStart;
+  final DateTime? periodEnd;
+  final int? limit;
+  final bool unlimited;
+  final int used;
+  final int? remaining;
+  final bool nutritionistAllowed;
 
   Entitlements({
     required this.plan,
-    required this.status,
-    required this.monthStart,
-    required this.limits,
+    required this.planDisplayName,
+    required this.subscriptionStatus,
+    required this.periodKey,
+    required this.periodKind,
+    required this.periodStart,
+    required this.periodEnd,
+    required this.limit,
+    required this.unlimited,
     required this.used,
     required this.remaining,
-  });
-
-  /// Backward-compatible alias.
-  String get weekStart => monthStart;
-
-  factory Entitlements.fromJson(Map<String, dynamic> json) {
-    final month = (json['month_start'] ?? json['week_start']) as String? ?? '';
-    return Entitlements(
-      plan: json['plan'] as String,
-      status: json['status'] as String,
-      monthStart: month,
-      limits: EntitlementLimits.fromJson(
-        Map<String, dynamic>.from(json['limits'] as Map),
-      ),
-      used: EntitlementUsed.fromJson(
-        Map<String, dynamic>.from(json['used'] as Map),
-      ),
-      remaining: EntitlementRemaining.fromJson(
-        Map<String, dynamic>.from(json['remaining'] as Map),
-      ),
-    );
-  }
-}
-
-class EntitlementLimits {
-  /// Null when [requestsUnlimited] is true (Ultimate).
-  final int? requests;
-  final bool requestsUnlimited;
-  final bool nutritionistAllowed;
-
-  EntitlementLimits({
-    required this.requests,
-    required this.requestsUnlimited,
     required this.nutritionistAllowed,
   });
 
-  factory EntitlementLimits.fromJson(Map<String, dynamic> json) {
-    final unlimited = json['requests_unlimited'] == true;
-    final raw = json['requests'];
-    return EntitlementLimits(
-      requests: unlimited ? null : (raw as num?)?.toInt(),
-      requestsUnlimited: unlimited,
-      nutritionistAllowed: json['nutritionist_allowed'] as bool? ?? false,
+  factory Entitlements.fromJson(Map<String, dynamic> json) {
+    if (json['ok'] != true) {
+      throw Exception('Failed to get entitlements');
+    }
+
+    return Entitlements(
+      plan: json['plan'] as String? ?? '',
+      planDisplayName: json['plan_display_name'] as String? ?? '',
+      subscriptionStatus: json['subscription_status'] as String? ?? '',
+      periodKey: json['period_key'] as String? ?? '',
+      periodKind: json['period_kind'] as String? ?? '',
+      periodStart: _parseDateTime(json['period_start']),
+      periodEnd: _parseDateTime(json['period_end']),
+      limit: (json['limit'] as num?)?.toInt(),
+      unlimited: json['unlimited'] == true,
+      used: (json['used'] as num?)?.toInt() ?? 0,
+      remaining: (json['remaining'] as num?)?.toInt(),
+      nutritionistAllowed: json['nutritionist_allowed'] == true,
     );
   }
-}
 
-class EntitlementUsed {
-  final int requests;
-
-  EntitlementUsed({required this.requests});
-
-  factory EntitlementUsed.fromJson(Map<String, dynamic> json) {
-    return EntitlementUsed(
-      requests: (json['requests'] as num?)?.toInt() ?? 0,
-    );
-  }
-}
-
-class EntitlementRemaining {
-  /// Null when unlimited.
-  final int? requests;
-  final bool requestsUnlimited;
-
-  EntitlementRemaining({
-    required this.requests,
-    required this.requestsUnlimited,
-  });
-
-  factory EntitlementRemaining.fromJson(Map<String, dynamic> json) {
-    final unlimited = json['requests_unlimited'] == true;
-    final raw = json['requests'];
-    return EntitlementRemaining(
-      requests: unlimited ? null : (raw as num?)?.toInt(),
-      requestsUnlimited: unlimited,
-    );
+  static DateTime? _parseDateTime(dynamic value) {
+    if (value == null) return null;
+    if (value is DateTime) return value;
+    if (value is String && value.isNotEmpty) {
+      return DateTime.tryParse(value);
+    }
+    return null;
   }
 }

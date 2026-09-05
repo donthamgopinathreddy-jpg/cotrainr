@@ -5,9 +5,13 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../providers/accepted_client_trainers_provider.dart';
+import '../../providers/entitlements_provider.dart';
+import '../../providers/leads_provider.dart';
 import '../../repositories/provider_reviews_repository.dart';
-import '../../services/leads_models.dart' show AcceptedProvider;
+import '../../services/leads_models.dart'
+    show AcceptedProvider, EndConnectionResult;
 import '../../theme/design_tokens.dart';
+import '../../widgets/common/app_overlays.dart';
 import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/common/fade_slide_in.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
@@ -32,6 +36,7 @@ class _ConnectedProvidersPageState
     extends ConsumerState<ConnectedProvidersPage> {
   final Map<String, int?> _myRatings = {};
   final _reviewsRepo = ProviderReviewsRepository();
+  String? _endingLeadId;
 
   bool get _isAll => widget.providerType == 'all';
   bool get _isNutritionist => widget.providerType == 'nutritionist';
@@ -67,7 +72,9 @@ class _ConnectedProvidersPageState
       if (trainers.isLoading || nutritionists.isLoading) {
         return const AsyncValue.loading();
       }
-      if (trainers.hasError) return AsyncValue.error(trainers.error!, StackTrace.current);
+      if (trainers.hasError) {
+        return AsyncValue.error(trainers.error!, StackTrace.current);
+      }
       if (nutritionists.hasError) {
         return AsyncValue.error(nutritionists.error!, StackTrace.current);
       }
@@ -106,6 +113,84 @@ class _ConnectedProvidersPageState
     if (_isAll || _isNutritionist) {
       ref.read(acceptedClientNutritionistsProvider.notifier).refresh();
     }
+  }
+
+  Future<void> _refreshAfterEnd() async {
+    await Future.wait([
+      ref.read(acceptedClientTrainersProvider.notifier).refreshQuiet(),
+      ref.read(acceptedClientNutritionistsProvider.notifier).refreshQuiet(),
+      ref.read(entitlementsProvider.notifier).refresh(),
+    ]);
+  }
+
+  String _successMessage(EndConnectionResult result) {
+    final restored = result.allowanceRestored == true ||
+        result.restorationGranted == true;
+    if (restored) {
+      return 'Connection ended. Your connection allowance was restored.';
+    }
+    return 'Connection ended.';
+  }
+
+  Future<void> _showEndConnectionSheet(AcceptedProvider provider) async {
+    if (_endingLeadId != null) return;
+    if (provider.leadId.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Couldn't end the connection. Please try again."),
+        ),
+      );
+      return;
+    }
+
+    HapticFeedback.selectionClick();
+    await showAppBottomSheet<void>(
+      context: context,
+      builder: (ctx) {
+        return _EndConnectionSheet(
+          onKeep: () => Navigator.of(ctx).pop(),
+          onConfirm: (reason) async {
+            if (_endingLeadId != null) return false;
+            setState(() => _endingLeadId = provider.leadId);
+            final trimmed = reason.trim();
+            final effectiveReason =
+                trimmed.isEmpty ? 'Ended by member' : trimmed;
+
+            try {
+              final result = await ref.read(leadsServiceProvider).endConnection(
+                    leadId: provider.leadId,
+                    reason: effectiveReason,
+                  );
+              if (!ctx.mounted) return true;
+              Navigator.of(ctx).pop();
+              if (!mounted) return true;
+              await _refreshAfterEnd();
+              if (!mounted) return true;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(_successMessage(result))),
+              );
+              return true;
+            } catch (_) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      "Couldn't end the connection. Please try again.",
+                    ),
+                  ),
+                );
+              }
+              return false;
+            } finally {
+              if (mounted) {
+                setState(() => _endingLeadId = null);
+              }
+            }
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -185,13 +270,14 @@ class _ConnectedProvidersPageState
                       ),
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                       itemCount: providers.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 12),
+                      separatorBuilder: (_, _) => const SizedBox(height: 12),
                       itemBuilder: (context, index) {
                         final provider = providers[index];
                         return FadeSlideIn(
                           index: index,
                           child: ConnectedProviderCard(
                             data: ConnectedProviderCardData(
+                              leadId: provider.leadId,
                               providerId: provider.providerId,
                               fullName: provider.fullName,
                               roleLabel: provider.roleLabel,
@@ -209,6 +295,9 @@ class _ConnectedProvidersPageState
                             isLight: isLight,
                             onViewProfile: () => _openProfile(provider),
                             onRate: () => _openRate(provider),
+                            onEndConnection: _endingLeadId != null
+                                ? null
+                                : () => _showEndConnectionSheet(provider),
                           ),
                         );
                       },
@@ -264,6 +353,155 @@ class _ConnectedProvidersPageState
   }
 }
 
+/// Confirmation sheet for ending an accepted connection.
+class _EndConnectionSheet extends StatefulWidget {
+  final VoidCallback onKeep;
+  final Future<bool> Function(String reason) onConfirm;
+
+  const _EndConnectionSheet({
+    required this.onKeep,
+    required this.onConfirm,
+  });
+
+  @override
+  State<_EndConnectionSheet> createState() => _EndConnectionSheetState();
+}
+
+class _EndConnectionSheetState extends State<_EndConnectionSheet> {
+  final _reasonController = TextEditingController();
+  bool _submitting = false;
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_submitting) return;
+    setState(() => _submitting = true);
+    try {
+      await widget.onConfirm(_reasonController.text);
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final textPrimary = DesignTokens.textPrimaryOf(context);
+    final textSecondary = DesignTokens.textSecondaryOf(context);
+    final error = Theme.of(context).colorScheme.error;
+    final bottom = MediaQuery.paddingOf(context).bottom;
+    final viewInsets = MediaQuery.viewInsetsOf(context).bottom;
+    final busy = _submitting;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 4, 20, 16 + bottom + viewInsets),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'End connection?',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              color: textPrimary,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Ending this connection removes this provider from your active '
+            'connections. Your previous messages will remain available.',
+            style: TextStyle(
+              fontSize: 14,
+              height: 1.4,
+              fontWeight: FontWeight.w500,
+              color: textSecondary,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Reason (optional)',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: textSecondary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _reasonController,
+            enabled: !busy,
+            maxLines: 2,
+            maxLength: 200,
+            textInputAction: TextInputAction.done,
+            decoration: InputDecoration(
+              hintText: 'Optional note',
+              counterText: '',
+              filled: true,
+              fillColor: DesignTokens.surfaceOf(context).withValues(alpha: 0.6),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(
+                  color: textSecondary.withValues(alpha: 0.25),
+                ),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide(
+                  color: textSecondary.withValues(alpha: 0.25),
+                ),
+              ),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 12,
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          FilledButton(
+            onPressed: busy ? null : _submit,
+            style: FilledButton.styleFrom(
+              backgroundColor: error,
+              disabledBackgroundColor: error.withValues(alpha: 0.45),
+              foregroundColor: Colors.white,
+              minimumSize: const Size.fromHeight(50),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+            child: busy
+                ? const SizedBox(
+                    height: 22,
+                    width: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Text(
+                    'End connection',
+                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+                  ),
+          ),
+          TextButton(
+            onPressed: busy ? null : widget.onKeep,
+            child: Text(
+              'Keep connection',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: textSecondary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class MyTrainersPage extends StatelessWidget {
   const MyTrainersPage({super.key});
 
@@ -293,8 +531,8 @@ class _SkeletonList extends StatelessWidget {
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       itemCount: 4,
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
-      itemBuilder: (_, __) => Container(
+      separatorBuilder: (_, _) => const SizedBox(height: 12),
+      itemBuilder: (_, _) => Container(
         height: 140,
         decoration: BoxDecoration(
           color: card,
@@ -385,7 +623,11 @@ class _ErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(message, textAlign: TextAlign.center, style: TextStyle(color: textSecondary)),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: textSecondary),
+            ),
             const SizedBox(height: 12),
             TextButton(onPressed: onRetry, child: const Text('Retry')),
           ],

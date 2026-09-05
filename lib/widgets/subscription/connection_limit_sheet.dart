@@ -6,16 +6,21 @@ import '../../models/subscription_plans.dart';
 import '../../theme/design_tokens.dart';
 import '../common/app_overlays.dart';
 
-/// Shown when monthly unique provider connection quota is exhausted.
+/// Shown when the Member's monthly new-provider connection allowance is exhausted.
 Future<void> showConnectionLimitSheet(
   BuildContext context, {
   required String plan,
   int? limit,
 }) {
   HapticFeedback.mediumImpact();
-  final resolvedLimit =
-      limit ?? SubscriptionPlans.monthlyConnectionRequestLimit(plan) ?? 5;
   final planName = SubscriptionPlans.displayName(plan);
+  final body = limit != null
+      ? "You've used all $limit new provider connection${limit == 1 ? '' : 's'} "
+          'available on your $planName plan this month.\n\n'
+          'Your existing providers and conversations are still available.'
+      : "You've reached your connection allowance for this month "
+          'on your $planName plan.\n\n'
+          'Your existing providers and conversations are still available.';
 
   return showAppBottomSheet<void>(
     context: context,
@@ -31,7 +36,7 @@ Future<void> showConnectionLimitSheet(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'Monthly connection limit reached',
+              'Connection allowance reached',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w900,
@@ -40,9 +45,7 @@ Future<void> showConnectionLimitSheet(
             ),
             const SizedBox(height: 10),
             Text(
-              "You've used all $resolvedLimit new provider requests available "
-              'on your $planName plan this month.\n\n'
-              'Your existing providers and conversations are still available.',
+              body,
               style: TextStyle(
                 fontSize: 14,
                 height: 1.4,

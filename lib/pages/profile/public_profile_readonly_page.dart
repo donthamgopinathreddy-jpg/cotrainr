@@ -15,6 +15,7 @@ import '../../providers/provider_professional_provider.dart';
 import '../../repositories/messages_repository.dart';
 import '../../repositories/provider_reviews_repository.dart';
 import '../../repositories/subscriptions_repository.dart';
+import '../../services/entitlement_service.dart';
 import '../../services/leads_service.dart';
 import '../../services/messaging_policy_service.dart';
 import '../../theme/design_tokens.dart';
@@ -72,14 +73,14 @@ class _PublicProfileReadonlyPageState
   bool _canMessage = false;
   bool _actionBusy = false;
   String _clientPlan = SubscriptionPlans.free;
+  int? _connectionLimit;
+  bool _connectionUnlimited = false;
+  /// Server nutritionist connect eligibility. null = unknown (do not block locally).
+  bool? _nutritionistAllowed;
 
   bool get _isNutritionist =>
       (_profile.providerType).toLowerCase() == 'nutritionist' ||
       (widget.providerType ?? '').toLowerCase() == 'nutritionist';
-
-  bool get _canConnectNutritionist =>
-      !_isNutritionist ||
-      SubscriptionPlans.canConnectToNutritionist(_clientPlan);
 
   static const _tabs = [
     'Profile',
@@ -296,6 +297,9 @@ class _PublicProfileReadonlyPageState
       }
 
       var clientPlan = SubscriptionPlans.free;
+      var connectionLimit = _connectionLimit;
+      var connectionUnlimited = _connectionUnlimited;
+      bool? nutritionistAllowed = _nutritionistAllowed;
       try {
         final sub = await _withTimeout(
           SubscriptionsRepository().fetchMine(),
@@ -303,6 +307,26 @@ class _PublicProfileReadonlyPageState
         );
         clientPlan = sub?.plan ?? SubscriptionPlans.free;
       } catch (_) {}
+
+      try {
+        final ents = await _withTimeout(
+          EntitlementService().getEntitlements(),
+          label: 'entitlements',
+        );
+        if (ents != null) {
+          connectionUnlimited = ents.unlimited;
+          connectionLimit = ents.unlimited ? null : ents.limit;
+          nutritionistAllowed = ents.nutritionistAllowed;
+        } else {
+          connectionUnlimited = false;
+          connectionLimit = null;
+          nutritionistAllowed = null;
+        }
+      } catch (_) {
+        connectionUnlimited = false;
+        connectionLimit = null;
+        nutritionistAllowed = null;
+      }
 
       if (!mounted) return;
       setState(() {
@@ -317,6 +341,9 @@ class _PublicProfileReadonlyPageState
         _pendingLeadId = pendingLeadId;
         _canMessage = canMessage;
         _clientPlan = clientPlan;
+        _connectionLimit = connectionLimit;
+        _connectionUnlimited = connectionUnlimited;
+        _nutritionistAllowed = nutritionistAllowed;
         _refreshing = false;
       });
     } catch (e, st) {
@@ -340,7 +367,9 @@ class _PublicProfileReadonlyPageState
 
   Future<void> _sendRequest() async {
     if (_actionBusy) return;
-    if (!_canConnectNutritionist) {
+    // Only block locally when the server has confirmed nutritionist is not allowed.
+    // null (entitlements failed to load) must reach create_lead_tx.
+    if (_isNutritionist && _nutritionistAllowed == false) {
       await showNutritionistUpgradeSheet(context);
       return;
     }
@@ -351,30 +380,58 @@ class _PublicProfileReadonlyPageState
       setState(() {
         _relationship = 'pending';
         _pendingLeadId = result.leadId;
+        _connectionUnlimited = result.unlimited;
+        if (!result.unlimited && result.limit != null) {
+          _connectionLimit = result.limit;
+        }
       });
+      final remainingHint = _connectionUnlimited
+          ? null
+          : (result.remaining != null
+              ? ' · ${result.remaining} new provider connection${result.remaining == 1 ? '' : 's'} remaining this month'
+              : null);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Request sent')),
+        SnackBar(
+          content: Text('Request sent${remainingHint ?? ''}'),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
+      if (kDebugMode) debugPrint('PublicProfile send request failed: $e');
       final err = e.toString();
-      if (err.contains('Nutritionist requests require')) {
+      if (err.contains('Nutritionist requests require') ||
+          err.contains('Nutritionist connection') ||
+          (err.toLowerCase().contains('nutritionist') &&
+              err.toLowerCase().contains('require'))) {
         await showNutritionistUpgradeSheet(context);
         return;
       }
-      if (err.contains('Request limit reached') ||
-          err.contains('limit reached')) {
+      final allowanceExhausted =
+          err.contains('Connection allowance reached') ||
+          err.contains('connection allowance') ||
+          err.contains('ENTITLEMENT_EXHAUSTED') ||
+          (err.contains('limit reached') &&
+              !err.contains('Lead already exists'));
+      if (allowanceExhausted) {
         await showConnectionLimitSheet(
           context,
           plan: _clientPlan,
-          limit: SubscriptionPlans.monthlyConnectionRequestLimit(_clientPlan),
+          limit: _connectionLimit,
         );
         return;
       }
+      final String message;
+      if (err.contains('Lead already exists')) {
+        message = 'You already have a pending or active request with this provider.';
+      } else if (err.contains('Only clients can create leads')) {
+        message = 'Only client accounts can send coaching requests.';
+      } else if (err.contains('Provider not found')) {
+        message = 'This provider is no longer available.';
+      } else {
+        message = 'Could not send request. Please try again.';
+      }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(err.replaceFirst('Exception: ', '')),
-        ),
+        SnackBar(content: Text(message)),
       );
     } finally {
       if (mounted) setState(() => _actionBusy = false);
@@ -394,8 +451,9 @@ class _PublicProfileReadonlyPageState
       });
     } catch (e) {
       if (!mounted) return;
+      if (kDebugMode) debugPrint('PublicProfile cancel request failed: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not cancel: $e')),
+        const SnackBar(content: Text('Could not cancel request. Please try again.')),
       );
     } finally {
       if (mounted) setState(() => _actionBusy = false);
@@ -403,12 +461,12 @@ class _PublicProfileReadonlyPageState
   }
 
   Future<void> _openMessage() async {
-    if (_isNutritionist && !_canConnectNutritionist) {
+    if (_isNutritionist && _nutritionistAllowed == false) {
       await showNutritionistUpgradeSheet(context);
       return;
     }
     if (_relationship != 'accepted') {
-      if (_isNutritionist && !_canConnectNutritionist) {
+      if (_isNutritionist && _nutritionistAllowed == false) {
         await showNutritionistUpgradeSheet(context);
         return;
       }
@@ -552,6 +610,9 @@ class _PublicProfileReadonlyPageState
                 name: title,
                 username: _username,
                 professionalTitle: professionalTitle,
+                trainerType: !_isNutritionist && p.specializationIds.isNotEmpty
+                    ? p.specializationIds.first
+                    : (!_isNutritionist ? professionalTitle : null),
                 avatarUrl: p.avatarUrl,
                 verified: p.verified,
                 isNutritionist: _isNutritionist,
@@ -573,7 +634,8 @@ class _PublicProfileReadonlyPageState
                 canRate: _canRate,
                 roleLabel: p.roleLabel,
                 isNutritionist: _isNutritionist,
-                requiresUpgrade: !_canConnectNutritionist,
+                requiresUpgrade:
+                    _isNutritionist && _nutritionistAllowed == false,
                 onRequest: _sendRequest,
                 onCancel: _cancelRequest,
                 onMessage: _openMessage,

@@ -90,48 +90,76 @@ void main() {
 
     test('Entitlements.fromJson monthly unlimited', () {
       final e = Entitlements.fromJson({
+        'ok': true,
         'plan': 'premium',
-        'status': 'active',
-        'month_start': '2026-08-01',
-        'limits': {
-          'requests': null,
-          'requests_unlimited': true,
-          'nutritionist_allowed': true,
-        },
-        'used': {'requests': 0},
-        'remaining': {
-          'requests': null,
-          'requests_unlimited': true,
-        },
+        'plan_display_name': 'Ultimate',
+        'subscription_status': 'active',
+        'period_key': 'cal:2026-08',
+        'period_kind': 'calendar_month',
+        'period_start': '2026-08-01T00:00:00Z',
+        'period_end': '2026-09-01T00:00:00Z',
+        'limit': null,
+        'unlimited': true,
+        'used': 0,
+        'remaining': null,
+        'nutritionist_allowed': true,
       });
       expect(e.plan, 'premium');
-      expect(e.limits.requestsUnlimited, isTrue);
-      expect(e.limits.requests, isNull);
-      expect(e.remaining.requests, isNull);
-      expect(e.weekStart, '2026-08-01');
+      expect(e.planDisplayName, 'Ultimate');
+      expect(e.subscriptionStatus, 'active');
+      expect(e.periodKey, 'cal:2026-08');
+      expect(e.periodKind, 'calendar_month');
+      expect(e.limit, isNull);
+      expect(e.unlimited, isTrue);
+      expect(e.used, 0);
+      expect(e.remaining, isNull);
+      expect(e.nutritionistAllowed, isTrue);
+      expect(e.periodStart, isNotNull);
+      expect(e.periodEnd, isNotNull);
+      expect(e.periodStart!.toUtc(), DateTime.utc(2026, 8, 1));
+      expect(e.periodEnd!.toUtc(), DateTime.utc(2026, 9, 1));
     });
 
     test('Entitlements.fromJson free monthly', () {
       final e = Entitlements.fromJson({
+        'ok': true,
         'plan': 'free',
-        'status': 'active',
-        'week_start': '2026-08-01',
-        'limits': {
-          'requests': 5,
-          'requests_unlimited': false,
-          'nutritionist_allowed': false,
-        },
-        'used': {'requests': 3},
-        'remaining': {
-          'requests': 2,
-          'requests_unlimited': false,
-        },
+        'plan_display_name': 'Free',
+        'subscription_status': 'active',
+        'period_key': 'cal:2026-08',
+        'period_kind': 'calendar_month',
+        'period_start': '2026-08-01T00:00:00Z',
+        'period_end': '2026-09-01T00:00:00Z',
+        'limit': 5,
+        'unlimited': false,
+        'used': 3,
+        'remaining': 2,
+        'nutritionist_allowed': false,
       });
-      expect(e.monthStart, '2026-08-01');
-      expect(e.limits.requests, 5);
-      expect(e.used.requests, 3);
-      expect(e.remaining.requests, 2);
-      expect(e.limits.nutritionistAllowed, isFalse);
+      expect(e.plan, 'free');
+      expect(e.planDisplayName, 'Free');
+      expect(e.subscriptionStatus, 'active');
+      expect(e.periodKey, 'cal:2026-08');
+      expect(e.periodKind, 'calendar_month');
+      expect(e.limit, 5);
+      expect(e.unlimited, isFalse);
+      expect(e.used, 3);
+      expect(e.remaining, 2);
+      expect(e.nutritionistAllowed, isFalse);
+      expect(e.periodStart, isNotNull);
+      expect(e.periodEnd, isNotNull);
+      expect(e.periodStart!.toUtc(), DateTime.utc(2026, 8, 1));
+      expect(e.periodEnd!.toUtc(), DateTime.utc(2026, 9, 1));
+    });
+
+    test('Entitlements.fromJson rejects ok false', () {
+      expect(
+        () => Entitlements.fromJson({
+          'ok': false,
+          'plan': 'free',
+        }),
+        throwsA(isA<Exception>()),
+      );
     });
   });
 }

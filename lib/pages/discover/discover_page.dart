@@ -58,8 +58,13 @@ class _DiscoverPageState extends State<DiscoverPage>
   bool _browseWithoutLocation = false;
   /// Cached client plan (DB ids: free / basic / premium).
   String _clientPlan = SubscriptionPlans.free;
-  /// From get-entitlements / create_lead_tx; null = unlimited.
-  int? _requestLimit;
+  /// From get-entitlements / create_lead_tx; null when unknown or unlimited.
+  int? _connectionLimit;
+  int? _connectionRemaining;
+  int? _connectionUsed;
+  bool _connectionUnlimited = false;
+  /// Server nutritionist connect eligibility. null = unknown (do not block locally).
+  bool? _nutritionistAllowed;
   Position? _userPosition;
   DiscoverLocationState _locationState = DiscoverLocationState.granted;
   double? _manualLat;
@@ -76,6 +81,9 @@ class _DiscoverPageState extends State<DiscoverPage>
   final List<DiscoverItem> _trainers = [];
   final List<DiscoverItem> _nutritionists = [];
   final List<DiscoverItem> _centers = [];
+  /// True only when fetch returned providers that were all removed as accepted.
+  bool _trainersHiddenAsConnected = false;
+  bool _nutritionistsHiddenAsConnected = false;
 
   final ProviderLocationsRepository _repo = ProviderLocationsRepository();
   final PartnerCentersRepository _partnerCentersRepo =
@@ -139,6 +147,8 @@ class _DiscoverPageState extends State<DiscoverPage>
       _trainers.clear();
       _nutritionists.clear();
       _centers.clear();
+      _trainersHiddenAsConnected = false;
+      _nutritionistsHiddenAsConnected = false;
     });
 
     try {
@@ -206,15 +216,21 @@ class _DiscoverPageState extends State<DiscoverPage>
       final sub = await SubscriptionsRepository().fetchMine();
       final plan = sub?.plan ?? SubscriptionPlans.free;
       _clientPlan = plan;
-      // Authoritative monthly allowance (server); used before Connect.
+      // Authoritative monthly allowance (server); used for soft UX only.
       try {
         final ents = await EntitlementService().getEntitlements();
-        _requestLimit = ents.limits.requestsUnlimited
-            ? null
-            : ents.limits.requests;
+        _connectionUnlimited = ents.unlimited;
+        _connectionLimit = ents.unlimited ? null : ents.limit;
+        _connectionRemaining = ents.unlimited ? null : ents.remaining;
+        _connectionUsed = ents.used;
+        _nutritionistAllowed = ents.nutritionistAllowed;
       } catch (_) {
-        _requestLimit =
-            SubscriptionPlans.monthlyConnectionRequestLimit(plan);
+        // Do not invent plan limits or nutritionist eligibility locally.
+        _connectionUnlimited = false;
+        _connectionLimit = null;
+        _connectionRemaining = null;
+        _connectionUsed = null;
+        _nutritionistAllowed = null;
       }
       final cap = SubscriptionPlans.discoverResultCap(plan);
       // Cap trainers only — nutritionists stay fully browsable for Free.
@@ -443,25 +459,38 @@ class _DiscoverPageState extends State<DiscoverPage>
       }
 
       // Exclude accepted/active connections from Discover listings.
+      final trainersBefore = _trainers.length;
+      final nutritionistsBefore = _nutritionists.length;
       setState(() {
         _trainers.removeWhere((i) => acceptedIds.contains(i.id));
         _nutritionists.removeWhere((i) => acceptedIds.contains(i.id));
+        _trainersHiddenAsConnected =
+            trainersBefore > 0 && _trainers.isEmpty;
+        _nutritionistsHiddenAsConnected =
+            nutritionistsBefore > 0 && _nutritionists.isEmpty;
       });
     } catch (e) {
       debugPrint('Discover: failed to load lead statuses: $e');
+      if (mounted) {
+        setState(() {
+          _trainersHiddenAsConnected = false;
+          _nutritionistsHiddenAsConnected = false;
+        });
+      }
     }
   }
 
   Future<void> _sendRequest(DiscoverItem item) async {
     final isNutritionist = _selectedTabIndex == 1;
-    if (isNutritionist &&
-        !SubscriptionPlans.canConnectToNutritionist(_clientPlan)) {
+    // Only block locally when the server has confirmed nutritionist is not allowed.
+    // null (entitlements failed to load) must reach create_lead_tx.
+    if (isNutritionist && _nutritionistAllowed == false) {
       await showNutritionistUpgradeSheet(context);
       return;
     }
 
-    // Do not client-block solely on remaining==0: same-provider re-request
-    // in-month must still reach create_lead_tx (no second unique quota unit).
+    // Do not client-block when remaining == 0: requests do not consume
+    // allowance; acceptance does. create_lead_tx remains authoritative.
 
     if (_submittingProviders.contains(item.id)) return;
     HapticFeedback.mediumImpact();
@@ -473,14 +502,18 @@ class _DiscoverPageState extends State<DiscoverPage>
       setState(() {
         _requestStatus[item.id] = 'pending';
         _leadIdsByProvider[item.id] = result.leadId;
+        _connectionUnlimited = result.unlimited;
         if (!result.unlimited && result.limit != null) {
-          _requestLimit = result.limit;
+          _connectionLimit = result.limit;
+        }
+        if (!result.unlimited && result.remaining != null) {
+          _connectionRemaining = result.remaining;
         }
       });
-      final remainingHint = result.unlimited
+      final remainingHint = _connectionUnlimited
           ? null
           : (result.remaining != null
-              ? ' · ${result.remaining} connection request${result.remaining == 1 ? '' : 's'} remaining this month'
+              ? ' · ${result.remaining} new provider connection${result.remaining == 1 ? '' : 's'} remaining this month'
               : null);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -495,17 +528,24 @@ class _DiscoverPageState extends State<DiscoverPage>
       if (!mounted) return;
       debugPrint('Discover: send request failed: $e');
       final err = e.toString();
-      if (err.contains('Nutritionist requests require')) {
+      if (err.contains('Nutritionist requests require') ||
+          err.contains('Nutritionist connection') ||
+          (err.toLowerCase().contains('nutritionist') &&
+              err.toLowerCase().contains('require'))) {
         await showNutritionistUpgradeSheet(context);
         return;
       }
-      if (err.contains('Request limit reached') ||
-          err.contains('limit reached')) {
+      final allowanceExhausted =
+          err.contains('Connection allowance reached') ||
+          err.contains('connection allowance') ||
+          err.contains('ENTITLEMENT_EXHAUSTED') ||
+          (err.contains('limit reached') &&
+              !err.contains('Lead already exists'));
+      if (allowanceExhausted) {
         await showConnectionLimitSheet(
           context,
           plan: _clientPlan,
-          limit: _requestLimit ??
-              SubscriptionPlans.monthlyConnectionRequestLimit(_clientPlan),
+          limit: _connectionLimit,
         );
         return;
       }
@@ -517,8 +557,7 @@ class _DiscoverPageState extends State<DiscoverPage>
       } else if (err.contains('Provider not found')) {
         message = 'This provider is no longer available.';
       } else {
-        final match = RegExp(r'Exception:\s*(.+)$').firstMatch(err);
-        message = match?.group(1)?.trim() ?? 'Could not send request. Please try again.';
+        message = 'Could not send request. Please try again.';
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -712,6 +751,19 @@ class _DiscoverPageState extends State<DiscoverPage>
                       },
                       selectedGradient: _discoverGradient,
                     ),
+                    if (Supabase.instance.client.auth.currentUser != null &&
+                        (_connectionUnlimited ||
+                            (_connectionRemaining != null &&
+                                _connectionLimit != null))) ...[
+                      const SizedBox(height: DesignTokens.spacing12),
+                      _DiscoverAllowanceBanner(
+                        unlimited: _connectionUnlimited,
+                        remaining: _connectionRemaining,
+                        limit: _connectionLimit,
+                        used: _connectionUsed,
+                        nutritionistAllowed: _nutritionistAllowed,
+                      ),
+                    ],
                     const SizedBox(height: DesignTokens.spacing12),
                   ],
                 ),
@@ -831,19 +883,13 @@ class _DiscoverPageState extends State<DiscoverPage>
                                   submitting:
                                       _submittingProviders.contains(item.id),
                                   planBadge: _selectedTabIndex == 1 &&
-                                          !SubscriptionPlans
-                                              .canConnectToNutritionist(
-                                            _clientPlan,
-                                          )
+                                          _nutritionistAllowed == false
                                       ? SubscriptionPlans
                                           .nutritionistAccessPlansLabel
                                       : null,
                                   requestRequiresUpgrade:
                                       _selectedTabIndex == 1 &&
-                                          !SubscriptionPlans
-                                              .canConnectToNutritionist(
-                                            _clientPlan,
-                                          ),
+                                          _nutritionistAllowed == false,
                                   onTap: () {
                                     HapticFeedback.lightImpact();
                                     context.push(
@@ -879,37 +925,65 @@ class _DiscoverPageState extends State<DiscoverPage>
     final searching = _searchQuery.isNotEmpty;
     final filtered = _filters.hasActiveFilters;
     final isNutritionists = _selectedTabIndex == 1;
-    final roleWord = isNutritionists ? 'nutritionists' : 'trainers';
-    final String title;
-    final String subtitle;
-    VoidCallback? connectedCta;
-    String? connectedCtaLabel;
-    if (_selectedTabIndex == 2) {
+    final isCenters = _selectedTabIndex == 2;
+
+    late final String title;
+    late final String subtitle;
+    late final IconData icon;
+    VoidCallback? primaryAction;
+    String? primaryLabel;
+    var primaryFilled = true;
+
+    if (isCenters) {
+      // Preserve Centres-specific empty copy (not provider-connection wording).
       title = searching
           ? 'No partner centres match “$_searchQuery”'
           : 'No Partner Centres yet';
       subtitle = searching
           ? 'Try another name or city.'
           : 'Approved Cotrainr Partner Centres will appear here. Tap Become a Partner from Cotrainr Pass to apply.';
-    } else if (searching) {
-      title = 'No matches for “$_searchQuery”';
-      subtitle = 'Try another name, specialty, or clear your search.';
-    } else if (filtered) {
-      title = 'No $roleWord match these filters';
-      subtitle = 'Clear filters to see more results.';
-    } else if (_requestStatus.values.any((s) => s == 'accepted')) {
-      title = 'You’re connected with matching $roleWord';
-      subtitle =
-          'Connected providers appear in your ${isNutritionists ? 'Nutritionists' : 'Trainers'} list.';
-      connectedCta = () => context.push(
+      icon = searching ? Icons.search_off_rounded : Icons.storefront_outlined;
+      if (searching || filtered) {
+        primaryAction = _clearSearchAndFilters;
+        primaryLabel = 'Clear filters';
+        primaryFilled = false;
+      }
+    } else if (searching || filtered) {
+      title = isNutritionists ? 'No nutritionists found' : 'No trainers found';
+      subtitle = 'Try changing your search or filters.';
+      icon = Icons.search_off_rounded;
+      primaryAction = _clearSearchAndFilters;
+      primaryLabel = 'Clear filters';
+      primaryFilled = false;
+    } else if ((isNutritionists && _nutritionistsHiddenAsConnected) ||
+        (!isNutritionists && _trainersHiddenAsConnected)) {
+      title = isNutritionists
+          ? 'You’re already connected with these nutritionists'
+          : 'You’re already connected with these trainers';
+      subtitle = isNutritionists
+          ? 'Your connected nutritionists are available in My Nutritionists.'
+          : 'Your connected trainers are available in My Trainers.';
+      icon = Icons.people_alt_outlined;
+      primaryAction = () => context.push(
             isNutritionists ? '/my-nutritionists' : '/my-trainers',
           );
-      connectedCtaLabel =
-          isNutritionists ? 'Open Nutritionists' : 'Open Trainers';
+      primaryLabel =
+          isNutritionists ? 'View My Nutritionists' : 'View My Trainers';
+      primaryFilled = true;
     } else {
-      title = 'No matching $roleWord';
-      subtitle =
-          'Verified, discoverable $roleWord will appear here once they complete their profile.';
+      title = isNutritionists
+          ? 'No nutritionists available right now'
+          : 'No trainers available right now';
+      subtitle = isNutritionists
+          ? 'New nutritionists will appear here as they join Cotrainr.'
+          : 'New trainers will appear here as they join Cotrainr.';
+      icon = Icons.people_outline_rounded;
+      primaryAction = () {
+        HapticFeedback.mediumImpact();
+        _loadRealData();
+      };
+      primaryLabel = 'Refresh';
+      primaryFilled = false;
     }
 
     return Center(
@@ -919,7 +993,7 @@ class _DiscoverPageState extends State<DiscoverPage>
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              Icons.search_off_rounded,
+              icon,
               size: 48,
               color: DesignTokens.textSecondaryOf(context),
             ),
@@ -942,37 +1016,48 @@ class _DiscoverPageState extends State<DiscoverPage>
               ),
               textAlign: TextAlign.center,
             ),
-            if (connectedCta != null && connectedCtaLabel != null) ...[
+            if (primaryAction != null && primaryLabel != null) ...[
               const SizedBox(height: DesignTokens.spacing16),
-              FilledButton(
-                onPressed: connectedCta,
-                style: FilledButton.styleFrom(
-                  backgroundColor: _discoverAccent,
-                  foregroundColor: Colors.white,
+              if (primaryFilled)
+                FilledButton(
+                  onPressed: () {
+                    HapticFeedback.selectionClick();
+                    primaryAction!();
+                  },
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _discoverAccent,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: Text(primaryLabel),
+                )
+              else
+                OutlinedButton.icon(
+                  onPressed: () {
+                    HapticFeedback.selectionClick();
+                    primaryAction!();
+                  },
+                  icon: Icon(
+                    primaryLabel == 'Refresh'
+                        ? Icons.refresh_rounded
+                        : Icons.filter_alt_off_rounded,
+                    size: 18,
+                  ),
+                  label: Text(primaryLabel),
                 ),
-                child: Text(connectedCtaLabel),
-              ),
-            ],
-            if (filtered || searching) ...[
-              const SizedBox(height: DesignTokens.spacing16),
-              OutlinedButton.icon(
-                onPressed: () {
-                  HapticFeedback.selectionClick();
-                  setState(() {
-                    _filters = const DiscoverFilters();
-                    _searchController.clear();
-                    _searchQuery = '';
-                  });
-                  _loadRealData();
-                },
-                icon: const Icon(Icons.filter_alt_off_rounded, size: 18),
-                label: const Text('Clear filters'),
-              ),
             ],
           ],
         ),
       ),
     );
+  }
+
+  void _clearSearchAndFilters() {
+    setState(() {
+      _filters = const DiscoverFilters();
+      _searchController.clear();
+      _searchQuery = '';
+    });
+    _loadRealData();
   }
 
   Widget _buildErrorState() {
@@ -2500,6 +2585,128 @@ class _SecondaryActionButton extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Compact connection-allowance strip for signed-in members on Discover.
+/// Informational only — does not gate Request actions.
+class _DiscoverAllowanceBanner extends StatelessWidget {
+  final bool unlimited;
+  final int? remaining;
+  final int? limit;
+  final int? used;
+  final bool? nutritionistAllowed;
+
+  const _DiscoverAllowanceBanner({
+    required this.unlimited,
+    required this.remaining,
+    required this.limit,
+    required this.used,
+    required this.nutritionistAllowed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isLight = Theme.of(context).brightness == Brightness.light;
+
+    final String primary;
+    double? progress;
+
+    if (unlimited) {
+      primary = 'Unlimited provider connections';
+    } else {
+      final rem = remaining!;
+      final lim = limit!;
+      primary = '$rem of $lim remaining this month';
+      final usedCount = used ?? (lim - rem).clamp(0, lim);
+      if (lim > 0) {
+        progress = (usedCount / lim).clamp(0.0, 1.0);
+      }
+    }
+
+    final showNutritionistHint = nutritionistAllowed == false;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(
+          alpha: isLight ? 0.55 : 0.35,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: colorScheme.outline.withValues(alpha: 0.14),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.person_add_alt_1_rounded,
+            size: 20,
+            color: _discoverAccent.withValues(alpha: 0.95),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Connection allowance',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.2,
+                    color: colorScheme.onSurface.withValues(alpha: 0.55),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  primary,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    height: 1.2,
+                    color: colorScheme.onSurface.withValues(alpha: 0.9),
+                  ),
+                ),
+                if (showNutritionistHint) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    'Nutritionists require Basic or Ultimate',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: colorScheme.onSurface.withValues(alpha: 0.5),
+                    ),
+                  ),
+                ],
+                if (progress != null) ...[
+                  const SizedBox(height: 6),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 4,
+                      backgroundColor: _discoverAccent.withValues(
+                        alpha: isLight ? 0.12 : 0.22,
+                      ),
+                      color: _discoverAccent,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

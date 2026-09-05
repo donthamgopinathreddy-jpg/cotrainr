@@ -3,38 +3,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:cotrainr/models/subscription_plans.dart';
 
 void main() {
-  group('SubscriptionPlans connection quotas', () {
-    test('monthly limits: free 5, basic 15, premium unlimited', () {
-      expect(SubscriptionPlans.monthlyConnectionRequestLimit(SubscriptionPlans.free), 5);
-      expect(SubscriptionPlans.monthlyConnectionRequestLimit(SubscriptionPlans.basic), 15);
-      expect(
-        SubscriptionPlans.monthlyConnectionRequestLimit(SubscriptionPlans.unlimited),
-        isNull,
-      );
-      expect(
-        SubscriptionPlans.hasUnlimitedConnectionRequests(SubscriptionPlans.unlimited),
-        isTrue,
-      );
-    });
-
-    test('free can browse but cannot connect to nutritionists', () {
-      expect(SubscriptionPlans.canBrowseNutritionists(SubscriptionPlans.free), isTrue);
-      expect(
-        SubscriptionPlans.canConnectToNutritionist(SubscriptionPlans.free),
-        isFalse,
-      );
-    });
-
-    test('basic and premium can connect to nutritionists', () {
-      expect(
-        SubscriptionPlans.canConnectToNutritionist(SubscriptionPlans.basic),
-        isTrue,
-      );
-      expect(
-        SubscriptionPlans.canConnectToNutritionist(SubscriptionPlans.unlimited),
-        isTrue,
-      );
+  group('SubscriptionPlans presentation metadata', () {
+    test('displayName maps premium to Ultimate', () {
       expect(SubscriptionPlans.displayName(SubscriptionPlans.unlimited), 'Ultimate');
+      expect(SubscriptionPlans.displayName(SubscriptionPlans.basic), 'Basic');
+      expect(SubscriptionPlans.displayName(SubscriptionPlans.free), 'Free');
+    });
+
+    test('free can browse nutritionists', () {
+      expect(SubscriptionPlans.canBrowseNutritionists(SubscriptionPlans.free), isTrue);
     });
 
     test('discoverResultCap only applies to free trainers list', () {

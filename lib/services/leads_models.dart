@@ -85,6 +85,63 @@ class UpdateLeadResult {
   }
 }
 
+/// Result of `end_connection_tx`. Fields are optional because the live JSON
+/// contract is not checked into this repo; only parse keys when present.
+class EndConnectionResult {
+  final bool ok;
+  final String? leadId;
+  final String? status;
+  final DateTime? endedAt;
+  final String? endedBy;
+  final String? message;
+  final String? errorCode;
+  final bool? idempotent;
+  /// Present only when the RPC includes it; never computed client-side.
+  final bool? allowanceRestored;
+  /// Alternate restoration flag name if the RPC uses it.
+  final bool? restorationGranted;
+
+  const EndConnectionResult({
+    required this.ok,
+    this.leadId,
+    this.status,
+    this.endedAt,
+    this.endedBy,
+    this.message,
+    this.errorCode,
+    this.idempotent,
+    this.allowanceRestored,
+    this.restorationGranted,
+  });
+
+  factory EndConnectionResult.fromJson(Map<String, dynamic> json) {
+    DateTime? parseTs(dynamic v) {
+      if (v is String && v.isNotEmpty) {
+        return DateTime.tryParse(v);
+      }
+      return null;
+    }
+
+    bool? parseBool(dynamic v) {
+      if (v is bool) return v;
+      return null;
+    }
+
+    return EndConnectionResult(
+      ok: json['ok'] == true,
+      leadId: json['lead_id'] as String?,
+      status: json['status'] as String?,
+      endedAt: parseTs(json['ended_at']),
+      endedBy: json['ended_by'] as String?,
+      message: json['message'] as String?,
+      errorCode: json['error_code'] as String?,
+      idempotent: parseBool(json['idempotent']),
+      allowanceRestored: parseBool(json['allowance_restored']),
+      restorationGranted: parseBool(json['restoration_granted']),
+    );
+  }
+}
+
 /// Accepted provider linked to the signed-in client via `leads.status = accepted`.
 class AcceptedProvider {
   final String leadId;
