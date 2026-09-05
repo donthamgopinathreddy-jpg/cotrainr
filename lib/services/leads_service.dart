@@ -1,7 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'leads_models.dart'
-    show Lead,
+    show
+        Lead,
         CreateLeadResult,
         UpdateLeadResult,
         EndConnectionResult,
@@ -12,7 +13,7 @@ class LeadsService {
   final SupabaseClient _supabase;
 
   LeadsService({SupabaseClient? supabase})
-      : _supabase = supabase ?? Supabase.instance.client;
+    : _supabase = supabase ?? Supabase.instance.client;
 
   static Map<String, dynamic> _publicClientProfile(Map<String, dynamic> m) {
     return {
@@ -30,10 +31,7 @@ class LeadsService {
     try {
       final raw = await _supabase.rpc(
         'create_lead_tx',
-        params: {
-          'p_provider_id': providerId,
-          'p_message': message,
-        },
+        params: {'p_provider_id': providerId, 'p_message': message},
       );
 
       final data = Map<String, dynamic>.from(raw as Map);
@@ -45,7 +43,8 @@ class LeadsService {
       return CreateLeadResult.fromJson(data);
     } catch (e) {
       debugPrint('LeadsService.createLead error: $e');
-      if (e is Exception && !e.toString().startsWith('Exception: Failed to create lead')) {
+      if (e is Exception &&
+          !e.toString().startsWith('Exception: Failed to create lead')) {
         rethrow;
       }
       throw Exception('Failed to create lead: $e');
@@ -59,10 +58,7 @@ class LeadsService {
     try {
       final raw = await _supabase.rpc(
         'update_lead_status_tx',
-        params: {
-          'p_lead_id': leadId,
-          'p_status': status,
-        },
+        params: {'p_lead_id': leadId, 'p_status': status},
       );
 
       final data = Map<String, dynamic>.from(raw as Map);
@@ -74,7 +70,8 @@ class LeadsService {
       return UpdateLeadResult.fromJson(data);
     } catch (e) {
       debugPrint('LeadsService.updateLeadStatus error: $e');
-      if (e is Exception && !e.toString().startsWith('Exception: Failed to update lead')) {
+      if (e is Exception &&
+          !e.toString().startsWith('Exception: Failed to update lead')) {
         rethrow;
       }
       throw Exception('Failed to update lead: $e');
@@ -113,8 +110,8 @@ class LeadsService {
           (message != null && message.isNotEmpty)
               ? message
               : (code != null && code.isNotEmpty)
-                  ? code
-                  : 'Failed to end connection',
+              ? code
+              : 'Failed to end connection',
         );
       }
 
@@ -152,7 +149,8 @@ class LeadsService {
           .order('created_at', ascending: false);
 
       final leads = (response as List).cast<Map<String, dynamic>>();
-      if (leads.isEmpty) return leads.map((json) => Lead.fromJson(json)).toList();
+      if (leads.isEmpty)
+        return leads.map((json) => Lead.fromJson(json)).toList();
 
       final clientIds = leads
           .map((l) => l['client_id'] as String?)
@@ -202,7 +200,8 @@ class LeadsService {
           .order('created_at', ascending: false);
 
       final leads = (response as List).cast<Map<String, dynamic>>();
-      if (leads.isEmpty) return leads.map((json) => Lead.fromJson(json)).toList();
+      if (leads.isEmpty)
+        return leads.map((json) => Lead.fromJson(json)).toList();
 
       final clientIds = leads
           .map((l) => l['client_id'] as String?)
@@ -350,7 +349,7 @@ class LeadsService {
         }
       }
 
-      return rows.map((json) {
+      final mapped = rows.map((json) {
         final providerId = json['provider_id'] as String;
         final type = json['provider_type'] as String? ?? 'trainer';
         final providerRaw = json['provider'];
@@ -363,8 +362,7 @@ class LeadsService {
         if (specs is List && specs.isNotEmpty) {
           specLabel = specs.map((e) => e.toString()).join(', ');
         }
-        final headline =
-            (provider['professional_headline'] as String?)?.trim();
+        final headline = (provider['professional_headline'] as String?)?.trim();
         if ((specLabel == null || specLabel.isEmpty) &&
             headline != null &&
             headline.isNotEmpty) {
@@ -372,8 +370,7 @@ class LeadsService {
         }
 
         final name = (profile?['full_name'] as String?)?.trim();
-        final fallback =
-            type == 'nutritionist' ? 'Nutritionist' : 'Trainer';
+        final fallback = type == 'nutritionist' ? 'Nutritionist' : 'Trainer';
         return AcceptedProvider(
           leadId: json['id'] as String,
           providerId: providerId,
@@ -390,6 +387,10 @@ class LeadsService {
           connectedAt: DateTime.parse(json['created_at'] as String),
         );
       }).toList();
+
+      // One active relationship card per provider (newest accepted first).
+      final seen = <String>{};
+      return mapped.where((p) => seen.add(p.providerId)).toList();
     } catch (e) {
       throw Exception('Failed to fetch accepted providers: $e');
     }
@@ -436,7 +437,8 @@ class LeadsService {
           .order('created_at', ascending: false);
 
       final leads = (response as List).cast<Map<String, dynamic>>();
-      if (leads.isEmpty) return leads.map((json) => Lead.fromJson(json)).toList();
+      if (leads.isEmpty)
+        return leads.map((json) => Lead.fromJson(json)).toList();
 
       final clientIds = leads
           .map((l) => l['client_id'] as String?)

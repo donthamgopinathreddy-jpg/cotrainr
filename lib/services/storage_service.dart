@@ -202,6 +202,13 @@ class StorageService {
   }) {
     final ext = extension.toLowerCase();
     if (mediaKind == 'video') return 'video/mp4';
+    if (mediaKind == 'audio') {
+      return switch (ext) {
+        '.mp3' => 'audio/mpeg',
+        '.aac' => 'audio/aac',
+        _ => 'audio/mp4',
+      };
+    }
     if (mediaKind == 'image') {
       return switch (ext) {
         '.png' => 'image/png',

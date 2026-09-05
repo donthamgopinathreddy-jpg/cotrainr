@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
@@ -22,6 +23,12 @@ import 'widgets/quest/quest_sync_initializer.dart';
 
 void main() async {
   debugPrint('[BOOT] app start');
+  if (kDebugMode) {
+    // TEMP: identify debug APK vs older builds while diagnosing reconnect send.
+    debugPrint(
+      '[COTRAINR_DEBUG_BUILD] marker=messaging-reconnect-debug-20260905',
+    );
+  }
   final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   debugPrint('[BOOT] widgets binding ready');
   // Keep OS splash until Flutter paints CotrainrSplashScreen (or failsafe).
@@ -41,13 +48,15 @@ void main() async {
   // Non-blocking secondary services — do not delay first frame / splash.
   try {
     final healthService = HealthTrackingService();
-    unawaited(healthService.initialize().then((initialized) {
-      if (initialized) {
-        debugPrint('Health tracking service initialized successfully');
-      } else {
-        debugPrint('Health tracking service initialization failed');
-      }
-    }));
+    unawaited(
+      healthService.initialize().then((initialized) {
+        if (initialized) {
+          debugPrint('Health tracking service initialized successfully');
+        } else {
+          debugPrint('Health tracking service initialization failed');
+        }
+      }),
+    );
   } catch (e) {
     debugPrint('[BOOT] health init schedule failed: $e');
   }
@@ -65,10 +74,12 @@ void main() async {
   runApp(const ProviderScope(child: MyApp()));
 
   // If CotrainrSplashScreen never paints, do not keep the native logo forever.
-  unawaited(Future<void>.delayed(const Duration(seconds: 2), () {
-    FlutterNativeSplash.remove();
-    debugPrint('[BOOT] native splash failsafe remove');
-  }));
+  unawaited(
+    Future<void>.delayed(const Duration(seconds: 2), () {
+      FlutterNativeSplash.remove();
+      debugPrint('[BOOT] native splash failsafe remove');
+    }),
+  );
 
   widgetsBinding.addPostFrameCallback((_) {
     debugPrint('[BOOT] first frame');
@@ -120,15 +131,18 @@ class MyApp extends ConsumerWidget {
                   final isDark = brightness == Brightness.dark;
                   final overlay = SystemUiOverlayStyle(
                     statusBarColor: Colors.transparent,
-                    statusBarIconBrightness:
-                        isDark ? Brightness.light : Brightness.dark,
-                    statusBarBrightness:
-                        isDark ? Brightness.dark : Brightness.light,
+                    statusBarIconBrightness: isDark
+                        ? Brightness.light
+                        : Brightness.dark,
+                    statusBarBrightness: isDark
+                        ? Brightness.dark
+                        : Brightness.light,
                     systemNavigationBarColor: isDark
                         ? const Color(0xFF000000)
                         : const Color(0xFFFFFFFF),
-                    systemNavigationBarIconBrightness:
-                        isDark ? Brightness.light : Brightness.dark,
+                    systemNavigationBarIconBrightness: isDark
+                        ? Brightness.light
+                        : Brightness.dark,
                     systemNavigationBarDividerColor: Colors.transparent,
                   );
                   return AnnotatedRegion<SystemUiOverlayStyle>(

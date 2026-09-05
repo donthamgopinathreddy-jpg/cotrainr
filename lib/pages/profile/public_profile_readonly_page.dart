@@ -19,6 +19,7 @@ import '../../services/entitlement_service.dart';
 import '../../services/leads_service.dart';
 import '../../services/messaging_policy_service.dart';
 import '../../theme/design_tokens.dart';
+import '../../utils/current_relationship_state.dart';
 import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
 import '../../widgets/provider/public_provider_profile_header.dart';
@@ -75,6 +76,7 @@ class _PublicProfileReadonlyPageState
   String _clientPlan = SubscriptionPlans.free;
   int? _connectionLimit;
   bool _connectionUnlimited = false;
+
   /// Server nutritionist connect eligibility. null = unknown (do not block locally).
   bool? _nutritionistAllowed;
 
@@ -82,11 +84,7 @@ class _PublicProfileReadonlyPageState
       (_profile.providerType).toLowerCase() == 'nutritionist' ||
       (widget.providerType ?? '').toLowerCase() == 'nutritionist';
 
-  static const _tabs = [
-    'Profile',
-    'Services',
-    'Reviews',
-  ];
+  static const _tabs = ['Profile', 'Services', 'Reviews'];
 
   @override
   void initState() {
@@ -132,7 +130,8 @@ class _PublicProfileReadonlyPageState
         repo.fetchByUserId(widget.userId),
         label: 'fetchByUserId',
       );
-      final certs = await _withTimeout(
+      final certs =
+          await _withTimeout(
             repo.listCertifications(widget.userId, publicOnly: true),
             label: 'certs',
           ) ??
@@ -161,7 +160,8 @@ class _PublicProfileReadonlyPageState
         }
       } catch (_) {}
 
-      var resolved = profile ??
+      var resolved =
+          profile ??
           ProviderProfessionalProfile(
             userId: widget.userId,
             providerType: widget.providerType ?? 'trainer',
@@ -171,17 +171,18 @@ class _PublicProfileReadonlyPageState
             bio: publicBio,
           );
 
-      final needsName = (resolved.fullName == null ||
-              resolved.fullName!.trim().isEmpty) &&
+      final needsName =
+          (resolved.fullName == null || resolved.fullName!.trim().isEmpty) &&
           ((publicName ?? widget.titleFallback)?.trim().isNotEmpty ?? false);
-      final needsBio = (resolved.bio == null || resolved.bio!.trim().isEmpty) &&
+      final needsBio =
+          (resolved.bio == null || resolved.bio!.trim().isEmpty) &&
           (publicBio?.trim().isNotEmpty ?? false);
       final needsAvatar =
           (resolved.avatarUrl == null || resolved.avatarUrl!.trim().isEmpty) &&
-              (publicAvatar?.trim().isNotEmpty ?? false);
+          (publicAvatar?.trim().isNotEmpty ?? false);
       final needsCover =
           (resolved.coverUrl == null || resolved.coverUrl!.trim().isEmpty) &&
-              (coverUrl?.trim().isNotEmpty ?? false);
+          (coverUrl?.trim().isNotEmpty ?? false);
       if (needsName || needsBio || needsAvatar || needsCover) {
         resolved = ProviderProfessionalProfile(
           userId: resolved.userId,
@@ -208,7 +209,8 @@ class _PublicProfileReadonlyPageState
         );
       }
 
-      final reviews = await _withTimeout(
+      final reviews =
+          await _withTimeout(
             _reviewsRepo.listForProvider(widget.userId),
             label: 'reviews',
           ) ??
@@ -243,7 +245,8 @@ class _PublicProfileReadonlyPageState
         } catch (_) {}
       }
 
-      final canRate = await _withTimeout(
+      final canRate =
+          await _withTimeout(
             _resolveCanRate(resolved.providerType),
             label: 'canRate',
           ) ??
@@ -271,20 +274,37 @@ class _PublicProfileReadonlyPageState
             label: 'leads',
           );
           if (leads != null) {
-            for (final lead in leads.where((l) => l.clientId == me)) {
-              if (lead.providerId != widget.userId) continue;
-              if (lead.status == 'accepted') {
+            final rel = currentRelationshipFromLeadModels(
+              leads: leads
+                  .where((l) => l.clientId == me)
+                  .map(
+                    (l) => (
+                      id: l.id,
+                      clientId: l.clientId,
+                      providerId: l.providerId,
+                      status: l.status,
+                    ),
+                  ),
+              clientId: me,
+              providerId: widget.userId,
+            );
+            // Historical ended leads → none (reconnectable Connect CTA).
+            // New requested → pending. Current accepted → Message.
+            switch (rel.kind) {
+              case CurrentRelationshipKind.accepted:
                 relationship = 'accepted';
-              } else if (lead.status == 'requested') {
+              case CurrentRelationshipKind.pending:
                 relationship = 'pending';
-                pendingLeadId = lead.id;
-              }
+                pendingLeadId = rel.leadId;
+              case CurrentRelationshipKind.none:
+                relationship = 'none';
             }
           }
         } catch (_) {}
 
         if (relationship == 'accepted') {
-          canMessage = await _withTimeout(
+          canMessage =
+              await _withTimeout(
                 MessagingPolicyService.clientMayUseMessagingWithProvider(
                   supabase: _supabase,
                   clientId: me,
@@ -388,12 +408,10 @@ class _PublicProfileReadonlyPageState
       final remainingHint = _connectionUnlimited
           ? null
           : (result.remaining != null
-              ? ' · ${result.remaining} new provider connection${result.remaining == 1 ? '' : 's'} remaining this month'
-              : null);
+                ? ' · ${result.remaining} new provider connection${result.remaining == 1 ? '' : 's'} remaining this month'
+                : null);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Request sent${remainingHint ?? ''}'),
-        ),
+        SnackBar(content: Text('Request sent${remainingHint ?? ''}')),
       );
     } catch (e) {
       if (!mounted) return;
@@ -422,7 +440,8 @@ class _PublicProfileReadonlyPageState
       }
       final String message;
       if (err.contains('Lead already exists')) {
-        message = 'You already have a pending or active request with this provider.';
+        message =
+            'You already have a pending or active request with this provider.';
       } else if (err.contains('Only clients can create leads')) {
         message = 'Only client accounts can send coaching requests.';
       } else if (err.contains('Provider not found')) {
@@ -430,9 +449,9 @@ class _PublicProfileReadonlyPageState
       } else {
         message = 'Could not send request. Please try again.';
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     } finally {
       if (mounted) setState(() => _actionBusy = false);
     }
@@ -453,7 +472,9 @@ class _PublicProfileReadonlyPageState
       if (!mounted) return;
       if (kDebugMode) debugPrint('PublicProfile cancel request failed: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not cancel request. Please try again.')),
+        const SnackBar(
+          content: Text('Could not cancel request. Please try again.'),
+        ),
       );
     } finally {
       if (mounted) setState(() => _actionBusy = false);
@@ -471,9 +492,7 @@ class _PublicProfileReadonlyPageState
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Connect to message and work together.'),
-        ),
+        const SnackBar(content: Text('Connect to message and work together.')),
       );
       return;
     }
@@ -487,19 +506,30 @@ class _PublicProfileReadonlyPageState
       );
       return;
     }
-    final convId =
-        await MessagesRepository().createOrFindConversation(widget.userId);
+    if (kDebugMode) {
+      debugPrint(
+        '[PROFILE_MESSAGE_OPEN] authUid=${_supabase.auth.currentUser?.id} '
+        'widget.userId=${widget.userId} '
+        'relationship=$_relationship canMessage=$_canMessage',
+      );
+    }
+    final convId = await MessagesRepository().createOrFindConversation(
+      widget.userId,
+    );
     if (!mounted) return;
     if (convId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unable to open chat')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Unable to open chat')));
       return;
     }
-    context.push('/messaging/chat/$convId', extra: {
-      'userName': _profile.fullName ?? widget.titleFallback ?? 'Provider',
-      'avatarUrl': _profile.avatarUrl,
-    });
+    context.push(
+      '/messaging/chat/$convId',
+      extra: {
+        'userName': _profile.fullName ?? widget.titleFallback ?? 'Provider',
+        'avatarUrl': _profile.avatarUrl,
+      },
+    );
   }
 
   Future<void> _openUpgrade() async {
@@ -555,21 +585,17 @@ class _PublicProfileReadonlyPageState
     final cardBg = isLight
         ? DesignTokens.lightMutedCardBackground
         : const Color(0xFF121212);
-    final chipBg =
-        isLight ? const Color(0xFFEEEEF0) : const Color(0xFF1A1A1A);
+    final chipBg = isLight ? const Color(0xFFEEEEF0) : const Color(0xFF1A1A1A);
     final p = _profile;
-    final title =
-        p.fullName ?? _username ?? widget.titleFallback ?? 'Provider';
-    final professionalTitle =
-        (p.professionalHeadline ?? '').trim().isNotEmpty
-            ? p.professionalHeadline!.trim()
-            : p.roleLabel;
+    final title = p.fullName ?? _username ?? widget.titleFallback ?? 'Provider';
+    final professionalTitle = (p.professionalHeadline ?? '').trim().isNotEmpty
+        ? p.professionalHeadline!.trim()
+        : p.roleLabel;
     final experienceValue =
         (p.experienceYears != null && p.experienceYears! > 0)
-            ? '${p.experienceYears} yrs'
-            : '—';
-    final reviewsValue =
-        p.totalReviews > 0 ? p.rating.toStringAsFixed(1) : '—';
+        ? '${p.experienceYears} yrs'
+        : '—';
+    final reviewsValue = p.totalReviews > 0 ? p.rating.toStringAsFixed(1) : '—';
 
     return CotrainrPopScope(
       fallbackRoute: '/home',
@@ -623,91 +649,91 @@ class _PublicProfileReadonlyPageState
                 reviewsValue: reviewsValue,
               ),
 
-            // —— Actions ——
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _ActionRow(
-                relationship: _relationship,
-                accepting: p.acceptingNewClients,
-                busy: _actionBusy,
-                canMessage: _canMessage,
-                canRate: _canRate,
-                roleLabel: p.roleLabel,
-                isNutritionist: _isNutritionist,
-                requiresUpgrade:
-                    _isNutritionist && _nutritionistAllowed == false,
-                onRequest: _sendRequest,
-                onCancel: _cancelRequest,
-                onMessage: _openMessage,
-                onRate: _toggleReviewEditor,
-                onUpgrade: _openUpgrade,
+              // —— Actions ——
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _ActionRow(
+                  relationship: _relationship,
+                  accepting: p.acceptingNewClients,
+                  busy: _actionBusy,
+                  canMessage: _canMessage,
+                  canRate: _canRate,
+                  roleLabel: p.roleLabel,
+                  isNutritionist: _isNutritionist,
+                  requiresUpgrade:
+                      _isNutritionist && _nutritionistAllowed == false,
+                  onRequest: _sendRequest,
+                  onCancel: _cancelRequest,
+                  onMessage: _openMessage,
+                  onRate: _toggleReviewEditor,
+                  onUpgrade: _openUpgrade,
+                ),
               ),
-            ),
 
-            AnimatedSize(
-              duration: const Duration(milliseconds: 230),
-              curve: Curves.easeOutCubic,
-              alignment: Alignment.topCenter,
-              child: _reviewEditorOpen
-                  ? Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                      child: AnimatedOpacity(
-                        opacity: _reviewEditorOpen ? 1 : 0,
-                        duration: const Duration(milliseconds: 200),
-                        child: InlineProviderReviewEditor(
-                          providerId: widget.userId,
-                          initialReview: _myReview,
-                          onSaved: _onReviewSaved,
+              AnimatedSize(
+                duration: const Duration(milliseconds: 230),
+                curve: Curves.easeOutCubic,
+                alignment: Alignment.topCenter,
+                child: _reviewEditorOpen
+                    ? Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                        child: AnimatedOpacity(
+                          opacity: _reviewEditorOpen ? 1 : 0,
+                          duration: const Duration(milliseconds: 200),
+                          child: InlineProviderReviewEditor(
+                            providerId: widget.userId,
+                            initialReview: _myReview,
+                            onSaved: _onReviewSaved,
+                          ),
                         ),
-                      ),
-                    )
-                  : const SizedBox.shrink(),
-            ),
-
-            const SizedBox(height: 12),
-
-            // —— Tabs ——
-            Material(
-              color: bg,
-              child: TabBar(
-                controller: _tabController,
-                isScrollable: false,
-                labelColor: DesignTokens.accentOrange,
-                unselectedLabelColor: textSecondary,
-                indicatorColor: DesignTokens.accentOrange,
-                indicatorWeight: 2.5,
-                labelStyle: GoogleFonts.montserrat(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                ),
-                unselectedLabelStyle: GoogleFonts.montserrat(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
-                ),
-                tabs: _tabs.map((t) => Tab(text: t)).toList(),
+                      )
+                    : const SizedBox.shrink(),
               ),
-            ),
 
-            Divider(
-              height: 1,
-              color: isLight
-                  ? DesignTokens.lightBorder
-                  : Colors.white.withValues(alpha: 0.08),
-            ),
+              const SizedBox(height: 12),
 
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
-              child: _buildTabBody(
-                p,
-                textPrimary: textPrimary,
-                textSecondary: textSecondary,
-                cardBg: cardBg,
-                chipBg: chipBg,
+              // —— Tabs ——
+              Material(
+                color: bg,
+                child: TabBar(
+                  controller: _tabController,
+                  isScrollable: false,
+                  labelColor: DesignTokens.accentOrange,
+                  unselectedLabelColor: textSecondary,
+                  indicatorColor: DesignTokens.accentOrange,
+                  indicatorWeight: 2.5,
+                  labelStyle: GoogleFonts.montserrat(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                  unselectedLabelStyle: GoogleFonts.montserrat(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                  tabs: _tabs.map((t) => Tab(text: t)).toList(),
+                ),
               ),
-            ),
-          ],
+
+              Divider(
+                height: 1,
+                color: isLight
+                    ? DesignTokens.lightBorder
+                    : Colors.white.withValues(alpha: 0.08),
+              ),
+
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
+                child: _buildTabBody(
+                  p,
+                  textPrimary: textPrimary,
+                  textSecondary: textSecondary,
+                  cardBg: cardBg,
+                  chipBg: chipBg,
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
       ),
     );
   }
@@ -808,9 +834,7 @@ class _ActionRow extends StatelessWidget {
     Widget primary;
     if (relationship == 'accepted') {
       primary = _TranslucentActionButton(
-        onPressed: busy
-            ? null
-            : (requiresUpgrade ? onUpgrade : onMessage),
+        onPressed: busy ? null : (requiresUpgrade ? onUpgrade : onMessage),
         icon: requiresUpgrade
             ? Icons.lock_outline_rounded
             : Icons.chat_bubble_outline_rounded,
@@ -848,8 +872,8 @@ class _ActionRow extends StatelessWidget {
         label: !accepting
             ? 'Not accepting'
             : busy
-                ? 'Sending…'
-                : 'Request',
+            ? 'Sending…'
+            : 'Request',
         palette: requestPal,
         shape: shape,
         enabled: accepting && !busy,
@@ -1148,10 +1172,7 @@ class _ProfileTabBody extends StatelessWidget {
         if (bioText.isEmpty)
           Text(
             'No bio yet.',
-            style: TextStyle(
-              color: textSecondary,
-              fontWeight: FontWeight.w600,
-            ),
+            style: TextStyle(color: textSecondary, fontWeight: FontWeight.w600),
           )
         else ...[
           Text(
@@ -1300,7 +1321,9 @@ class _ProfileTabBody extends StatelessWidget {
                             c.issueYear != null)
                           Text(
                             [
-                              if ((c.issuingOrganization ?? '').trim().isNotEmpty)
+                              if ((c.issuingOrganization ?? '')
+                                  .trim()
+                                  .isNotEmpty)
                                 c.issuingOrganization!.trim(),
                               if (c.issueYear != null) '${c.issueYear}',
                             ].join(' · '),
@@ -1488,10 +1511,7 @@ class _ReviewsBody extends StatelessWidget {
                     const SizedBox(height: 8),
                     Text(
                       r.body!.trim(),
-                      style: TextStyle(
-                        color: textSecondary,
-                        height: 1.4,
-                      ),
+                      style: TextStyle(color: textSecondary, height: 1.4),
                     ),
                   ],
                 ],
@@ -1502,4 +1522,3 @@ class _ReviewsBody extends StatelessWidget {
     );
   }
 }
-

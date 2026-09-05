@@ -37,11 +37,14 @@ class ChatMessageReconciler {
     String? documentName,
     String? documentMime,
     int? documentSizeBytes,
+    String? audioPath,
+    int? audioDurationMs,
     DateTime? readAt,
     ChatUploadStatus uploadStatus = ChatUploadStatus.none,
     String? localId,
   }) {
-    final id = localId ??
+    final id =
+        localId ??
         'local_${DateTime.now().microsecondsSinceEpoch}_${messages.length}';
     _localIds.add(id);
     messages.add(
@@ -56,6 +59,8 @@ class ChatMessageReconciler {
         documentName: documentName,
         documentMime: documentMime,
         documentSizeBytes: documentSizeBytes,
+        audioPath: audioPath,
+        audioDurationMs: audioDurationMs,
         readAt: readAt,
         uploadStatus: uploadStatus,
       ),
@@ -77,6 +82,8 @@ class ChatMessageReconciler {
     String? documentName,
     String? documentMime,
     int? documentSizeBytes,
+    String? audioUrl,
+    int? audioDurationMs,
     DateTime? readAt,
   }) {
     if (messageId.isEmpty) return false;
@@ -103,6 +110,8 @@ class ChatMessageReconciler {
         documentName: documentName,
         documentMime: documentMime,
         documentSizeBytes: documentSizeBytes,
+        audioUrl: audioUrl,
+        audioDurationMs: audioDurationMs,
         readAt: readAt,
         uploadStatus: ChatUploadStatus.none,
       ),
@@ -116,6 +125,7 @@ class ChatMessageReconciler {
     double? uploadProgress,
     String? imageUrl,
     String? documentUrl,
+    String? audioUrl,
   }) {
     final index = messages.indexWhere((m) => m.localId == localId);
     if (index < 0) return false;
@@ -125,6 +135,7 @@ class ChatMessageReconciler {
       uploadProgress: uploadProgress,
       imageUrl: imageUrl,
       documentUrl: documentUrl,
+      audioUrl: audioUrl,
     );
     return true;
   }
@@ -150,6 +161,8 @@ class ChatMessageReconciler {
     String? documentName,
     String? documentMime,
     int? documentSizeBytes,
+    String? audioUrl,
+    int? audioDurationMs,
     DateTime? readAt,
   }) {
     if (messageId.isEmpty) return false;
@@ -172,6 +185,8 @@ class ChatMessageReconciler {
         documentName: documentName,
         documentMime: documentMime,
         documentSizeBytes: documentSizeBytes,
+        audioUrl: audioUrl,
+        audioDurationMs: audioDurationMs,
         readAt: readAt,
       ),
     );
@@ -236,6 +251,9 @@ class ReconciledChatMessage {
   final String? documentName;
   final String? documentMime;
   final int? documentSizeBytes;
+  final String? audioPath;
+  final String? audioUrl;
+  final int? audioDurationMs;
   final DateTime? readAt;
   final DateTime? deletedForEveryoneAt;
   final ChatUploadStatus uploadStatus;
@@ -256,6 +274,9 @@ class ReconciledChatMessage {
     this.documentName,
     this.documentMime,
     this.documentSizeBytes,
+    this.audioPath,
+    this.audioUrl,
+    this.audioDurationMs,
     this.readAt,
     this.deletedForEveryoneAt,
     this.uploadStatus = ChatUploadStatus.none,
@@ -280,6 +301,10 @@ class ReconciledChatMessage {
     );
   }
 
+  bool get isAudio =>
+      (audioUrl != null && audioUrl!.isNotEmpty) ||
+      (audioPath != null && audioPath!.isNotEmpty);
+
   bool get isDocument =>
       (documentUrl != null && documentUrl!.isNotEmpty) ||
       (documentPath != null && documentPath!.isNotEmpty) ||
@@ -288,7 +313,9 @@ class ReconciledChatMessage {
           imageUrl == null &&
           imagePath == null &&
           videoUrl == null &&
-          videoPath == null);
+          videoPath == null &&
+          audioUrl == null &&
+          audioPath == null);
 
   ReconciledChatMessage copyWith({
     String? text,
@@ -305,6 +332,9 @@ class ReconciledChatMessage {
     String? documentName,
     String? documentMime,
     int? documentSizeBytes,
+    String? audioPath,
+    String? audioUrl,
+    int? audioDurationMs,
     DateTime? readAt,
     DateTime? deletedForEveryoneAt,
     ChatUploadStatus? uploadStatus,
@@ -325,6 +355,9 @@ class ReconciledChatMessage {
       documentName: documentName ?? this.documentName,
       documentMime: documentMime ?? this.documentMime,
       documentSizeBytes: documentSizeBytes ?? this.documentSizeBytes,
+      audioPath: audioPath ?? this.audioPath,
+      audioUrl: audioUrl ?? this.audioUrl,
+      audioDurationMs: audioDurationMs ?? this.audioDurationMs,
       readAt: readAt ?? this.readAt,
       deletedForEveryoneAt: deletedForEveryoneAt ?? this.deletedForEveryoneAt,
       uploadStatus: uploadStatus ?? this.uploadStatus,

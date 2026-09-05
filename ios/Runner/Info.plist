@@ -47,6 +47,8 @@
 		<true/>
 		<key>NSCameraUsageDescription</key>
 		<string>Cotrainr uses the camera for profile photos, verification documents, and chat attachments.</string>
+		<key>NSMicrophoneUsageDescription</key>
+		<string>Cotrainr uses the microphone so you can send voice messages in chat.</string>
 		<key>NSPhotoLibraryUsageDescription</key>
 		<string>Cotrainr uses your photo library for profile photos, verification documents, and chat attachments.</string>
 		<key>NSPhotoLibraryAddUsageDescription</key>

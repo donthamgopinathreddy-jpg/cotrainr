@@ -123,7 +123,9 @@ class _CreateClientPageState extends State<CreateClientPage>
                         padding: const EdgeInsets.all(DesignTokens.spacing12),
                         decoration: BoxDecoration(
                           gradient: DesignTokens.primaryGradient,
-                          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+                          borderRadius: BorderRadius.circular(
+                            DesignTokens.radiusButton,
+                          ),
                         ),
                         child: const Icon(
                           Icons.add,
@@ -145,7 +147,9 @@ class _CreateClientPageState extends State<CreateClientPage>
                 child: Container(
                   decoration: BoxDecoration(
                     color: surfaceColor,
-                    borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+                    borderRadius: BorderRadius.circular(
+                      DesignTokens.radiusButton,
+                    ),
                     border: Border.all(color: borderColor, width: 1),
                   ),
                   child: TextField(
@@ -168,10 +172,14 @@ class _CreateClientPageState extends State<CreateClientPage>
 
               // Tabs
               Container(
-                margin: const EdgeInsets.symmetric(horizontal: DesignTokens.spacing20),
+                margin: const EdgeInsets.symmetric(
+                  horizontal: DesignTokens.spacing20,
+                ),
                 decoration: BoxDecoration(
                   color: surfaceColor,
-                  borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+                  borderRadius: BorderRadius.circular(
+                    DesignTokens.radiusButton,
+                  ),
                 ),
                 child: Row(
                   children: [
@@ -204,8 +212,20 @@ class _CreateClientPageState extends State<CreateClientPage>
               // Content
               Expanded(
                 child: _selectedTabIndex == 0
-                    ? _buildClientsList(_myClients, textPrimary, textSecondary, surfaceColor, borderColor)
-                    : _buildClientsList(_pendingRequests, textPrimary, textSecondary, surfaceColor, borderColor),
+                    ? _buildClientsList(
+                        _myClients,
+                        textPrimary,
+                        textSecondary,
+                        surfaceColor,
+                        borderColor,
+                      )
+                    : _buildClientsList(
+                        _pendingRequests,
+                        textPrimary,
+                        textSecondary,
+                        surfaceColor,
+                        borderColor,
+                      ),
               ),
             ],
           ),
@@ -260,11 +280,7 @@ class _CreateClientPageState extends State<CreateClientPage>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.people_outline,
-              size: 64,
-              color: textSecondary,
-            ),
+            Icon(Icons.people_outline, size: 64, color: textSecondary),
             const SizedBox(height: DesignTokens.spacing16),
             Text(
               'No clients yet',
@@ -284,7 +300,14 @@ class _CreateClientPageState extends State<CreateClientPage>
       itemCount: clients.length,
       itemBuilder: (context, index) {
         final client = clients[index];
-        return _buildClientCard(context, client, textPrimary, textSecondary, surfaceColor, borderColor);
+        return _buildClientCard(
+          context,
+          client,
+          textPrimary,
+          textSecondary,
+          surfaceColor,
+          borderColor,
+        );
       },
     );
   }
@@ -298,186 +321,184 @@ class _CreateClientPageState extends State<CreateClientPage>
     Color borderColor,
   ) {
     return Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        decoration: BoxDecoration(
-          color: surfaceColor,
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: surfaceColor,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
           borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Material(
-          color: Colors.transparent,
-            child: InkWell(
-            borderRadius: BorderRadius.circular(20),
-            onTap: () {
-              HapticFeedback.lightImpact();
-              if (client.id.isNotEmpty) {
-                context.push('/clients/${client.id}', extra: client);
-              } else {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Client ID is missing'),
-                    duration: Duration(seconds: 2),
-                  ),
-                );
-              }
-            },
-            splashColor: DesignTokens.accentOrange.withOpacity(0.1),
-            highlightColor: DesignTokens.accentOrange.withOpacity(0.05),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                children: [
-                  // Avatar
-                  Container(
-                    width: 60,
-                    height: 60,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: client.status == 'Active'
-                            ? DesignTokens.accentGreen.withOpacity(0.3)
-                            : DesignTokens.accentOrange.withOpacity(0.3),
-                        width: 2,
-                      ),
-                    ),
-                    child: ClipOval(
-                      child: client.avatar != null
-                          ? Image.network(
-                              client.avatar!,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  _buildAvatarPlaceholder(client.name),
-                            )
-                          : _buildAvatarPlaceholder(client.name),
+          onTap: () {
+            HapticFeedback.lightImpact();
+            if (client.id.isNotEmpty) {
+              context.push('/clients/${client.id}', extra: client);
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Client ID is missing'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            }
+          },
+          splashColor: DesignTokens.accentOrange.withOpacity(0.1),
+          highlightColor: DesignTokens.accentOrange.withOpacity(0.05),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                // Avatar
+                Container(
+                  width: 60,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: client.status == 'Active'
+                          ? DesignTokens.accentGreen.withOpacity(0.3)
+                          : DesignTokens.accentOrange.withOpacity(0.3),
+                      width: 2,
                     ),
                   ),
-                  const SizedBox(width: 16),
-                  // Info
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                client.name,
-                                style: TextStyle(
-                                  color: textPrimary,
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: -0.3,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                  child: ClipOval(
+                    child: client.avatar != null
+                        ? Image.network(
+                            client.avatar!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) =>
+                                _buildAvatarPlaceholder(client.name),
+                          )
+                        : _buildAvatarPlaceholder(client.name),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                // Info
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              client.name,
+                              style: TextStyle(
+                                color: textPrimary,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: -0.3,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (client.status == 'Active')
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: DesignTokens.accentGreen,
+                                shape: BoxShape.circle,
                               ),
                             ),
-                            if (client.status == 'Active')
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: BoxDecoration(
-                                  color: DesignTokens.accentGreen,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        client.email,
+                        style: TextStyle(
+                          color: textSecondary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w400,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: client.statusColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          client.statusString,
+                          style: TextStyle(
+                            color: client.statusColor,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Actions
+                if (client.status == ClientStatus.pending)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 12),
+                    child: GestureDetector(
+                      onTap: () {
+                        HapticFeedback.lightImpact();
+                        // Accept client request
+                        setState(() {
+                          _pendingRequests.remove(client);
+                          client.status = ClientStatus.active;
+                          _myClients.add(client);
+                        });
+                      },
+                      behavior: HitTestBehavior.opaque,
+                      child: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          gradient: DesignTokens.primaryGradient,
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: DesignTokens.accentOrange.withOpacity(0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
                           ],
                         ),
-                        const SizedBox(height: 6),
-                        Text(
-                          client.email,
-                          style: TextStyle(
-                            color: textSecondary,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w400,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 5,
-                          ),
-                          decoration: BoxDecoration(
-                            color: client.statusColor.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            client.statusString,
-                            style: TextStyle(
-                              color: client.statusColor,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 0.2,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Actions
-                  if (client.status == ClientStatus.pending)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 12),
-                      child: GestureDetector(
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          // Accept client request
-                          setState(() {
-                            _pendingRequests.remove(client);
-                            client.status = ClientStatus.active;
-                            _myClients.add(client);
-                          });
-                        },
-                        behavior: HitTestBehavior.opaque,
-                        child: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            gradient: DesignTokens.primaryGradient,
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: DesignTokens.accentOrange.withOpacity(0.3),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: const Icon(
-                            Icons.check,
-                            color: Colors.white,
-                            size: 20,
-                          ),
+                        child: const Icon(
+                          Icons.check,
+                          color: Colors.white,
+                          size: 20,
                         ),
                       ),
-                    )
-                  else
-                    Icon(
-                      Icons.chevron_right_rounded,
-                      color: textSecondary.withOpacity(0.4),
-                      size: 24,
                     ),
-                ],
-              ),
+                  )
+                else
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: textSecondary.withOpacity(0.4),
+                    size: 24,
+                  ),
+              ],
             ),
           ),
         ),
+      ),
     );
   }
 
   Widget _buildAvatarPlaceholder(String name) {
     return Container(
-      decoration: const BoxDecoration(
-        gradient: DesignTokens.primaryGradient,
-      ),
+      decoration: const BoxDecoration(gradient: DesignTokens.primaryGradient),
       child: Center(
         child: Text(
           name[0].toUpperCase(),
@@ -512,7 +533,9 @@ class _CreateClientPageState extends State<CreateClientPage>
             TextField(
               decoration: InputDecoration(
                 labelText: 'Email',
-                labelStyle: TextStyle(color: DesignTokens.textSecondaryOf(context)),
+                labelStyle: TextStyle(
+                  color: DesignTokens.textSecondaryOf(context),
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(DesignTokens.radiusSmall),
                 ),
@@ -522,7 +545,9 @@ class _CreateClientPageState extends State<CreateClientPage>
             TextField(
               decoration: InputDecoration(
                 labelText: 'Name (Optional)',
-                labelStyle: TextStyle(color: DesignTokens.textSecondaryOf(context)),
+                labelStyle: TextStyle(
+                  color: DesignTokens.textSecondaryOf(context),
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(DesignTokens.radiusSmall),
                 ),
@@ -578,7 +603,7 @@ class ClientItem {
   final List<ClientAlert> alerts;
   final double? adherencePercentage; // 0-100
   final DateTime? lastCheckIn;
-  final String? leadId; // For pending: needed to accept
+  final String? leadId; // Relationship id for accept/decline/end
   final String? requestMessage;
 
   ClientItem({

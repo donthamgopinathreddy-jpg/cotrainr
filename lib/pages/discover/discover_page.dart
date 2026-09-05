@@ -14,7 +14,9 @@ import '../../repositories/partner_centers_repository.dart';
 import '../../models/subscription_plans.dart';
 import '../../repositories/subscriptions_repository.dart';
 import '../../services/entitlement_service.dart';
+import '../../services/leads_models.dart' show Lead;
 import '../../services/leads_service.dart';
+import '../../utils/current_relationship_state.dart';
 import '../../widgets/provider/discover_provider_card.dart';
 import '../../widgets/subscription/nutritionist_upgrade_sheet.dart';
 import '../../widgets/subscription/connection_limit_sheet.dart';
@@ -25,12 +27,7 @@ const _discoverGradient = DesignTokens.discoverGradient;
 const _discoverAccent = DesignTokens.discoverAccent;
 
 /// Location state for discover page
-enum DiscoverLocationState {
-  granted,
-  denied,
-  manual,
-  browse,
-}
+enum DiscoverLocationState { granted, denied, manual, browse }
 
 class DiscoverPage extends StatefulWidget {
   /// 0 trainers, 1 nutritionists, 2 centers. Query param `discover=` still wins.
@@ -53,16 +50,20 @@ class _DiscoverPageState extends State<DiscoverPage>
   int _selectedTabIndex = 0;
   bool _isLoading = false;
   String? _errorMessage;
+
   /// Soft banner when browsing without GPS (list still loads).
   String? _locationNotice;
   bool _browseWithoutLocation = false;
+
   /// Cached client plan (DB ids: free / basic / premium).
   String _clientPlan = SubscriptionPlans.free;
+
   /// From get-entitlements / create_lead_tx; null when unknown or unlimited.
   int? _connectionLimit;
   int? _connectionRemaining;
   int? _connectionUsed;
   bool _connectionUnlimited = false;
+
   /// Server nutritionist connect eligibility. null = unknown (do not block locally).
   bool? _nutritionistAllowed;
   Position? _userPosition;
@@ -81,6 +82,7 @@ class _DiscoverPageState extends State<DiscoverPage>
   final List<DiscoverItem> _trainers = [];
   final List<DiscoverItem> _nutritionists = [];
   final List<DiscoverItem> _centers = [];
+
   /// True only when fetch returned providers that were all removed as accepted.
   bool _trainersHiddenAsConnected = false;
   bool _nutritionistsHiddenAsConnected = false;
@@ -109,8 +111,9 @@ class _DiscoverPageState extends State<DiscoverPage>
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final discoverTab =
-          GoRouterState.of(context).uri.queryParameters['discover'];
+      final discoverTab = GoRouterState.of(
+        context,
+      ).uri.queryParameters['discover'];
       if (discoverTab == 'nutritionists') {
         setState(() => _selectedTabIndex = 1);
       } else if (discoverTab == 'centers') {
@@ -192,11 +195,16 @@ class _DiscoverPageState extends State<DiscoverPage>
 
       _trainers
         ..clear()
-        ..addAll(_mapProviderRows(trainerResults, fallbackSubtitle: 'Fitness Trainer'));
+        ..addAll(
+          _mapProviderRows(trainerResults, fallbackSubtitle: 'Fitness Trainer'),
+        );
       _nutritionists
         ..clear()
         ..addAll(
-          _mapProviderRows(nutritionistResults, fallbackSubtitle: 'Nutritionist'),
+          _mapProviderRows(
+            nutritionistResults,
+            fallbackSubtitle: 'Nutritionist',
+          ),
         );
 
       _trainers.sort(_compareDiscoverItems);
@@ -268,10 +276,9 @@ class _DiscoverPageState extends State<DiscoverPage>
   ) {
     return centres.map((c) {
       double distance = double.infinity;
-      if (_userPosition != null &&
-          c.latitude != null &&
-          c.longitude != null) {
-        distance = Geolocator.distanceBetween(
+      if (_userPosition != null && c.latitude != null && c.longitude != null) {
+        distance =
+            Geolocator.distanceBetween(
               _userPosition!.latitude,
               _userPosition!.longitude,
               c.latitude!,
@@ -304,14 +311,11 @@ class _DiscoverPageState extends State<DiscoverPage>
   /// Scope specialty chips to the role being queried so trainer filters
   /// (e.g. yoga) do not wipe the nutritionist RPC results.
   DiscoverFilters _filtersForProviderType(String providerType) {
-    final allowed = ProviderSpecialtyTaxonomy.forRole(providerType)
-        .map((s) => s.id)
-        .toSet();
+    final allowed = ProviderSpecialtyTaxonomy.forRole(
+      providerType,
+    ).map((s) => s.id).toSet();
     final scoped = _filters.categories.where(allowed.contains).toSet();
-    return _filters.copyWith(
-      providerTypes: [providerType],
-      categories: scoped,
-    );
+    return _filters.copyWith(providerTypes: [providerType], categories: scoped);
   }
 
   Future<Position?> _resolveClientLocation() async {
@@ -360,18 +364,21 @@ class _DiscoverPageState extends State<DiscoverPage>
       final rating = (result['rating'] as num?)?.toDouble() ?? 0.0;
       final totalReviews = (result['total_reviews'] as num?)?.toInt() ?? 0;
       final experienceYears = (result['experience_years'] as num?)?.toInt();
-      final specializationRaw = (result['specialization'] as List<dynamic>?)
+      final specializationRaw =
+          (result['specialization'] as List<dynamic>?)
               ?.map((e) => e.toString())
               .toList() ??
           [];
-      final specializationIds =
-          ProviderSpecialtyTaxonomy.normalizeList(specializationRaw);
+      final specializationIds = ProviderSpecialtyTaxonomy.normalizeList(
+        specializationRaw,
+      );
       final specialtyLabels = ProviderSpecialtyTaxonomy.labelsFor(
         specializationIds.take(3),
       );
       final headline =
           (result['professional_headline'] as String?)?.trim() ?? '';
-      final sessionModes = (result['session_modes'] as List<dynamic>?)
+      final sessionModes =
+          (result['session_modes'] as List<dynamic>?)
               ?.map((e) => e.toString())
               .toList() ??
           const <String>[];
@@ -391,8 +398,8 @@ class _DiscoverPageState extends State<DiscoverPage>
       if (distanceKm != null && distanceKm > 0) {
         locationLabel =
             (geo == null && locationType == 'home' && displayName != null)
-                ? displayName
-                : '${distanceKm.toStringAsFixed(1)} km away';
+            ? displayName
+            : '${distanceKm.toStringAsFixed(1)} km away';
       } else if (displayName != null && displayName.trim().isNotEmpty) {
         locationLabel = displayName.trim();
       } else {
@@ -448,13 +455,37 @@ class _DiscoverPageState extends State<DiscoverPage>
       _requestStatus.clear();
       _leadIdsByProvider.clear();
       final acceptedIds = <String>{};
-      for (final lead in leads.where((l) => l.clientId == uid)) {
-        if (lead.status == 'requested') {
-          _requestStatus[lead.providerId] = 'pending';
-          _leadIdsByProvider[lead.providerId] = lead.id;
-        } else if (lead.status == 'accepted') {
-          _requestStatus[lead.providerId] = 'accepted';
-          acceptedIds.add(lead.providerId);
+      // Current state only: historical ended/declined/cancelled never block
+      // reconnect; accepted > requested when both somehow exist.
+      final mine = leads.where((l) => l.clientId == uid).toList();
+      final byProvider = <String, List<Lead>>{};
+      for (final l in mine) {
+        byProvider.putIfAbsent(l.providerId, () => []).add(l);
+      }
+      for (final entry in byProvider.entries) {
+        final rel = currentRelationshipFromLeadModels(
+          leads: entry.value.map(
+            (l) => (
+              id: l.id,
+              clientId: l.clientId,
+              providerId: l.providerId,
+              status: l.status,
+            ),
+          ),
+          clientId: uid,
+          providerId: entry.key,
+        );
+        if (rel.isAccepted) {
+          _requestStatus[entry.key] = 'accepted';
+          acceptedIds.add(entry.key);
+          if (rel.leadId != null) {
+            _leadIdsByProvider[entry.key] = rel.leadId!;
+          }
+        } else if (rel.isPending) {
+          _requestStatus[entry.key] = 'pending';
+          if (rel.leadId != null) {
+            _leadIdsByProvider[entry.key] = rel.leadId!;
+          }
         }
       }
 
@@ -464,8 +495,7 @@ class _DiscoverPageState extends State<DiscoverPage>
       setState(() {
         _trainers.removeWhere((i) => acceptedIds.contains(i.id));
         _nutritionists.removeWhere((i) => acceptedIds.contains(i.id));
-        _trainersHiddenAsConnected =
-            trainersBefore > 0 && _trainers.isEmpty;
+        _trainersHiddenAsConnected = trainersBefore > 0 && _trainers.isEmpty;
         _nutritionistsHiddenAsConnected =
             nutritionistsBefore > 0 && _nutritionists.isEmpty;
       });
@@ -513,13 +543,11 @@ class _DiscoverPageState extends State<DiscoverPage>
       final remainingHint = _connectionUnlimited
           ? null
           : (result.remaining != null
-              ? ' · ${result.remaining} new provider connection${result.remaining == 1 ? '' : 's'} remaining this month'
-              : null);
+                ? ' · ${result.remaining} new provider connection${result.remaining == 1 ? '' : 's'} remaining this month'
+                : null);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            'Request sent to ${item.name}${remainingHint ?? ''}',
-          ),
+          content: Text('Request sent to ${item.name}${remainingHint ?? ''}'),
           duration: const Duration(seconds: 2),
           behavior: SnackBarBehavior.floating,
         ),
@@ -551,7 +579,8 @@ class _DiscoverPageState extends State<DiscoverPage>
       }
       final String message;
       if (err.contains('Lead already exists')) {
-        message = 'You already have a pending or active request with ${item.name}';
+        message =
+            'You already have a pending or active request with ${item.name}';
       } else if (err.contains('Only clients can create leads')) {
         message = 'Only client accounts can send coaching requests.';
       } else if (err.contains('Provider not found')) {
@@ -655,8 +684,8 @@ class _DiscoverPageState extends State<DiscoverPage>
     final filterType = _selectedTabIndex == 0
         ? FilterType.trainers
         : _selectedTabIndex == 1
-            ? FilterType.nutritionists
-            : FilterType.centers;
+        ? FilterType.nutritionists
+        : FilterType.centers;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -678,8 +707,8 @@ class _DiscoverPageState extends State<DiscoverPage>
               providerTypes: filterType == FilterType.trainers
                   ? ['trainer']
                   : filterType == FilterType.nutritionists
-                      ? ['nutritionist']
-                      : null,
+                  ? ['nutritionist']
+                  : null,
             );
           });
           _loadRealData();
@@ -692,7 +721,6 @@ class _DiscoverPageState extends State<DiscoverPage>
     );
   }
 
-
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -703,219 +731,224 @@ class _DiscoverPageState extends State<DiscoverPage>
         opacity: _fadeAnimation,
         child: SafeArea(
           child: RefreshIndicator(
-          onRefresh: () async {
-            HapticFeedback.mediumImpact();
-            await _loadRealData();
-          },
-          color: _discoverAccent,
-          child: CustomScrollView(
-            controller: _scrollController,
-            physics: const AlwaysScrollableScrollPhysics(
-              parent: BouncingScrollPhysics(),
-            ),
-            slivers: [
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.only(
-                  left: DesignTokens.spacing16,
-                  right: DesignTokens.spacing16,
-                  top: DesignTokens.spacing12,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const _DiscoverHeaderRow(),
-                    const SizedBox(height: DesignTokens.spacing16),
-                    _DiscoverSearchBar(
-                      controller: _searchController,
-                      focusNode: _searchFocusNode,
-                      selectedTabIndex: _selectedTabIndex,
-                      onFilterTap: () => _showFilterSheet(context),
-                    ),
-                    if (_locationNotice != null) ...[
-                      const SizedBox(height: DesignTokens.spacing12),
-                      _LocationBrowseBanner(
-                        message: _locationNotice!,
-                        onOpenSettings: () async {
-                          await Geolocator.openAppSettings();
-                        },
-                      ),
-                    ],
-                    const SizedBox(height: DesignTokens.spacing16),
-                    _DiscoverSegmentTabs(
-                      tabs: const ['Trainers', 'Nutritionists', 'Centers'],
-                      selectedIndex: _selectedTabIndex,
-                      onTabChanged: (index) {
-                        HapticFeedback.selectionClick();
-                        setState(() => _selectedTabIndex = index);
-                      },
-                      selectedGradient: _discoverGradient,
-                    ),
-                    if (Supabase.instance.client.auth.currentUser != null &&
-                        (_connectionUnlimited ||
-                            (_connectionRemaining != null &&
-                                _connectionLimit != null))) ...[
-                      const SizedBox(height: DesignTokens.spacing12),
-                      _DiscoverAllowanceBanner(
-                        unlimited: _connectionUnlimited,
-                        remaining: _connectionRemaining,
-                        limit: _connectionLimit,
-                        used: _connectionUsed,
-                        nutritionistAllowed: _nutritionistAllowed,
-                      ),
-                    ],
-                    const SizedBox(height: DesignTokens.spacing12),
-                  ],
-                ),
+            onRefresh: () async {
+              HapticFeedback.mediumImpact();
+              await _loadRealData();
+            },
+            color: _discoverAccent,
+            child: CustomScrollView(
+              controller: _scrollController,
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
               ),
-            ),
-            if (_isLoading) ...[
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: DesignTokens.spacing16,
-                    vertical: DesignTokens.spacing8,
-                  ),
-                  child: _DiscoverLoadingHeader(),
-                ),
-              ),
-              SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: DesignTokens.spacing16),
-                sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) => const Padding(
-                      padding: EdgeInsets.only(bottom: 14),
-                      child: _DiscoverSkeletonCard(),
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.only(
+                      left: DesignTokens.spacing16,
+                      right: DesignTokens.spacing16,
+                      top: DesignTokens.spacing12,
                     ),
-                    childCount: 4,
-                  ),
-                ),
-              ),
-            ]
-            else if (_errorMessage != null)
-              SliverToBoxAdapter(child: _buildErrorState())
-            else if (_currentItems.isEmpty)
-              SliverToBoxAdapter(child: _buildEmptyState())
-            else
-              SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: DesignTokens.spacing16),
-                sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      final item = _currentItems[index];
-                      return TweenAnimationBuilder<double>(
-                        tween: Tween(begin: 0.0, end: 1.0),
-                        duration: Duration(milliseconds: 260 + (index * 60)),
-                        curve: Curves.easeOutCubic,
-                        builder: (context, value, child) {
-                          return Opacity(
-                            opacity: value,
-                            child: Transform.translate(
-                              offset: Offset(0, 12 * (1 - value)),
-                              child: child,
-                            ),
-                          );
-                        },
-                          child: Padding(
-                          padding: const EdgeInsets.only(bottom: 14),
-                          child: _selectedTabIndex == 2
-                              ? _DiscoverResultCard(
-                                  item: item,
-                                  accentColor: _discoverAccent,
-                                  accentGradient: _discoverGradient,
-                                  isCenter: true,
-                                  requestStatus: 'none',
-                                  onTap: () {
-                                    HapticFeedback.lightImpact();
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) => CenterDetailPage(
-                                          centerId: item.id,
-                                          centerName: item.name,
-                                          subtitle: item.subtitle,
-                                          location: item.location,
-                                          rating: item.rating,
-                                          reviews: item.reviews,
-                                          distance: item.distance,
-                                          isCotrainrPartner:
-                                              item.isCotrainrPartner,
-                                          activeOfferTitle:
-                                              item.activeOfferTitle,
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                )
-                              : DiscoverProviderCard(
-                                  data: DiscoverProviderCardData(
-                                    id: item.id,
-                                    name: item.name,
-                                    roleLabel: item.roleLabel,
-                                    headline: item.headline ??
-                                        (item.specialtyChips.isEmpty
-                                            ? null
-                                            : item.specialtyChips.first),
-                                    specialtyChips: item.specialtyChips,
-                                    rating: item.rating,
-                                    reviewCount: item.reviews,
-                                    experienceYears: item.experienceYears,
-                                    sessionModeLabels: item.sessionModes
-                                        .map(
-                                          (m) => ProviderSessionModes.labelFor(
-                                            m,
-                                            role: _selectedTabIndex == 0
-                                                ? 'trainer'
-                                                : 'nutritionist',
-                                          ),
-                                        )
-                                        .toList(),
-                                    distanceOrLocation: item.location.isEmpty
-                                        ? null
-                                        : item.location,
-                                    verified: item.isVerified,
-                                    offersOnline: item.offersOnline,
-                                    avatarUrl: item.avatarUrl,
-                                    requestStatus:
-                                        _requestStatus[item.id] ?? 'none',
-                                  ),
-                                  accentColor: _discoverAccent,
-                                  submitting:
-                                      _submittingProviders.contains(item.id),
-                                  planBadge: _selectedTabIndex == 1 &&
-                                          _nutritionistAllowed == false
-                                      ? SubscriptionPlans
-                                          .nutritionistAccessPlansLabel
-                                      : null,
-                                  requestRequiresUpgrade:
-                                      _selectedTabIndex == 1 &&
-                                          _nutritionistAllowed == false,
-                                  onTap: () {
-                                    HapticFeedback.lightImpact();
-                                    context.push(
-                                      '/providers/${item.id}',
-                                      extra: {
-                                        'titleFallback': item.name,
-                                        'providerType': _selectedTabIndex == 0
-                                            ? 'trainer'
-                                            : 'nutritionist',
-                                      },
-                                    );
-                                  },
-                                  onRequest: () => _sendRequest(item),
-                                  onCancelRequest: () => _cancelRequest(item),
-                                ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const _DiscoverHeaderRow(),
+                        const SizedBox(height: DesignTokens.spacing16),
+                        _DiscoverSearchBar(
+                          controller: _searchController,
+                          focusNode: _searchFocusNode,
+                          selectedTabIndex: _selectedTabIndex,
+                          onFilterTap: () => _showFilterSheet(context),
                         ),
-                      );
-                    },
-                    childCount: _currentItems.length,
+                        if (_locationNotice != null) ...[
+                          const SizedBox(height: DesignTokens.spacing12),
+                          _LocationBrowseBanner(
+                            message: _locationNotice!,
+                            onOpenSettings: () async {
+                              await Geolocator.openAppSettings();
+                            },
+                          ),
+                        ],
+                        const SizedBox(height: DesignTokens.spacing16),
+                        _DiscoverSegmentTabs(
+                          tabs: const ['Trainers', 'Nutritionists', 'Centers'],
+                          selectedIndex: _selectedTabIndex,
+                          onTabChanged: (index) {
+                            HapticFeedback.selectionClick();
+                            setState(() => _selectedTabIndex = index);
+                          },
+                          selectedGradient: _discoverGradient,
+                        ),
+                        if (Supabase.instance.client.auth.currentUser != null &&
+                            (_connectionUnlimited ||
+                                (_connectionRemaining != null &&
+                                    _connectionLimit != null))) ...[
+                          const SizedBox(height: DesignTokens.spacing12),
+                          _DiscoverAllowanceBanner(
+                            unlimited: _connectionUnlimited,
+                            remaining: _connectionRemaining,
+                            limit: _connectionLimit,
+                            used: _connectionUsed,
+                            nutritionistAllowed: _nutritionistAllowed,
+                          ),
+                        ],
+                        const SizedBox(height: DesignTokens.spacing12),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            const SliverToBoxAdapter(child: SizedBox(height: 80)),
-          ],
-        ),
-        ),
+                if (_isLoading) ...[
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: DesignTokens.spacing16,
+                        vertical: DesignTokens.spacing8,
+                      ),
+                      child: _DiscoverLoadingHeader(),
+                    ),
+                  ),
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: DesignTokens.spacing16,
+                    ),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) => const Padding(
+                          padding: EdgeInsets.only(bottom: 14),
+                          child: _DiscoverSkeletonCard(),
+                        ),
+                        childCount: 4,
+                      ),
+                    ),
+                  ),
+                ] else if (_errorMessage != null)
+                  SliverToBoxAdapter(child: _buildErrorState())
+                else if (_currentItems.isEmpty)
+                  SliverToBoxAdapter(child: _buildEmptyState())
+                else
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: DesignTokens.spacing16,
+                    ),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate((context, index) {
+                        final item = _currentItems[index];
+                        return TweenAnimationBuilder<double>(
+                          tween: Tween(begin: 0.0, end: 1.0),
+                          duration: Duration(milliseconds: 260 + (index * 60)),
+                          curve: Curves.easeOutCubic,
+                          builder: (context, value, child) {
+                            return Opacity(
+                              opacity: value,
+                              child: Transform.translate(
+                                offset: Offset(0, 12 * (1 - value)),
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 14),
+                            child: _selectedTabIndex == 2
+                                ? _DiscoverResultCard(
+                                    item: item,
+                                    accentColor: _discoverAccent,
+                                    accentGradient: _discoverGradient,
+                                    isCenter: true,
+                                    requestStatus: 'none',
+                                    onTap: () {
+                                      HapticFeedback.lightImpact();
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) =>
+                                              CenterDetailPage(
+                                                centerId: item.id,
+                                                centerName: item.name,
+                                                subtitle: item.subtitle,
+                                                location: item.location,
+                                                rating: item.rating,
+                                                reviews: item.reviews,
+                                                distance: item.distance,
+                                                isCotrainrPartner:
+                                                    item.isCotrainrPartner,
+                                                activeOfferTitle:
+                                                    item.activeOfferTitle,
+                                              ),
+                                        ),
+                                      );
+                                    },
+                                  )
+                                : DiscoverProviderCard(
+                                    data: DiscoverProviderCardData(
+                                      id: item.id,
+                                      name: item.name,
+                                      roleLabel: item.roleLabel,
+                                      headline:
+                                          item.headline ??
+                                          (item.specialtyChips.isEmpty
+                                              ? null
+                                              : item.specialtyChips.first),
+                                      specialtyChips: item.specialtyChips,
+                                      rating: item.rating,
+                                      reviewCount: item.reviews,
+                                      experienceYears: item.experienceYears,
+                                      sessionModeLabels: item.sessionModes
+                                          .map(
+                                            (m) =>
+                                                ProviderSessionModes.labelFor(
+                                                  m,
+                                                  role: _selectedTabIndex == 0
+                                                      ? 'trainer'
+                                                      : 'nutritionist',
+                                                ),
+                                          )
+                                          .toList(),
+                                      distanceOrLocation: item.location.isEmpty
+                                          ? null
+                                          : item.location,
+                                      verified: item.isVerified,
+                                      offersOnline: item.offersOnline,
+                                      avatarUrl: item.avatarUrl,
+                                      requestStatus:
+                                          _requestStatus[item.id] ?? 'none',
+                                    ),
+                                    accentColor: _discoverAccent,
+                                    submitting: _submittingProviders.contains(
+                                      item.id,
+                                    ),
+                                    planBadge:
+                                        _selectedTabIndex == 1 &&
+                                            _nutritionistAllowed == false
+                                        ? SubscriptionPlans
+                                              .nutritionistAccessPlansLabel
+                                        : null,
+                                    requestRequiresUpgrade:
+                                        _selectedTabIndex == 1 &&
+                                        _nutritionistAllowed == false,
+                                    onTap: () {
+                                      HapticFeedback.lightImpact();
+                                      context.push(
+                                        '/providers/${item.id}',
+                                        extra: {
+                                          'titleFallback': item.name,
+                                          'providerType': _selectedTabIndex == 0
+                                              ? 'trainer'
+                                              : 'nutritionist',
+                                        },
+                                      );
+                                    },
+                                    onRequest: () => _sendRequest(item),
+                                    onCancelRequest: () => _cancelRequest(item),
+                                  ),
+                          ),
+                        );
+                      }, childCount: _currentItems.length),
+                    ),
+                  ),
+                const SliverToBoxAdapter(child: SizedBox(height: 80)),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -964,11 +997,11 @@ class _DiscoverPageState extends State<DiscoverPage>
           ? 'Your connected nutritionists are available in My Nutritionists.'
           : 'Your connected trainers are available in My Trainers.';
       icon = Icons.people_alt_outlined;
-      primaryAction = () => context.push(
-            isNutritionists ? '/my-nutritionists' : '/my-trainers',
-          );
-      primaryLabel =
-          isNutritionists ? 'View My Nutritionists' : 'View My Trainers';
+      primaryAction = () =>
+          context.push(isNutritionists ? '/my-nutritionists' : '/my-trainers');
+      primaryLabel = isNutritionists
+          ? 'View My Nutritionists'
+          : 'View My Trainers';
       primaryFilled = true;
     } else {
       title = isNutritionists
@@ -992,11 +1025,7 @@ class _DiscoverPageState extends State<DiscoverPage>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 48,
-              color: DesignTokens.textSecondaryOf(context),
-            ),
+            Icon(icon, size: 48, color: DesignTokens.textSecondaryOf(context)),
             const SizedBox(height: DesignTokens.spacing16),
             Text(
               title,
@@ -1152,9 +1181,10 @@ class _DiscoverLoadingHeaderState extends State<_DiscoverLoadingHeader>
   @override
   Widget build(BuildContext context) {
     return FadeTransition(
-      opacity: Tween<double>(begin: 0.55, end: 1).animate(
-        CurvedAnimation(parent: _pulse, curve: Curves.easeInOut),
-      ),
+      opacity: Tween<double>(
+        begin: 0.55,
+        end: 1,
+      ).animate(CurvedAnimation(parent: _pulse, curve: Curves.easeInOut)),
       child: Row(
         children: [
           SizedBox(
@@ -1196,10 +1226,7 @@ class _DiscoverHeaderRow extends StatelessWidget {
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOutCubic,
             builder: (context, value, child) {
-              return Transform.scale(
-                scale: value,
-                child: child,
-              );
+              return Transform.scale(scale: value, child: child);
             },
             child: ShaderMask(
               shaderCallback: (rect) =>
@@ -1257,7 +1284,9 @@ class _LocationBrowseBanner extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: DesignTokens.accentOrange.withValues(alpha: isDark ? 0.16 : 0.10),
+        color: DesignTokens.accentOrange.withValues(
+          alpha: isDark ? 0.16 : 0.10,
+        ),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: DesignTokens.accentOrange.withValues(alpha: 0.28),
@@ -1281,10 +1310,7 @@ class _LocationBrowseBanner extends StatelessWidget {
               ),
             ),
           ),
-          TextButton(
-            onPressed: onOpenSettings,
-            child: const Text('Settings'),
-          ),
+          TextButton(onPressed: onOpenSettings, child: const Text('Settings')),
         ],
       ),
     );
@@ -1349,67 +1375,70 @@ class _DiscoverSearchBarState extends State<_DiscoverSearchBar> {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(26),
         child: TextField(
-        controller: widget.controller,
-        focusNode: widget.focusNode,
-        style: TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w500,
-          color: colorScheme.onSurface,
-        ),
-        decoration: InputDecoration(
-          filled: true,
-          fillColor: Colors.transparent,
-          hintText: _hintText,
-          hintStyle: TextStyle(
+          controller: widget.controller,
+          focusNode: widget.focusNode,
+          style: TextStyle(
             fontSize: 15,
-            fontWeight: FontWeight.w400,
-            color: DesignTokens.textSecondaryOf(context),
+            fontWeight: FontWeight.w500,
+            color: colorScheme.onSurface,
           ),
-          prefixIcon: Icon(
-            Icons.search_rounded,
-            size: 22,
-            color: DesignTokens.textSecondaryOf(context),
-          ),
-          suffixIcon: GestureDetector(
-            onTap: widget.onFilterTap,
-            child: Container(
-              margin: const EdgeInsets.all(6),
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    DesignTokens.discoverOrange.withValues(alpha: 0.18),
-                    DesignTokens.discoverOrangeDeep.withValues(alpha: 0.14),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: Colors.transparent,
+            hintText: _hintText,
+            hintStyle: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w400,
+              color: DesignTokens.textSecondaryOf(context),
+            ),
+            prefixIcon: Icon(
+              Icons.search_rounded,
+              size: 22,
+              color: DesignTokens.textSecondaryOf(context),
+            ),
+            suffixIcon: GestureDetector(
+              onTap: widget.onFilterTap,
+              child: Container(
+                margin: const EdgeInsets.all(6),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      DesignTokens.discoverOrange.withValues(alpha: 0.18),
+                      DesignTokens.discoverOrangeDeep.withValues(alpha: 0.14),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  shape: BoxShape.circle,
                 ),
-                shape: BoxShape.circle,
-              ),
-              child: ShaderMask(
-                shaderCallback: (rect) => _discoverGradient.createShader(rect),
-                child: const Icon(
-                  Icons.tune_rounded,
-                  size: 18,
-                  color: Colors.white,
+                child: ShaderMask(
+                  shaderCallback: (rect) =>
+                      _discoverGradient.createShader(rect),
+                  child: const Icon(
+                    Icons.tune_rounded,
+                    size: 18,
+                    color: Colors.white,
+                  ),
                 ),
               ),
             ),
+            border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: InputBorder.none,
+            disabledBorder: InputBorder.none,
+            errorBorder: InputBorder.none,
+            focusedErrorBorder: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 18,
+              vertical: 16,
+            ),
           ),
-          border: InputBorder.none,
-          enabledBorder: InputBorder.none,
-          focusedBorder: InputBorder.none,
-          disabledBorder: InputBorder.none,
-          errorBorder: InputBorder.none,
-          focusedErrorBorder: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-        ),
         ),
       ),
     );
   }
 }
-
 
 class _DiscoverSegmentTabs extends StatelessWidget {
   final List<String> tabs;
@@ -1433,7 +1462,7 @@ class _DiscoverSegmentTabs extends StatelessWidget {
       builder: (context, constraints) {
         final tabWidth = constraints.maxWidth / tabs.length;
         final pillWidth = tabWidth - 8;
-        
+
         return Container(
           height: 44,
           decoration: BoxDecoration(
@@ -1468,13 +1497,18 @@ class _DiscoverSegmentTabs extends StatelessWidget {
                     child: GestureDetector(
                       onTap: () => onTabChanged(index),
                       child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                        margin: const EdgeInsets.symmetric(
+                          horizontal: 4,
+                          vertical: 4,
+                        ),
                         child: Center(
                           child: Text(
                             tabs[index],
                             style: TextStyle(
                               fontSize: 14,
-                              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                              fontWeight: isSelected
+                                  ? FontWeight.w700
+                                  : FontWeight.w600,
                               color: isSelected
                                   ? Colors.white
                                   : unselectedTextColor,
@@ -1590,13 +1624,17 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                     color: colorScheme.surfaceVariant,
                   ),
                   child: ClipOval(
-                    child: widget.item.avatarUrl == null || widget.item.avatarUrl!.isEmpty
+                    child:
+                        widget.item.avatarUrl == null ||
+                            widget.item.avatarUrl!.isEmpty
                         ? Container(
                             color: colorScheme.surfaceContainerHighest,
                             child: Icon(
                               Icons.person_rounded,
                               size: 35,
-                              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                              color: colorScheme.onSurfaceVariant.withValues(
+                                alpha: 0.6,
+                              ),
                             ),
                           )
                         : CachedNetworkImage(
@@ -1607,7 +1645,9 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                             placeholder: (context, url) => Container(
                               color: colorScheme.surfaceContainerHighest,
                               child: const Center(
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               ),
                             ),
                             errorWidget: (context, url, error) => Container(
@@ -1615,7 +1655,9 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                               child: Icon(
                                 Icons.person_rounded,
                                 size: 35,
-                                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                                color: colorScheme.onSurfaceVariant.withValues(
+                                  alpha: 0.6,
+                                ),
                               ),
                             ),
                           ),
@@ -1798,11 +1840,18 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                         onTap: widget.onChat,
                         borderRadius: BorderRadius.circular(18),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 7,
+                          ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.chat_bubble_outline_rounded, size: 14, color: Colors.white),
+                              const Icon(
+                                Icons.chat_bubble_outline_rounded,
+                                size: 14,
+                                color: Colors.white,
+                              ),
                               const SizedBox(width: 5),
                               const Text(
                                 'Chat',
@@ -1819,47 +1868,53 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                     ),
                   )
                 : hasRequest
-                    ? OutlinedButton.icon(
-                        onPressed: widget.onCancelRequest,
-                        icon: const Icon(Icons.close_rounded, size: 12),
-                        label: const Text('Cancel'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: colorScheme.onSurfaceVariant,
-                          side: BorderSide(
-                            color: colorScheme.outline.withValues(alpha: 0.3),
+                ? OutlinedButton.icon(
+                    onPressed: widget.onCancelRequest,
+                    icon: const Icon(Icons.close_rounded, size: 12),
+                    label: const Text('Cancel'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: colorScheme.onSurfaceVariant,
+                      side: BorderSide(
+                        color: colorScheme.outline.withValues(alpha: 0.3),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 7,
+                      ),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                    ),
+                  )
+                : Container(
+                    decoration: BoxDecoration(
+                      gradient: widget.accentGradient,
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: widget.onRequest,
+                        borderRadius: BorderRadius.circular(18),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 7,
                           ),
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                        ),
-                      )
-                    : Container(
-                        decoration: BoxDecoration(
-                          gradient: widget.accentGradient,
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        child: Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: widget.onRequest,
-                            borderRadius: BorderRadius.circular(18),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                              child: const Text(
-                                'Request',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white,
-                                ),
-                              ),
+                          child: const Text(
+                            'Request',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
                             ),
                           ),
                         ),
                       ),
+                    ),
+                  ),
           ],
         ),
       ],
@@ -1879,13 +1934,16 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(14),
-            child: widget.item.avatarUrl == null || widget.item.avatarUrl!.isEmpty
+            child:
+                widget.item.avatarUrl == null || widget.item.avatarUrl!.isEmpty
                 ? Container(
                     color: colorScheme.surfaceContainerHighest,
                     child: Icon(
                       Icons.place_rounded,
                       size: 35,
-                      color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                      color: colorScheme.onSurfaceVariant.withValues(
+                        alpha: 0.6,
+                      ),
                     ),
                   )
                 : CachedNetworkImage(
@@ -1904,7 +1962,9 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                       child: Icon(
                         Icons.place_rounded,
                         size: 35,
-                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+                        color: colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.6,
+                        ),
                       ),
                     ),
                   ),
@@ -1962,8 +2022,10 @@ class _DiscoverResultCardState extends State<_DiscoverResultCard>
                   widget.item.activeOfferTitle!.trim().isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 5,
+                  ),
                   decoration: BoxDecoration(
                     color: DesignTokens.accentOrange.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
@@ -2135,8 +2197,9 @@ class _ShimmerBoxState extends State<_ShimmerBox>
   @override
   Widget build(BuildContext context) {
     final base = DesignTokens.textSecondaryOf(context).withValues(alpha: 35);
-    final highlight =
-        DesignTokens.textSecondaryOf(context).withValues(alpha: 80);
+    final highlight = DesignTokens.textSecondaryOf(
+      context,
+    ).withValues(alpha: 80);
 
     return AnimatedBuilder(
       animation: _controller,
@@ -2195,8 +2258,9 @@ class _DiscoverFilterSheetState extends State<_DiscoverFilterSheet> {
     super.initState();
     _distance = widget.distance;
     _minRating = widget.minRating;
-    _selectedCategories =
-        widget.selectedCategories.where(widget.categories.contains).toSet();
+    _selectedCategories = widget.selectedCategories
+        .where(widget.categories.contains)
+        .toSet();
   }
 
   @override
@@ -2205,9 +2269,7 @@ class _DiscoverFilterSheetState extends State<_DiscoverFilterSheet> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
-      margin: EdgeInsets.only(
-        top: MediaQuery.of(context).size.height * 0.1,
-      ),
+      margin: EdgeInsets.only(top: MediaQuery.of(context).size.height * 0.1),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: colorScheme.surface,
@@ -2423,7 +2485,9 @@ class _FilterChipSection extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: isSelected ? selectedColor : colorScheme.surfaceVariant,
+                  color: isSelected
+                      ? selectedColor
+                      : colorScheme.surfaceVariant,
                   borderRadius: BorderRadius.circular(24),
                   border: Border.all(
                     color: isSelected
@@ -2479,9 +2543,7 @@ class _CategoryChips extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14),
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: isSelected
-                  ? accentColor
-                  : colorScheme.surfaceVariant,
+              color: isSelected ? accentColor : colorScheme.surfaceVariant,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 color: isSelected
@@ -2510,10 +2572,7 @@ class _PrimaryActionButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
 
-  const _PrimaryActionButton({
-    required this.label,
-    required this.onTap,
-  });
+  const _PrimaryActionButton({required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -2554,10 +2613,7 @@ class _SecondaryActionButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
 
-  const _SecondaryActionButton({
-    required this.label,
-    required this.onTap,
-  });
+  const _SecondaryActionButton({required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -2571,9 +2627,7 @@ class _SecondaryActionButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: colorScheme.surfaceVariant,
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(
-            color: colorScheme.outline.withOpacity(0.2),
-          ),
+          border: Border.all(color: colorScheme.outline.withOpacity(0.2)),
         ),
         child: Center(
           child: Text(
@@ -2637,9 +2691,7 @@ class _DiscoverAllowanceBanner extends StatelessWidget {
           alpha: isLight ? 0.55 : 0.35,
         ),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: colorScheme.outline.withValues(alpha: 0.14),
-        ),
+        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.14)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,

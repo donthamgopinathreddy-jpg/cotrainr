@@ -1,6 +1,5 @@
 import 'dart:ui';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -528,30 +527,6 @@ class _InsightsDetailPageState extends State<InsightsDetailPage>
                         statusLabel: _waterReminderStatus,
                         onTap: () => _showWaterReminderPicker(context, theme),
                       ),
-                      if (kDebugMode) ...[
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            onPressed: () async {
-                              final ok = await WaterReminderService.instance
-                                  .showTestNotification();
-                              if (!context.mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    ok
-                                        ? 'Test water notification sent'
-                                        : 'Notification permission denied',
-                                  ),
-                                ),
-                              );
-                            },
-                            icon: const Icon(Icons.bug_report_outlined, size: 18),
-                            label: const Text('Send test water notification'),
-                          ),
-                        ),
-                      ],
                     ],
                     const SizedBox(height: 12),
                     InsightRangePills(

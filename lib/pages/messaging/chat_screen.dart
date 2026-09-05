@@ -9,6 +9,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as path;
+import 'package:permission_handler/permission_handler.dart';
+import 'package:record/record.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
@@ -17,16 +19,19 @@ import '../../theme/design_tokens.dart';
 import '../../models/user_safety_models.dart';
 import '../../repositories/messages_repository.dart';
 import '../../services/active_conversation_tracker.dart';
+import '../../services/chat_voice_playback_controller.dart';
 import '../../services/storage_service.dart';
 import '../../services/messaging_policy_service.dart';
 import '../../services/user_safety_service.dart';
 import '../../providers/unread_messages_count_provider.dart';
 import '../../utils/chat_attachment_rules.dart';
 import '../../utils/chat_message_reconciler.dart';
+import '../../utils/chat_voice_rules.dart';
 import '../../utils/messaging_error_messages.dart';
 import '../../services/chat_media_storage.dart';
 import '../../widgets/common/app_overlays.dart';
 import '../../widgets/common/cotrainr_back_button.dart';
+import '../../widgets/messaging/chat_voice_bubble.dart';
 import '../../widgets/messaging/report_user_sheet.dart';
 import '../../widgets/provider/provider_avatar.dart';
 import '../profile/public_profile_readonly_page.dart';
@@ -52,7 +57,8 @@ class ChatScreen extends ConsumerStatefulWidget {
   ConsumerState<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends ConsumerState<ChatScreen> {
+class _ChatScreenState extends ConsumerState<ChatScreen>
+    with WidgetsBindingObserver {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final ImagePicker _imagePicker = ImagePicker();
@@ -66,6 +72,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   String? _previewDocumentName;
   String? _previewDocumentMime;
   int? _previewDocumentSize;
+  AudioRecorder? _audioRecorder;
+  bool _isRecording = false;
+  bool _isVoicePreview = false;
+  String? _previewAudioPath;
+  int? _previewAudioDurationMs;
+  Timer? _recordTicker;
+  DateTime? _recordStartedAt;
+  int _elapsedRecordMs = 0;
   bool _attachmentBusy = false;
   bool _textSending = false;
   bool _isLoading = true;
@@ -100,6 +114,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             documentName: m.documentName,
             documentMime: m.documentMime,
             documentSizeBytes: m.documentSizeBytes,
+            audioPath: m.audioPath,
+            audioUrl: m.audioUrl,
+            audioDurationMs: m.audioDurationMs,
             readAt: m.readAt,
             deletedForEveryoneAt: m.deletedForEveryoneAt,
             uploadStatus: m.uploadStatus,
@@ -126,8 +143,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     ActiveConversationTracker.instance.setActive(widget.conversationId);
     _bootstrap();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_loadConversationAccess());
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      if (_isRecording) {
+        unawaited(_stopVoiceRecording());
+      }
+    }
   }
 
   Future<void> _bootstrap() async {
@@ -141,8 +171,53 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _setupRealtimeSubscription();
   }
 
+  /// True when messaging is locked because the accepted relationship ended
+  /// (not because of block/report safety locks).
+  bool get _isEndedConnection =>
+      MessagingPolicyService.shouldShowEndedConnectionBanner(
+        hasConversationRow: _conversationRow != null,
+        isProviderClient:
+            _conversationRow != null &&
+            MessagingPolicyService.isProviderClientConversation(
+              _conversationRow!,
+            ),
+        canSend: _canSend,
+        eitherBlocked: _blockState.eitherBlocked,
+      );
+
+  bool get _showComposer => MessagingPolicyService.shouldShowMessageComposer(
+    canSend: _canSend,
+    eitherBlocked: _blockState.eitherBlocked,
+  );
+
+  /// After a failed/null send: refresh eligibility; if ended, lock the UI.
+  Future<bool> _handleSendDeniedMaybeEnded({Object? error}) async {
+    await _loadConversationAccess();
+    if (!mounted) return false;
+    final ended =
+        _isEndedConnection ||
+        MessagingErrorMessages.looksLikeEndedConnectionDenial(error);
+    if (ended) {
+      if (_canSend) {
+        // Force read-only if heuristic matched but RPC briefly lagged.
+        setState(() => _canSend = false);
+      }
+      _clearPreview();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(MessagingErrorMessages.connectionEnded),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return true;
+    }
+    return false;
+  }
+
   Future<void> _loadConversationAccess() async {
-    final row = await _messagesRepo.fetchConversationById(widget.conversationId);
+    final row = await _messagesRepo.fetchConversationById(
+      widget.conversationId,
+    );
     if (!mounted) return;
     if (row == null) {
       setState(() {
@@ -154,7 +229,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       return;
     }
     final me = _supabase.auth.currentUser?.id;
-    final other = me != null ? MessagingPolicyService.otherParticipantUserId(row, me) : null;
+    final other = me != null
+        ? MessagingPolicyService.otherParticipantUserId(row, me)
+        : null;
     final canSend = me != null
         ? await MessagingPolicyService.canCurrentUserSendMessage(
             supabase: _supabase,
@@ -197,6 +274,24 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       nameHint,
       mimeType: mediaMime,
     );
+    final looksLikeAudio = ChatAttachmentRules.isAllowedAudio(
+      nameHint,
+      mimeType: mediaMime,
+    );
+    final mimeLower = mediaMime?.toLowerCase();
+
+    if (mediaKind == 'audio' ||
+        mediaKind == 'voice' ||
+        (mimeLower != null && mimeLower.startsWith('audio/')) ||
+        (looksLikeAudio &&
+            mediaKind != 'image' &&
+            mediaKind != 'video' &&
+            mediaKind != 'document')) {
+      return _ParsedMedia(
+        audioUrl: mediaUrl,
+        audioDurationMs: ChatVoiceRules.durationMsFromFileName(mediaFileName),
+      );
+    }
 
     if (mediaKind == 'document' ||
         (mediaKind != 'image' &&
@@ -205,7 +300,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             !looksLikeImage)) {
       return _ParsedMedia(
         documentUrl: mediaUrl,
-        documentName: mediaFileName ?? path.basename(Uri.tryParse(mediaUrl)?.path ?? mediaUrl),
+        documentName:
+            mediaFileName ??
+            path.basename(Uri.tryParse(mediaUrl)?.path ?? mediaUrl),
         documentMime: mediaMime ?? ChatAttachmentRules.mimeForPath(nameHint),
         documentSizeBytes: mediaSizeBytes,
       );
@@ -215,7 +312,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if ((mediaKind == null || mediaKind.isEmpty) && looksLikeDoc) {
       return _ParsedMedia(
         documentUrl: mediaUrl,
-        documentName: mediaFileName ?? path.basename(Uri.tryParse(mediaUrl)?.path ?? mediaUrl),
+        documentName:
+            mediaFileName ??
+            path.basename(Uri.tryParse(mediaUrl)?.path ?? mediaUrl),
         documentMime: mediaMime ?? ChatAttachmentRules.mimeForPath(nameHint),
         documentSizeBytes: mediaSizeBytes,
       );
@@ -227,12 +326,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     if (mediaKind == 'image' ||
         looksLikeImage ||
-        (mediaMime != null && mediaMime.toLowerCase().startsWith('image/'))) {
+        (mimeLower != null && mimeLower.startsWith('image/'))) {
       return _ParsedMedia(imageUrl: mediaUrl);
     }
 
-    if (mediaKind == null &&
-        mediaUrl.toLowerCase().contains('.mp4')) {
+    if (mediaKind == null && mediaUrl.toLowerCase().contains('.mp4')) {
       return _ParsedMedia(videoUrl: mediaUrl);
     }
 
@@ -294,6 +392,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             documentName: media.documentName,
             documentMime: media.documentMime,
             documentSizeBytes: media.documentSizeBytes,
+            audioUrl: media.audioUrl,
+            audioDurationMs: media.audioDurationMs,
             readAt: _parseReadAt(msg['read_at']),
           ),
         );
@@ -318,47 +418,51 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _setupRealtimeSubscription() {
-    _messagesChannel =
-        _messagesRepo.subscribeToMessages(widget.conversationId, (newMessage) {
-      () async {
-        final currentUserId = _supabase.auth.currentUser?.id;
-        final senderId = newMessage['sender_id'] as String;
-        final isSent = senderId == currentUserId;
-        final content = newMessage['content'] as String? ?? '';
-        final createdAt = newMessage['created_at'] as String?;
-        final time = _formatTime(createdAt);
-        final messageId = newMessage['id'] as String?;
+    _messagesChannel = _messagesRepo.subscribeToMessages(
+      widget.conversationId,
+      (newMessage) {
+        () async {
+          final currentUserId = _supabase.auth.currentUser?.id;
+          final senderId = newMessage['sender_id'] as String;
+          final isSent = senderId == currentUserId;
+          final content = newMessage['content'] as String? ?? '';
+          final createdAt = newMessage['created_at'] as String?;
+          final time = _formatTime(createdAt);
+          final messageId = newMessage['id'] as String?;
 
-        if (!mounted || messageId == null || messageId.isEmpty) return;
+          if (!mounted || messageId == null || messageId.isEmpty) return;
 
-        final resolved = await ChatMediaStorage.resolveMessageMedia(
-          _supabase,
-          newMessage,
-        );
-        if (!mounted) return;
-        final media = _parseMediaFields(resolved);
-        final added = _reconciler.upsertCanonical(
-          messageId: messageId,
-          text: content,
-          isSent: isSent,
-          time: time,
-          imageUrl: media.imageUrl,
-          videoUrl: media.videoUrl,
-          documentUrl: media.documentUrl,
-          documentName: media.documentName,
-          documentMime: media.documentMime,
-          documentSizeBytes: media.documentSizeBytes,
-          readAt: _parseReadAt(newMessage['read_at']),
-        );
-        if (!added) return;
+          final resolved = await ChatMediaStorage.resolveMessageMedia(
+            _supabase,
+            newMessage,
+          );
+          if (!mounted) return;
+          final media = _parseMediaFields(resolved);
+          final added = _reconciler.upsertCanonical(
+            messageId: messageId,
+            text: content,
+            isSent: isSent,
+            time: time,
+            imageUrl: media.imageUrl,
+            videoUrl: media.videoUrl,
+            documentUrl: media.documentUrl,
+            documentName: media.documentName,
+            documentMime: media.documentMime,
+            documentSizeBytes: media.documentSizeBytes,
+            audioUrl: media.audioUrl,
+            audioDurationMs: media.audioDurationMs,
+            readAt: _parseReadAt(newMessage['read_at']),
+          );
+          if (!added) return;
 
-        setState(_syncMessagesFromReconciler);
-        _scrollToBottom();
-        if (!isSent) {
-          _markMessagesAsRead();
-        }
-      }();
-    });
+          setState(_syncMessagesFromReconciler);
+          _scrollToBottom();
+          if (!isSent) {
+            _markMessagesAsRead();
+          }
+        }();
+      },
+    );
 
     _messagesUpdateChannel = _messagesRepo.subscribeToMessageUpdates(
       widget.conversationId,
@@ -438,11 +542,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Future<void> _sendMessage() async {
     if (!_canSend) {
       if (mounted) {
+        await _handleSendDeniedMaybeEnded();
+        if (!mounted) return;
+        if (_isEndedConnection) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text(
-              'Sending is disabled. An accepted connection is required, or reopen the chat.',
-            ),
+            content: Text(MessagingErrorMessages.generic),
             duration: Duration(seconds: 3),
           ),
         );
@@ -456,7 +561,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final hasDocument = _previewDocumentPath != null;
     final hasImage = _previewImagePath != null;
     final hasVideo = _previewVideoPath != null;
-    final hasAttachment = hasDocument || hasImage || hasVideo;
+    final hasAudio = _previewAudioPath != null && _isVoicePreview;
+    final hasAttachment = hasDocument || hasImage || hasVideo || hasAudio;
 
     if (text.isEmpty && !hasAttachment) return;
 
@@ -469,6 +575,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         documentName: _previewDocumentName,
         documentMime: _previewDocumentMime,
         documentSizeBytes: _previewDocumentSize,
+        audioPath: hasAudio ? _previewAudioPath : null,
+        audioDurationMs: hasAudio ? _previewAudioDurationMs : null,
       );
       return;
     }
@@ -501,11 +609,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           _reconciler.removeOptimistic(localId);
           _syncMessagesFromReconciler();
         });
+        final ended = await _handleSendDeniedMaybeEnded();
+        if (!mounted || ended) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text(
-              'Could not send message. Check your connection or accepted connection.',
-            ),
+            content: Text(MessagingErrorMessages.textSend),
             duration: Duration(seconds: 3),
           ),
         );
@@ -528,16 +636,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         });
       }
     } catch (e) {
-      if (kDebugMode) debugPrint('Error sending message: $e');
+      MessagingErrorMessages.logMessagingError('sendText', e);
       if (mounted) {
         setState(() {
           _reconciler.removeOptimistic(localId);
           _syncMessagesFromReconciler();
         });
+        final ended = await _handleSendDeniedMaybeEnded(error: e);
+        if (!mounted || ended) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to send message. Please try again.'),
-            duration: Duration(seconds: 2),
+          SnackBar(
+            content: Text(MessagingErrorMessages.forTextSend(e)),
+            duration: const Duration(seconds: 2),
           ),
         );
       }
@@ -554,6 +664,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     String? documentName,
     String? documentMime,
     int? documentSizeBytes,
+    String? audioPath,
+    int? audioDurationMs,
     String? existingLocalId,
   }) async {
     if (_attachmentBusy) return;
@@ -561,19 +673,30 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final isDocument = documentPath != null;
     final isImage = imagePath != null;
     final isVideo = videoPath != null;
-    if (!isDocument && !isImage && !isVideo) return;
+    final isAudio = audioPath != null;
+    if (!isDocument && !isImage && !isVideo && !isAudio) return;
 
-    final mediaKind = isDocument ? 'document' : (isImage ? 'image' : 'video');
-    final filePath = documentPath ?? imagePath ?? videoPath!;
-    final displayName = documentPath != null
-        ? (documentName ?? path.basename(documentPath))
-        : path.basename(filePath);
+    final mediaKind = isAudio
+        ? ChatVoiceRules.mediaKind
+        : (isDocument ? 'document' : (isImage ? 'image' : 'video'));
+    final filePath = documentPath ?? imagePath ?? videoPath ?? audioPath!;
+    final displayName = isAudio
+        ? ChatVoiceRules.fileNameForDuration(audioDurationMs ?? 0)
+        : (documentPath != null
+              ? (documentName ?? path.basename(documentPath))
+              : path.basename(filePath));
     final content = isDocument
         ? displayName
-        : (text.isNotEmpty ? text : '');
-    final mime = documentMime ??
-        ChatAttachmentRules.mimeForPath(displayName) ??
-        ChatAttachmentRules.mimeForPath(filePath);
+        : (isAudio ? '' : (text.isNotEmpty ? text : ''));
+    final mime = isAudio
+        ? ChatVoiceRules.mimeType
+        : (documentMime ??
+              ChatAttachmentRules.mimeForPath(displayName) ??
+              ChatAttachmentRules.mimeForPath(filePath));
+
+    if (isAudio && kDebugMode) {
+      debugPrint('[MSG_VOICE_SEND]');
+    }
 
     setState(() => _attachmentBusy = true);
 
@@ -597,6 +720,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         documentName: isDocument ? displayName : null,
         documentMime: isDocument ? mime : null,
         documentSizeBytes: documentSizeBytes,
+        audioPath: audioPath,
+        audioDurationMs: audioDurationMs,
         uploadStatus: ChatUploadStatus.uploading,
       );
       setState(_syncMessagesFromReconciler);
@@ -648,9 +773,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           _syncMessagesFromReconciler();
           _attachmentBusy = false;
         });
+        final ended = await _handleSendDeniedMaybeEnded();
+        if (!mounted || ended) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Could not send message. Check your connection or try again.'),
+            content: Text(MessagingErrorMessages.generic),
             duration: Duration(seconds: 3),
           ),
         );
@@ -660,17 +787,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final sentId = sent['id'] as String?;
       final createdAt = sent['created_at'] as String?;
       final sentMediaUrl = sent['media_url'] as String? ?? mediaUrl;
-      final resolvedSent = await ChatMediaStorage.resolveMessageMedia(
-        _supabase,
-        {
-          ...sent,
-          'media_url': sentMediaUrl,
-          'media_kind': sent['media_kind'] ?? mediaKind,
-          'media_file_name': sent['media_file_name'] ?? displayName,
-          'media_mime_type': sent['media_mime_type'] ?? mime,
-          'media_size_bytes': sent['media_size_bytes'] ?? sizeBytes,
-        },
-      );
+      final resolvedSent =
+          await ChatMediaStorage.resolveMessageMedia(_supabase, {
+            ...sent,
+            'media_url': sentMediaUrl,
+            'media_kind': sent['media_kind'] ?? mediaKind,
+            'media_file_name': sent['media_file_name'] ?? displayName,
+            'media_mime_type': sent['media_mime_type'] ?? mime,
+            'media_size_bytes': sent['media_size_bytes'] ?? sizeBytes,
+          });
       final parsed = _parseMediaFields(resolvedSent);
 
       if (sentId != null && sentId.isNotEmpty) {
@@ -687,6 +812,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             documentName: parsed.documentName,
             documentMime: parsed.documentMime,
             documentSizeBytes: parsed.documentSizeBytes,
+            audioUrl: parsed.audioUrl,
+            audioDurationMs: parsed.audioDurationMs ?? audioDurationMs,
           );
           _syncMessagesFromReconciler();
           _attachmentBusy = false;
@@ -705,6 +832,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           _syncMessagesFromReconciler();
           _attachmentBusy = false;
         });
+        final ended = await _handleSendDeniedMaybeEnded(error: e);
+        if (!mounted || ended) return;
         // The bubble already carries "… sending failed  Retry", so surface a
         // sanitized line only for connectivity, never the backend exception.
         if (MessagingErrorMessages.isNetworkError(e)) {
@@ -728,10 +857,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final imagePath = msg.imagePath;
     final videoPath = msg.videoPath;
     final documentPath = msg.documentPath;
-    if (imagePath == null && videoPath == null && documentPath == null) {
+    final audioPath = msg.audioPath;
+    if (imagePath == null &&
+        videoPath == null &&
+        documentPath == null &&
+        audioPath == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Cannot retry: original file is unavailable.')),
+          const SnackBar(
+            content: Text('Cannot retry: original file is unavailable.'),
+          ),
         );
       }
       return;
@@ -745,8 +880,80 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       documentName: msg.documentName,
       documentMime: msg.documentMime,
       documentSizeBytes: msg.documentSizeBytes,
+      audioPath: audioPath,
+      audioDurationMs: msg.audioDurationMs,
       existingLocalId: localId,
     );
+  }
+
+  Future<void> _pickCamera() async {
+    if (kDebugMode) debugPrint('[MSG_CAMERA_START]');
+    try {
+      final XFile? photo = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 85,
+      );
+      if (photo == null) {
+        if (kDebugMode) debugPrint('[MSG_CAMERA_CANCEL]');
+        return;
+      }
+
+      final filePath = photo.path;
+      if (!ChatAttachmentRules.isAllowedImage(
+        filePath,
+        mimeType: photo.mimeType,
+      )) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Unsupported media type.')),
+          );
+        }
+        return;
+      }
+
+      final length = await File(filePath).length();
+      if (length > ChatAttachmentRules.maxImageBytes) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('File is too large. Maximum image size is 10 MB.'),
+            ),
+          );
+        }
+        return;
+      }
+
+      if (kDebugMode) debugPrint('[MSG_CAMERA_OK]');
+      setState(() {
+        _previewImagePath = filePath;
+        _previewVideoPath = null;
+        _previewDocumentPath = null;
+        _previewDocumentName = null;
+        _previewDocumentMime = null;
+        _previewDocumentSize = null;
+        _isVoicePreview = false;
+        _previewAudioPath = null;
+        _previewAudioDurationMs = null;
+      });
+    } catch (e, s) {
+      MessagingErrorMessages.logMessagingError('pickCamera', e, s);
+      if (!mounted) return;
+      final msg = e.toString().toLowerCase();
+      final denied =
+          msg.contains('camera') &&
+          (msg.contains('denied') ||
+              msg.contains('permission') ||
+              msg.contains('access'));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            denied
+                ? MessagingErrorMessages.cameraDenied
+                : 'Could not open the camera.',
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _pickGallery() async {
@@ -761,7 +968,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final filePath = media.path;
       final mime = (media.mimeType ?? '').toLowerCase();
       final ext = path.extension(filePath).toLowerCase();
-      final isVideo = mime.startsWith('video/') ||
+      final isVideo =
+          mime.startsWith('video/') ||
           {'.mp4', '.mov', '.m4v', '.webm', '.avi'}.contains(ext);
 
       if (isVideo) {
@@ -770,7 +978,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('File is too large. Maximum video size is 20 MB.'),
+                content: Text(
+                  'File is too large. Maximum video size is 20 MB.',
+                ),
               ),
             );
           }
@@ -783,11 +993,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           _previewDocumentName = null;
           _previewDocumentMime = null;
           _previewDocumentSize = null;
+          _isVoicePreview = false;
+          _previewAudioPath = null;
+          _previewAudioDurationMs = null;
         });
         return;
       }
 
-      if (!ChatAttachmentRules.isAllowedImage(filePath, mimeType: media.mimeType)) {
+      if (!ChatAttachmentRules.isAllowedImage(
+        filePath,
+        mimeType: media.mimeType,
+      )) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Unsupported media type.')),
@@ -815,6 +1031,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _previewDocumentName = null;
         _previewDocumentMime = null;
         _previewDocumentSize = null;
+        _isVoicePreview = false;
+        _previewAudioPath = null;
+        _previewAudioDurationMs = null;
       });
     } catch (e, s) {
       MessagingErrorMessages.logMessagingError('pickGallery', e, s);
@@ -863,13 +1082,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (filePath == null || filePath.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not access the selected file.')),
+            const SnackBar(
+              content: Text('Could not access the selected file.'),
+            ),
           );
         }
         return;
       }
 
-      final mime = ChatAttachmentRules.mimeForPath(name) ??
+      final mime =
+          ChatAttachmentRules.mimeForPath(name) ??
           ChatAttachmentRules.mimeForPath(filePath);
 
       if (ChatAttachmentRules.isBlockedExtension(name) ||
@@ -903,7 +1125,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('File is too large. Maximum document size is 20 MB.'),
+              content: Text(
+                'File is too large. Maximum document size is 20 MB.',
+              ),
             ),
           );
         }
@@ -917,6 +1141,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _previewDocumentSize = size;
         _previewImagePath = null;
         _previewVideoPath = null;
+        _isVoicePreview = false;
+        _previewAudioPath = null;
+        _previewAudioDurationMs = null;
       });
     } catch (e) {
       if (mounted) {
@@ -946,6 +1173,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            ListTile(
+              leading: Icon(Icons.photo_camera_outlined, color: cs.onSurface),
+              title: Text('Camera', style: TextStyle(color: cs.onSurface)),
+              subtitle: Text(
+                'Take a photo',
+                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+              ),
+              onTap: () {
+                Navigator.pop(context);
+                _pickCamera();
+              },
+            ),
             ListTile(
               leading: Icon(Icons.photo_library_outlined, color: cs.onSurface),
               title: Text('Gallery', style: TextStyle(color: cs.onSurface)),
@@ -984,7 +1223,187 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _previewDocumentName = null;
       _previewDocumentMime = null;
       _previewDocumentSize = null;
+      _isVoicePreview = false;
+      _previewAudioPath = null;
+      _previewAudioDurationMs = null;
     });
+  }
+
+  void _deleteTempAudioFile(String? path) {
+    if (path == null || path.isEmpty) return;
+    try {
+      final f = File(path);
+      if (f.existsSync()) f.deleteSync();
+    } catch (_) {}
+  }
+
+  Future<bool> _ensureMicPermission() async {
+    final recorder = _audioRecorder ??= AudioRecorder();
+    if (await recorder.hasPermission()) return true;
+    final status = await Permission.microphone.request();
+    if (status.isGranted) return recorder.hasPermission();
+    return false;
+  }
+
+  Future<void> _startVoiceRecording() async {
+    if (_attachmentBusy || _isRecording || _isVoicePreview) return;
+    if (!_canSend) return;
+
+    final ok = await _ensureMicPermission();
+    if (!ok) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text(MessagingErrorMessages.micDenied)),
+        );
+      }
+      return;
+    }
+
+    try {
+      final recorder = _audioRecorder ??= AudioRecorder();
+      final outPath =
+          '${Directory.systemTemp.path}/cotrainr_voice_${DateTime.now().millisecondsSinceEpoch}${ChatVoiceRules.fileExtension}';
+      await recorder.start(
+        const RecordConfig(encoder: AudioEncoder.aacLc),
+        path: outPath,
+      );
+      if (kDebugMode) debugPrint('[MSG_VOICE_START]');
+      _recordTicker?.cancel();
+      _recordStartedAt = DateTime.now();
+      _elapsedRecordMs = 0;
+      if (!mounted) return;
+      setState(() {
+        _isRecording = true;
+        _isVoicePreview = false;
+        _previewAudioPath = null;
+        _previewAudioDurationMs = null;
+        _previewImagePath = null;
+        _previewVideoPath = null;
+        _previewDocumentPath = null;
+        _previewDocumentName = null;
+        _previewDocumentMime = null;
+        _previewDocumentSize = null;
+      });
+      _recordTicker = Timer.periodic(const Duration(milliseconds: 200), (_) {
+        if (!_isRecording || _recordStartedAt == null) return;
+        final ms = DateTime.now().difference(_recordStartedAt!).inMilliseconds;
+        if (!mounted) return;
+        setState(() => _elapsedRecordMs = ms);
+        if (ChatVoiceRules.isAtMax(ms)) {
+          unawaited(_stopVoiceRecording());
+        }
+      });
+    } catch (e, s) {
+      MessagingErrorMessages.logMessagingError('startVoice', e, s);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text(MessagingErrorMessages.recordingFailed)),
+        );
+      }
+    }
+  }
+
+  Future<void> _stopVoiceRecording({bool cancel = false}) async {
+    if (!_isRecording) return;
+    _recordTicker?.cancel();
+    _recordTicker = null;
+
+    String? path;
+    try {
+      path = await _audioRecorder?.stop();
+    } catch (e, s) {
+      MessagingErrorMessages.logMessagingError('stopVoice', e, s);
+    }
+
+    final durationMs = _recordStartedAt != null
+        ? DateTime.now().difference(_recordStartedAt!).inMilliseconds
+        : _elapsedRecordMs;
+    _recordStartedAt = null;
+
+    if (kDebugMode) {
+      debugPrint(cancel ? '[MSG_VOICE_CANCEL]' : '[MSG_VOICE_STOP]');
+    }
+
+    if (cancel) {
+      _deleteTempAudioFile(path);
+      if (!mounted) return;
+      setState(() {
+        _isRecording = false;
+        _isVoicePreview = false;
+        _previewAudioPath = null;
+        _previewAudioDurationMs = null;
+        _elapsedRecordMs = 0;
+      });
+      return;
+    }
+
+    if (path == null || path.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _isRecording = false;
+        _elapsedRecordMs = 0;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text(MessagingErrorMessages.recordingFailed)),
+      );
+      return;
+    }
+
+    if (ChatVoiceRules.isTooShort(durationMs)) {
+      _deleteTempAudioFile(path);
+      if (!mounted) return;
+      setState(() {
+        _isRecording = false;
+        _isVoicePreview = false;
+        _previewAudioPath = null;
+        _previewAudioDurationMs = null;
+        _elapsedRecordMs = 0;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text(MessagingErrorMessages.recordingTooShort)),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _isRecording = false;
+      _isVoicePreview = true;
+      _previewAudioPath = path;
+      _previewAudioDurationMs = durationMs.clamp(
+        0,
+        ChatVoiceRules.maxDurationMs,
+      );
+      _elapsedRecordMs = 0;
+    });
+  }
+
+  Future<void> _cancelVoiceRecording() async {
+    await _stopVoiceRecording(cancel: true);
+  }
+
+  Future<void> _discardVoicePreview() async {
+    if (kDebugMode) debugPrint('[MSG_VOICE_CANCEL]');
+    await ChatVoicePlaybackController.instance.stopAll();
+    final path = _previewAudioPath;
+    _deleteTempAudioFile(path);
+    if (!mounted) return;
+    setState(() {
+      _isVoicePreview = false;
+      _previewAudioPath = null;
+      _previewAudioDurationMs = null;
+    });
+  }
+
+  Future<void> _sendVoicePreview() async {
+    final path = _previewAudioPath;
+    final ms = _previewAudioDurationMs;
+    if (path == null || ms == null) return;
+    await _sendAttachmentMessage(
+      text: '',
+      audioPath: path,
+      audioDurationMs: ms,
+    );
   }
 
   void _openPeerProfile() {
@@ -1059,9 +1478,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     try {
       await _safetyService.blockUser(other);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('User blocked')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('User blocked')));
       await _refreshBlockState();
     } catch (e, s) {
       MessagingErrorMessages.logMessagingError('blockUser', e, s);
@@ -1101,9 +1520,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     try {
       await _safetyService.unblockUser(other);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('User unblocked')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('User unblocked')));
       await _refreshBlockState();
     } catch (e, s) {
       MessagingErrorMessages.logMessagingError('unblockUser', e, s);
@@ -1147,8 +1566,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             if (message.isSent)
               ListTile(
                 leading: const Icon(Icons.delete_forever, color: AppColors.red),
-                title: const Text('Delete for everyone',
-                    style: TextStyle(color: AppColors.red)),
+                title: const Text(
+                  'Delete for everyone',
+                  style: TextStyle(color: AppColors.red),
+                ),
                 onTap: () {
                   HapticFeedback.mediumImpact();
                   Navigator.pop(sheetContext);
@@ -1219,9 +1640,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     if (ActiveConversationTracker.instance.isActive(widget.conversationId)) {
       ActiveConversationTracker.instance.clear();
     }
+    _recordTicker?.cancel();
+    _recordTicker = null;
+    final recorder = _audioRecorder;
+    _audioRecorder = null;
+    if (recorder != null) {
+      unawaited(() async {
+        try {
+          if (await recorder.isRecording()) {
+            await recorder.stop();
+          }
+        } catch (_) {}
+        try {
+          await recorder.dispose();
+        } catch (_) {}
+      }());
+    }
+    unawaited(ChatVoicePlaybackController.instance.stopAll());
     _messagesChannel?.unsubscribe();
     _messagesUpdateChannel?.unsubscribe();
     _messageController.dispose();
@@ -1237,7 +1676,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ? Color.lerp(Colors.black, AppColors.blue, 0.2)!
         : DesignTokens.lightPageBackground;
 
-    final hasPreview = _previewImagePath != null ||
+    final hasPreview =
+        _previewImagePath != null ||
         _previewVideoPath != null ||
         _previewDocumentPath != null;
 
@@ -1271,10 +1711,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         decoration: BoxDecoration(
                           color: AppColors.green,
                           shape: BoxShape.circle,
-                          border: Border.all(
-                            color: cs.surface,
-                            width: 2,
-                          ),
+                          border: Border.all(color: cs.surface, width: 2),
                         ),
                       ),
                     ),
@@ -1378,9 +1815,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         children: [
           Expanded(
             child: _isLoading
-                ? const Center(
-                    child: CircularProgressIndicator(),
-                  )
+                ? const Center(child: CircularProgressIndicator())
                 : RefreshIndicator(
                     color: DesignTokens.accentOrange,
                     backgroundColor: DesignTokens.surfaceOf(context),
@@ -1438,7 +1873,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                 // gates "Delete for everyone" to the sender.
                                 onLongPress: () =>
                                     _showDeleteOptions(context, index),
-                                onRetry: message.uploadStatus == ChatUploadStatus.failed
+                                onRetry:
+                                    message.uploadStatus ==
+                                        ChatUploadStatus.failed
                                     ? () => _retryUpload(message)
                                     : null,
                               );
@@ -1446,8 +1883,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           ),
                   ),
           ),
-          // Preview
-          if (hasPreview)
+          // Preview (active composer only)
+          if (hasPreview && _showComposer)
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 16),
               child: _previewDocumentPath != null
@@ -1570,33 +2007,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       ),
                     ),
             ),
-          if (_conversationRow != null && !_canSend && !_blockState.eitherBlocked)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(Icons.lock_outline, color: cs.onSurfaceVariant, size: 20),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Viewing only: messaging is available after this provider accepts your connection.',
-                          style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant, height: 1.35),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          // Message input / blocked banner
+          // Message input / blocked / ended connection
           if (_blockState.eitherBlocked)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
@@ -1606,7 +2017,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
                   child: Row(
                     children: [
                       Icon(Icons.block, color: cs.onSurfaceVariant, size: 20),
@@ -1633,6 +2047,148 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ),
               ),
             )
+          else if (_isEndedConnection || !_showComposer)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        color: cs.onSurfaceVariant,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Connection ended',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: cs.onSurface,
+                                height: 1.3,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'You can still view your previous messages.',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: cs.onSurfaceVariant,
+                                height: 1.35,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          else if (_isRecording)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.mic, color: Colors.red, size: 22),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        ChatVoiceRules.formatDuration(
+                          Duration(milliseconds: _elapsedRecordMs),
+                        ),
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: cs.onSurface,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => unawaited(_cancelVoiceRecording()),
+                      child: const Text('Cancel'),
+                    ),
+                    FilledButton(
+                      onPressed: () => unawaited(_stopVoiceRecording()),
+                      child: const Text('Stop'),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else if (_isVoicePreview && _previewAudioPath != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: ChatVoiceBubble(
+                        playbackKey: 'preview_voice',
+                        audioPath: _previewAudioPath,
+                        durationMs: _previewAudioDurationMs,
+                        foreground: cs.onSurface,
+                        foregroundMuted: cs.onSurfaceVariant,
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Delete',
+                      onPressed: () => unawaited(_discardVoicePreview()),
+                      icon: Icon(
+                        Icons.delete_outline,
+                        color: cs.onSurfaceVariant,
+                      ),
+                    ),
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: const BoxDecoration(
+                        gradient: AppColors.waterGradient,
+                        shape: BoxShape.circle,
+                      ),
+                      child: IconButton(
+                        icon: const Icon(
+                          Icons.send_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                        onPressed: _attachmentBusy
+                            ? null
+                            : () {
+                                HapticFeedback.mediumImpact();
+                                unawaited(_sendVoicePreview());
+                              },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
           else
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
@@ -1643,18 +2199,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       constraints: const BoxConstraints(maxHeight: 100),
                       child: TextField(
                         controller: _messageController,
-                        readOnly: !_canSend,
                         maxLines: null,
                         textInputAction: TextInputAction.send,
                         onSubmitted: (_) => _sendMessage(),
                         cursorColor: AppColors.blue,
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: cs.onSurface,
-                        ),
+                        style: TextStyle(fontSize: 14, color: cs.onSurface),
                         decoration: InputDecoration(
                           filled: false,
-                          hintText: _canSend ? 'Type a message...' : 'Sending is disabled',
+                          hintText: 'Type a message...',
                           hintStyle: TextStyle(
                             fontSize: 14,
                             color: cs.onSurfaceVariant,
@@ -1664,7 +2216,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             color: cs.onSurfaceVariant,
                             size: 20,
                             onPressed: () {
-                              if (!_canSend || _attachmentBusy) return;
+                              if (_attachmentBusy || _isRecording) return;
                               HapticFeedback.lightImpact();
                               FocusScope.of(context).unfocus();
                               _showAttachmentMenu();
@@ -1672,15 +2224,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                           ),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(24),
-                            borderSide: BorderSide(color: AppColors.blue.withOpacity(0.3)),
+                            borderSide: BorderSide(
+                              color: AppColors.blue.withOpacity(0.3),
+                            ),
                           ),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(24),
-                            borderSide: BorderSide(color: AppColors.blue.withOpacity(0.3)),
+                            borderSide: BorderSide(
+                              color: AppColors.blue.withOpacity(0.3),
+                            ),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(24),
-                            borderSide: const BorderSide(color: AppColors.blue, width: 2),
+                            borderSide: const BorderSide(
+                              color: AppColors.blue,
+                              width: 2,
+                            ),
                           ),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 8,
@@ -1691,7 +2250,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    tooltip: 'Voice message',
+                    onPressed: (_attachmentBusy || !_canSend)
+                        ? null
+                        : () {
+                            HapticFeedback.lightImpact();
+                            unawaited(_startVoiceRecording());
+                          },
+                    icon: Icon(
+                      Icons.mic_none_rounded,
+                      color: cs.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
                   Container(
                     width: 44,
                     height: 44,
@@ -1700,8 +2273,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       shape: BoxShape.circle,
                     ),
                     child: IconButton(
-                      icon: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
-                      onPressed: (!_canSend || _attachmentBusy)
+                      icon: const Icon(
+                        Icons.send_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                      onPressed: _attachmentBusy
                           ? null
                           : () {
                               HapticFeedback.mediumImpact();
@@ -1735,6 +2312,8 @@ class _ParsedMedia {
   final String? documentName;
   final String? documentMime;
   final int? documentSizeBytes;
+  final String? audioUrl;
+  final int? audioDurationMs;
 
   const _ParsedMedia({
     this.imageUrl,
@@ -1743,6 +2322,8 @@ class _ParsedMedia {
     this.documentName,
     this.documentMime,
     this.documentSizeBytes,
+    this.audioUrl,
+    this.audioDurationMs,
   });
 }
 
@@ -1775,9 +2356,10 @@ class _HapticIconButtonState extends State<_HapticIconButton>
       duration: const Duration(milliseconds: 100),
       vsync: this,
     );
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.85).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
+    _scaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 0.85,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
   }
 
   @override
@@ -1798,17 +2380,10 @@ class _HapticIconButtonState extends State<_HapticIconButton>
     return ScaleTransition(
       scale: _scaleAnimation,
       child: IconButton(
-        icon: Icon(
-          widget.icon,
-          color: widget.color,
-          size: widget.size,
-        ),
+        icon: Icon(widget.icon, color: widget.color, size: widget.size),
         onPressed: _handleTap,
         padding: EdgeInsets.zero,
-        constraints: const BoxConstraints(
-          minWidth: 20,
-          minHeight: 20,
-        ),
+        constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
         splashRadius: 18,
         visualDensity: VisualDensity.compact,
       ),
@@ -1829,6 +2404,9 @@ class _ChatMessage {
   final String? documentName;
   final String? documentMime;
   final int? documentSizeBytes;
+  final String? audioPath;
+  final String? audioUrl;
+  final int? audioDurationMs;
   final DateTime? readAt;
   final DateTime? deletedForEveryoneAt;
   final ChatUploadStatus uploadStatus;
@@ -1849,6 +2427,9 @@ class _ChatMessage {
     this.documentName,
     this.documentMime,
     this.documentSizeBytes,
+    this.audioPath,
+    this.audioUrl,
+    this.audioDurationMs,
     this.readAt,
     this.deletedForEveryoneAt,
     this.uploadStatus = ChatUploadStatus.none,
@@ -1861,6 +2442,10 @@ class _ChatMessage {
 
   bool get isDeletedForEveryone => deletedForEveryoneAt != null;
 
+  bool get isAudio =>
+      (audioUrl != null && audioUrl!.isNotEmpty) ||
+      (audioPath != null && audioPath!.isNotEmpty);
+
   bool get isDocument =>
       (documentUrl != null && documentUrl!.isNotEmpty) ||
       (documentPath != null && documentPath!.isNotEmpty) ||
@@ -1869,7 +2454,9 @@ class _ChatMessage {
           imageUrl == null &&
           imagePath == null &&
           videoUrl == null &&
-          videoPath == null);
+          videoPath == null &&
+          audioUrl == null &&
+          audioPath == null);
 }
 
 class _ChatBubble extends StatefulWidget {
@@ -1877,11 +2464,7 @@ class _ChatBubble extends StatefulWidget {
   final VoidCallback? onLongPress;
   final VoidCallback? onRetry;
 
-  const _ChatBubble({
-    required this.message,
-    this.onLongPress,
-    this.onRetry,
-  });
+  const _ChatBubble({required this.message, this.onLongPress, this.onRetry});
 
   @override
   State<_ChatBubble> createState() => _ChatBubbleState();
@@ -1936,8 +2519,11 @@ class _ChatBubbleState extends State<_ChatBubble> {
 
   Widget _buildDocumentCard(ColorScheme cs) {
     final msg = widget.message;
-    final name = msg.documentName ??
-        (msg.documentPath != null ? path.basename(msg.documentPath!) : 'Document');
+    final name =
+        msg.documentName ??
+        (msg.documentPath != null
+            ? path.basename(msg.documentPath!)
+            : 'Document');
     final typeLabel = ChatAttachmentRules.documentTypeLabel(
       name,
       mimeType: msg.documentMime,
@@ -1947,7 +2533,9 @@ class _ChatBubbleState extends State<_ChatBubble> {
         : null;
     final meta = [typeLabel, if (sizeLabel != null) sizeLabel].join(' • ');
     final fg = msg.isSent ? Colors.white : cs.onSurface;
-    final fgMuted = msg.isSent ? Colors.white.withOpacity(0.75) : cs.onSurfaceVariant;
+    final fgMuted = msg.isSent
+        ? Colors.white.withOpacity(0.75)
+        : cs.onSurfaceVariant;
 
     return InkWell(
       onTap: _openDocument,
@@ -1980,10 +2568,7 @@ class _ChatBubbleState extends State<_ChatBubble> {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    meta,
-                    style: TextStyle(fontSize: 11, color: fgMuted),
-                  ),
+                  Text(meta, style: TextStyle(fontSize: 11, color: fgMuted)),
                 ],
               ),
             ),
@@ -1998,7 +2583,9 @@ class _ChatBubbleState extends State<_ChatBubble> {
   Widget _buildUploadStatus(ColorScheme cs) {
     final msg = widget.message;
     final fg = msg.isSent ? Colors.white : cs.onSurface;
-    final fgMuted = msg.isSent ? Colors.white.withOpacity(0.8) : cs.onSurfaceVariant;
+    final fgMuted = msg.isSent
+        ? Colors.white.withOpacity(0.8)
+        : cs.onSurfaceVariant;
 
     if (msg.uploadStatus == ChatUploadStatus.uploading) {
       return Padding(
@@ -2028,11 +2615,13 @@ class _ChatBubbleState extends State<_ChatBubble> {
     }
 
     if (msg.uploadStatus == ChatUploadStatus.failed) {
-      final kind = msg.videoPath != null || msg.videoUrl != null
+      final kind = msg.isAudio
+          ? ChatMediaKind.audio
+          : msg.videoPath != null || msg.videoUrl != null
           ? ChatMediaKind.video
           : (msg.documentPath != null || msg.documentUrl != null
-              ? ChatMediaKind.document
-              : ChatMediaKind.image);
+                ? ChatMediaKind.document
+                : ChatMediaKind.image);
       return Padding(
         padding: const EdgeInsets.only(top: 4),
         child: Row(
@@ -2072,15 +2661,15 @@ class _ChatBubbleState extends State<_ChatBubble> {
       child: Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: Column(
-          crossAxisAlignment:
-              msg.isSent ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          crossAxisAlignment: msg.isSent
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
           children: [
             Container(
               constraints: BoxConstraints(
                 maxWidth: MediaQuery.of(context).size.width * 0.75,
               ),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
                 color: cs.onSurface.withOpacity(0.06),
                 borderRadius: BorderRadius.only(
@@ -2137,8 +2726,11 @@ class _ChatBubbleState extends State<_ChatBubble> {
     final hasImage = msg.imagePath != null || msg.imageUrl != null;
     final hasVideo = msg.videoPath != null || msg.videoUrl != null;
     final hasDocument = msg.isDocument;
-    final showCaption = msg.text.isNotEmpty &&
-        !(hasDocument && msg.text == (msg.documentName ?? ''));
+    final hasAudio = msg.isAudio;
+    final showCaption =
+        msg.text.isNotEmpty &&
+        !(hasDocument && msg.text == (msg.documentName ?? '')) &&
+        !hasAudio;
 
     final metaLabel = msg.isSent
         ? (msg.isSeen ? '${msg.time} · Seen' : msg.time)
@@ -2151,15 +2743,18 @@ class _ChatBubbleState extends State<_ChatBubble> {
         child: Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: Column(
-            crossAxisAlignment:
-                msg.isSent ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            crossAxisAlignment: msg.isSent
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
             children: [
               Container(
                 constraints: BoxConstraints(
                   maxWidth: MediaQuery.of(context).size.width * 0.75,
                 ),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   gradient: msg.isSent ? AppColors.waterGradient : null,
                   color: msg.isSent ? null : AppColors.blue.withOpacity(0.15),
@@ -2201,14 +2796,17 @@ class _ChatBubbleState extends State<_ChatBubble> {
                                     height: 200,
                                     color: Colors.grey.shade300,
                                     child: const Center(
-                                        child: CircularProgressIndicator()),
+                                      child: CircularProgressIndicator(),
+                                    ),
                                   ),
                                   errorWidget: (_, __, ___) => Container(
                                     width: 200,
                                     height: 200,
                                     color: Colors.grey.shade300,
-                                    child: const Icon(Icons.broken_image,
-                                        size: 48),
+                                    child: const Icon(
+                                      Icons.broken_image,
+                                      size: 48,
+                                    ),
                                   ),
                                 ),
                         ),
@@ -2253,9 +2851,23 @@ class _ChatBubbleState extends State<_ChatBubble> {
                         ),
                       ),
                     if (hasDocument) _buildDocumentCard(cs),
+                    if (hasAudio)
+                      ChatVoiceBubble(
+                        playbackKey:
+                            msg.messageId ??
+                            msg.localId ??
+                            'voice_${msg.hashCode}',
+                        audioUrl: msg.audioUrl,
+                        audioPath: msg.audioPath,
+                        durationMs: msg.audioDurationMs,
+                        foreground: msg.isSent ? Colors.white : cs.onSurface,
+                        foregroundMuted: msg.isSent
+                            ? Colors.white.withValues(alpha: 0.75)
+                            : cs.onSurfaceVariant,
+                      ),
                     _buildUploadStatus(cs),
                     if (showCaption) ...[
-                      if (hasImage || hasVideo || hasDocument)
+                      if (hasImage || hasVideo || hasDocument || hasAudio)
                         const SizedBox(height: 8),
                       Text(
                         msg.text,
@@ -2271,8 +2883,9 @@ class _ChatBubbleState extends State<_ChatBubble> {
               ),
               const SizedBox(height: 4),
               Align(
-                alignment:
-                    msg.isSent ? Alignment.centerRight : Alignment.centerLeft,
+                alignment: msg.isSent
+                    ? Alignment.centerRight
+                    : Alignment.centerLeft,
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 180),
                   child: Text(

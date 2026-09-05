@@ -6,6 +6,7 @@ class ChatAttachmentRules {
 
   static const int maxImageBytes = 10 * 1024 * 1024; // 10 MB
   static const int maxDocumentBytes = 20 * 1024 * 1024; // 20 MB
+  static const int maxAudioBytes = 10 * 1024 * 1024; // 10 MB
 
   static const Set<String> allowedImageExts = {
     '.jpg',
@@ -13,6 +14,13 @@ class ChatAttachmentRules {
     '.png',
     '.webp',
     '.gif',
+  };
+
+  static const Set<String> allowedAudioExts = {
+    '.m4a',
+    '.aac',
+    '.mp3',
+    '.mp4',
   };
 
   static const Set<String> allowedDocumentExts = {
@@ -59,6 +67,13 @@ class ChatAttachmentRules {
     return allowedImageExts.contains(extensionOf(pathOrName));
   }
 
+  static bool isAllowedAudio(String pathOrName, {String? mimeType}) {
+    if (isBlockedExtension(pathOrName)) return false;
+    final mime = (mimeType ?? '').toLowerCase();
+    if (mime.startsWith('audio/')) return true;
+    return allowedAudioExts.contains(extensionOf(pathOrName));
+  }
+
   static bool isAllowedDocument(String pathOrName, {String? mimeType}) {
     if (isBlockedExtension(pathOrName)) return false;
     final mime = (mimeType ?? '').toLowerCase();
@@ -88,6 +103,8 @@ class ChatAttachmentRules {
       '.gif' => 'image/gif',
       '.mp4' => 'video/mp4',
       '.mov' => 'video/quicktime',
+      '.m4a' || '.aac' => 'audio/mp4',
+      '.mp3' => 'audio/mpeg',
       '.pdf' => 'application/pdf',
       '.doc' => 'application/msword',
       '.docx' =>

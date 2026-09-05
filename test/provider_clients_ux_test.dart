@@ -113,8 +113,11 @@ Future<void> _pumpMyClients(
   double textScale = 1,
   List<ClientItem> clients = const [],
   List<ClientItem> requests = const [],
+  String providerType = 'trainer',
   Future<void> Function({required String leadId, required String status})?
-      updateLeadStatus,
+  updateLeadStatus,
+  Future<void> Function({required String leadId, required String reason})?
+  endConnection,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -131,11 +134,12 @@ Future<void> _pumpMyClients(
             textScaler: TextScaler.linear(textScale),
           ),
           child: ProviderMyClientsPage(
-            providerType: 'trainer',
+            providerType: providerType,
             clientPathPrefix: '/clients',
             initialClients: clients,
             initialRequests: requests,
             updateLeadStatus: updateLeadStatus,
+            endConnection: endConnection,
           ),
         ),
       ),
@@ -187,8 +191,9 @@ void main() {
   });
 
   group('ProviderClientsSummary', () {
-    testWidgets('shows Active, Requests, Notes without old dashboard copy',
-        (tester) async {
+    testWidgets('shows Active, Requests, Notes without old dashboard copy', (
+      tester,
+    ) async {
       var openedClients = 0;
       var openedRequests = 0;
       var openedNotes = 0;
@@ -256,8 +261,9 @@ void main() {
       expect(_redAttentionDots(), findsNothing);
     });
 
-    testWidgets('fits a small screen and long names without overflow',
-        (tester) async {
+    testWidgets('fits a small screen and long names without overflow', (
+      tester,
+    ) async {
       await _pumpSummary(
         tester,
         theme: AppTheme.lightTheme,
@@ -283,32 +289,35 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('light mode uses lavender tile and peach rows without borders',
-        (tester) async {
-      await _pumpSummary(
-        tester,
-        theme: AppTheme.lightTheme,
-        clients: const [
-          ProviderClientPreview(
-            id: 'c1',
-            name: 'Ada Lovelace',
-            subtitle: '@ada',
-          ),
-        ],
-      );
+    testWidgets(
+      'light mode uses lavender tile and peach rows without borders',
+      (tester) async {
+        await _pumpSummary(
+          tester,
+          theme: AppTheme.lightTheme,
+          clients: const [
+            ProviderClientPreview(
+              id: 'c1',
+              name: 'Ada Lovelace',
+              subtitle: '@ada',
+            ),
+          ],
+        );
 
-      expect(
-        _tintedSurfaces(HomePremiumTheme.clientsManagementSurface(true)),
-        findsWidgets,
-      );
-      expect(
-        _tintedSurfaces(HomePremiumTheme.recentClientSurface(true)),
-        findsWidgets,
-      );
-    });
+        expect(
+          _tintedSurfaces(HomePremiumTheme.clientsManagementSurface(true)),
+          findsWidgets,
+        );
+        expect(
+          _tintedSurfaces(HomePremiumTheme.recentClientSurface(true)),
+          findsWidgets,
+        );
+      },
+    );
 
-    testWidgets('dark mode uses purple-tinted charcoal and warm rows',
-        (tester) async {
+    testWidgets('dark mode uses purple-tinted charcoal and warm rows', (
+      tester,
+    ) async {
       await _pumpSummary(
         tester,
         theme: AppTheme.darkTheme,
@@ -332,8 +341,9 @@ void main() {
       expect(find.text('Recent clients'), findsOneWidget);
     });
 
-    testWidgets('next session row is tappable only when a session exists',
-        (tester) async {
+    testWidgets('next session row is tappable only when a session exists', (
+      tester,
+    ) async {
       var openedSession = 0;
       await _pumpSummary(
         tester,
@@ -353,8 +363,9 @@ void main() {
       expect(openedSession, 1);
     });
 
-    testWidgets('text scale 1.5 still fits Active/Requests/Notes',
-        (tester) async {
+    testWidgets('text scale 1.5 still fits Active/Requests/Notes', (
+      tester,
+    ) async {
       await _pumpSummary(
         tester,
         theme: AppTheme.lightTheme,
@@ -442,14 +453,13 @@ void main() {
   });
 
   group('ProviderMyClientsPage', () {
-    testWidgets('uses Clients and Requests tabs without a plus button',
-        (tester) async {
+    testWidgets('uses Clients and Requests tabs without a plus button', (
+      tester,
+    ) async {
       await _pumpMyClients(
         tester,
         theme: AppTheme.lightTheme,
-        clients: [
-          _client(id: 'c1', name: 'Ada Lovelace', email: '@ada'),
-        ],
+        clients: [_client(id: 'c1', name: 'Ada Lovelace', email: '@ada')],
         requests: [
           _client(
             id: 'c2',
@@ -480,8 +490,9 @@ void main() {
       expect(_redAttentionDots(), findsWidgets);
     });
 
-    testWidgets('accept moves the request into Clients and clears the dot',
-        (tester) async {
+    testWidgets('accept moves the request into Clients and clears the dot', (
+      tester,
+    ) async {
       final updates = <String>[];
       await _pumpMyClients(
         tester,
@@ -516,15 +527,14 @@ void main() {
       expect(find.text('Alan Turing'), findsOneWidget);
     });
 
-    testWidgets('decline removes the request without adding a client',
-        (tester) async {
+    testWidgets('decline removes the request without adding a client', (
+      tester,
+    ) async {
       final updates = <String>[];
       await _pumpMyClients(
         tester,
         theme: AppTheme.darkTheme,
-        clients: [
-          _client(id: 'c1', name: 'Ada Lovelace'),
-        ],
+        clients: [_client(id: 'c1', name: 'Ada Lovelace')],
         requests: [
           _client(
             id: 'c2',
@@ -552,7 +562,9 @@ void main() {
       expect(find.text('Alan Turing'), findsNothing);
     });
 
-    testWidgets('blocks a second tap while accept is in flight', (tester) async {
+    testWidgets('blocks a second tap while accept is in flight', (
+      tester,
+    ) async {
       var calls = 0;
       final gate = Completer<void>();
       await _pumpMyClients(
@@ -587,8 +599,9 @@ void main() {
       await tester.pumpAndSettle();
     });
 
-    testWidgets('empty copy and missing avatar stay usable on a small screen',
-        (tester) async {
+    testWidgets('empty copy and missing avatar stay usable on a small screen', (
+      tester,
+    ) async {
       await _pumpMyClients(
         tester,
         theme: AppTheme.lightTheme,
@@ -619,6 +632,176 @@ void main() {
         findsOneWidget,
       );
       expect(tester.takeException(), isNull);
+    });
+
+    test('mapLeadToClientItem keeps leadId for accepted relationships', () {
+      final accepted = mapLeadToClientItem(
+        Lead(
+          id: 'lead-accepted',
+          clientId: 'client-1',
+          providerId: 'provider-1',
+          providerType: 'trainer',
+          status: 'accepted',
+          createdAt: DateTime(2026, 9, 1),
+          client: {'full_name': 'Ada', 'username': 'ada'},
+        ),
+      );
+      expect(accepted.id, 'client-1');
+      expect(accepted.leadId, 'lead-accepted');
+      expect(accepted.status, ClientStatus.active);
+
+      final pending = mapLeadToClientItem(
+        Lead(
+          id: 'lead-pending',
+          clientId: 'client-2',
+          providerId: 'provider-1',
+          providerType: 'nutritionist',
+          status: 'requested',
+          createdAt: DateTime(2026, 9, 1),
+          client: {'full_name': 'Bob', 'username': 'bob'},
+        ),
+      );
+      expect(pending.leadId, 'lead-pending');
+      expect(pending.status, ClientStatus.pending);
+    });
+
+    testWidgets('accepted client exposes End relationship; pending does not', (
+      tester,
+    ) async {
+      await _pumpMyClients(
+        tester,
+        theme: AppTheme.lightTheme,
+        clients: [
+          _client(id: 'c1', name: 'Ada Lovelace', leadId: 'lead-accepted'),
+        ],
+        requests: [
+          _client(
+            id: 'c2',
+            name: 'Alan Turing',
+            status: ClientStatus.pending,
+            leadId: 'lead-pending',
+          ),
+        ],
+      );
+
+      expect(find.byTooltip('More'), findsOneWidget);
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
+      expect(find.text('End relationship'), findsOneWidget);
+
+      await tester.tapAt(const Offset(5, 5));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Requests 1'));
+      await tester.pumpAndSettle();
+      expect(find.text('Alan Turing'), findsOneWidget);
+      expect(find.text('Accept'), findsOneWidget);
+      expect(find.text('Decline'), findsOneWidget);
+      expect(find.byTooltip('More'), findsNothing);
+      expect(find.text('End relationship'), findsNothing);
+    });
+
+    testWidgets('cancel end relationship does not call endConnection', (
+      tester,
+    ) async {
+      var calls = 0;
+      await _pumpMyClients(
+        tester,
+        theme: AppTheme.lightTheme,
+        clients: [_client(id: 'c1', name: 'Ada Lovelace', leadId: 'lead-1')],
+        endConnection: ({required leadId, required reason}) async {
+          calls++;
+        },
+      );
+
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('End relationship'));
+      await tester.pumpAndSettle();
+      expect(find.text('End relationship?'), findsOneWidget);
+      await tester.tap(find.text('Keep relationship'));
+      await tester.pumpAndSettle();
+      expect(calls, 0);
+      expect(find.text('Ada Lovelace'), findsOneWidget);
+    });
+
+    testWidgets('confirm end calls service and removes active client', (
+      tester,
+    ) async {
+      final calls = <String>[];
+      await _pumpMyClients(
+        tester,
+        theme: AppTheme.lightTheme,
+        clients: [_client(id: 'c1', name: 'Ada Lovelace', leadId: 'lead-99')],
+        endConnection: ({required leadId, required reason}) async {
+          calls.add('$leadId:$reason');
+        },
+      );
+
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('End relationship'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(FilledButton, 'End relationship'));
+      await tester.pumpAndSettle();
+
+      expect(calls, ['lead-99:Client request']);
+      expect(find.text('Relationship ended'), findsOneWidget);
+      expect(find.text('Ada Lovelace'), findsNothing);
+      expect(find.text('No clients yet'), findsOneWidget);
+    });
+
+    testWidgets('failed end keeps client and shows sanitized error', (
+      tester,
+    ) async {
+      await _pumpMyClients(
+        tester,
+        theme: AppTheme.lightTheme,
+        clients: [_client(id: 'c1', name: 'Ada Lovelace', leadId: 'lead-1')],
+        endConnection: ({required leadId, required reason}) async {
+          throw Exception('PostgrestException: raw sql boom');
+        },
+      );
+
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('End relationship'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'End relationship'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Ada Lovelace'), findsOneWidget);
+      expect(
+        find.text('Could not end this relationship. Try again.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('PostgrestException'), findsNothing);
+      expect(find.textContaining('raw sql'), findsNothing);
+    });
+
+    testWidgets('nutritionist provider type still supports end relationship', (
+      tester,
+    ) async {
+      final calls = <String>[];
+      await _pumpMyClients(
+        tester,
+        theme: AppTheme.darkTheme,
+        providerType: 'nutritionist',
+        clients: [_client(id: 'c1', name: 'Client N', leadId: 'lead-n')],
+        endConnection: ({required leadId, required reason}) async {
+          calls.add('$leadId:$reason');
+        },
+      );
+
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('End relationship'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'End relationship'));
+      await tester.pumpAndSettle();
+      expect(calls, ['lead-n:Client request']);
+      expect(find.text('Relationship ended'), findsOneWidget);
     });
   });
 }

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/messaging_policy_service.dart';
 import '../utils/chat_message_reconciler.dart' show kDeletedMessageText;
+import '../utils/message_insert_payload.dart';
 
 /// Whether a mark-read attempt actually reached the database.
 ///
@@ -15,7 +16,7 @@ class MessagesRepository {
   final SupabaseClient _supabase;
 
   MessagesRepository({SupabaseClient? supabase})
-      : _supabase = supabase ?? Supabase.instance.client;
+    : _supabase = supabase ?? Supabase.instance.client;
 
   /// Get current user ID
   String? get _currentUserId => _supabase.auth.currentUser?.id;
@@ -25,10 +26,16 @@ class MessagesRepository {
     return MessagingPolicyService.isProviderClientConversation(conv);
   }
 
-  Future<Map<String, dynamic>?> fetchConversationById(String conversationId) async {
+  Future<Map<String, dynamic>?> fetchConversationById(
+    String conversationId,
+  ) async {
     if (_currentUserId == null) return null;
     try {
-      final row = await _supabase.from('conversations').select('*').eq('id', conversationId).maybeSingle();
+      final row = await _supabase
+          .from('conversations')
+          .select('*')
+          .eq('id', conversationId)
+          .maybeSingle();
       if (row == null) return null;
       if (!passesMvpConversationFilter(row)) return null;
       return Map<String, dynamic>.from(row);
@@ -46,7 +53,9 @@ class MessagesRepository {
       final conversationsResponse = await _supabase
           .from('conversations')
           .select('*')
-          .or('client_id.eq.$_currentUserId,provider_id.eq.$_currentUserId,other_user_id.eq.$_currentUserId');
+          .or(
+            'client_id.eq.$_currentUserId,provider_id.eq.$_currentUserId,other_user_id.eq.$_currentUserId',
+          );
 
       if (conversationsResponse.isEmpty) return 0;
 
@@ -106,8 +115,8 @@ class MessagesRepository {
       final parsed = candidate is DateTime
           ? candidate
           : (candidate is String && candidate.isNotEmpty
-              ? DateTime.tryParse(candidate)
-              : null);
+                ? DateTime.tryParse(candidate)
+                : null);
       if (parsed == null) continue;
       if (newest == null || parsed.isAfter(newest)) newest = parsed;
     }
@@ -185,14 +194,21 @@ class MessagesRepository {
         final providerId = conv['provider_id'] as String?;
         final otherUserIdCol = conv['other_user_id'] as String?;
         final isClient = clientId == _currentUserId;
-        final otherUserId = otherUserIdCol ?? (isClient ? providerId : clientId);
+        final otherUserId =
+            otherUserIdCol ?? (isClient ? providerId : clientId);
         if (otherUserId == null) continue;
 
         // Get other participant's profile
         final profileList =
-            (await _supabase.rpc('get_public_profile', params: {'p_user_id': otherUserId}) as List)
+            (await _supabase.rpc(
+                      'get_public_profile',
+                      params: {'p_user_id': otherUserId},
+                    )
+                    as List)
                 .cast<Map<String, dynamic>>();
-        final profileResponse = profileList.isNotEmpty ? profileList.first : null;
+        final profileResponse = profileList.isNotEmpty
+            ? profileList.first
+            : null;
 
         result.add({
           'id': convId,
@@ -201,7 +217,8 @@ class MessagesRepository {
           'unreadCount': unreadCount,
           'otherUser': profileResponse,
           'updatedAt': conv['updated_at'],
-          'lastMessageAt': conv['last_message_at'] ?? lastMessageResponse?['created_at'],
+          'lastMessageAt':
+              conv['last_message_at'] ?? lastMessageResponse?['created_at'],
         });
       }
 
@@ -253,7 +270,9 @@ class MessagesRepository {
   }
 
   /// Get messages for a conversation
-  Future<List<Map<String, dynamic>>> fetchMessages(String conversationId) async {
+  Future<List<Map<String, dynamic>>> fetchMessages(
+    String conversationId,
+  ) async {
     if (_currentUserId == null) return [];
 
     try {
@@ -332,15 +351,48 @@ class MessagesRepository {
     String? mediaMimeType,
     int? mediaSizeBytes,
   }) async {
+    // TEMP DEBUG — messaging-reconnect-debug-20260905 (no UI / control-flow change)
+    if (kDebugMode) {
+      debugPrint(
+        '[MSG_SEND_START] authUid=${_currentUserId} '
+        'conversationId=$conversationId '
+        'contentNonEmpty=${content.trim().isNotEmpty} '
+        'hasMedia=${mediaUrl != null}',
+      );
+    }
+
     if (_currentUserId == null) return null;
 
     try {
       final conv = await fetchConversationById(conversationId);
+      if (kDebugMode) {
+        debugPrint(
+          '[MSG_SEND_CONVERSATION] found=${conv != null} '
+          'conversationId=${conv?['id'] ?? conversationId} '
+          'client_id=${conv?['client_id']} '
+          'provider_id=${conv?['provider_id']} '
+          'lead_id=${conv?['lead_id']} '
+          'other_user_id=${conv?['other_user_id']}',
+        );
+      }
       if (conv == null) return null;
+
+      if (kDebugMode) {
+        debugPrint(
+          '[MSG_SEND_POLICY] before authUid=$_currentUserId '
+          'conversationId=${conv['id']}',
+        );
+      }
       final allowed = await MessagingPolicyService.canCurrentUserSendMessage(
         supabase: _supabase,
         conversation: conv,
       );
+      if (kDebugMode) {
+        debugPrint(
+          '[MSG_SEND_POLICY] after authUid=$_currentUserId '
+          'conversationId=${conv['id']} allowed=$allowed',
+        );
+      }
       if (!allowed) {
         if (kDebugMode) {
           debugPrint('sendMessage blocked by MessagingPolicyService');
@@ -348,31 +400,37 @@ class MessagesRepository {
         return null;
       }
 
-      final Map<String, dynamic> insertData = {
-        'conversation_id': conversationId,
-        'sender_id': _currentUserId!,
-        'content': content,
-      };
-      if (mediaUrl != null) {
-        insertData['media_url'] = mediaUrl;
-        if (mediaKind != null) insertData['media_kind'] = mediaKind;
-        if (mediaFileName != null) {
-          insertData['media_file_name'] = mediaFileName;
-        }
-        if (mediaMimeType != null) {
-          insertData['media_mime_type'] = mediaMimeType;
-        }
-        if (mediaSizeBytes != null) {
-          insertData['media_size_bytes'] = mediaSizeBytes;
-        }
-      }
+      final Map<String, dynamic> insertData = buildMessageInsertPayload(
+        conversationId: conversationId,
+        senderId: _currentUserId!,
+        content: content,
+        mediaUrl: mediaUrl,
+        mediaKind: mediaKind,
+        mediaFileName: mediaFileName,
+        mediaMimeType: mediaMimeType,
+        mediaSizeBytes: mediaSizeBytes,
+      );
 
       try {
+        if (kDebugMode) {
+          debugPrint(
+            '[MSG_SEND_INSERT_START] conversation_id=$conversationId '
+            'sender_id=$_currentUserId '
+            'messageType=${mediaKind ?? (mediaUrl != null ? 'media' : 'text')} '
+            'payloadKeys=${insertData.keys.toList()} '
+            'hasMediaKind=${insertData.containsKey('media_kind')} '
+            'mediaKindValue=${insertData['media_kind']}',
+          );
+        }
         final response = await _supabase
             .from('messages')
             .insert(insertData)
             .select()
             .single();
+
+        if (kDebugMode) {
+          debugPrint('[MSG_SEND_INSERT_SUCCESS] messageId=${response['id']}');
+        }
 
         // Ordering is bumped by trg_messages_touch_conversation. A client
         // UPDATE here silently affected zero rows: conversations has RLS on
@@ -381,18 +439,26 @@ class MessagesRepository {
       } catch (e) {
         // Fallback when document enum/metadata columns are not migrated yet.
         if (mediaKind == 'document' && mediaUrl != null) {
-          final fallback = <String, dynamic>{
-            'conversation_id': conversationId,
-            'sender_id': _currentUserId!,
-            'content': content.isNotEmpty ? content : (mediaFileName ?? 'Document'),
-            'media_url': mediaUrl,
-          };
+          final fallback = buildMessageInsertPayload(
+            conversationId: conversationId,
+            senderId: _currentUserId!,
+            content: content.isNotEmpty
+                ? content
+                : (mediaFileName ?? 'Document'),
+            mediaUrl: mediaUrl,
+          );
           try {
             final response = await _supabase
                 .from('messages')
                 .insert(fallback)
                 .select()
                 .single();
+            if (kDebugMode) {
+              debugPrint(
+                '[MSG_SEND_INSERT_SUCCESS] messageId=${response['id']} '
+                '(documentFallback)',
+              );
+            }
             return {
               ...response,
               'media_kind': 'document',
@@ -400,15 +466,44 @@ class MessagesRepository {
               'media_mime_type': mediaMimeType,
               'media_size_bytes': mediaSizeBytes,
             };
-          } catch (e2) {
-            if (kDebugMode) debugPrint('Error sending document fallback: $e2');
+          } catch (e2, s2) {
+            if (kDebugMode) {
+              if (e2 is PostgrestException) {
+                debugPrint(
+                  '[MSG_SEND_POSTGREST_ERROR] stage=documentFallback '
+                  'code=${e2.code} message=${e2.message} '
+                  'details=${e2.details} hint=${e2.hint}',
+                );
+              } else {
+                debugPrint(
+                  '[MSG_SEND_ERROR] stage=documentFallback '
+                  'runtimeType=${e2.runtimeType} exception=$e2\n$s2',
+                );
+              }
+              debugPrint('Error sending document fallback: $e2');
+            }
             rethrow;
           }
         }
         rethrow;
       }
-    } catch (e) {
-      if (kDebugMode) debugPrint('Error sending message: $e');
+    } on PostgrestException catch (e, s) {
+      if (kDebugMode) {
+        debugPrint(
+          '[MSG_SEND_POSTGREST_ERROR] code=${e.code} message=${e.message} '
+          'details=${e.details} hint=${e.hint}\n$s',
+        );
+      }
+      // Attachments need the real error in the UI; text keeps soft-fail.
+      if (mediaUrl != null) rethrow;
+      return null;
+    } catch (e, s) {
+      if (kDebugMode) {
+        debugPrint(
+          '[MSG_SEND_ERROR] runtimeType=${e.runtimeType} exception=$e\n$s',
+        );
+        debugPrint('Error sending message: $e');
+      }
       // Attachments need the real error in the UI; text keeps soft-fail.
       if (mediaUrl != null) rethrow;
       return null;
@@ -508,7 +603,9 @@ class MessagesRepository {
   }
 
   /// Subscribe to conversation updates
-  RealtimeChannel subscribeToConversations(Function(Map<String, dynamic>) onConversationUpdate) {
+  RealtimeChannel subscribeToConversations(
+    Function(Map<String, dynamic>) onConversationUpdate,
+  ) {
     final channel = _supabase
         .channel('conversations')
         .onPostgresChanges(
@@ -527,6 +624,12 @@ class MessagesRepository {
   /// Create or find a **provider–client** conversation only (MVP).
   /// Prefers RPC `create_or_find_provider_client_conversation`.
   Future<String?> createOrFindConversation(String otherUserId) async {
+    if (kDebugMode) {
+      debugPrint(
+        '[MSG_OPEN_START] authUid=$_currentUserId '
+        'p_other_user_id=$otherUserId',
+      );
+    }
     if (_currentUserId == null) return null;
     if (_currentUserId == otherUserId) return null;
 
@@ -535,17 +638,35 @@ class MessagesRepository {
         'create_or_find_provider_client_conversation',
         params: {'p_other_user_id': otherUserId},
       );
-      if (result is String && result.isNotEmpty) return result;
-      if (result != null) {
+      String? parsed;
+      if (result is String && result.isNotEmpty) {
+        parsed = result;
+      } else if (result != null) {
         final asString = result.toString();
-        if (asString.isNotEmpty && asString != 'null') return asString;
+        if (asString.isNotEmpty && asString != 'null') parsed = asString;
       }
-      return null;
-    } catch (e) {
       if (kDebugMode) {
         debugPrint(
-          'createOrFindConversation: failed (need accepted lead): $e',
+          '[MSG_OPEN_RPC_RESULT] raw=$result '
+          'rawRuntimeType=${result?.runtimeType} '
+          'parsedConversationId=$parsed',
         );
+      }
+      return parsed;
+    } on PostgrestException catch (e, s) {
+      if (kDebugMode) {
+        debugPrint(
+          '[MSG_OPEN_POSTGREST_ERROR] code=${e.code} message=${e.message} '
+          'details=${e.details} hint=${e.hint}\n$s',
+        );
+      }
+      return null;
+    } catch (e, s) {
+      if (kDebugMode) {
+        debugPrint(
+          '[MSG_OPEN_ERROR] runtimeType=${e.runtimeType} exception=$e\n$s',
+        );
+        debugPrint('createOrFindConversation: failed (need accepted lead): $e');
       }
       return null;
     }
