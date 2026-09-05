@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
+import '../../utils/conversation_message_preview.dart';
 import '../../widgets/common/app_tab_page_header.dart';
 import '../../widgets/common/fade_slide_in.dart';
 import '../../widgets/provider/provider_avatar.dart';
@@ -77,11 +78,10 @@ class _MessagingPageState extends ConsumerState<MessagingPage> {
             otherUser['username'] as String? ??
             'Unknown User';
         final avatarUrl = otherUser['avatar_url'] as String?;
-        final lastMessageText = lastMessage == null
-            ? 'No messages yet'
-            : (MessagesRepository.isDeletedForEveryone(lastMessage)
-                ? MessagesRepository.deletedMessagePlaceholder
-                : (lastMessage['content'] as String? ?? ''));
+        final preview = ConversationMessagePreview.fromMessage(
+          lastMessage,
+          currentUserId: Supabase.instance.client.auth.currentUser?.id,
+        );
 
         final activityAt = MessagesRepository.conversationActivityAt(convData);
         final time = _formatTime(activityAt?.toIso8601String());
@@ -91,7 +91,8 @@ class _MessagingPageState extends ConsumerState<MessagingPage> {
         items.add(_ConversationItem(
           id: id,
           name: name,
-          lastMessage: lastMessageText,
+          lastMessage: preview.displayText,
+          lastMessageIcon: preview.icon,
           time: time,
           activityAt: activityAt,
           unreadCount: unreadCount,
@@ -351,6 +352,8 @@ class _MessagingPageState extends ConsumerState<MessagingPage> {
                             name: _allConversations[originalIndex].name,
                             lastMessage:
                                 _allConversations[originalIndex].lastMessage,
+                            lastMessageIcon: _allConversations[originalIndex]
+                                .lastMessageIcon,
                             time: _allConversations[originalIndex].time,
                             unreadCount: 0,
                             avatarGradient: _allConversations[originalIndex]
@@ -596,19 +599,35 @@ class _ConversationTile extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    item.lastMessage,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: item.unreadCount > 0
-                          ? FontWeight.w500
-                          : FontWeight.w400,
-                      color: item.unreadCount > 0
-                          ? cs.onSurface
-                          : cs.onSurfaceVariant,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  Row(
+                    children: [
+                      if (item.lastMessageIcon != null) ...[
+                        Icon(
+                          item.lastMessageIcon,
+                          size: 15,
+                          color: item.unreadCount > 0
+                              ? cs.onSurface.withValues(alpha: 0.75)
+                              : cs.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 4),
+                      ],
+                      Expanded(
+                        child: Text(
+                          item.lastMessage,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: item.unreadCount > 0
+                                ? FontWeight.w500
+                                : FontWeight.w400,
+                            color: item.unreadCount > 0
+                                ? cs.onSurface
+                                : cs.onSurfaceVariant,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -624,6 +643,7 @@ class _ConversationItem {
   final String id;
   final String name;
   final String lastMessage;
+  final IconData? lastMessageIcon;
   final String time;
 
   /// Sort key: latest message/activity timestamp, never conversation creation.
@@ -637,6 +657,7 @@ class _ConversationItem {
     required this.id,
     required this.name,
     required this.lastMessage,
+    this.lastMessageIcon,
     required this.time,
     this.activityAt,
     required this.unreadCount,
