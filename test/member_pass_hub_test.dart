@@ -282,13 +282,28 @@ void main() {
   });
 
   group('Member Pass wiring contracts', () {
-    test('Manage/View plans routes to existing subscription page', () {
+    test('Manage/View plans routes to existing subscription page for clients', () {
       final src =
           File('lib/pages/profile/cotrainr_pass_page.dart').readAsStringSync();
       expect(src.contains("context.push('/subscription')"), isTrue);
       expect(src.contains('_YourPlanCard'), isTrue);
       expect(src.contains('YOUR PLAN'), isTrue);
       expect(src.contains('_loadPlanOnly'), isTrue);
+      expect(src.contains('if (_isClient)'), isTrue);
+    });
+
+    test('provider roles show ROLE and hide Your Plan section', () {
+      final src =
+          File('lib/pages/profile/cotrainr_pass_page.dart').readAsStringSync();
+      expect(src.contains('currentUserProvider'), isTrue);
+      expect(src.contains("return 'Trainer'"), isTrue);
+      expect(src.contains("return 'Nutritionist'"), isTrue);
+      expect(src.contains("metaLabel = showRole ? 'ROLE' : 'PLAN'"), isTrue);
+      expect(src.contains('permanent Trainer identity'), isTrue);
+      expect(src.contains('permanent Nutritionist identity'), isTrue);
+      expect(src.contains('permanent member identity'), isTrue);
+      expect(src.contains('Partner Centres'), isTrue);
+      expect(src.contains('Find Centres'), isTrue);
     });
 
     test('subscription page and route remain intact', () {

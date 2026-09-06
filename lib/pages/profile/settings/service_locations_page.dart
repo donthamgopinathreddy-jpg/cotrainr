@@ -1,13 +1,10 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -16,7 +13,9 @@ import '../../../providers/provider_locations_provider.dart';
 import '../../../services/nominatim_search_service.dart';
 import '../../../theme/app_colors.dart';
 import '../../../theme/design_tokens.dart';
+import '../../../utils/location_display_name_resolver.dart';
 import '../../../widgets/common/cotrainr_back_button.dart';
+import '../map_location_picker_page.dart';
 
 /// Service Locations: single-page design with hero, list, and inline add/edit form.
 class ServiceLocationsPage extends ConsumerStatefulWidget {
@@ -51,6 +50,7 @@ class _ServiceLocationsPageState extends ConsumerState<ServiceLocationsPage> {
   bool _searching = false;
   Timer? _searchDebounceTimer;
   final _nominatimService = NominatimSearchService();
+  final _displayNameResolver = LocationDisplayNameResolver();
 
   static const LatLng _defaultCenter = LatLng(17.3850, 78.4867);
   static const double _minDistanceForReverseGeocodeMeters = 20;
@@ -219,14 +219,38 @@ class _ServiceLocationsPageState extends ConsumerState<ServiceLocationsPage> {
     }
   }
 
-  void _onMapTap(TapPosition tapPosition, LatLng point) {
+  /// Opens the full-screen OSM picker. Confirm applies coords locally only.
+  /// Back / cancel leaves Service Locations state unchanged.
+  Future<void> _openFullScreenMapPicker() async {
     HapticFeedback.lightImpact();
+    final hasCoords = _hasValidCoords;
+    final center = _mapCenter;
+    final result = await Navigator.of(context).push<MapLocationPickerResult>(
+      MaterialPageRoute(
+        builder: (_) => MapLocationPickerPage(
+          initialLat: hasCoords ? center.latitude : null,
+          initialLng: hasCoords ? center.longitude : null,
+        ),
+      ),
+    );
+    if (!mounted || result == null) return;
+
+    // Preserve type / radius / privacy — only location + display name update.
     setState(() {
-      _latitudeController.text = point.latitude.toStringAsFixed(6);
-      _longitudeController.text = point.longitude.toStringAsFixed(6);
+      _latitudeController.text = result.lat.toStringAsFixed(6);
+      _longitudeController.text = result.lng.toStringAsFixed(6);
       _searchResults = [];
+      if (result.addressLabel != null && result.addressLabel!.trim().isNotEmpty) {
+        _displayNameController.text = result.addressLabel!.trim();
+        _userEditedDisplayName = false;
+        _lastReverseGeocodedPoint = LatLng(result.lat, result.lng);
+        _isLoadingPlaceName = false;
+      }
     });
-    _scheduleReverseGeocode(point.latitude, point.longitude);
+    _mapController.move(LatLng(result.lat, result.lng), 14);
+    if (result.addressLabel == null || result.addressLabel!.trim().isEmpty) {
+      _scheduleReverseGeocode(result.lat, result.lng);
+    }
   }
 
   void _scheduleReverseGeocode(double lat, double lng) {
@@ -245,116 +269,17 @@ class _ServiceLocationsPageState extends ConsumerState<ServiceLocationsPage> {
     });
   }
 
-  /// Reverse geocode lat/lng to place/area name and update display name field
   Future<void> _updateDisplayNameFromCoords(double lat, double lng) async {
     if (!mounted || _userEditedDisplayName) return;
     setState(() => _isLoadingPlaceName = true);
-    try {
-      final placemarks = await placemarkFromCoordinates(lat, lng);
-      if (!mounted) return;
-      if (placemarks.isEmpty) {
-        await _updateDisplayNameFromNominatim(lat, lng);
-        return;
-      }
-      final p = placemarks.first;
-      // Collect all non-empty placemark fields, avoiding duplicates (order: most specific first)
-      final seen = <String>{};
-      final parts = <String>[];
-      for (final value in [
-        p.name,
-        p.street,
-        p.thoroughfare,
-        p.subLocality,
-        p.locality,
-        p.subAdministrativeArea,
-        p.administrativeArea,
-        p.country,
-      ]) {
-        if (value != null && value.trim().isNotEmpty && !seen.contains(value.trim())) {
-          seen.add(value.trim());
-          parts.add(value.trim());
-        }
-      }
-      if (parts.isNotEmpty && mounted && !_userEditedDisplayName) {
-        setState(() {
-          _displayNameController.text = parts.join(', ');
-          _isLoadingPlaceName = false;
-          _lastReverseGeocodedPoint = LatLng(lat, lng);
-        });
-      } else if (mounted) {
-        await _updateDisplayNameFromNominatim(lat, lng);
-      }
-    } catch (_) {
-      // Platform geocoding failed - try OpenStreetMap Nominatim as fallback
-      if (mounted) {
-        await _updateDisplayNameFromNominatim(lat, lng);
-      }
-    }
-  }
-
-  /// Fallback: use OpenStreetMap Nominatim when platform geocoding fails
-  Future<void> _updateDisplayNameFromNominatim(double lat, double lng) async {
-    try {
-      final uri = Uri.parse(
-        'https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng',
-      );
-      final response = await http.get(
-        uri,
-        headers: {'User-Agent': 'Cotrainr/1.0 (contact@cotrainr.com)'},
-      );
-      if (!mounted || response.statusCode != 200) {
-        if (mounted) {
-          setState(() {
-            _displayNameController.text = 'Selected location';
-            _isLoadingPlaceName = false;
-          });
-        }
-        return;
-      }
-      final json = jsonDecode(response.body) as Map<String, dynamic>;
-      final address = json['address'] as Map<String, dynamic>?;
-      if (address == null) {
-        if (mounted) {
-          setState(() {
-            _displayNameController.text = 'Selected location';
-            _isLoadingPlaceName = false;
-          });
-        }
-        return;
-      }
-      // Nominatim returns: suburb, neighbourhood, village, town, city, municipality, state, country
-      final parts = <String>[];
-      for (final key in [
-        'suburb',
-        'neighbourhood',
-        'village',
-        'town',
-        'city',
-        'municipality',
-        'state',
-        'country',
-      ]) {
-        final v = address[key];
-        if (v is String && v.trim().isNotEmpty && !parts.contains(v.trim())) {
-          parts.add(v.trim());
-        }
-      }
-      final name = parts.isNotEmpty ? parts.join(', ') : 'Selected location';
-      if (mounted && !_userEditedDisplayName) {
-        setState(() {
-          _displayNameController.text = name;
-          _isLoadingPlaceName = false;
-          _lastReverseGeocodedPoint = LatLng(lat, lng);
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _displayNameController.text = 'Selected location';
-          _isLoadingPlaceName = false;
-        });
-      }
-    }
+    final label = await _displayNameResolver.resolve(lat, lng);
+    if (!mounted || _userEditedDisplayName) return;
+    setState(() {
+      _displayNameController.text =
+          (label != null && label.trim().isNotEmpty) ? label.trim() : 'Selected location';
+      _isLoadingPlaceName = false;
+      _lastReverseGeocodedPoint = LatLng(lat, lng);
+    });
   }
 
   LatLng get _mapCenter {
@@ -670,7 +595,8 @@ class _ServiceLocationsPageState extends ConsumerState<ServiceLocationsPage> {
               ),
             _FormSection(
               label: 'Pick on map',
-              subtitle: 'Search, tap the map, or use your current location — display name auto-fills',
+              subtitle:
+                  'Expand the map for precise placement, search, or use your current location',
               icon: Icons.map_outlined,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -692,7 +618,7 @@ class _ServiceLocationsPageState extends ConsumerState<ServiceLocationsPage> {
                           center: _mapCenter,
                           radiusKm: _radiusKm,
                           mapController: _mapController,
-                          onTap: _onMapTap,
+                          onOpenFullscreen: _openFullScreenMapPicker,
                         ),
                       ),
                     ),
@@ -701,7 +627,7 @@ class _ServiceLocationsPageState extends ConsumerState<ServiceLocationsPage> {
                     Padding(
                       padding: const EdgeInsets.only(top: 8),
                       child: Text(
-                        'Pick a location on the map',
+                        'Expand the map to pick a location',
                         style: TextStyle(
                           fontSize: 12,
                           color: AppColors.red,
@@ -1244,7 +1170,7 @@ class _LocationSearchBar extends StatelessWidget {
                 shrinkWrap: true,
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 itemCount: results.length,
-                separatorBuilder: (_, __) => Divider(
+                separatorBuilder: (context, index) => Divider(
                   height: 1,
                   color: colorScheme.outline.withValues(alpha: 0.2),
                 ),
@@ -1289,18 +1215,18 @@ class _LocationSearchBar extends StatelessWidget {
   }
 }
 
-/// Isolated map widget to reduce rebuilds on parent state changes.
+/// Compact preview map. Taps open the full-screen picker (no in-place pin edits).
 class _LocationMapPicker extends StatefulWidget {
   final LatLng center;
   final double radiusKm;
   final MapController mapController;
-  final void Function(TapPosition position, LatLng point) onTap;
+  final VoidCallback onOpenFullscreen;
 
   const _LocationMapPicker({
     required this.center,
     required this.radiusKm,
     required this.mapController,
-    required this.onTap,
+    required this.onOpenFullscreen,
   });
 
   @override
@@ -1311,44 +1237,94 @@ class _LocationMapPickerState extends State<_LocationMapPicker> {
   @override
   Widget build(BuildContext context) {
     final radiusMeters = widget.radiusKm * 1000;
-    return FlutterMap(
-      mapController: widget.mapController,
-      options: MapOptions(
-        initialCenter: widget.center,
-        initialZoom: 14,
-        onTap: widget.onTap,
-        interactionOptions: const InteractionOptions(flags: InteractiveFlag.all),
-      ),
+    return Stack(
+      fit: StackFit.expand,
       children: [
-        TileLayer(
-          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          userAgentPackageName: 'com.cotrainr.app',
-        ),
-        CircleLayer(
-          circles: [
-            CircleMarker(
-              point: widget.center,
-              radius: radiusMeters,
-              useRadiusInMeter: true,
-              color: AppColors.purple.withValues(alpha: 0.15),
-              borderStrokeWidth: 2,
-              borderColor: AppColors.purple.withValues(alpha: 0.5),
+        FlutterMap(
+          mapController: widget.mapController,
+          options: MapOptions(
+            initialCenter: widget.center,
+            initialZoom: 14,
+            // Preview only — placement happens in the full-screen picker.
+            interactionOptions: const InteractionOptions(
+              flags: InteractiveFlag.none,
+            ),
+            onTap: (tapPosition, point) => widget.onOpenFullscreen(),
+          ),
+          children: [
+            TileLayer(
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'com.cotrainr.app',
+            ),
+            CircleLayer(
+              circles: [
+                CircleMarker(
+                  point: widget.center,
+                  radius: radiusMeters,
+                  useRadiusInMeter: true,
+                  color: AppColors.purple.withValues(alpha: 0.15),
+                  borderStrokeWidth: 2,
+                  borderColor: AppColors.purple.withValues(alpha: 0.5),
+                ),
+              ],
+            ),
+            MarkerLayer(
+              markers: [
+                Marker(
+                  point: widget.center,
+                  width: 48,
+                  height: 48,
+                  child: Icon(
+                    Icons.location_on_rounded,
+                    size: 48,
+                    color: AppColors.purple,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
-        MarkerLayer(
-          markers: [
-            Marker(
-              point: widget.center,
-              width: 48,
-              height: 48,
-              child: Icon(
-                Icons.location_on_rounded,
-                size: 48,
-                color: AppColors.purple,
+        Positioned.fill(
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: widget.onOpenFullscreen,
+              child: Align(
+                alignment: Alignment.bottomRight,
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.fullscreen_rounded,
+                            size: 16,
+                            color: Colors.white,
+                          ),
+                          SizedBox(width: 4),
+                          Text(
+                            'Expand map',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
-          ],
+          ),
         ),
       ],
     );
@@ -1500,23 +1476,27 @@ class _LocationCardState extends State<_LocationCard> {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  _ActionButton(
+                  _IconActionButton(
                     icon: Icons.edit_rounded,
-                    label: 'Edit',
+                    semanticLabel: 'Edit location',
+                    tooltip: 'Edit location',
                     onTap: widget.onEdit,
                   ),
                   if (!widget.location.isPrimary) ...[
                     const SizedBox(width: 8),
-                    _ActionButton(
-                      icon: Icons.star_outline_rounded,
-                      label: 'Set Primary',
-                      onTap: widget.onSetPrimary,
+                    Flexible(
+                      child: _ActionButton(
+                        icon: Icons.star_outline_rounded,
+                        label: 'Set Primary',
+                        onTap: widget.onSetPrimary,
+                      ),
                     ),
                   ],
                   const SizedBox(width: 8),
-                  _ActionButton(
+                  _IconActionButton(
                     icon: Icons.delete_outline_rounded,
-                    label: 'Delete',
+                    semanticLabel: 'Delete location',
+                    tooltip: 'Delete location',
                     onTap: widget.onDelete,
                     isDestructive: true,
                   ),
@@ -1530,15 +1510,17 @@ class _LocationCardState extends State<_LocationCard> {
   }
 }
 
-class _ActionButton extends StatelessWidget {
+class _IconActionButton extends StatelessWidget {
   final IconData icon;
-  final String label;
+  final String semanticLabel;
+  final String tooltip;
   final VoidCallback onTap;
   final bool isDestructive;
 
-  const _ActionButton({
+  const _IconActionButton({
     required this.icon,
-    required this.label,
+    required this.semanticLabel,
+    required this.tooltip,
     required this.onTap,
     this.isDestructive = false,
   });
@@ -1546,15 +1528,61 @@ class _ActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = isDestructive ? AppColors.red : AppColors.purple;
+    return Tooltip(
+      message: tooltip,
+      child: Semantics(
+        button: true,
+        label: semanticLabel,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              width: 48,
+              height: 48,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: color.withValues(alpha: 0.2),
+                  width: 1,
+                ),
+              ),
+              child: Icon(icon, size: 20, color: color),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _ActionButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const color = AppColors.purple;
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(14),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+          constraints: const BoxConstraints(minHeight: 48),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
           decoration: BoxDecoration(
-            color: color.withValues(alpha: isDestructive ? 0.1 : 0.1),
+            color: color.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: color.withValues(alpha: 0.2),
@@ -1566,13 +1594,17 @@ class _ActionButton extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(icon, size: 18, color: color),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: GoogleFonts.poppins(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: color,
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: color,
+                  ),
                 ),
               ),
             ],

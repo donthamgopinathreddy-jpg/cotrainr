@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/auth/user_role.dart';
 import '../../models/member_plan_view.dart';
+import '../../providers/profile_role_provider.dart';
 import '../../repositories/cotrainr_pass_repository.dart';
 import '../../repositories/partner_centers_repository.dart';
 import '../../repositories/subscriptions_repository.dart';
@@ -10,14 +13,14 @@ import '../../theme/design_tokens.dart';
 import '../../widgets/branding/cotrainr_logo.dart';
 import '../../widgets/common/cotrainr_back_button.dart';
 
-class CotrainrPassPage extends StatefulWidget {
+class CotrainrPassPage extends ConsumerStatefulWidget {
   const CotrainrPassPage({super.key});
 
   @override
-  State<CotrainrPassPage> createState() => _CotrainrPassPageState();
+  ConsumerState<CotrainrPassPage> createState() => _CotrainrPassPageState();
 }
 
-class _CotrainrPassPageState extends State<CotrainrPassPage>
+class _CotrainrPassPageState extends ConsumerState<CotrainrPassPage>
     with WidgetsBindingObserver {
   final _passRepo = CotrainrPassRepository();
   final _subsRepo = SubscriptionsRepository();
@@ -30,6 +33,40 @@ class _CotrainrPassPageState extends State<CotrainrPassPage>
   bool _termsExpanded = false;
 
   MemberPlanView _planView = MemberPlanView.loading;
+
+  /// Canonical role from [currentUserProvider] (profiles.role / get_my_profile).
+  UserRole? get _role => ref.watch(currentUserProvider).valueOrNull?.role;
+
+  bool get _isClient => _role == UserRole.client;
+
+  bool get _isProvider => _role?.isProvider ?? false;
+
+  String? get _roleDisplayLabel {
+    switch (_role) {
+      case UserRole.trainer:
+        return 'Trainer';
+      case UserRole.nutritionist:
+        return 'Nutritionist';
+      case UserRole.client:
+      case null:
+        return null;
+    }
+  }
+
+  String get _aboutPassCopy {
+    switch (_role) {
+      case UserRole.trainer:
+        return 'Your Cotrainr Pass is your permanent Trainer identity across Cotrainr. '
+            'Your Pass ID stays with your account.';
+      case UserRole.nutritionist:
+        return 'Your Cotrainr Pass is your permanent Nutritionist identity across Cotrainr. '
+            'Your Pass ID stays with your account.';
+      case UserRole.client:
+      case null:
+        return 'Your Cotrainr Pass is your permanent member identity across Cotrainr. '
+            'Your Pass ID stays with your account even when your subscription plan changes.';
+    }
+  }
 
   @override
   void initState() {
@@ -46,7 +83,7 @@ class _CotrainrPassPageState extends State<CotrainrPassPage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && _info != null) {
+    if (state == AppLifecycleState.resumed && _info != null && _isClient) {
       _loadPlanOnly();
     }
   }
@@ -74,25 +111,29 @@ class _CotrainrPassPageState extends State<CotrainrPassPage>
       passError = e.toString().replaceFirst('Exception: ', '');
     }
 
-    try {
-      final sub = await _subsRepo.fetchMineStrict();
-      planView = MemberPlanView.fromSubscription(sub);
-      if (info != null) {
-        info = CotrainrPassInfo(
-          passId: info.passId,
-          passCreatedAt: info.passCreatedAt,
-          memberSince: info.memberSince,
-          fullName: info.fullName,
-          avatarUrl: info.avatarUrl,
-          planLabel: planView.isError
-              ? info.planLabel
-              : (planView.planDisplayName.isEmpty
-                  ? 'Free'
-                  : planView.planDisplayName),
-        );
+    // Client subscription UI only — providers do not see plan/subscription on Pass.
+    final role = ref.read(currentUserProvider).valueOrNull?.role;
+    if (role == UserRole.client) {
+      try {
+        final sub = await _subsRepo.fetchMineStrict();
+        planView = MemberPlanView.fromSubscription(sub);
+        if (info != null) {
+          info = CotrainrPassInfo(
+            passId: info.passId,
+            passCreatedAt: info.passCreatedAt,
+            memberSince: info.memberSince,
+            fullName: info.fullName,
+            avatarUrl: info.avatarUrl,
+            planLabel: planView.isError
+                ? info.planLabel
+                : (planView.planDisplayName.isEmpty
+                    ? 'Free'
+                    : planView.planDisplayName),
+          );
+        }
+      } catch (_) {
+        planView = MemberPlanView.error;
       }
-    } catch (_) {
-      planView = MemberPlanView.error;
     }
 
     if (!mounted) return;
@@ -106,6 +147,7 @@ class _CotrainrPassPageState extends State<CotrainrPassPage>
   }
 
   Future<void> _loadPlanOnly() async {
+    if (!_isClient) return;
     if (!mounted) return;
     setState(() => _planView = MemberPlanView.loading);
     try {
@@ -240,24 +282,30 @@ class _CotrainrPassPageState extends State<CotrainrPassPage>
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
                         sliver: SliverList(
                           delegate: SliverChildListDelegate([
-                            _MembershipCard(info: _info!, isLight: isLight),
-                            const SizedBox(height: 20),
-                            Text(
-                              'YOUR PLAN',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 1.1,
-                                color: muted,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            _YourPlanCard(
-                              view: _planView,
+                            _MembershipCard(
+                              info: _info!,
                               isLight: isLight,
-                              onManage: _openSubscription,
-                              onRetry: _loadPlanOnly,
+                              roleLabel: _roleDisplayLabel,
                             ),
+                            if (_isClient) ...[
+                              const SizedBox(height: 20),
+                              Text(
+                                'YOUR PLAN',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 1.1,
+                                  color: muted,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              _YourPlanCard(
+                                view: _planView,
+                                isLight: isLight,
+                                onManage: _openSubscription,
+                                onRetry: _loadPlanOnly,
+                              ),
+                            ],
                             const SizedBox(height: 28),
                             Text(
                               'About your Cotrainr Pass',
@@ -269,8 +317,7 @@ class _CotrainrPassPageState extends State<CotrainrPassPage>
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'Your Cotrainr Pass is your permanent member identity across Cotrainr. '
-                              'Your Pass ID stays with your account even when your subscription plan changes.',
+                              _aboutPassCopy,
                               style: TextStyle(
                                 fontSize: 14,
                                 height: 1.45,
@@ -302,8 +349,9 @@ class _CotrainrPassPageState extends State<CotrainrPassPage>
                             _CapabilityCard(
                               icon: Icons.verified_user_outlined,
                               title: 'Membership Verification',
-                              description:
-                                  'Your Pass ID securely identifies your Cotrainr membership and current plan where verification is required.',
+                              description: _isProvider
+                                  ? 'Your Pass ID securely identifies your Cotrainr account where verification is required.'
+                                  : 'Your Pass ID securely identifies your Cotrainr membership and current plan where verification is required.',
                               isLight: isLight,
                             ),
                             const SizedBox(height: 10),
@@ -934,8 +982,14 @@ class _CapabilityCard extends StatelessWidget {
 class _MembershipCard extends StatefulWidget {
   final CotrainrPassInfo info;
   final bool isLight;
+  /// When non-null (Trainer / Nutritionist), card shows ROLE instead of PLAN.
+  final String? roleLabel;
 
-  const _MembershipCard({required this.info, required this.isLight});
+  const _MembershipCard({
+    required this.info,
+    required this.isLight,
+    this.roleLabel,
+  });
 
   @override
   State<_MembershipCard> createState() => _MembershipCardState();
@@ -948,12 +1002,16 @@ class _MembershipCardState extends State<_MembershipCard> {
   Widget build(BuildContext context) {
     final info = widget.info;
     final isLight = widget.isLight;
+    final roleLabel = widget.roleLabel;
+    final showRole = roleLabel != null && roleLabel.isNotEmpty;
     final name = (info.fullName?.trim().isNotEmpty == true)
         ? info.fullName!.trim().toUpperCase()
         : 'COTRAINR MEMBER';
     final memberSince = info.memberSince ?? info.passCreatedAt;
     final sinceLabel = memberSince == null ? '—' : _monthYear(memberSince);
     final planLabel = info.planLabel;
+    final metaLabel = showRole ? 'ROLE' : 'PLAN';
+    final metaValue = showRole ? roleLabel : planLabel;
 
     // Orange membership card in both light and dark themes.
     final primaryText = Colors.white;
@@ -980,8 +1038,9 @@ class _MembershipCardState extends State<_MembershipCard> {
             child: AspectRatio(
               aspectRatio: 1 / 0.60,
               child: Semantics(
-                label:
-                    'Cotrainr Pass for $name, member ID ${info.passId}, plan $planLabel',
+                label: showRole
+                    ? 'Cotrainr Pass for $name, member ID ${info.passId}, role $metaValue'
+                    : 'Cotrainr Pass for $name, member ID ${info.passId}, plan $planLabel',
                 child: Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(24),
@@ -1112,8 +1171,8 @@ class _MembershipCardState extends State<_MembershipCard> {
                                 ),
                                 Expanded(
                                   child: _MembershipMeta(
-                                    label: 'PLAN',
-                                    value: planLabel,
+                                    label: metaLabel,
+                                    value: metaValue,
                                     labelColor: secondaryText,
                                     valueColor: planValueColor,
                                     alignEnd: true,
@@ -1233,14 +1292,20 @@ class _MembershipMeta extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 4),
-        Text(
-          value,
-          textAlign: alignEnd ? TextAlign.right : TextAlign.left,
-          style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w800,
-            color: valueColor,
-            height: 1.1,
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: alignEnd ? Alignment.centerRight : Alignment.centerLeft,
+          child: Text(
+            value,
+            maxLines: 1,
+            softWrap: false,
+            textAlign: alignEnd ? TextAlign.right : TextAlign.left,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              color: valueColor,
+              height: 1.1,
+            ),
           ),
         ),
       ],
