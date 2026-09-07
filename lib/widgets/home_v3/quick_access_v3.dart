@@ -64,6 +64,15 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
       ),
     };
 
+    if (isTrainer || isNutritionist) {
+      tiles['Centres'] = const _ExploreTileData(
+        title: 'Centres',
+        subtitle: 'Find fitness and wellness centres nearby',
+        icon: Icons.location_city_rounded,
+        accent: Color(0xFFFF8A00),
+      );
+    }
+
     if (!isTrainer && !isNutritionist) {
       tiles['Notes'] = const _ExploreTileData(
         title: kClientNotesExploreTitle,
@@ -105,6 +114,9 @@ class _QuickAccessV3State extends ConsumerState<QuickAccessV3> {
         return () => context.push('/video');
       case 'Nutrition Goals':
         return () => context.push('/nutrition-goals');
+      case 'Centres':
+      case 'Centers':
+        return () => context.push('/centres');
       case 'Member Pass':
         return () => context.push('/profile/cotrainr-pass');
       case 'Subscription':
@@ -266,17 +278,49 @@ class _ExploreBentoGrid extends StatelessWidget {
         final bannerH = (w * 0.30).clamp(104.0, 124.0);
 
         if (isNutritionist) {
-          return _buildPairRow(
-            pairH,
-            _get('Nutrition Goals')!,
-            _get('Video Sessions')!,
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildPairRow(
+                pairH,
+                _get('Nutrition Goals')!,
+                _get('Video Sessions')!,
+              ),
+              const SizedBox(height: _gap),
+              SizedBox(
+                height: bannerH,
+                width: double.infinity,
+                child: _ExploreTile(
+                  item: _get('Centres')!,
+                  layout: _ExploreTileLayout.banner,
+                  isLight: isLight,
+                  onTap: () => onTileTap(_get('Centres')!),
+                ),
+              ),
+            ],
           );
         }
         if (isTrainer) {
-          return _buildPairRow(
-            pairH,
-            _get('Nutrition Goals')!,
-            _get('Video Sessions')!,
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildPairRow(
+                pairH,
+                _get('Nutrition Goals')!,
+                _get('Video Sessions')!,
+              ),
+              const SizedBox(height: _gap),
+              SizedBox(
+                height: bannerH,
+                width: double.infinity,
+                child: _ExploreTile(
+                  item: _get('Centres')!,
+                  layout: _ExploreTileLayout.banner,
+                  isLight: isLight,
+                  onTap: () => onTileTap(_get('Centres')!),
+                ),
+              ),
+            ],
           );
         }
         if (isClient) {
@@ -523,6 +567,7 @@ class _ExploreTileData {
       'My Trainers' || 'Trainers' || 'Trainers & Nutritionists' =>
         const Color(0xFFFF8A00),
       'Member Pass' || 'Subscription' => const Color(0xFFFF2D95),
+      'Centres' || 'Centers' => const Color(0xFFFF8A00),
       _ => accent,
     };
   }

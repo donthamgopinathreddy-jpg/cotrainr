@@ -439,6 +439,11 @@ void main() {
     expect(find.text('Member Pass'), findsNothing);
     expect(find.text('Schedule and manage video sessions'), findsOneWidget);
     expect(find.text('Join live sessions with your trainer.'), findsNothing);
+    expect(find.text('Centres'), findsOneWidget);
+    expect(
+      find.text('Find fitness and wellness centres nearby'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('Nutritionist Explore uses provider copy and hides member tiles',
@@ -463,6 +468,11 @@ void main() {
     expect(find.text('Subscription'), findsNothing);
     expect(find.text('Member Pass'), findsNothing);
     expect(find.text('Schedule and manage video sessions'), findsOneWidget);
+    expect(find.text('Centres'), findsOneWidget);
+    expect(
+      find.text('Find fitness and wellness centres nearby'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('provider loading does not display fake Trainer name',

@@ -14,7 +14,7 @@ void main() {
     test('uses canonical currentUserProvider role source', () {
       expect(src.contains('currentUserProvider'), isTrue);
       expect(src.contains('UserRole'), isTrue);
-      expect(src.contains('role?.isProvider'), isTrue);
+      expect(src.contains('isProvider'), isTrue);
     });
 
     test('client shows PLAN path and Your Plan section', () {
@@ -51,7 +51,23 @@ void main() {
       expect(src.contains('passId'), isTrue);
       expect(src.contains('Partner Centres'), isTrue);
       expect(src.contains('Find Centres'), isTrue);
-      expect(src.contains('MEMBER ID'), isTrue);
+      expect(src.contains("'PASS ID'"), isTrue);
+      expect(src.contains('MEMBER ID'), isFalse);
+    });
+
+    test('provider Find Partner Centres opens /centres not My Clients', () {
+      expect(src.contains("context.push('/centres')"), isTrue);
+      expect(src.contains("'/home?tab=1&discover=centers'"), isTrue);
+      expect(src.contains('isProvider'), isTrue);
+      // Providers must not use tab=1 (My Clients) for centres.
+      expect(src.contains('_openPartnerCentres'), isTrue);
+      final openFn = src.split('void _openPartnerCentres()')[1].split('void ')[0];
+      expect(openFn.contains("context.push('/centres')"), isTrue);
+      expect(
+        openFn.contains("context.go('/home?tab=1&discover=centers')"),
+        isTrue,
+      );
+      expect(openFn.contains('if (isProvider)'), isTrue);
     });
 
     test('canonical UserRole values unchanged', () {

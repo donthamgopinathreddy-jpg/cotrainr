@@ -34,6 +34,16 @@ class AppTabPageHeader extends StatelessWidget {
     end: Alignment.bottomRight,
   );
 
+  /// My Clients tab icon gradient (provider purple accent).
+  static const clientsGradient = LinearGradient(
+    colors: [
+      DesignTokens.videoSessionsAccent,
+      DesignTokens.videoSessionsAccentLight,
+    ],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
   @override
   Widget build(BuildContext context) {
     final titleColor = DesignTokens.textPrimaryOf(context);

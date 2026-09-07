@@ -471,7 +471,8 @@ void main() {
         ],
       );
 
-      expect(find.text('My Clients'), findsOneWidget);
+      expect(find.text('MY CLIENTS'), findsOneWidget);
+      expect(find.byIcon(Icons.groups_rounded), findsOneWidget);
       expect(find.text('Clients'), findsOneWidget);
       expect(find.text('Requests 1'), findsOneWidget);
       expect(find.text('Pending'), findsNothing);

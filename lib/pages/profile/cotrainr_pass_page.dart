@@ -9,6 +9,7 @@ import '../../providers/profile_role_provider.dart';
 import '../../repositories/cotrainr_pass_repository.dart';
 import '../../repositories/partner_centers_repository.dart';
 import '../../repositories/subscriptions_repository.dart';
+import '../../theme/cotrainr_identity_colors.dart';
 import '../../theme/design_tokens.dart';
 import '../../widgets/branding/cotrainr_logo.dart';
 import '../../widgets/common/cotrainr_back_button.dart';
@@ -39,8 +40,6 @@ class _CotrainrPassPageState extends ConsumerState<CotrainrPassPage>
 
   bool get _isClient => _role == UserRole.client;
 
-  bool get _isProvider => _role?.isProvider ?? false;
-
   String? get _roleDisplayLabel {
     switch (_role) {
       case UserRole.trainer:
@@ -67,6 +66,15 @@ class _CotrainrPassPageState extends ConsumerState<CotrainrPassPage>
             'Your Pass ID stays with your account even when your subscription plan changes.';
     }
   }
+
+  /// Authoritative Pass identity: provider role, else client subscription plan.
+  PassIdentity get _passIdentity => PassIdentity.resolve(
+        role: _role,
+        planLabel: _info?.planLabel ??
+            (_planView.planDisplayName.isEmpty
+                ? null
+                : _planView.planDisplayName),
+      );
 
   @override
   void initState() {
@@ -199,7 +207,15 @@ class _CotrainrPassPageState extends ConsumerState<CotrainrPassPage>
 
   void _openPartnerCentres() {
     HapticFeedback.selectionClick();
-    context.go('/home?tab=1&discover=centers');
+    final isProvider =
+        ref.read(currentUserProvider).valueOrNull?.isProvider ?? false;
+    // Providers: tab=1 is My Clients — never use that for centres.
+    // Clients: Discover is tab 1 with discover=centers.
+    if (isProvider) {
+      context.push('/centres');
+    } else {
+      context.go('/home?tab=1&discover=centers');
+    }
   }
 
   Future<void> _openBecomePartner() async {
@@ -230,11 +246,13 @@ class _CotrainrPassPageState extends ConsumerState<CotrainrPassPage>
     final muted = isLight
         ? const Color(0xFF6B6560)
         : Colors.white.withValues(alpha: 0.62);
+    final identity = _passIdentity;
+    final accent = identity.accent;
 
     return Scaffold(
       backgroundColor: bg,
       body: _passLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(child: CircularProgressIndicator(color: accent))
           : _passError != null && _info == null
               ? SafeArea(
                   child: Center(
@@ -247,6 +265,10 @@ class _CotrainrPassPageState extends ConsumerState<CotrainrPassPage>
                           const SizedBox(height: 16),
                           FilledButton(
                             onPressed: _load,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: identity.ctaBackground,
+                              foregroundColor: identity.ctaForeground,
+                            ),
                             child: const Text('Retry'),
                           ),
                         ],
@@ -255,7 +277,7 @@ class _CotrainrPassPageState extends ConsumerState<CotrainrPassPage>
                   ),
                 )
               : RefreshIndicator(
-                  color: DesignTokens.accentOrange,
+                  color: accent,
                   onRefresh: _load,
                   child: CustomScrollView(
                     physics: const AlwaysScrollableScrollPhysics(
@@ -286,6 +308,8 @@ class _CotrainrPassPageState extends ConsumerState<CotrainrPassPage>
                               info: _info!,
                               isLight: isLight,
                               roleLabel: _roleDisplayLabel,
+                              identity: identity,
+                              onCopyPassId: _copyId,
                             ),
                             if (_isClient) ...[
                               const SizedBox(height: 20),
@@ -302,6 +326,7 @@ class _CotrainrPassPageState extends ConsumerState<CotrainrPassPage>
                               _YourPlanCard(
                                 view: _planView,
                                 isLight: isLight,
+                                accent: accent,
                                 onManage: _openSubscription,
                                 onRetry: _loadPlanOnly,
                               ),
@@ -335,34 +360,25 @@ class _CotrainrPassPageState extends ConsumerState<CotrainrPassPage>
                             ),
                             const SizedBox(height: 12),
                             _CapabilityCard(
-                              icon: Icons.fitness_center_rounded,
+                              icon: Icons.storefront_rounded,
                               title: 'Partner Centres',
                               description:
-                                  'Verify your membership at participating gyms, studios and fitness centres and access eligible Cotrainr partner offers.',
+                                  'Verify your Cotrainr Pass at participating gyms, studios and fitness centres and access eligible partner offers.',
                               status: 'Available',
                               statusLive: true,
                               ctaLabel: 'Find Centres',
                               onCta: _openPartnerCentres,
                               isLight: isLight,
+                              accent: accent,
                             ),
                             const SizedBox(height: 10),
                             _CapabilityCard(
                               icon: Icons.verified_user_outlined,
                               title: 'Membership Verification',
-                              description: _isProvider
-                                  ? 'Your Pass ID securely identifies your Cotrainr account where verification is required.'
-                                  : 'Your Pass ID securely identifies your Cotrainr membership and current plan where verification is required.',
-                              isLight: isLight,
-                            ),
-                            const SizedBox(height: 10),
-                            _CapabilityCard(
-                              icon: Icons.school_outlined,
-                              title: 'Cotrainr Academy',
                               description:
-                                  'Your Cotrainr identity can be used for eligible Academy programs and certifications when launched.',
-                              status: 'Coming later',
-                              statusLive: false,
+                                  'Your Pass ID securely identifies your Cotrainr account where verification is required.',
                               isLight: isLight,
+                              accent: accent,
                             ),
                             const SizedBox(height: 28),
                             Text(
@@ -388,6 +404,7 @@ class _CotrainrPassPageState extends ConsumerState<CotrainrPassPage>
                               _ApplicationStatusBanner(
                                 application: _application!,
                                 isLight: isLight,
+                                accent: accent,
                               ),
                               const SizedBox(height: 12),
                             ],
@@ -396,8 +413,8 @@ class _CotrainrPassPageState extends ConsumerState<CotrainrPassPage>
                               child: FilledButton(
                                 onPressed: _openPartnerCentres,
                                 style: FilledButton.styleFrom(
-                                  backgroundColor: DesignTokens.accentOrange,
-                                  foregroundColor: Colors.white,
+                                  backgroundColor: identity.ctaBackground,
+                                  foregroundColor: identity.ctaForeground,
                                   padding:
                                       const EdgeInsets.symmetric(vertical: 14),
                                   shape: RoundedRectangleBorder(
@@ -431,63 +448,6 @@ class _CotrainrPassPageState extends ConsumerState<CotrainrPassPage>
                               ),
                             ),
                             const SizedBox(height: 28),
-                            Text(
-                              'Your Pass ID',
-                              style: TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.w900,
-                                color: onSurface,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 14,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isLight
-                                    ? Colors.white
-                                    : const Color(0xFF141414),
-                                borderRadius: BorderRadius.circular(16),
-                                boxShadow: isLight
-                                    ? [
-                                        BoxShadow(
-                                          color: Colors.black
-                                              .withValues(alpha: 0.04),
-                                          blurRadius: 12,
-                                          offset: const Offset(0, 4),
-                                        ),
-                                      ]
-                                    : null,
-                              ),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      _info!.passId,
-                                      style: TextStyle(
-                                        fontSize: 22,
-                                        fontWeight: FontWeight.w900,
-                                        letterSpacing: 1.4,
-                                        color: onSurface,
-                                      ),
-                                    ),
-                                  ),
-                                  TextButton.icon(
-                                    onPressed: _copyId,
-                                    icon: const Icon(Icons.copy_rounded,
-                                        size: 18),
-                                    label: const Text('Copy ID'),
-                                    style: TextButton.styleFrom(
-                                      foregroundColor:
-                                          DesignTokens.accentOrange,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 28),
                             InkWell(
                               onTap: () => setState(
                                 () => _termsExpanded = !_termsExpanded,
@@ -512,7 +472,7 @@ class _CotrainrPassPageState extends ConsumerState<CotrainrPassPage>
                                       _termsExpanded
                                           ? Icons.expand_less_rounded
                                           : Icons.expand_more_rounded,
-                                      color: muted,
+                                      color: accent,
                                     ),
                                   ],
                                 ),
@@ -565,12 +525,14 @@ class _CotrainrPassPageState extends ConsumerState<CotrainrPassPage>
 class _YourPlanCard extends StatelessWidget {
   final MemberPlanView view;
   final bool isLight;
+  final Color accent;
   final VoidCallback onManage;
   final VoidCallback onRetry;
 
   const _YourPlanCard({
     required this.view,
     required this.isLight,
+    required this.accent,
     required this.onManage,
     required this.onRetry,
   });
@@ -632,7 +594,7 @@ class _YourPlanCard extends StatelessWidget {
                       TextButton(
                         onPressed: onRetry,
                         style: TextButton.styleFrom(
-                          foregroundColor: DesignTokens.accentOrange,
+                          foregroundColor: accent,
                         ),
                         child: const Text('Retry'),
                       ),
@@ -651,13 +613,13 @@ class _YourPlanCard extends StatelessWidget {
                         width: 44,
                         height: 44,
                         decoration: BoxDecoration(
-                          color: DesignTokens.accentOrange
+                          color: accent
                               .withValues(alpha: isLight ? 0.12 : 0.2),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Icon(
                           Icons.workspace_premium_rounded,
-                          color: DesignTokens.accentOrange,
+                          color: accent,
                           size: 22,
                         ),
                       ),
@@ -691,10 +653,10 @@ class _YourPlanCard extends StatelessWidget {
                             const SizedBox(height: 6),
                             Text(
                               view.ctaLabel,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w800,
-                                color: DesignTokens.accentOrange,
+                                color: accent,
                               ),
                             ),
                           ],
@@ -780,8 +742,8 @@ class _StatusChip extends StatelessWidget {
         bg = const Color(0xFFC62828).withValues(alpha: 0.12);
         break;
       case MemberPlanUiState.cancelledActive:
-        fg = DesignTokens.accentOrange;
-        bg = DesignTokens.accentOrange.withValues(alpha: 0.12);
+        fg = isLight ? const Color(0xFF6B6560) : Colors.white70;
+        bg = (isLight ? Colors.black : Colors.white).withValues(alpha: 0.1);
         break;
       default:
         fg = isLight ? const Color(0xFF6B6560) : Colors.white70;
@@ -809,20 +771,22 @@ class _StatusChip extends StatelessWidget {
 class _ApplicationStatusBanner extends StatelessWidget {
   final PartnerCenterApplication application;
   final bool isLight;
+  final Color accent;
 
   const _ApplicationStatusBanner({
     required this.application,
     required this.isLight,
+    required this.accent,
   });
 
   @override
   Widget build(BuildContext context) {
     final live = application.status == 'approved';
     final color = live
-        ? const Color(0xFF0FA35F)
+        ? CotrainrIdentityColors.availableGreen
         : application.status == 'rejected'
-            ? const Color(0xFFC62828)
-            : DesignTokens.accentOrange;
+            ? CotrainrIdentityColors.errorRed
+            : accent;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
@@ -875,6 +839,7 @@ class _CapabilityCard extends StatelessWidget {
   final String? ctaLabel;
   final VoidCallback? onCta;
   final bool isLight;
+  final Color accent;
 
   const _CapabilityCard({
     required this.icon,
@@ -885,6 +850,7 @@ class _CapabilityCard extends StatelessWidget {
     this.ctaLabel,
     this.onCta,
     required this.isLight,
+    required this.accent,
   });
 
   @override
@@ -914,7 +880,7 @@ class _CapabilityCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(icon, color: DesignTokens.accentOrange, size: 22),
+              Icon(icon, color: accent, size: 22),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
@@ -932,7 +898,8 @@ class _CapabilityCard extends StatelessWidget {
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: statusLive
-                        ? const Color(0xFF19C37D).withValues(alpha: 0.14)
+                        ? CotrainrIdentityColors.availableGreenBg
+                            .withValues(alpha: 0.14)
                         : onSurface.withValues(alpha: 0.07),
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -942,7 +909,7 @@ class _CapabilityCard extends StatelessWidget {
                       fontSize: 11,
                       fontWeight: FontWeight.w800,
                       color: statusLive
-                          ? const Color(0xFF0FA35F)
+                          ? CotrainrIdentityColors.availableGreen
                           : muted,
                     ),
                   ),
@@ -961,9 +928,9 @@ class _CapabilityCard extends StatelessWidget {
               child: TextButton(
                 onPressed: onCta,
                 style: TextButton.styleFrom(
-                  foregroundColor: DesignTokens.accentOrange,
+                  foregroundColor: accent,
                   padding: EdgeInsets.zero,
-                  minimumSize: Size.zero,
+                  minimumSize: const Size(48, 48),
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
                 child: Text(
@@ -984,10 +951,14 @@ class _MembershipCard extends StatefulWidget {
   final bool isLight;
   /// When non-null (Trainer / Nutritionist), card shows ROLE instead of PLAN.
   final String? roleLabel;
+  final PassIdentity identity;
+  final VoidCallback onCopyPassId;
 
   const _MembershipCard({
     required this.info,
     required this.isLight,
+    required this.identity,
+    required this.onCopyPassId,
     this.roleLabel,
   });
 
@@ -1002,6 +973,7 @@ class _MembershipCardState extends State<_MembershipCard> {
   Widget build(BuildContext context) {
     final info = widget.info;
     final isLight = widget.isLight;
+    final identity = widget.identity;
     final roleLabel = widget.roleLabel;
     final showRole = roleLabel != null && roleLabel.isNotEmpty;
     final name = (info.fullName?.trim().isNotEmpty == true)
@@ -1013,17 +985,17 @@ class _MembershipCardState extends State<_MembershipCard> {
     final metaLabel = showRole ? 'ROLE' : 'PLAN';
     final metaValue = showRole ? roleLabel : planLabel;
 
-    // Orange membership card in both light and dark themes.
-    final primaryText = Colors.white;
-    final secondaryText = Colors.white.withValues(alpha: 0.75);
-    final passIdColor = Colors.white;
-    final planValueColor = Colors.white;
+    final primaryText = identity.primaryText;
+    final secondaryText = identity.secondaryText;
+    final passIdColor = identity.primaryText;
+    final planValueColor = identity.highlight ?? identity.primaryText;
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
         final photoSize = (width * 0.20).clamp(70.0, 82.0);
-        final identityRightPad = (width * 0.26).clamp(84.0, 120.0);
+        // Reserve less for watermark so Pass ID keeps horizontal room.
+        final nameRightPad = (width * 0.18).clamp(56.0, 96.0);
         final nameSize = (width * 0.062).clamp(22.0, 28.0);
         final passIdSize = (width * 0.042).clamp(15.0, 18.0);
 
@@ -1039,21 +1011,12 @@ class _MembershipCardState extends State<_MembershipCard> {
               aspectRatio: 1 / 0.60,
               child: Semantics(
                 label: showRole
-                    ? 'Cotrainr Pass for $name, member ID ${info.passId}, role $metaValue'
-                    : 'Cotrainr Pass for $name, member ID ${info.passId}, plan $planLabel',
+                    ? 'Cotrainr Pass for $name, Pass ID ${info.passId}, role $metaValue'
+                    : 'Cotrainr Pass for $name, Pass ID ${info.passId}, plan $planLabel',
                 child: Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(24),
-                    gradient: const LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      colors: [
-                        Color(0xFFE65100),
-                        Color(0xFFFF8A00),
-                        Color(0xFFFFA040),
-                      ],
-                      stops: [0.0, 0.55, 1.0],
-                    ),
+                    gradient: identity.cardGradient,
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withValues(
@@ -1068,7 +1031,7 @@ class _MembershipCardState extends State<_MembershipCard> {
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      const _CardBrandGraphic(),
+                      _CardBrandGraphic(watermarkColor: identity.watermark),
                       Padding(
                         padding: const EdgeInsets.fromLTRB(18, 14, 16, 12),
                         child: Column(
@@ -1076,22 +1039,24 @@ class _MembershipCardState extends State<_MembershipCard> {
                           children: [
                             const _CardBrandLockup(),
                             const Spacer(flex: 1),
-                            Padding(
-                              padding: EdgeInsets.only(right: identityRightPad),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  _PassPortrait(
-                                    url: info.avatarUrl,
-                                    size: photoSize,
-                                  ),
-                                  const SizedBox(width: 14),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        FittedBox(
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _PassPortrait(
+                                  url: info.avatarUrl,
+                                  size: photoSize,
+                                  accent: identity.accent,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Padding(
+                                        padding:
+                                            EdgeInsets.only(right: nameRightPad),
+                                        child: FittedBox(
                                           fit: BoxFit.scaleDown,
                                           alignment: Alignment.centerLeft,
                                           child: Text(
@@ -1107,33 +1072,64 @@ class _MembershipCardState extends State<_MembershipCard> {
                                             ),
                                           ),
                                         ),
-                                        const SizedBox(height: 6),
-                                        Text(
-                                          'MEMBER ID',
-                                          style: TextStyle(
-                                            fontSize: 9,
-                                            fontWeight: FontWeight.w600,
-                                            letterSpacing: 1.4,
-                                            color: secondaryText,
-                                          ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        'PASS ID',
+                                        style: TextStyle(
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.w600,
+                                          letterSpacing: 1.4,
+                                          color: secondaryText,
                                         ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          info.passId,
-                                          maxLines: 1,
-                                          style: TextStyle(
-                                            fontSize: passIdSize,
-                                            fontWeight: FontWeight.w700,
-                                            letterSpacing: 0.8,
-                                            color: passIdColor,
-                                            height: 1.15,
+                                      ),
+                                      const SizedBox(height: 2),
+                                      // Full Pass ID always visible — wrap, never ellipsis.
+                                      Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.center,
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              info.passId,
+                                              softWrap: true,
+                                              style: TextStyle(
+                                                fontSize: passIdSize,
+                                                fontWeight: FontWeight.w700,
+                                                letterSpacing: 0.6,
+                                                color: passIdColor,
+                                                height: 1.2,
+                                              ),
+                                            ),
                                           ),
-                                        ),
-                                      ],
-                                    ),
+                                          Semantics(
+                                            button: true,
+                                            label: 'Copy Pass ID',
+                                            child: IconButton(
+                                              onPressed: widget.onCopyPassId,
+                                              tooltip: 'Copy Pass ID',
+                                              padding: EdgeInsets.zero,
+                                              constraints: const BoxConstraints(
+                                                minWidth: 44,
+                                                minHeight: 44,
+                                              ),
+                                              visualDensity:
+                                                  VisualDensity.compact,
+                                              iconSize: 18,
+                                              icon: Icon(
+                                                Icons.copy_rounded,
+                                                size: 18,
+                                                color: identity.accent
+                                                    .withValues(alpha: 0.95),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
                                   ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
                             const Spacer(flex: 1),
                             Container(
@@ -1224,7 +1220,9 @@ class _CardBrandLockup extends StatelessWidget {
 
 /// One oversized official Cotrainr SVG mark as clipped brand geometry.
 class _CardBrandGraphic extends StatelessWidget {
-  const _CardBrandGraphic();
+  final Color watermarkColor;
+
+  const _CardBrandGraphic({required this.watermarkColor});
 
   @override
   Widget build(BuildContext context) {
@@ -1241,8 +1239,8 @@ class _CardBrandGraphic extends StatelessWidget {
             child: Opacity(
               opacity: 0.28,
               child: ColorFiltered(
-                colorFilter: const ColorFilter.mode(
-                  Color(0xFFBF360C),
+                colorFilter: ColorFilter.mode(
+                  watermarkColor,
                   BlendMode.srcIn,
                 ),
                 child: const CotrainrLogo(
@@ -1316,10 +1314,12 @@ class _MembershipMeta extends StatelessWidget {
 class _PassPortrait extends StatelessWidget {
   final String? url;
   final double size;
+  final Color accent;
 
   const _PassPortrait({
     required this.url,
     required this.size,
+    required this.accent,
   });
 
   @override
@@ -1358,9 +1358,10 @@ class _PassPortrait extends StatelessWidget {
                   ? Image.network(
                       url!,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => const _DefaultPassAvatar(),
+                      errorBuilder: (_, _, _) =>
+                          _DefaultPassAvatar(accent: accent),
                     )
-                  : const _DefaultPassAvatar(),
+                  : _DefaultPassAvatar(accent: accent),
             ),
           ),
         ),
@@ -1370,7 +1371,9 @@ class _PassPortrait extends StatelessWidget {
 }
 
 class _DefaultPassAvatar extends StatelessWidget {
-  const _DefaultPassAvatar();
+  final Color accent;
+
+  const _DefaultPassAvatar({required this.accent});
 
   @override
   Widget build(BuildContext context) {
@@ -1379,7 +1382,7 @@ class _DefaultPassAvatar extends StatelessWidget {
       child: Center(
         child: Icon(
           Icons.person_rounded,
-          color: DesignTokens.accentOrange.withValues(alpha: 0.85),
+          color: accent.withValues(alpha: 0.85),
           size: 34,
         ),
       ),

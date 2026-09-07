@@ -36,6 +36,7 @@ import '../../pages/meal_tracker/meal_tracker_page_v2.dart';
 import '../../pages/coach_notes/coach_notes_page.dart';
 import '../../pages/ai_planner/ai_planner_page.dart';
 import '../../pages/nutrition_goal_planner/nutrition_goal_planner_page.dart';
+import '../../pages/discover/discover_page.dart';
 import '../../pages/quest/quest_page.dart';
 import '../../pages/bmi/bmi_details_screen.dart';
 import '../../pages/client/my_trainers_page.dart';
@@ -354,6 +355,17 @@ final GoRouter appRouter = GoRouter(
       name: 'nutritionGoals',
       pageBuilder: (context, state) => _fadeSlidePage(
         child: const NutritionGoalPlannerPage(),
+        state: state,
+      ),
+    ),
+    GoRoute(
+      path: '/centres',
+      name: 'centres',
+      pageBuilder: (context, state) => _fadeSlidePage(
+        child: const DiscoverPage(
+          centersOnly: true,
+          initialDiscoverTab: 2,
+        ),
         state: state,
       ),
     ),

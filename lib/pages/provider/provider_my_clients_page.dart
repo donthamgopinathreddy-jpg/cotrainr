@@ -9,6 +9,7 @@ import '../../services/leads_models.dart' show Lead;
 import '../../services/leads_service.dart';
 import '../../theme/design_tokens.dart';
 import '../../widgets/common/app_overlays.dart';
+import '../../widgets/common/app_tab_page_header.dart';
 import '../../widgets/common/pressable_card.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
 import '../../widgets/profile/account_hub_widgets.dart';
@@ -284,22 +285,11 @@ class _ProviderMyClientsPageState extends ConsumerState<ProviderMyClientsPage> {
       body: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'My Clients',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    color: textPrimary,
-                    letterSpacing: -0.4,
-                  ),
-                ),
-              ),
+            const AppTabPageHeader(
+              icon: Icons.groups_rounded,
+              title: 'My Clients',
+              gradient: AppTabPageHeader.clientsGradient,
             ),
-            const SizedBox(height: 16),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: _Tabs(

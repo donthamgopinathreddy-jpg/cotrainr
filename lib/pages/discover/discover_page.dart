@@ -33,7 +33,15 @@ class DiscoverPage extends StatefulWidget {
   /// 0 trainers, 1 nutritionists, 2 centers. Query param `discover=` still wins.
   final int? initialDiscoverTab;
 
-  const DiscoverPage({super.key, this.initialDiscoverTab});
+  /// When true, show Partner/fitness centres only (no Trainers/Nutritionists).
+  /// Used for Trainer/Nutritionist Explore and Member Pass entry points.
+  final bool centersOnly;
+
+  const DiscoverPage({
+    super.key,
+    this.initialDiscoverTab,
+    this.centersOnly = false,
+  });
 
   @override
   State<DiscoverPage> createState() => _DiscoverPageState();
@@ -106,11 +114,17 @@ class _DiscoverPageState extends State<DiscoverPage>
     _fadeController.forward();
     _searchController.addListener(_onSearchChanged);
     final seeded = widget.initialDiscoverTab;
-    if (seeded != null) {
+    if (widget.centersOnly) {
+      _selectedTabIndex = 2;
+    } else if (seeded != null) {
       _selectedTabIndex = seeded.clamp(0, 2);
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      if (widget.centersOnly) {
+        setState(() => _selectedTabIndex = 2);
+        return;
+      }
       final discoverTab = GoRouterState.of(
         context,
       ).uri.queryParameters['discover'];
@@ -163,52 +177,59 @@ class _DiscoverPageState extends State<DiscoverPage>
       final location = await _resolveClientLocation();
       if (!mounted) return;
 
-      List<Map<String, dynamic>> trainerResults;
-      List<Map<String, dynamic>> nutritionistResults;
-
       if (location != null) {
         _userPosition = location;
         _locationState = DiscoverLocationState.granted;
-        trainerResults = await _repo.fetchNearbyProviders(
-          userLat: location.latitude,
-          userLng: location.longitude,
-          filters: _filtersForProviderType('trainer'),
-        );
-        nutritionistResults = await _repo.fetchNearbyProviders(
-          userLat: location.latitude,
-          userLng: location.longitude,
-          filters: _filtersForProviderType('nutritionist'),
-        );
       } else {
         _browseWithoutLocation = true;
         _locationState = DiscoverLocationState.browse;
-        _locationNotice =
-            'Location unavailable — showing all eligible providers.';
-        trainerResults = await _repo.fetchDiscoverableProviders(
-          filters: _filtersForProviderType('trainer'),
-        );
-        nutritionistResults = await _repo.fetchDiscoverableProviders(
-          filters: _filtersForProviderType('nutritionist'),
-        );
+        _locationNotice = widget.centersOnly
+            ? 'Location unavailable — showing all partner centres.'
+            : 'Location unavailable — showing all eligible providers.';
       }
-      if (!mounted) return;
 
-      _trainers
-        ..clear()
-        ..addAll(
-          _mapProviderRows(trainerResults, fallbackSubtitle: 'Fitness Trainer'),
-        );
-      _nutritionists
-        ..clear()
-        ..addAll(
-          _mapProviderRows(
-            nutritionistResults,
-            fallbackSubtitle: 'Nutritionist',
-          ),
-        );
+      if (!widget.centersOnly) {
+        List<Map<String, dynamic>> trainerResults;
+        List<Map<String, dynamic>> nutritionistResults;
 
-      _trainers.sort(_compareDiscoverItems);
-      _nutritionists.sort(_compareDiscoverItems);
+        if (location != null) {
+          trainerResults = await _repo.fetchNearbyProviders(
+            userLat: location.latitude,
+            userLng: location.longitude,
+            filters: _filtersForProviderType('trainer'),
+          );
+          nutritionistResults = await _repo.fetchNearbyProviders(
+            userLat: location.latitude,
+            userLng: location.longitude,
+            filters: _filtersForProviderType('nutritionist'),
+          );
+        } else {
+          trainerResults = await _repo.fetchDiscoverableProviders(
+            filters: _filtersForProviderType('trainer'),
+          );
+          nutritionistResults = await _repo.fetchDiscoverableProviders(
+            filters: _filtersForProviderType('nutritionist'),
+          );
+        }
+        if (!mounted) return;
+
+        _trainers
+          ..clear()
+          ..addAll(
+            _mapProviderRows(trainerResults, fallbackSubtitle: 'Fitness Trainer'),
+          );
+        _nutritionists
+          ..clear()
+          ..addAll(
+            _mapProviderRows(
+              nutritionistResults,
+              fallbackSubtitle: 'Nutritionist',
+            ),
+          );
+
+        _trainers.sort(_compareDiscoverItems);
+        _nutritionists.sort(_compareDiscoverItems);
+      }
 
       try {
         final partnerCenters = await _partnerCentersRepo.listForDiscover();
@@ -219,6 +240,13 @@ class _DiscoverPageState extends State<DiscoverPage>
       } catch (e) {
         if (kDebugMode) debugPrint('Discover partner centres: $e');
         // Centres tab stays empty if partner RPC/migration not applied yet.
+      }
+
+      if (widget.centersOnly) {
+        // Providers browsing centres do not need connection-allowance chrome.
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+        return;
       }
 
       final sub = await SubscriptionsRepository().fetchMine();
@@ -752,13 +780,17 @@ class _DiscoverPageState extends State<DiscoverPage>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const _DiscoverHeaderRow(),
+                        _DiscoverHeaderRow(
+                          centersOnly: widget.centersOnly,
+                        ),
                         const SizedBox(height: DesignTokens.spacing16),
                         _DiscoverSearchBar(
                           controller: _searchController,
                           focusNode: _searchFocusNode,
                           selectedTabIndex: _selectedTabIndex,
-                          onFilterTap: () => _showFilterSheet(context),
+                          onFilterTap: widget.centersOnly
+                              ? null
+                              : () => _showFilterSheet(context),
                         ),
                         if (_locationNotice != null) ...[
                           const SizedBox(height: DesignTokens.spacing12),
@@ -769,17 +801,24 @@ class _DiscoverPageState extends State<DiscoverPage>
                             },
                           ),
                         ],
-                        const SizedBox(height: DesignTokens.spacing16),
-                        _DiscoverSegmentTabs(
-                          tabs: const ['Trainers', 'Nutritionists', 'Centers'],
-                          selectedIndex: _selectedTabIndex,
-                          onTabChanged: (index) {
-                            HapticFeedback.selectionClick();
-                            setState(() => _selectedTabIndex = index);
-                          },
-                          selectedGradient: _discoverGradient,
-                        ),
-                        if (Supabase.instance.client.auth.currentUser != null &&
+                        if (!widget.centersOnly) ...[
+                          const SizedBox(height: DesignTokens.spacing16),
+                          _DiscoverSegmentTabs(
+                            tabs: const [
+                              'Trainers',
+                              'Nutritionists',
+                              'Centers',
+                            ],
+                            selectedIndex: _selectedTabIndex,
+                            onTabChanged: (index) {
+                              HapticFeedback.selectionClick();
+                              setState(() => _selectedTabIndex = index);
+                            },
+                            selectedGradient: _discoverGradient,
+                          ),
+                        ],
+                        if (!widget.centersOnly &&
+                            Supabase.instance.client.auth.currentUser != null &&
                             (_connectionUnlimited ||
                                 (_connectionRemaining != null &&
                                     _connectionLimit != null))) ...[
@@ -1211,16 +1250,32 @@ class _DiscoverLoadingHeaderState extends State<_DiscoverLoadingHeader>
 }
 
 class _DiscoverHeaderRow extends StatelessWidget {
-  const _DiscoverHeaderRow();
+  final bool centersOnly;
+
+  const _DiscoverHeaderRow({this.centersOnly = false});
 
   @override
   Widget build(BuildContext context) {
     final titleColor = DesignTokens.textPrimaryOf(context);
+    final canPop = centersOnly && Navigator.of(context).canPop();
 
     return SizedBox(
       height: 56,
       child: Row(
         children: [
+          if (canPop) ...[
+            IconButton(
+              tooltip: 'Back',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+              onPressed: () => Navigator.of(context).maybePop(),
+              icon: Icon(
+                Icons.arrow_back_rounded,
+                color: titleColor,
+              ),
+            ),
+            const SizedBox(width: 4),
+          ],
           TweenAnimationBuilder<double>(
             tween: Tween(begin: 0.92, end: 1.0),
             duration: const Duration(milliseconds: 220),
@@ -1231,8 +1286,10 @@ class _DiscoverHeaderRow extends StatelessWidget {
             child: ShaderMask(
               shaderCallback: (rect) =>
                   DesignTokens.discoverHeaderIconGradient.createShader(rect),
-              child: const Icon(
-                Icons.explore_outlined,
+              child: Icon(
+                centersOnly
+                    ? Icons.location_city_rounded
+                    : Icons.explore_outlined,
                 size: 26,
                 color: Colors.white,
               ),
@@ -1253,7 +1310,7 @@ class _DiscoverHeaderRow extends StatelessWidget {
               );
             },
             child: Text(
-              'DISCOVER',
+              centersOnly ? 'CENTRES' : 'DISCOVER',
               style: GoogleFonts.montserrat(
                 fontSize: 30,
                 fontWeight: FontWeight.w900,
@@ -1321,13 +1378,13 @@ class _DiscoverSearchBar extends StatefulWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
   final int selectedTabIndex;
-  final VoidCallback onFilterTap;
+  final VoidCallback? onFilterTap;
 
   const _DiscoverSearchBar({
     required this.controller,
     required this.focusNode,
     required this.selectedTabIndex,
-    required this.onFilterTap,
+    this.onFilterTap,
   });
 
   @override
@@ -1396,33 +1453,36 @@ class _DiscoverSearchBarState extends State<_DiscoverSearchBar> {
               size: 22,
               color: DesignTokens.textSecondaryOf(context),
             ),
-            suffixIcon: GestureDetector(
-              onTap: widget.onFilterTap,
-              child: Container(
-                margin: const EdgeInsets.all(6),
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      DesignTokens.discoverOrange.withValues(alpha: 0.18),
-                      DesignTokens.discoverOrangeDeep.withValues(alpha: 0.14),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+            suffixIcon: widget.onFilterTap == null
+                ? null
+                : GestureDetector(
+                    onTap: widget.onFilterTap,
+                    child: Container(
+                      margin: const EdgeInsets.all(6),
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            DesignTokens.discoverOrange.withValues(alpha: 0.18),
+                            DesignTokens.discoverOrangeDeep
+                                .withValues(alpha: 0.14),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        shape: BoxShape.circle,
+                      ),
+                      child: ShaderMask(
+                        shaderCallback: (rect) =>
+                            _discoverGradient.createShader(rect),
+                        child: const Icon(
+                          Icons.tune_rounded,
+                          size: 18,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
                   ),
-                  shape: BoxShape.circle,
-                ),
-                child: ShaderMask(
-                  shaderCallback: (rect) =>
-                      _discoverGradient.createShader(rect),
-                  child: const Icon(
-                    Icons.tune_rounded,
-                    size: 18,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ),
             border: InputBorder.none,
             enabledBorder: InputBorder.none,
             focusedBorder: InputBorder.none,
