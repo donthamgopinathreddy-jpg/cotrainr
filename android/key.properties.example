@@ -1,0 +1,7 @@
+# Copy this file to android/key.properties on the release machine only.
+# Never commit android/key.properties or the keystore itself.
+
+storePassword=CHANGE_ME
+keyPassword=CHANGE_ME
+keyAlias=cotrainr-upload
+storeFile=../cotrainr-upload-key.jks
