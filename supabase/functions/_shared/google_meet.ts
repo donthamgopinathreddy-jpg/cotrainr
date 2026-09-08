@@ -91,17 +91,18 @@ export async function exchangeAuthorizationCode(opts: {
     client_id: clientId,
     client_secret: clientSecret,
   })
-  if (opts.codeVerifier) {
-    body.set("code_verifier", opts.codeVerifier)
-  }
+  if (opts.codeVerifier) body.set("code_verifier", opts.codeVerifier)
+
   const res = await fetch(GOOGLE_TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
   })
   if (!res.ok) {
-    const text = await res.text()
-    console.error("[google] token exchange failed:", res.status, text.slice(0, 200))
+    console.error(JSON.stringify({
+      event: "google_token_exchange_failed",
+      status: res.status,
+    }))
     throw new Error("TOKEN_EXCHANGE_FAILED")
   }
   return await res.json()
@@ -126,8 +127,10 @@ export async function refreshAccessToken(refreshToken: string): Promise<{
     }),
   })
   if (!res.ok) {
-    const text = await res.text()
-    console.error("[google] refresh failed:", res.status, text.slice(0, 200))
+    console.error(JSON.stringify({
+      event: "google_token_refresh_failed",
+      status: res.status,
+    }))
     const err = new Error("REFRESH_FAILED")
     ;(err as { status?: number }).status = res.status
     throw err
@@ -214,9 +217,7 @@ export async function getValidGoogleAccessToken(
       updated_at: new Date().toISOString(),
       reconnect_required: false,
     }
-    if (refreshed.refresh_token) {
-      update.refresh_token = refreshed.refresh_token
-    }
+    if (refreshed.refresh_token) update.refresh_token = refreshed.refresh_token
     if (refreshed.scope) update.scopes = refreshed.scope
 
     await supabaseAdmin
@@ -269,7 +270,6 @@ export async function createMeetSpace(accessToken: string): Promise<
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
     },
-    // Empty Space body is valid; Google applies defaults.
     body: JSON.stringify({}),
   })
 
@@ -298,8 +298,10 @@ export async function createMeetSpace(accessToken: string): Promise<
     }
   }
   if (!res.ok) {
-    const text = await res.text()
-    console.error("[google] spaces.create failed:", res.status, text.slice(0, 300))
+    console.error(JSON.stringify({
+      event: "google_meet_create_failed",
+      status: res.status,
+    }))
     return {
       ok: false,
       code: "GOOGLE_MEET_CREATE_FAILED",
