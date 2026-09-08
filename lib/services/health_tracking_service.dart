@@ -51,6 +51,10 @@ class HealthTrackingService {
   }
 
   /// Initialize Health Connect / Apple Health only (no sensor fallback).
+  ///
+  /// Fail closed when Android Health Connect is unavailable or when the user
+  /// has granted none of the movement permissions. This prevents callers from
+  /// treating an empty snapshot as authoritative health data.
   Future<bool> initialize() async {
     if (_isInitialized && _activeSource != null) return true;
 
@@ -77,10 +81,27 @@ class HealthTrackingService {
       _activeSource!.setUserHeightCm(_heightCm);
       await _activeSource!.initialize();
 
-      // Request Steps / Calories / Distance / Water if not already granted.
-      final existing = await _readTypePermissions();
-      if (!_hasCorePermissions(existing)) {
+      // Request the movement metrics if they are not already granted. Water is
+      // optional because Cotrainr also supports its own manual water logging.
+      var permissions = await _readTypePermissions();
+      if (!_hasCorePermissions(permissions)) {
         await requestHealthConnectPermissions();
+        permissions = await _readTypePermissions();
+      }
+
+      // On Android, a configured Health Connect SDK without any usable movement
+      // permission is not an active metrics source. Keep the source unavailable
+      // so sync code cannot persist fabricated/empty zero snapshots.
+      if (Platform.isAndroid && !_hasAnyMovementPermission(permissions)) {
+        await _disposeActiveSource();
+        _activeSource = null;
+        _isInitialized = true;
+        if (kDebugMode) {
+          debugPrint(
+            '[Metrics] Health Connect permissions unavailable — sync disabled',
+          );
+        }
+        return false;
       }
 
       _logActiveSourceOnce();
@@ -90,6 +111,8 @@ class HealthTrackingService {
       if (kDebugMode) {
         debugPrint('[Metrics] initialize failed: $e');
       }
+      await _disposeActiveSource();
+      _activeSource = null;
       _isInitialized = true;
       return false;
     }
@@ -326,13 +349,22 @@ class HealthTrackingService {
     return typePermissions;
   }
 
+  /// Core movement data needed to consider the platform-health setup complete.
+  /// Water is intentionally optional because manual Cotrainr water logging is
+  /// independent of Health Connect.
   bool _hasCorePermissions(Map<String, bool> typePermissions) {
     final steps = typePermissions['Steps'] ?? false;
     final calories = (typePermissions['Active calories'] ?? false) ||
         (typePermissions['Total calories'] ?? false);
     final distance = typePermissions['Distance'] ?? false;
-    final water = typePermissions['Water'] ?? false;
-    return steps && calories && distance && water;
+    return steps && calories && distance;
+  }
+
+  bool _hasAnyMovementPermission(Map<String, bool> typePermissions) {
+    return (typePermissions['Steps'] ?? false) ||
+        (typePermissions['Active calories'] ?? false) ||
+        (typePermissions['Total calories'] ?? false) ||
+        (typePermissions['Distance'] ?? false);
   }
 
   /// Opens the Health Connect / Apple Health permission sheet immediately.
