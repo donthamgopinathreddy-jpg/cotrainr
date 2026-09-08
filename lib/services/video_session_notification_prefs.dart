@@ -1,4 +1,4 @@
-import '../../../repositories/profile_repository.dart';
+import '../repositories/profile_repository.dart';
 
 class VideoSessionNotificationPrefs {
   final bool sessions;
