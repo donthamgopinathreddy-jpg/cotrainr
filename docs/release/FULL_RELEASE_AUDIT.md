@@ -8,33 +8,51 @@ Production backend truth: live Supabase project nvtozwtuyhwqkqvftpyi
 ## Sign-off rule
 A feature is not PASS because a screen exists. PASS requires the production path to be traced across UI -> interaction -> state/provider -> service/RPC/Edge Function -> authorization/RLS -> database/storage -> failure/loading/empty states -> release configuration. Local-only checks are explicitly marked LOCAL VERIFICATION REQUIRED.
 
-## Audit order
-1. App boot, splash, session restoration and routing
-2. Authentication and role onboarding
-3. Client / Trainer / Nutritionist shells and navigation
-4. Global UI theme, light/dark mode and interaction states
-5. Discover and public profiles
-6. Connection Model B and subscriptions/entitlements
-7. Messaging
-8. Meal tracker, hydration and health metrics
-9. Video Sessions and Google Meet
-10. Notifications and reminders
-11. Nearby / partner centres / member pass / offers
-12. Community events retained for MVP
-13. Profile, settings, legal and account deletion
-14. Android permissions, deep links, lifecycle and background behaviour
-15. Supabase tables, RLS, grants, views, RPCs, triggers, storage and Edge Functions
-16. Secret/config/logging/privacy audit
-17. Dead code, obsolete UI, retired integrations and dependency cleanup
-18. Performance/reliability
-19. Local Flutter analysis/tests/release build
-20. Signed AAB and Play Internal Testing
+## Locked release order
+1. Core UI / screens — 90% baseline — IN PROGRESS
+2. Light / Dark theme — 88% baseline
+3. Navigation / routing — 88% baseline
+4. Authentication / onboarding — 82% baseline
+5. Discover / profiles — 88% baseline
+6. Connections / Model B — 90% baseline
+7. Messaging — 85% baseline
+8. Meal / water tracking — 85% baseline
+9. Health metrics — 82% baseline
+10. Video Sessions / Google Meet — 82% baseline
+11. Notifications / reminders — 65% baseline
+12. Partner centres / Pass / offers — 80% baseline
+13. Backend / database — 88% baseline
+14. RLS / security hardening — 82% baseline
+15. Privacy / account deletion — 70% baseline
+16. Android production configuration — 80% baseline
+17. Code / legacy cleanup — 70% baseline
+18. Physical-device / E2E verification — 50% baseline
+19. Play Store release work — 45% baseline
 
 ## Severity
 - BLOCKER: security/privacy/data loss/crash/release rejection/core flow unusable
 - MAJOR: important feature broken or materially misleading UX
 - MINOR: polish/non-critical inconsistency
 - POST-LAUNCH: safe improvement that does not block release
+
+## 01 Core UI / screens
+### 01.01 App root + splash + welcome — CODE AUDIT PASS / LOCAL VISUAL VERIFY
+Checked on the hardening branch:
+- App root uses MaterialApp.router with the shared light/dark themes and system UI overlay derived from effective brightness.
+- Native splash is preserved until Flutter splash paints, with a 2-second native-splash failsafe.
+- Flutter splash has SafeArea-aware positioning, responsive clamps, image fallback, reduced-motion handling, startup slow hint, and disposes all timers/controllers.
+- Startup navigation waits for a minimum splash duration and routes signed-in users through the authoritative post-auth resolver rather than blindly to Home.
+- Password recovery and pending message/video deep-link startup paths are explicitly preserved.
+- Welcome uses SafeArea, responsive logo sizing, disabled button state while navigation is busy, haptic feedback and reduced-animation handling.
+- No code-level BLOCKER/MAJOR UI defect found in these first surfaces.
+
+LOCAL VERIFICATION REQUIRED for 01.01:
+- Small Android phone / large font visual overflow check.
+- Forced light and dark mode visual check (splash intentionally branded black).
+- Reduced-animation accessibility check.
+- Cold start signed-out, signed-in and password-recovery launch check.
+
+Next single Core UI item: Login screen visual/state audit. Do not advance to category 02 until Core UI reachable screens are exhausted.
 
 ## Current verified fixes
 - Privileged admin/verification RPC execution hardened.
@@ -49,12 +67,14 @@ A feature is not PASS because a screen exists. PASS requires the production path
 - provider_reviews view security corrected.
 - Mutable function search_path wave corrected.
 - create-video-session live function verifies provider before Meet creation.
+- create_lead_tx now requires the target provider to be currently verified.
+- update_lead_status_tx now rechecks provider verification at acceptance time.
 - Global light/dark shared-widget corrections recorded.
 - Shared SwitchTheme now gives explicit ON/OFF/disabled/pressed state in light and dark mode.
 
 ## Current open release gates
 ### BLOCKER / MAJOR review
-- Full authenticated SECURITY DEFINER RPC authorization review is not complete. The current Supabase advisor reports 46 authenticated-callable SECURITY DEFINER functions. Many are intentional app RPCs, but each must be checked for internal caller/ownership authorization rather than accepted from the grant alone.
+- Full authenticated SECURITY DEFINER RPC authorization review is not complete.
 - Full repository/config/history secret exposure review remains open.
 - Full deployed Edge Function JWT/auth/error/secret review remains open.
 - Account deletion end-to-end data/privacy verification remains open.
@@ -75,13 +95,6 @@ A feature is not PASS because a screen exists. PASS requires the production path
 - Signed release AAB
 - Play Internal Testing
 - Physical-device Health Connect, notification, OAuth/deep-link and background/lifecycle tests
-
-## Current Supabase advisor interpretation
-- auth_leaked_password_protection: OPEN manual configuration warning.
-- anon SECURITY DEFINER: is_username_available is intentional pre-auth functionality but must remain narrow; remaining st_estimatedextent overloads are PostGIS-owned and should not be modified blindly.
-- authenticated SECURITY DEFINER: requires per-function authorization review; this is not automatically a vulnerability and is not automatically safe.
-- RLS-enabled/no-policy service tables: keep deny-by-default where service-only is intentional; user_integrations_zoom remains a cleanup candidate pending complete dependency proof.
-- spatial_ref_sys / PostGIS extension findings are extension-owned; do not mutate blindly.
 
 ## Cleanup safety rules
 - Never delete historical migrations.
