@@ -21,6 +21,13 @@ supabase/.temp/
 .env.*
 !.env.example
 
+# Android signing secrets (never commit)
+android/key.properties
+android/*.jks
+android/*.keystore
+android/app/*.jks
+android/app/*.keystore
+
 # IntelliJ related
 *.iml
 *.ipr
