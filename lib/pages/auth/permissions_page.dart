@@ -29,6 +29,7 @@ class PermissionsPage extends StatefulWidget {
 class _PermissionsPageState extends State<PermissionsPage> {
   Map<Permission?, PermissionStatus> _permissionStatuses = {};
   bool _isRequesting = false;
+  bool _isChecking = true;
 
   final List<PermissionItem> _permissions = [
     PermissionItem(
@@ -83,7 +84,6 @@ class _PermissionsPageState extends State<PermissionsPage> {
     final Map<Permission?, PermissionStatus> statuses = {};
     for (var item in _permissions) {
       if (item.isHealth) {
-        // Check health permission separately
         try {
           final health = Health();
           final types = [
@@ -92,8 +92,8 @@ class _PermissionsPageState extends State<PermissionsPage> {
             HealthDataType.DISTANCE_WALKING_RUNNING,
           ];
           final hasPermissions = await health.hasPermissions(types);
-          statuses[null] = hasPermissions == true 
-              ? PermissionStatus.granted 
+          statuses[null] = hasPermissions == true
+              ? PermissionStatus.granted
               : PermissionStatus.denied;
         } catch (e) {
           statuses[null] = PermissionStatus.denied;
@@ -102,53 +102,48 @@ class _PermissionsPageState extends State<PermissionsPage> {
         statuses[item.permission] = await item.permission!.status;
       }
     }
+    if (!mounted) return;
     setState(() {
       _permissionStatuses.clear();
       _permissionStatuses.addAll(statuses);
+      _isChecking = false;
     });
   }
 
   Future<void> _requestPermission(PermissionItem item) async {
+    if (_isRequesting || _isChecking) return;
     setState(() => _isRequesting = true);
     HapticFeedback.lightImpact();
 
     PermissionStatus status;
-    
-    // Special handling for health permission
+
     if (item.isHealth) {
       try {
-        // Request health permissions using health package
         final types = [
           HealthDataType.STEPS,
           HealthDataType.ACTIVE_ENERGY_BURNED,
           HealthDataType.DISTANCE_WALKING_RUNNING,
         ];
-        
+
         final health = Health();
         bool? hasPermissions = await health.hasPermissions(types);
-        
+
         if (hasPermissions == false) {
           try {
             hasPermissions = await health.requestAuthorization(types);
           } catch (e) {
-            // Handle "Permission launcher not found" error gracefully
-            // This happens when the health package can't open system settings
-            // User can still grant permission manually through app settings
             if (kDebugMode) {
               debugPrint('PermissionsPage: health request failed: $e');
             }
-            // Try to open app settings as fallback
             try {
               await openAppSettings();
-            } catch (_) {
-              // Ignore if we can't open settings either
-            }
+            } catch (_) {}
             hasPermissions = false;
           }
         }
-        
-        status = hasPermissions == true 
-            ? PermissionStatus.granted 
+
+        status = hasPermissions == true
+            ? PermissionStatus.granted
             : PermissionStatus.denied;
       } catch (e) {
         if (kDebugMode) {
@@ -157,7 +152,6 @@ class _PermissionsPageState extends State<PermissionsPage> {
         status = PermissionStatus.denied;
       }
     } else if (item.permission == Permission.location) {
-      // Special handling for location permission
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         status = PermissionStatus.denied;
@@ -166,8 +160,8 @@ class _PermissionsPageState extends State<PermissionsPage> {
         if (permission == LocationPermission.denied) {
           permission = await Geolocator.requestPermission();
         }
-        status = permission == LocationPermission.whileInUse || 
-                 permission == LocationPermission.always
+        status = permission == LocationPermission.whileInUse ||
+                permission == LocationPermission.always
             ? PermissionStatus.granted
             : PermissionStatus.denied;
       }
@@ -177,6 +171,7 @@ class _PermissionsPageState extends State<PermissionsPage> {
       status = PermissionStatus.denied;
     }
 
+    if (!mounted) return;
     setState(() {
       _permissionStatuses[item.permission] = status;
       _isRequesting = false;
@@ -218,27 +213,36 @@ class _PermissionsPageState extends State<PermissionsPage> {
   }
 
   Future<void> _requestAllPermissions() async {
+    if (_isRequesting || _isChecking) return;
     setState(() => _isRequesting = true);
     HapticFeedback.mediumImpact();
 
     for (var item in _permissions) {
-      if (!_permissionStatuses[item.permission]!.isGranted) {
+      final alreadyGranted =
+          _permissionStatuses[item.permission]?.isGranted ?? false;
+      if (!alreadyGranted) {
+        // _requestPermission owns the per-permission loading state, so release
+        // the aggregate flag before delegating and restore it afterwards.
+        if (mounted) setState(() => _isRequesting = false);
         await _requestPermission(item);
+        if (!mounted) return;
+        setState(() => _isRequesting = true);
         await Future.delayed(const Duration(milliseconds: 300));
       }
     }
 
+    if (!mounted) return;
     setState(() => _isRequesting = false);
     _proceedToApp();
   }
 
   void _navigateAfterOnboarding() {
+    if (_isRequesting || _isChecking) return;
     HapticFeedback.heavyImpact();
     context.go(postPermissionsDestination(widget.userRole));
   }
 
   void _proceedToApp() {
-    // Check if required permissions are granted
     final requiredPermissions = _permissions.where((p) => p.isRequired).toList();
     final allRequiredGranted = requiredPermissions.every(
       (item) {
@@ -272,6 +276,7 @@ class _PermissionsPageState extends State<PermissionsPage> {
     final textSecondary = DesignTokens.textSecondaryOf(context);
     final borderColor = DesignTokens.borderColorOf(context);
     final pageBg = AuthUi.pageBg(context);
+    final busy = _isChecking || _isRequesting;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: AuthTheme.overlay(context),
@@ -305,8 +310,6 @@ class _PermissionsPageState extends State<PermissionsPage> {
                     ),
                   ),
                   const SizedBox(height: 24),
-
-                  // Permissions List
                   Expanded(
                     child: ListView.builder(
                       itemCount: _permissions.length,
@@ -434,7 +437,7 @@ class _PermissionsPageState extends State<PermissionsPage> {
                                   )
                                 else
                                   TextButton(
-                                    onPressed: _isRequesting
+                                    onPressed: busy
                                         ? null
                                         : () => _requestPermission(item),
                                     child: const Text(
@@ -452,18 +455,17 @@ class _PermissionsPageState extends State<PermissionsPage> {
                       },
                     ),
                   ),
-
                   const SizedBox(height: 16),
-
-                  // Action Buttons
                   Row(
                     children: [
                       Expanded(
                         child: TextButton(
-                          onPressed: () {
-                            HapticFeedback.lightImpact();
-                            _navigateAfterOnboarding();
-                          },
+                          onPressed: busy
+                              ? null
+                              : () {
+                                  HapticFeedback.lightImpact();
+                                  _navigateAfterOnboarding();
+                                },
                           style: TextButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 16),
                             shape: RoundedRectangleBorder(
@@ -476,7 +478,9 @@ class _PermissionsPageState extends State<PermissionsPage> {
                           child: Text(
                             'Skip',
                             style: TextStyle(
-                              color: textSecondary,
+                              color: busy
+                                  ? textSecondary.withValues(alpha: 0.45)
+                                  : textSecondary,
                               fontSize: DesignTokens.fontSizeBody,
                               fontWeight: DesignTokens.fontWeightSemiBold,
                             ),
@@ -487,10 +491,9 @@ class _PermissionsPageState extends State<PermissionsPage> {
                       Expanded(
                         flex: 2,
                         child: AuthPrimaryButton(
-                          label: 'Allow All',
-                          isLoading: _isRequesting,
-                          onPressed:
-                              _isRequesting ? null : _requestAllPermissions,
+                          label: _isChecking ? 'Checking…' : 'Allow All',
+                          isLoading: busy,
+                          onPressed: busy ? null : _requestAllPermissions,
                         ),
                       ),
                     ],
