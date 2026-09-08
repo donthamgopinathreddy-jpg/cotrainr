@@ -38,6 +38,11 @@ verify_jwt = false
 # Authenticated Flutter clients. Actor is taken from the JWT, not the body.
 verify_jwt = true
 
+[functions.delete-account]
+# Authenticated destructive endpoint. The actor is derived exclusively from
+# the verified JWT; the request body never supplies a user id.
+verify_jwt = true
+
 # Decommissioned (2026-08-28): zoom-oauth-start, zoom-oauth-callback,
 # zoom-disconnect. The MVP uses Google Meet. The Zoom flow bound OAuth state
 # directly to the user id with no nonce or PKCE, so a forged callback could
