@@ -50,8 +50,11 @@ class _CompleteProfilePageState extends State<CompleteProfilePage> {
       if (!mounted) return;
 
       if (state.isComplete) {
-        // Already onboarded: the post-auth gate owns the destination.
-        final dest = await PostAuthDestination.resolve();
+        // Already onboarded: the post-auth gate owns the destination. Keep this
+        // second network-dependent resolution bounded as well so the guard can
+        // always recover into an explicit retry state.
+        final dest = await PostAuthDestination.resolve()
+            .timeout(PostAuthDestination.networkTimeout);
         if (!mounted) return;
         context.go(dest == '/auth/complete-profile' ? '/auth/continue' : dest);
         return;
