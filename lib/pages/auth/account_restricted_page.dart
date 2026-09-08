@@ -6,13 +6,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/auth/account_status.dart';
 import '../../core/auth/verification_error_messages.dart';
+import '../../services/account_deletion_service.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/design_tokens.dart';
 
 /// Shown when `profiles.account_status` is suspended or banned.
 ///
-/// Deliberately exposes no internal moderation notes; the only actions are
-/// retry (a suspension may have expired) and sign out.
+/// Deliberately exposes no internal moderation notes. Restricted users can
+/// re-check status, sign out, or permanently delete their own account.
 class AccountRestrictedPage extends StatefulWidget {
   const AccountRestrictedPage({super.key});
 
@@ -24,6 +25,7 @@ class _AccountRestrictedPageState extends State<AccountRestrictedPage> {
   AccountRestriction _restriction =
       const AccountRestriction(status: AccountStatus.suspended);
   bool _busy = false;
+  bool _deleting = false;
 
   @override
   void initState() {
@@ -32,6 +34,7 @@ class _AccountRestrictedPageState extends State<AccountRestrictedPage> {
   }
 
   Future<void> _load() async {
+    if (_deleting) return;
     setState(() => _busy = true);
     try {
       final raw = await Supabase.instance.client
@@ -60,6 +63,7 @@ class _AccountRestrictedPageState extends State<AccountRestrictedPage> {
   }
 
   Future<void> _signOut() async {
+    if (_deleting) return;
     setState(() => _busy = true);
     try {
       await Supabase.instance.client.auth.signOut();
@@ -68,6 +72,57 @@ class _AccountRestrictedPageState extends State<AccountRestrictedPage> {
     }
     if (!mounted) return;
     context.go('/welcome');
+  }
+
+  Future<void> _deleteAccount() async {
+    if (_deleting) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Permanently Delete Account?'),
+        content: const Text(
+          'This permanently deletes your Cotrainr account and associated data. This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text(
+              'Delete Account',
+              style: TextStyle(
+                color: AppColors.error,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() {
+      _deleting = true;
+      _busy = true;
+    });
+    try {
+      await AccountDeletionService().deleteCurrentAccount();
+      if (!mounted) return;
+      context.go('/welcome');
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _deleting = false;
+        _busy = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not delete your account. Please try again.'),
+        ),
+      );
+    }
   }
 
   @override
@@ -116,7 +171,7 @@ class _AccountRestrictedPageState extends State<AccountRestrictedPage> {
                   height: 48,
                   child: OutlinedButton(
                     onPressed: _busy ? null : _load,
-                    child: Text(_busy ? 'Checking…' : 'Check again'),
+                    child: Text(_busy && !_deleting ? 'Checking…' : 'Check again'),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -131,6 +186,27 @@ class _AccountRestrictedPageState extends State<AccountRestrictedPage> {
                       elevation: 0,
                     ),
                     child: const Text('Sign out'),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: OutlinedButton(
+                    onPressed: _busy ? null : _deleteAccount,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.error,
+                      side: BorderSide(
+                        color: AppColors.error.withValues(alpha: 0.55),
+                      ),
+                    ),
+                    child: _deleting
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Delete Account'),
                   ),
                 ),
               ],
