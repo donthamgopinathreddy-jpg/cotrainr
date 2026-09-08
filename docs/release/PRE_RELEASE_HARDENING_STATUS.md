@@ -27,13 +27,13 @@ Canonical audit branch: `security/pre-release-hardening`
 | REL-03 | P1 | Signing secret hygiene | CLOSED | `.gitignore` protects key.properties/JKS/keystore files; safe template added. |
 | REL-04 | P1 | Generic Flutter package metadata | CLOSED | Cotrainr package description recorded; version remains `1.0.0+1` until final release build sequencing. |
 | HEALTH-01 | P0 | Android 13 fallback/product health-source correctness | OPEN | Current service is Health Connect/HealthKit only and has no Android sensor fallback. Audit later in Health phase. |
-| HEALTH-02 | P1 | Health Connect least-privilege permissions | OPEN | Manifest currently declares write permissions while current health service requests READ access. Verify water/write flows before removing write declarations. |
-| ROUTE-01 | P1 | Legacy Zoom deep-link/router residue | OPEN | Zoom retired; verify no remaining production dependency, then remove dormant callback wiring. |
+| HEALTH-02 | P1 | Health Connect least-privilege permissions | CLOSED | Current health service requests READ only; manifest write permissions removed and read permissions retained. |
+| ROUTE-01 | P1 | Legacy Zoom deep-link/router residue | RECORDED IN GITHUB | Android external Zoom callback intent removed. Router compatibility redirect/source residue remains for later code cleanup after confirming no caller depends on it. |
 | DATA-01 | P0 | Fake Insights fallback series | OPEN | Router contains hard-coded sample metric arrays. Must never display invented health values in production. |
-| AUTH-01 | P0 | Signup/onboarding role authority | OPEN | Inspect live auth trigger, complete-profile RPC, OAuth and role escalation paths. |
+| AUTH-01 | P0 | Signup/onboarding role authority | OPEN | Live `handle_new_user` reads signup metadata role and can create provider rows. Email signup currently supplies that role; social completion uses `complete_cotrainr_profile`. Provider verification gate exists, but downstream privilege/RLS implications must be fully checked before changing the signup contract. |
 | RPC-01 | P1 | Remaining anonymous SECURITY DEFINER functions | OPEN | Classify by body and caller before changing ACLs. |
-| RPC-02 | P1 | `get_notification_push` arbitrary user preference read | OPEN | Inspect callers, then restrict to trusted/self path. |
-| VIEW-01 | P0/P1 | `provider_reviews` SECURITY DEFINER view | OPEN | Inspect definition/base RLS and convert/restrict safely. |
+| RPC-02 | P1 | `get_notification_push` arbitrary user preference read | CLOSED | Live RPC now service_role-only; anon/authenticated EXECUTE removed; verified and forward migration recorded. |
+| VIEW-01 | P0/P1 | `provider_reviews` SECURITY DEFINER view | CLOSED | View now `security_invoker=true`; anon SELECT removed; authenticated/service_role SELECT retained; live verified and migration recorded. |
 | DB-01 | P1 | Mutable function search_path warnings | OPEN | Prioritize SECURITY DEFINER/privileged functions. |
 | AUTH-02 | P1 | Leaked-password protection | OPEN | Enable in Supabase Auth if supported and verify. |
 
