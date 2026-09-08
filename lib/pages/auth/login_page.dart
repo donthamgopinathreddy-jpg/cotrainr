@@ -230,229 +230,265 @@ class _LoginPageState extends State<LoginPage>
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                                AuthFadeSlide(
-                                  animation: _headerAnim,
-                                  child: Column(
-                                    children: [
-                                      Text(
-                                        'Welcome back',
-                                        textAlign: TextAlign.center,
-                                        style: AuthUi.pageTitle(context)
-                                            .copyWith(fontSize: 24),
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        'Sign in to continue training.',
-                                        textAlign: TextAlign.center,
-                                        style: AuthUi.pageSubtitle(context)
-                                            .copyWith(fontSize: 14),
-                                      ),
-                                    ],
+                            AuthFadeSlide(
+                              animation: _headerAnim,
+                              child: Column(
+                                children: [
+                                  Text(
+                                    'Welcome back',
+                                    textAlign: TextAlign.center,
+                                    style: AuthUi.pageTitle(context)
+                                        .copyWith(fontSize: 24),
                                   ),
-                                ),
-                                const SizedBox(height: 18),
-                                AuthFadeSlide(
-                                  animation: _cardAnim,
-                                  begin: const Offset(0, 0.05),
-                                  beginScale: 0.98,
-                                  child: AuthSectionCard(
-                                    compact: true,
-                                    title: 'Account',
-                                    child: Form(
-                                      key: _formKey,
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.stretch,
-                                        children: [
-                                          AuthTapToTypeField(
-                                            controller: _idOrEmail,
-                                            keyboardType:
-                                                TextInputType.emailAddress,
-                                            textInputAction:
-                                                TextInputAction.next,
-                                            autofillHints: const [
-                                              AutofillHints.email,
-                                            ],
-                                            validator: (v) {
-                                              final t = v?.trim() ?? '';
-                                              if (t.isEmpty) {
-                                                return 'Enter your email.';
-                                              }
-                                              if (!_emailRe.hasMatch(t)) {
-                                                return 'Enter a valid email address.';
-                                              }
-                                              return null;
-                                            },
-                                            style: AuthUi.fieldTextStyle(
-                                              context,
-                                              large: true,
-                                            ),
-                                            decoration: AuthUi.fieldDecoration(
-                                              context,
-                                              large: true,
-                                              label: 'Email',
-                                              hint: 'you@example.com',
-                                              prefixIcon: Icon(
-                                                Icons.email_outlined,
-                                                color: textSecondary.color,
-                                                size: 22,
-                                              ),
-                                            ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'Sign in to continue training.',
+                                    textAlign: TextAlign.center,
+                                    style: AuthUi.pageSubtitle(context)
+                                        .copyWith(fontSize: 14),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 18),
+                            AuthFadeSlide(
+                              animation: _cardAnim,
+                              begin: const Offset(0, 0.05),
+                              beginScale: 0.98,
+                              child: AuthSectionCard(
+                                compact: true,
+                                title: 'Account',
+                                child: Form(
+                                  key: _formKey,
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      AuthTapToTypeField(
+                                        controller: _idOrEmail,
+                                        keyboardType:
+                                            TextInputType.emailAddress,
+                                        textInputAction: TextInputAction.next,
+                                        autofillHints: const [
+                                          AutofillHints.email,
+                                        ],
+                                        validator: (v) {
+                                          final t = v?.trim() ?? '';
+                                          if (t.isEmpty) {
+                                            return 'Enter your email.';
+                                          }
+                                          if (!_emailRe.hasMatch(t)) {
+                                            return 'Enter a valid email address.';
+                                          }
+                                          return null;
+                                        },
+                                        style: AuthUi.fieldTextStyle(
+                                          context,
+                                          large: true,
+                                        ),
+                                        decoration: AuthUi.fieldDecoration(
+                                          context,
+                                          large: true,
+                                          label: 'Email',
+                                          hint: 'you@example.com',
+                                          prefixIcon: Icon(
+                                            Icons.email_outlined,
+                                            color: textSecondary.color,
+                                            size: 22,
                                           ),
-                                          const SizedBox(height: 12),
-                                          AuthTapToTypeField(
-                                            controller: _pass,
-                                            obscureText: _obscure,
-                                            textInputAction:
-                                                TextInputAction.go,
-                                            onFieldSubmitted: (_) => _login(),
-                                            autofillHints: const [
-                                              AutofillHints.password,
-                                            ],
-                                            validator: (v) =>
-                                                (v == null || v.length < 6)
-                                                    ? 'Min 6 chars'
-                                                    : null,
-                                            style: AuthUi.fieldTextStyle(
-                                              context,
-                                              large: true,
-                                            ),
-                                            decoration: AuthUi.fieldDecoration(
-                                              context,
-                                              large: true,
-                                              label: 'Password',
-                                              prefixIcon: Icon(
-                                                Icons.lock_outline_rounded,
-                                                color: textSecondary.color,
-                                                size: 22,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      AuthTapToTypeField(
+                                        controller: _pass,
+                                        obscureText: _obscure,
+                                        textInputAction: TextInputAction.go,
+                                        onFieldSubmitted: (_) => _login(),
+                                        autofillHints: const [
+                                          AutofillHints.password,
+                                        ],
+                                        validator: (v) =>
+                                            (v == null || v.length < 6)
+                                                ? 'Min 6 chars'
+                                                : null,
+                                        style: AuthUi.fieldTextStyle(
+                                          context,
+                                          large: true,
+                                        ),
+                                        decoration: AuthUi.fieldDecoration(
+                                          context,
+                                          large: true,
+                                          label: 'Password',
+                                          prefixIcon: Icon(
+                                            Icons.lock_outline_rounded,
+                                            color: textSecondary.color,
+                                            size: 22,
+                                          ),
+                                          suffixIcon: IconButton(
+                                            tooltip: _obscure
+                                                ? 'Show password'
+                                                : 'Hide password',
+                                            icon: AnimatedSwitcher(
+                                              duration: const Duration(
+                                                milliseconds: 180,
                                               ),
-                                              suffixIcon: IconButton(
-                                                icon: AnimatedSwitcher(
-                                                  duration: const Duration(
-                                                    milliseconds: 180,
-                                                  ),
-                                                  transitionBuilder:
-                                                      (child, anim) =>
-                                                          FadeTransition(
-                                                    opacity: anim,
-                                                    child: ScaleTransition(
-                                                      scale: anim,
-                                                      child: child,
-                                                    ),
-                                                  ),
-                                                  child: Icon(
-                                                    _obscure
-                                                        ? Icons
-                                                            .visibility_outlined
-                                                        : Icons
-                                                            .visibility_off_outlined,
-                                                    key: ValueKey(_obscure),
-                                                    size: 20,
-                                                    color: textSecondary.color,
-                                                  ),
+                                              transitionBuilder:
+                                                  (child, anim) =>
+                                                      FadeTransition(
+                                                opacity: anim,
+                                                child: ScaleTransition(
+                                                  scale: anim,
+                                                  child: child,
                                                 ),
-                                                onPressed: () {
-                                                  HapticFeedback
-                                                      .selectionClick();
-                                                  setState(() =>
-                                                      _obscure = !_obscure);
-                                                },
+                                              ),
+                                              child: Icon(
+                                                _obscure
+                                                    ? Icons.visibility_outlined
+                                                    : Icons
+                                                        .visibility_off_outlined,
+                                                key: ValueKey(_obscure),
+                                                size: 20,
+                                                color: textSecondary.color,
                                               ),
                                             ),
+                                            onPressed: _isLoading
+                                                ? null
+                                                : () {
+                                                    HapticFeedback
+                                                        .selectionClick();
+                                                    setState(() =>
+                                                        _obscure = !_obscure);
+                                                  },
                                           ),
-                                          const SizedBox(height: 8),
-                                          Align(
-                                            alignment: Alignment.centerRight,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Align(
+                                        alignment: Alignment.centerRight,
+                                        child: IgnorePointer(
+                                          ignoring: _isLoading,
+                                          child: AnimatedOpacity(
+                                            duration: const Duration(
+                                              milliseconds: 140,
+                                            ),
+                                            opacity: _isLoading ? 0.45 : 1,
                                             child: AuthTextLink(
                                               label: 'Forgot password?',
                                               fontSize: 13,
                                               onTap: _forgotPassword,
                                             ),
                                           ),
-                                          if (_formError != null) ...[
-                                            const SizedBox(height: 10),
-                                            Text(
-                                              _formError!,
-                                              style: TextStyle(
-                                                color: AuthTheme.error(context),
-                                                fontSize: 13,
-                                                height: 1.35,
-                                              ),
-                                            ),
-                                          ],
-                                          if (_showSlowHint) ...[
-                                            const SizedBox(height: 8),
-                                            Text(
-                                              'Taking a little longer than usual…',
-                                              style: textSecondary.copyWith(
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                          ],
-                                          const SizedBox(height: 12),
-                                          AuthPrimaryButton(
-                                            label: 'Sign In',
-                                            onPressed: _login,
-                                            isLoading: _isLoading,
-                                            showSuccess: _showSuccess,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                AuthFadeSlide(
-                                  animation: _footerAnim,
-                                  child: Column(
-                                    children: [
-                                      AuthSectionCard(
-                                        compact: true,
-                                        title: 'Or continue with',
-                                        child: Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          children: [
-                                            AuthSocialButton(
-                                              isLoading: _isLoading,
-                                              onTap: () => _signInWithOAuth(
-                                                OAuthProvider.google,
-                                              ),
-                                              icon: FaIcon(
-                                                FontAwesomeIcons.google,
-                                                size: 22,
-                                                color: AuthTheme.primaryText(context),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 12),
-                                            AuthSocialButton(
-                                              isLoading: _isLoading,
-                                              onTap: () => _signInWithOAuth(
-                                                OAuthProvider.apple,
-                                              ),
-                                              icon: FaIcon(
-                                                FontAwesomeIcons.apple,
-                                                size: 24,
-                                                color: AuthTheme.primaryText(context),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 12),
-                                            AuthSocialButton(
-                                              isLoading: _isLoading,
-                                              onTap: () => _signInWithOAuth(
-                                                OAuthProvider.azure,
-                                              ),
-                                              icon: FaIcon(
-                                                FontAwesomeIcons.microsoft,
-                                                size: 22,
-                                                color: AuthTheme.primaryText(context),
-                                              ),
-                                            ),
-                                          ],
                                         ),
                                       ),
-                                      const SizedBox(height: 18),
-                                      Row(
+                                      if (_formError != null) ...[
+                                        const SizedBox(height: 10),
+                                        Text(
+                                          _formError!,
+                                          style: TextStyle(
+                                            color: AuthTheme.error(context),
+                                            fontSize: 13,
+                                            height: 1.35,
+                                          ),
+                                        ),
+                                      ],
+                                      if (_showSlowHint) ...[
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          'Taking a little longer than usual…',
+                                          style: textSecondary.copyWith(
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ],
+                                      const SizedBox(height: 12),
+                                      AuthPrimaryButton(
+                                        label: 'Sign In',
+                                        onPressed: _login,
+                                        isLoading: _isLoading,
+                                        showSuccess: _showSuccess,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            AuthFadeSlide(
+                              animation: _footerAnim,
+                              child: Column(
+                                children: [
+                                  AuthSectionCard(
+                                    compact: true,
+                                    title: 'Or continue with',
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Semantics(
+                                          button: true,
+                                          label: 'Continue with Google',
+                                          enabled: !_isLoading,
+                                          child: AuthSocialButton(
+                                            isLoading: _isLoading,
+                                            onTap: () => _signInWithOAuth(
+                                              OAuthProvider.google,
+                                            ),
+                                            icon: FaIcon(
+                                              FontAwesomeIcons.google,
+                                              size: 22,
+                                              color:
+                                                  AuthTheme.primaryText(context),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Semantics(
+                                          button: true,
+                                          label: 'Continue with Apple',
+                                          enabled: !_isLoading,
+                                          child: AuthSocialButton(
+                                            isLoading: _isLoading,
+                                            onTap: () => _signInWithOAuth(
+                                              OAuthProvider.apple,
+                                            ),
+                                            icon: FaIcon(
+                                              FontAwesomeIcons.apple,
+                                              size: 24,
+                                              color:
+                                                  AuthTheme.primaryText(context),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Semantics(
+                                          button: true,
+                                          label: 'Continue with Microsoft',
+                                          enabled: !_isLoading,
+                                          child: AuthSocialButton(
+                                            isLoading: _isLoading,
+                                            onTap: () => _signInWithOAuth(
+                                              OAuthProvider.azure,
+                                            ),
+                                            icon: FaIcon(
+                                              FontAwesomeIcons.microsoft,
+                                              size: 22,
+                                              color:
+                                                  AuthTheme.primaryText(context),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 18),
+                                  IgnorePointer(
+                                    ignoring: _isLoading,
+                                    child: AnimatedOpacity(
+                                      duration: const Duration(
+                                        milliseconds: 140,
+                                      ),
+                                      opacity: _isLoading ? 0.45 : 1,
+                                      child: Row(
                                         mainAxisAlignment:
                                             MainAxisAlignment.center,
                                         children: [
@@ -466,20 +502,22 @@ class _LoginPageState extends State<LoginPage>
                                           ),
                                         ],
                                       ),
-                                    ],
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
-                          );
-                        },
-                      ),
-                    ),
-                  ],
+                          ],
+                        ),
+                      );
+                    },
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
-      );
+        ),
+      ),
+    );
   }
 }
