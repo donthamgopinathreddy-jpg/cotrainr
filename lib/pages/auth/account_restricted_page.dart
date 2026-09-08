@@ -26,6 +26,8 @@ class _AccountRestrictedPageState extends State<AccountRestrictedPage> {
       const AccountRestriction(status: AccountStatus.suspended);
   bool _busy = false;
   bool _deleting = false;
+  bool _hasLoadedRestriction = false;
+  String? _loadError;
 
   @override
   void initState() {
@@ -34,8 +36,11 @@ class _AccountRestrictedPageState extends State<AccountRestrictedPage> {
   }
 
   Future<void> _load() async {
-    if (_deleting) return;
-    setState(() => _busy = true);
+    if (_deleting || _busy) return;
+    setState(() {
+      _busy = true;
+      _loadError = null;
+    });
     try {
       final raw = await Supabase.instance.client
           .rpc('get_my_profile')
@@ -54,16 +59,22 @@ class _AccountRestrictedPageState extends State<AccountRestrictedPage> {
       }
       setState(() {
         _restriction = restriction;
+        _hasLoadedRestriction = true;
         _busy = false;
       });
     } catch (e, s) {
       VerificationErrorMessages.log('accountRestrictedLoad', e, s);
-      if (mounted) setState(() => _busy = false);
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _loadError =
+            'Could not check your account status. Check your connection and try again.';
+      });
     }
   }
 
   Future<void> _signOut() async {
-    if (_deleting) return;
+    if (_deleting || _busy) return;
     setState(() => _busy = true);
     try {
       await Supabase.instance.client.auth.signOut();
@@ -75,7 +86,7 @@ class _AccountRestrictedPageState extends State<AccountRestrictedPage> {
   }
 
   Future<void> _deleteAccount() async {
-    if (_deleting) return;
+    if (_deleting || _busy) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -128,6 +139,76 @@ class _AccountRestrictedPageState extends State<AccountRestrictedPage> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+
+    if (!_hasLoadedRestriction && _busy) {
+      return Scaffold(
+        backgroundColor: DesignTokens.backgroundOf(context),
+        body: const SafeArea(
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      );
+    }
+
+    if (!_hasLoadedRestriction && _loadError != null) {
+      return Scaffold(
+        backgroundColor: DesignTokens.backgroundOf(context),
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.wifi_off_rounded,
+                    size: 56,
+                    color: colorScheme.onSurface.withValues(alpha: 0.65),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    'Couldn’t check your account',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    _loadError!,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 15,
+                      height: 1.4,
+                      color: colorScheme.onSurface.withValues(alpha: 0.7),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton(
+                      onPressed: _busy ? null : _load,
+                      child: Text(_busy ? 'Checking…' : 'Try again'),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: TextButton(
+                      onPressed: _busy ? null : _signOut,
+                      child: const Text('Sign out'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: DesignTokens.backgroundOf(context),
