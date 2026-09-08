@@ -48,36 +48,65 @@ abstract final class AccountHubTheme {
         color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55),
       );
 
-  /// Shared Switch treatment: orange ON, grey OFF, muted disabled.
+  /// Shared switch treatment used app-wide through [AppTheme].
+  ///
+  /// The previous OFF state was a low-contrast grey pill with a plain thumb,
+  /// which made it difficult to tell whether the control was interactive or
+  /// which state it represented, especially in dark mode. Keep the standard
+  /// switch geometry, but make state explicit with stronger track contrast,
+  /// a visible outline and a small state glyph in the thumb.
   static SwitchThemeData switchTheme({required bool isDark}) {
     final offTrack =
-        isDark ? const Color(0xFF5C5C5C) : const Color(0xFFB0B0B0);
-    final thumb = isDark ? const Color(0xFFF5F5F5) : Colors.white;
-    final thumbBorder =
-        isDark ? const Color(0xFF2A2A2A) : const Color(0xFFE0E0E0);
+        isDark ? const Color(0xFF3F4650) : const Color(0xFFD1D5DB);
+    final offOutline =
+        isDark ? const Color(0xFF7A8491) : const Color(0xFF9CA3AF);
+    final thumb = isDark ? const Color(0xFFF8FAFC) : Colors.white;
+    final disabledTrack =
+        isDark ? const Color(0xFF2B3037) : const Color(0xFFE5E7EB);
+    final disabledThumb =
+        isDark ? const Color(0xFF8B949E) : const Color(0xFFB7BDC6);
 
     return SwitchThemeData(
       thumbColor: WidgetStateProperty.resolveWith((states) {
-        if (states.contains(WidgetState.disabled)) {
-          return thumb.withValues(alpha: 0.7);
-        }
+        if (states.contains(WidgetState.disabled)) return disabledThumb;
         return thumb;
       }),
-      trackColor: WidgetStateProperty.resolveWith((states) {
+      thumbIcon: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.disabled)) return null;
         final selected = states.contains(WidgetState.selected);
-        final disabled = states.contains(WidgetState.disabled);
-        final base = selected ? DesignTokens.accentOrange : offTrack;
-        return disabled ? base.withValues(alpha: 0.4) : base;
+        return Icon(
+          selected ? Icons.check_rounded : Icons.close_rounded,
+          size: 13,
+          color: selected
+              ? DesignTokens.accentOrange
+              : (isDark ? const Color(0xFF59616C) : const Color(0xFF6B7280)),
+        );
+      }),
+      trackColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.disabled)) return disabledTrack;
+        return states.contains(WidgetState.selected)
+            ? DesignTokens.accentOrange
+            : offTrack;
       }),
       trackOutlineColor: WidgetStateProperty.resolveWith((states) {
-        if (states.contains(WidgetState.selected)) {
-          return Colors.transparent;
+        if (states.contains(WidgetState.disabled)) {
+          return offOutline.withValues(alpha: 0.35);
         }
-        return thumbBorder.withValues(alpha: 0.5);
+        if (states.contains(WidgetState.selected)) {
+          return DesignTokens.accentOrange.withValues(alpha: 0.9);
+        }
+        return offOutline;
+      }),
+      trackOutlineWidth: WidgetStateProperty.resolveWith((states) {
+        return states.contains(WidgetState.selected) ? 1.2 : 1.4;
       }),
       overlayColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.pressed)) {
-          return DesignTokens.accentOrange.withValues(alpha: 0.12);
+          return DesignTokens.accentOrange.withValues(alpha: 0.16);
+        }
+        if (states.contains(WidgetState.hovered) ||
+            states.contains(WidgetState.focused)) {
+          return DesignTokens.accentOrange.withValues(alpha: 0.10);
         }
         return null;
       }),
