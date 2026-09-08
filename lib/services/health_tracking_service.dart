@@ -21,6 +21,7 @@ class HealthTrackingService {
   Health? _health;
   MetricsSource? _activeSource;
   bool _isInitialized = false;
+  Future<bool>? _initializing;
   bool _loggedActiveSource = false;
   double? _heightCm;
 
@@ -56,9 +57,21 @@ class HealthTrackingService {
   /// has granted none of the movement permissions. Once initialization has
   /// resolved unavailable/denied, background sync does not repeatedly reopen
   /// permission UI. Explicit Connect/reinitialize resets this state.
-  Future<bool> initialize() async {
-    if (_isInitialized) return _activeSource != null;
+  Future<bool> initialize() {
+    if (_isInitialized) return Future.value(_activeSource != null);
+    final inFlight = _initializing;
+    if (inFlight != null) return inFlight;
 
+    final future = _initializeInternal();
+    _initializing = future;
+    return future.whenComplete(() {
+      if (identical(_initializing, future)) {
+        _initializing = null;
+      }
+    });
+  }
+
+  Future<bool> _initializeInternal() async {
     try {
       await _requestOsPermissions();
 
@@ -272,6 +285,7 @@ class HealthTrackingService {
   Future<bool> reinitializeMetricsSource() async {
     await _disposeActiveSource();
     _isInitialized = false;
+    _initializing = null;
     _loggedActiveSource = false;
     return initialize();
   }
@@ -460,6 +474,7 @@ class HealthTrackingService {
   void dispose() {
     _disposeActiveSource();
     _isInitialized = false;
+    _initializing = null;
     _loggedActiveSource = false;
   }
 }
