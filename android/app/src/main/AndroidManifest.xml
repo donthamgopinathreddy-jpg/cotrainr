@@ -9,26 +9,21 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
     <!-- Internet permission for url_launcher -->
     <uses-permission android:name="android.permission.INTERNET" />
-    
+
     <!-- Location permissions for nearby trainers, nutritionists, and fitness services -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    
-    <!-- Health and fitness permissions for step tracking using mobile sensors -->
+
+    <!-- Activity recognition supports Android step tracking where applicable. -->
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
-    
-    <!-- Health Connect permissions (required for steps, calories, distance, water on Android 14+) -->
+
+    <!-- Health Connect: Cotrainr currently requests READ access only. -->
     <uses-permission android:name="android.permission.health.READ_STEPS" />
-    <uses-permission android:name="android.permission.health.WRITE_STEPS" />
     <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED" />
-    <uses-permission android:name="android.permission.health.WRITE_ACTIVE_CALORIES_BURNED" />
     <uses-permission android:name="android.permission.health.READ_TOTAL_CALORIES_BURNED" />
-    <uses-permission android:name="android.permission.health.WRITE_TOTAL_CALORIES_BURNED" />
     <uses-permission android:name="android.permission.health.READ_DISTANCE" />
-    <uses-permission android:name="android.permission.health.WRITE_DISTANCE" />
     <uses-permission android:name="android.permission.health.READ_HYDRATION" />
-    <uses-permission android:name="android.permission.health.WRITE_HYDRATION" />
-    
+
     <!-- Notification permission -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
@@ -47,10 +42,6 @@
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
-            <!-- Specifies an Android theme to apply to this Activity as soon as
-                 the Android process has started. This theme is visible to the user
-                 while the Flutter UI initializes. After that, this theme continues
-                 to determine the Window background behind the Flutter UI. -->
             <meta-data
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
@@ -78,9 +69,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="cotrainr" android:host="invite" android:pathPrefix="/" />
             </intent-filter>
-            <!-- Deep link: cotrainr://video/zoom-connected (legacy Zoom; ignored) -->
-            <!-- Deep link: cotrainr://video/google-connected?success=1 (Google Meet OAuth) -->
-            <!-- Query params are ignored by path matching; pathPrefix covers exact path. -->
+            <!-- Google Meet OAuth callback -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -89,10 +78,6 @@
                     android:scheme="cotrainr"
                     android:host="video"
                     android:pathPrefix="/google-connected" />
-                <data
-                    android:scheme="cotrainr"
-                    android:host="video"
-                    android:pathPrefix="/zoom-connected" />
             </intent-filter>
             <!-- Auth OAuth callback: cotrainr://auth-callback -->
             <intent-filter>
@@ -135,8 +120,6 @@
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="cotrainr_notifications" />
-        <!-- Don't delete the meta-data below.
-             This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
@@ -177,14 +160,9 @@
                 <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
-        
     </application>
-    <!-- Required to query activities that can process text, see:
-         https://developer.android.com/training/package-visibility and
-         https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.
 
-         In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
-    <!-- Health Connect: check if installed and show permissions rationale -->
+    <!-- Health Connect and package visibility queries -->
     <queries>
         <package android:name="com.google.android.apps.healthdata" />
         <intent>
@@ -194,7 +172,6 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
-        <!-- Required for image picker on Android 11+ -->
         <intent>
             <action android:name="android.intent.action.PICK" />
             <data android:mimeType="image/*" />
@@ -211,7 +188,6 @@
             <action android:name="android.intent.action.GET_CONTENT" />
             <data android:mimeType="video/*" />
         </intent>
-        <!-- Required for url_launcher on Android 11+ -->
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="http" />
@@ -224,7 +200,6 @@
             <action android:name="android.intent.action.SENDTO" />
             <data android:scheme="mailto" />
         </intent>
-        <!-- Required for health package to open settings (Android 11+) -->
         <intent>
             <action android:name="android.settings.APPLICATION_DETAILS_SETTINGS" />
         </intent>
