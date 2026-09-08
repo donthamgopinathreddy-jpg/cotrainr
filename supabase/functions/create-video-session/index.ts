@@ -1,6 +1,6 @@
 // Creates a video session with an auto-generated Google Meet space.
 // Manual/external paste remains supported for admin/legacy callers only.
-// Trainer/nutritionist + accepted lead required.
+// Verified trainer/nutritionist + accepted lead required.
 // @ts-nocheck
 
 import { createClient } from "jsr:@supabase/supabase-js@2"
@@ -89,26 +89,20 @@ Deno.serve(async (req) => {
 
     const { data: providerRow } = await supabase
       .from("providers")
-      .select("provider_type")
+      .select("provider_type, verified")
       .eq("user_id", user.id)
       .maybeSingle()
+
     const providerType = (providerRow?.provider_type as string)?.toLowerCase()
+    const isVerifiedProvider =
+      providerRow?.verified === true &&
+      (providerType === "trainer" || providerType === "nutritionist")
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .maybeSingle()
-    const profileRole = (profile?.role as string)?.toLowerCase()
-
-    const isTrainer = providerType === "trainer" || profileRole === "trainer"
-    const isNutritionist =
-      providerType === "nutritionist" || profileRole === "nutritionist"
-    if (!isTrainer && !isNutritionist) {
+    if (!isVerifiedProvider) {
       return jsonError(
-        "Only trainers and nutritionists can create video sessions",
+        "Provider verification is required before creating video sessions",
         403,
-        "FORBIDDEN_ROLE",
+        "PROVIDER_VERIFICATION_REQUIRED",
       )
     }
 
