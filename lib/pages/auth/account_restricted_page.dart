@@ -93,7 +93,7 @@ class _AccountRestrictedPageState extends State<AccountRestrictedPage> {
             child: const Text(
               'Delete Account',
               style: TextStyle(
-                color: AppColors.error,
+                color: AppColors.red,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -195,9 +195,9 @@ class _AccountRestrictedPageState extends State<AccountRestrictedPage> {
                   child: OutlinedButton(
                     onPressed: _busy ? null : _deleteAccount,
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.error,
+                      foregroundColor: AppColors.red,
                       side: BorderSide(
-                        color: AppColors.error.withValues(alpha: 0.55),
+                        color: AppColors.red.withValues(alpha: 0.55),
                       ),
                     ),
                     child: _deleting
