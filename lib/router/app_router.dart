@@ -375,8 +375,11 @@ final GoRouter appRouter = GoRouter(
       pageBuilder: (context, state) => _fadeSlidePage(
         child: InsightsDetailPage(
           args: (state.extra as InsightArgs?) ??
-              InsightArgs(MetricType.steps, const [6, 7, 8, 7, 9, 8, 7],
-                  goal: 10000),
+              InsightArgs(
+                MetricType.steps,
+                const [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                goal: 10000,
+              ),
         ),
         state: state,
       ),
@@ -387,8 +390,11 @@ final GoRouter appRouter = GoRouter(
       pageBuilder: (context, state) => _fadeSlidePage(
         child: InsightsDetailPage(
           args: (state.extra as InsightArgs?) ??
-              InsightArgs(MetricType.water, const [1.2, 1.6, 1.4, 1.8, 1.5, 1.7, 1.6],
-                  goal: 2.5),
+              InsightArgs(
+                MetricType.water,
+                const [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                goal: 2.5,
+              ),
         ),
         state: state,
       ),
@@ -399,7 +405,10 @@ final GoRouter appRouter = GoRouter(
       pageBuilder: (context, state) => _fadeSlidePage(
         child: InsightsDetailPage(
           args: (state.extra as InsightArgs?) ??
-              InsightArgs(MetricType.calories, const [1800, 2000, 1900, 2100, 1700, 1950, 1850]),
+              InsightArgs(
+                MetricType.calories,
+                const [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+              ),
         ),
         state: state,
       ),
@@ -410,7 +419,10 @@ final GoRouter appRouter = GoRouter(
       pageBuilder: (context, state) => _fadeSlidePage(
         child: InsightsDetailPage(
           args: (state.extra as InsightArgs?) ??
-              InsightArgs(MetricType.distance, const [3.8, 4.2, 4.0, 4.5, 4.6, 4.1, 4.4]),
+              InsightArgs(
+                MetricType.distance,
+                const [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+              ),
         ),
         state: state,
       ),
