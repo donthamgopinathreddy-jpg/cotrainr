@@ -1,5 +1,5 @@
 // FCM delivery for rows in public.notifications.
-// Never log tokens, JWTs, or Firebase private keys.
+// Never log tokens, JWTs, Firebase private keys, user ids, or provider bodies.
 
 import { createClient } from "jsr:@supabase/supabase-js@2"
 
@@ -103,8 +103,6 @@ async function sendFcmMessage(
   data: Record<string, string> = {},
 ): Promise<{ ok: boolean; status: number; permanentTokenFailure: boolean }> {
   const actionable = isActionableVideoReminder(data.type || "")
-  // Data-only for JOIN/REJECT reminders so Android does not auto-render a
-  // button-less system notification that would duplicate our local one.
   const message: Record<string, unknown> = {
     token,
     data: {
@@ -141,6 +139,9 @@ async function sendFcmMessage(
     },
   )
   if (!res.ok) {
+    // Inspect provider error text only to classify a permanently dead token.
+    // Never emit the body into logs because upstream responses can include
+    // token/device details that are unnecessary for production diagnostics.
     const err = await res.text()
     const errLower = err.toLowerCase()
     const permanentTokenFailure =
@@ -153,12 +154,11 @@ async function sendFcmMessage(
         event: "fcm_failure",
         status: res.status,
         permanent_token_failure: permanentTokenFailure,
-        body: err.slice(0, 300),
       }),
     )
     return { ok: false, status: res.status, permanentTokenFailure }
   }
-  return { ok: res.ok, status: res.status, permanentTokenFailure: false }
+  return { ok: true, status: res.status, permanentTokenFailure: false }
 }
 
 export async function deliverNotificationPush(
@@ -219,9 +219,12 @@ export async function deliverNotificationPush(
       skipped: "user_disabled_video_reminders",
     }
   }
-  if (type.startsWith("video_session_") && sessionsOff &&
-      type !== "video_session_reminder_5m" &&
-      type !== "video_session_starting") {
+  if (
+    type.startsWith("video_session_") &&
+    sessionsOff &&
+    type !== "video_session_reminder_5m" &&
+    type !== "video_session_starting"
+  ) {
     console.log(JSON.stringify({
       event: "fcm_skipped",
       reason: "user_disabled_video_sessions",
@@ -244,7 +247,6 @@ export async function deliverNotificationPush(
     console.error(JSON.stringify({
       event: "device_tokens_query_failed",
       code: tokenErr.code,
-      message: tokenErr.message,
     }))
     return {
       attempted: false,
@@ -327,7 +329,6 @@ export async function deliverNotificationPush(
         console.log(JSON.stringify({
           event: "device_token_removed",
           reason: "fcm_permanent_failure",
-          user_id: record.user_id,
         }))
       }
     }
