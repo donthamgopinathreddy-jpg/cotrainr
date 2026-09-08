@@ -1,0 +1,15 @@
+CREATE INDEX IF NOT EXISTS idx_center_partner_users_center_id ON public.center_partner_users(center_id);
+CREATE INDEX IF NOT EXISTS idx_oauth_pending_states_user_id ON public.oauth_pending_states(user_id);
+CREATE INDEX IF NOT EXISTS idx_partner_center_applications_center_id ON public.partner_center_applications(center_id);
+CREATE INDEX IF NOT EXISTS idx_partner_center_applications_reviewed_by ON public.partner_center_applications(reviewed_by);
+CREATE INDEX IF NOT EXISTS idx_partner_centers_application_id ON public.partner_centers(application_id);
+CREATE INDEX IF NOT EXISTS idx_partner_member_claims_center_id ON public.partner_member_claims(center_id);
+CREATE INDEX IF NOT EXISTS idx_partner_member_claims_offer_id ON public.partner_member_claims(offer_id);
+CREATE INDEX IF NOT EXISTS idx_partner_member_claims_user_id ON public.partner_member_claims(user_id);
+CREATE INDEX IF NOT EXISTS idx_partner_offer_redemptions_claim_id ON public.partner_offer_redemptions(claim_id);
+CREATE INDEX IF NOT EXISTS idx_partner_offer_redemptions_offer_id ON public.partner_offer_redemptions(offer_id);
+CREATE INDEX IF NOT EXISTS idx_partner_offer_redemptions_user_id ON public.partner_offer_redemptions(user_id);
+CREATE INDEX IF NOT EXISTS idx_provider_entitlement_allocations_provider_id ON public.provider_entitlement_allocations(provider_id);
+CREATE INDEX IF NOT EXISTS idx_video_session_create_requests_session_id ON public.video_session_create_requests(session_id);
+CREATE INDEX IF NOT EXISTS idx_video_session_host_meta_host_id ON public.video_session_host_meta(host_id);
+CREATE INDEX IF NOT EXISTS idx_video_session_notification_log_user_id ON public.video_session_notification_log(user_id);
