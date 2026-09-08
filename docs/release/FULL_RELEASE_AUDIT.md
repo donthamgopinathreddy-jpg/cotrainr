@@ -8,6 +8,11 @@ Production backend truth: live Supabase project nvtozwtuyhwqkqvftpyi
 ## Sign-off rule
 A feature is not PASS because a screen exists. PASS requires the production path to be traced across UI -> interaction -> state/provider -> service/RPC/Edge Function -> authorization/RLS -> database/storage -> failure/loading/empty states -> release configuration. Local-only checks are explicitly marked LOCAL VERIFICATION REQUIRED.
 
+Audit outcomes:
+- FIXED BY ME — safe change made, verified and recorded.
+- CURSOR / LOCAL ACTION REQUIRED — exact issue and acceptance criteria recorded; never count as fixed until locally implemented/verified.
+- PASS — NO CHANGE REQUIRED — inspected with no release-relevant defect found.
+
 ## Locked release order
 1. Core UI / screens — 90% baseline — IN PROGRESS
 2. Light / Dark theme — 88% baseline
@@ -78,7 +83,39 @@ LOCAL VERIFICATION REQUIRED for 01.02:
 - Forced light and dark mode visual pass.
 - Rapid double-tap / back navigation during loading.
 
-Next single Core UI item: Create Account / signup wizard UI and interaction-state audit.
+### 01.03 Create Account / signup wizard — CURSOR / LOCAL ACTION REQUIRED
+Code inspection covered the seven-step signup wizard, credential validation, username availability state, email conflict state, password requirement chips, personal details, age/gender, height, weight, role/specialty, goals/legal acceptance, submit loading state and all-set success surface.
+
+MAJOR interaction-state issue found in `lib/pages/auth/signup_wizard_page.dart`:
+- `OnboardingBottomActions` correctly disables its Back button while `_isSubmitting`, but Android/system back is handled separately by `PopScope`.
+- Current `PopScope.canPop` is only `_step == 0` and `onPopInvokedWithResult` calls `_back()` whenever the route did not pop.
+- `_back()` itself has no `_isSubmitting` guard. On steps 1-6, Android back can therefore move the wizard backward while the final signup transaction is in flight.
+- After successful signup `_showAllSet` becomes true, but the same PopScope remains active. Because the wizard is still at the final step, Android back can call `_back()`, decrement `_step`, and expose the signup wizard again after the account has already been created.
+
+Required Cursor change — keep scope limited to this navigation-state defect:
+1. In `_back()`, immediately return when `_isSubmitting || _showAllSet`.
+2. Change PopScope so route popping is not allowed while `_isSubmitting` or `_showAllSet`. A suitable rule is `canPop: !_isSubmitting && !_showAllSet && _step == 0`.
+3. In `onPopInvokedWithResult`, do not call `_back()` when `_isSubmitting` or `_showAllSet`; only step backward during the editable wizard state.
+4. Preserve the existing bottom Back-button loading disable behaviour.
+5. Do not change signup backend logic, role authority, legal recording, referral handling or post-success destination as part of this fix.
+
+Acceptance criteria:
+- During final `Finish` submission, Android system back / predictive back cannot leave the current step or reveal an earlier step.
+- While `OnboardingAllSetView` is displayed, Android system back cannot return to the completed wizard.
+- Before submission, Android back on steps 1-6 still moves exactly one wizard step backward.
+- On step 0, normal route back still works when no submission/success state is active.
+- No duplicate signup request is created.
+- `flutter analyze` passes for the touched file.
+
+LOCAL VERIFICATION REQUIRED for 01.03 after Cursor fix:
+- Android predictive/system back on every wizard step.
+- Back while Finish shows loading/slow hint.
+- Back after All Set appears.
+- Small phone + keyboard open on credential/personal-info steps.
+- Large text and forced light/dark visual pass.
+- Password visibility semantics/touch target check.
+
+Status: OPEN — do not count 01.03 as fixed until Cursor/local implementation and verification are completed.
 
 ## Current verified fixes
 - Privileged admin/verification RPC execution hardened.
@@ -101,6 +138,7 @@ Next single Core UI item: Create Account / signup wizard UI and interaction-stat
 
 ## Current open release gates
 ### BLOCKER / MAJOR review
+- Signup wizard Android/system back must be locked during submission and after All Set success; exact Cursor/local instructions are recorded in 01.03.
 - Full authenticated SECURITY DEFINER RPC authorization review is not complete.
 - Full repository/config/history secret exposure review remains open.
 - Full deployed Edge Function JWT/auth/error/secret review remains open.
