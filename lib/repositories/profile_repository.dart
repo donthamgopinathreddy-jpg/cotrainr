@@ -8,15 +8,10 @@ class ProfileRepository {
   ProfileRepository({SupabaseClient? supabase})
       : _supabase = supabase ?? Supabase.instance.client;
 
-  /// Get current user ID
   String? get _currentUserId => _supabase.auth.currentUser?.id;
 
-  /// Fetch current user's profile (RPC get_my_profile)
   Future<Map<String, dynamic>?> fetchMyProfile() async {
-    if (_currentUserId == null) {
-      throw Exception('User not authenticated');
-    }
-
+    if (_currentUserId == null) throw Exception('User not authenticated');
     try {
       final response = await _supabase.rpc('get_my_profile');
       final list = (response as List).cast<Map<String, dynamic>>();
@@ -27,14 +22,17 @@ class ProfileRepository {
     }
   }
 
-  /// Fetch any user's profile by ID (RPC get_my_profile for self, get_public_profile for others)
   Future<Map<String, dynamic>?> fetchUserProfile(String userId) async {
     try {
       if (userId == _currentUserId) {
-        final list = (await _supabase.rpc('get_my_profile') as List).cast<Map<String, dynamic>>();
+        final list = (await _supabase.rpc('get_my_profile') as List)
+            .cast<Map<String, dynamic>>();
         return list.isNotEmpty ? list.first : null;
       }
-      final list = (await _supabase.rpc('get_public_profile', params: {'p_user_id': userId}) as List).cast<Map<String, dynamic>>();
+      final list = (await _supabase.rpc(
+        'get_public_profile',
+        params: {'p_user_id': userId},
+      ) as List).cast<Map<String, dynamic>>();
       return list.isNotEmpty ? list.first : null;
     } catch (e) {
       print('Error fetching user profile: $e');
@@ -42,13 +40,15 @@ class ProfileRepository {
     }
   }
 
-  /// Search users by username or full name (RPC search_public_profiles)
-  Future<List<Map<String, dynamic>>> searchUsers(String query, {int limit = 20}) async {
+  Future<List<Map<String, dynamic>>> searchUsers(String query,
+      {int limit = 20}) async {
     try {
       final searchTerm = query.trim();
       if (searchTerm.isEmpty) return [];
-
-      final response = await _supabase.rpc('search_public_profiles', params: {'p_query': searchTerm, 'p_limit': limit});
+      final response = await _supabase.rpc('search_public_profiles', params: {
+        'p_query': searchTerm,
+        'p_limit': limit,
+      });
       return (response as List).cast<Map<String, dynamic>>();
     } catch (e) {
       print('Error searching users: $e');
@@ -56,21 +56,11 @@ class ProfileRepository {
     }
   }
 
-  /// Fetch notification preferences (RPC get_my_profile)
   Future<Map<String, bool>> fetchNotificationPreferences() async {
-    if (_currentUserId == null) {
-      return {
-        'push': true,
-        'community': true,
-        'reminders': true,
-        'achievements': true,
-        'videoSessions': true,
-        'videoSessionReminders': true,
-        'messages': true,
-      };
-    }
+    if (_currentUserId == null) return _defaultNotificationPrefs;
     try {
-      final list = (await _supabase.rpc('get_my_profile') as List).cast<Map<String, dynamic>>();
+      final list = (await _supabase.rpc('get_my_profile') as List)
+          .cast<Map<String, dynamic>>();
       final response = list.isNotEmpty ? list.first : null;
       if (response == null) return _defaultNotificationPrefs;
       return {
@@ -83,7 +73,7 @@ class ProfileRepository {
             response['notification_video_session_reminders'] as bool? ?? true,
         'messages': response['notification_messages'] as bool? ?? true,
       };
-    } catch (e) {
+    } catch (_) {
       return _defaultNotificationPrefs;
     }
   }
@@ -98,7 +88,8 @@ class ProfileRepository {
     'messages': true,
   };
 
-  /// Update notification preferences
+  /// Persist only the current user's notification preferences through the
+  /// server-authoritative RPC. Direct profile UPDATE is intentionally revoked.
   Future<void> updateNotificationPreferences({
     required bool push,
     required bool community,
@@ -110,56 +101,39 @@ class ProfileRepository {
   }) async {
     if (_currentUserId == null) return;
     try {
-      final updates = <String, dynamic>{
-        'notification_push': push,
-        'notification_community': community,
-        'notification_reminders': reminders,
-        'notification_achievements': achievements,
-      };
-      if (videoSessions != null) {
-        updates['notification_video_sessions'] = videoSessions;
-      }
-      if (videoSessionReminders != null) {
-        updates['notification_video_session_reminders'] = videoSessionReminders;
-      }
-      if (messages != null) {
-        updates['notification_messages'] = messages;
-      }
-      await _supabase.from('profiles').update(updates).eq('id', _currentUserId!);
+      await _supabase.rpc('update_my_notification_preferences', params: {
+        'p_push': push,
+        'p_community': community,
+        'p_reminders': reminders,
+        'p_achievements': achievements,
+        'p_video_sessions': videoSessions,
+        'p_video_session_reminders': videoSessionReminders,
+        'p_messages': messages,
+      });
     } catch (e) {
-      print('Error updating notification preferences: $e');
+      if (kDebugMode) debugPrint('Error updating notification preferences: $e');
       rethrow;
     }
   }
 
-  /// Update profile fields (uses update_my_profile RPC for robust handling of new users)
   Future<void> updateProfile(Map<String, dynamic> updates) async {
-    if (_currentUserId == null) {
-      throw Exception('User not authenticated');
-    }
-
+    if (_currentUserId == null) throw Exception('User not authenticated');
     try {
       await _supabase.rpc('update_my_profile', params: {'p_updates': updates});
       await fetchMyProfile();
-      if (kDebugMode) {
-        debugPrint('ProfileRepository: Profile updated');
-      }
+      if (kDebugMode) debugPrint('ProfileRepository: Profile updated');
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('ProfileRepository: Error updating profile');
-      }
+      if (kDebugMode) debugPrint('ProfileRepository: Error updating profile');
       throw Exception('Failed to update profile: $e');
     }
   }
 
-  /// Calculate BMI from height (cm) and weight (kg)
   static double calculateBMI(double heightCm, double weightKg) {
     if (heightCm <= 0 || weightKg <= 0) return 0.0;
     final heightMeters = heightCm / 100.0;
     return weightKg / (heightMeters * heightMeters);
   }
 
-  /// Get BMI status category
   static String getBMIStatus(double bmi) {
     if (bmi == 0.0) return '';
     if (bmi < 18.5) return 'Underweight';
