@@ -117,6 +117,50 @@ LOCAL VERIFICATION REQUIRED for 01.03 after Cursor fix:
 
 Status: OPEN — do not count 01.03 as fixed until Cursor/local implementation and verification are completed.
 
+### 01.04 Permissions + onboarding-success transition — CODE AUDIT PASS AFTER FIX / LOCAL DEVICE VERIFY
+Checked:
+- `OnboardingAllSetView` appears only after onboarding persistence succeeds, uses SafeArea, respects reduced-animation accessibility state, disposes its animation controller and exposes one clear continuation CTA.
+- Permissions screen lists Health, Location, Camera, Photos/files and Notifications with granted/denied visual states and a per-row Grant action.
+- Permission-denied settings dialog, notification-token registration after notification grant and post-permissions role destination were traced.
+
+Fixed during audit in `lib/pages/auth/permissions_page.dart`:
+- BLOCKER crash path: `Allow All` was enabled while the asynchronous initial status scan was still incomplete. `_requestAllPermissions()` force-unwrapped `_permissionStatuses[item.permission]!`, so an early tap could dereference a missing entry. The screen now tracks `_isChecking`, disables interaction during the initial scan, and uses null-safe permission lookup.
+- Permission actions, Skip and Allow All now share a consistent busy state while initial checking or a permission request is in flight.
+- Skip can no longer navigate away during an active system permission request.
+- Async status updates now check `mounted` before calling `setState`, removing dispose-time update risk.
+- The main CTA reports a checking/loading state until initial permission status is known.
+
+Verification:
+- Hardening-branch source read-back confirms `_isChecking`, null-safe status access and busy-state navigation guards are present.
+- No role-routing or permission policy semantics were changed by this fix.
+
+CURSOR / LOCAL ACTION REQUIRED — permission-model consistency review:
+- Current UI labels Health Data as `Required`, and `_proceedToApp()` enforces it after `Allow All`, but the separate `Skip` path directly calls `_navigateAfterOnboarding()` and bypasses required-permission enforcement.
+- This is a product-policy contradiction, not safe to resolve by silently changing product behaviour in this UI audit.
+- Decide one release policy and make the UI/logic consistent:
+  A. Health permission is truly required: remove/disable Skip until Health is granted and explain why; or
+  B. Health permission is optional: remove the `Required` badge/enforcement and allow graceful degraded health metrics.
+- Given existing health fail-closed/cached behaviour, option B is technically supportable, but product decision must be explicit before release.
+
+Acceptance criteria for the local policy decision:
+- The word `Required`, Skip behaviour and `_proceedToApp()` all express the same rule.
+- Denying Health never traps the user in an unexplained loop.
+- If Health remains required, the user gets a clear reason and a settings/retry recovery path.
+- If Health becomes optional, the Home/health UI degrades gracefully without fake zeros or misleading data.
+
+LOCAL VERIFICATION REQUIRED for 01.04:
+- Fresh install with permissions undecided: tap Allow All immediately; no exception/crash.
+- Deny each permission once and permanently deny where Android supports it.
+- Return from Settings and verify state refresh behaviour.
+- Test Health Connect unavailable, denied and granted states.
+- Test Skip/Allow All under the final chosen Health permission policy.
+- Verify Android 13+ photos/files behaviour and whether `Permission.storage` is still appropriate for the app's picker implementation.
+- Forced light/dark, large text and TalkBack visual/semantic pass.
+
+Code fix commit: `df9fbcc96d470af02994fb32960cf115e83940c7`.
+
+Next single Core UI item: post-auth continue / incomplete-profile / restricted-account surfaces.
+
 ## Current verified fixes
 - Privileged admin/verification RPC execution hardened.
 - Partner operational tables protected with RLS.
@@ -133,12 +177,14 @@ Status: OPEN — do not count 01.03 as fixed until Cursor/local implementation a
 - create_lead_tx now requires the target provider to be currently verified.
 - update_lead_status_tx now rechecks provider verification at acceptance time.
 - Login secondary actions now lock during authentication; OAuth icon buttons have explicit accessibility labels.
+- Permissions onboarding now blocks interaction until status scan completes and no longer force-unwraps missing permission entries.
 - Global light/dark shared-widget corrections recorded.
 - Shared SwitchTheme now gives explicit ON/OFF/disabled/pressed state in light and dark mode.
 
 ## Current open release gates
 ### BLOCKER / MAJOR review
 - Signup wizard Android/system back must be locked during submission and after All Set success; exact Cursor/local instructions are recorded in 01.03.
+- Permissions Health `Required` vs Skip policy contradiction must be resolved before release; exact local decision criteria are recorded in 01.04.
 - Full authenticated SECURITY DEFINER RPC authorization review is not complete.
 - Full repository/config/history secret exposure review remains open.
 - Full deployed Edge Function JWT/auth/error/secret review remains open.
