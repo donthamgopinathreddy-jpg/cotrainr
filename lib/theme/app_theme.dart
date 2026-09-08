@@ -279,11 +279,11 @@ class AppTheme {
         centerTitle: false,
         backgroundColor: Colors.transparent,
         foregroundColor: DesignTokens.darkTextPrimary,
-        titleTextStyle: GoogleFonts.poppins(
-          fontSize: DesignTokens.fontSizeH2,
-          fontWeight: DesignTokens.fontWeightBold,
+        titleTextStyle: GoogleFonts.montserrat(
+          fontSize: 28,
+          fontWeight: FontWeight.w800,
           color: DesignTokens.darkTextPrimary,
-          letterSpacing: 0.5,
+          letterSpacing: 0.4,
         ),
         iconTheme: IconThemeData(
           color: DesignTokens.darkTextPrimary,
