@@ -27,6 +27,8 @@ class AppLinkHandler extends StatefulWidget {
 class _AppLinkHandlerState extends State<AppLinkHandler> {
   final AppLinks _appLinks = AppLinks();
   StreamSubscription<Uri>? _linkSubscription;
+  String? _lastHandledUri;
+  DateTime? _lastHandledAt;
 
   bool _isInviteUri(Uri uri) {
     if (uri.path.contains('invite')) return true;
@@ -67,8 +69,22 @@ class _AppLinkHandlerState extends State<AppLinkHandler> {
     return '/video?google-connected=1';
   }
 
+  bool _isDuplicateDelivery(Uri uri) {
+    final now = DateTime.now();
+    final key = uri.toString();
+    final previousAt = _lastHandledAt;
+    final duplicate = _lastHandledUri == key &&
+        previousAt != null &&
+        now.difference(previousAt) < const Duration(seconds: 2);
+    if (!duplicate) {
+      _lastHandledUri = key;
+      _lastHandledAt = now;
+    }
+    return duplicate;
+  }
+
   void _handleUri(Uri? uri) {
-    if (uri == null) return;
+    if (uri == null || _isDuplicateDelivery(uri)) return;
     debugPrint(
       '[AppLinkHandler] uri scheme=${uri.scheme} host=${uri.host} path=${uri.path}',
     );
