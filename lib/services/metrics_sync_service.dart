@@ -22,7 +22,6 @@ class MetricsSyncService {
   DateTime? _lastWeeklyBackfillAt;
 
   MetricsSyncService(Ref ref) {
-    // Listen to auth state changes
     _authStateSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       final AuthChangeEvent event = data.event;
       if (event == AuthChangeEvent.signedIn) {
@@ -32,7 +31,6 @@ class MetricsSyncService {
       }
     });
 
-    // Start sync if already signed in
     if (Supabase.instance.client.auth.currentUser != null) {
       startSync();
     }
@@ -41,11 +39,11 @@ class MetricsSyncService {
   /// Start periodic sync of health metrics to Supabase
   void startSync() {
     if (kDebugMode) debugPrint('MetricsSyncService: starting sync');
-    _syncTimer?.cancel(); // Cancel any existing timer
+    _syncTimer?.cancel();
     _syncTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
       _syncMetrics();
     });
-    _syncMetrics(); // Run immediately on start
+    _syncMetrics();
   }
 
   /// Stop periodic sync
@@ -55,60 +53,84 @@ class MetricsSyncService {
     _syncTimer = null;
   }
 
-  /// Sync current health metrics to Supabase
+  /// Sync current health metrics to Supabase.
+  ///
+  /// Platform-health unavailability is fail-closed: no health-derived values are
+  /// written. For individual denied/transiently-empty metrics, preserve an
+  /// existing positive daily total rather than erasing it with zero.
   Future<void> _syncMetrics() async {
-    if (_isSyncing) {
-      return;
-    }
+    if (_isSyncing) return;
 
     final userId = Supabase.instance.client.auth.currentUser?.id;
-    if (userId == null) {
-      return;
-    }
+    if (userId == null) return;
 
     _isSyncing = true;
     try {
       if (kDebugMode) debugPrint('MetricsSyncService: syncing');
-      
-      // Ensure health service is initialized and height is set for distance estimation.
+
       final healthService = HealthTrackingService();
       final initialized = await healthService.initialize();
       await _applyProfileHeight(healthService);
-      if (!initialized && kDebugMode) {
-        debugPrint('MetricsSyncService: health source not ready');
+      if (!initialized) {
+        if (kDebugMode) {
+          debugPrint(
+            'MetricsSyncService: health source unavailable; preserving stored metrics',
+          );
+        }
+        return;
       }
 
       _syncCount++;
       if (kDebugMode) {
-        debugPrint(
-          '[Metrics] Sync via ${healthService.activeSourceLabel}',
-        );
+        debugPrint('[Metrics] Sync via ${healthService.activeSourceLabel}');
       }
 
       final snapshot = await healthService.getTodaySnapshot();
-      final steps = snapshot.steps;
-      final calories = snapshot.activeCalories;
-      final distance = snapshot.distanceKm;
-      final waterFromHealth = snapshot.waterLiters;
-
-      // Merge water: use max(health, manual) to avoid overwriting manual logs with 0 from health
       final metricsRepo = MetricsRepository();
       final existing = await metricsRepo.getTodayMetrics();
-      final manualWater = (existing?['water_intake_liters'] as num?)?.toDouble() ?? 0.0;
-      final waterToSave = waterFromHealth > manualWater ? waterFromHealth : manualWater;
 
-      // Update Supabase metrics_daily table
+      final existingSteps = (existing?['steps'] as num?)?.toInt() ?? 0;
+      final existingCalories =
+          (existing?['calories_burned'] as num?)?.toDouble() ?? 0.0;
+      final existingDistance =
+          (existing?['distance_km'] as num?)?.toDouble() ?? 0.0;
+      final manualWater =
+          (existing?['water_intake_liters'] as num?)?.toDouble() ?? 0.0;
+
+      int? stepsToSave;
+      if (snapshot.stepsPermissionGranted) {
+        stepsToSave = snapshot.steps == 0 && existingSteps > 0
+            ? existingSteps
+            : snapshot.steps;
+      }
+
+      double? caloriesToSave;
+      if (snapshot.caloriesPermissionGranted) {
+        caloriesToSave = snapshot.activeCalories <= 0 && existingCalories > 0
+            ? existingCalories
+            : snapshot.activeCalories;
+      }
+
+      double? distanceToSave;
+      if (snapshot.distancePermissionGranted || snapshot.steps > 0) {
+        distanceToSave = snapshot.distanceKm <= 0 && existingDistance > 0
+            ? existingDistance
+            : snapshot.distanceKm;
+      }
+
+      final waterToSave = snapshot.waterLiters > manualWater
+          ? snapshot.waterLiters
+          : manualWater;
+
       await metricsRepo.updateTodayMetrics(
-        steps: steps,
-        caloriesBurned: calories,
-        distanceKm: distance,
+        steps: stepsToSave,
+        caloriesBurned: caloriesToSave,
+        distanceKm: distanceToSave,
         waterIntakeLiters: waterToSave,
       );
 
       if (kDebugMode) debugPrint('MetricsSyncService: sync complete');
 
-      // Backfill last 6 prior days from Health Connect so weekly charts
-      // are not empty when only today was ever written.
       await _backfillPriorWeekDays(
         healthService: healthService,
         metricsRepo: metricsRepo,
@@ -125,7 +147,6 @@ class MetricsSyncService {
   }
 
   /// Pull Health Connect history for the prior 6 days into metrics_daily.
-  /// Skipped when the active source cannot provide history (sensors).
   Future<void> _backfillPriorWeekDays({
     required HealthTrackingService healthService,
     required MetricsRepository metricsRepo,
@@ -137,7 +158,6 @@ class MetricsSyncService {
             const Duration(hours: 1)) {
       return;
     }
-    // Throttle periodic syncs: every ~10 min (20 × 30s) unless forced.
     if (!force && _syncCount > 1 && _syncCount % 20 != 1) {
       return;
     }
@@ -150,25 +170,52 @@ class MetricsSyncService {
       for (var i = 1; i <= 6; i++) {
         final day = today.subtract(Duration(days: i));
         final snapshot = await healthService.getSnapshotForDay(day);
-        if (snapshot.steps == 0 &&
-            snapshot.activeCalories == 0 &&
-            snapshot.distanceKm == 0 &&
-            snapshot.waterLiters == 0) {
-          continue;
-        }
-
         final existing = await metricsRepo.getMetricsForDate(day);
+
+        final existingSteps = (existing?['steps'] as num?)?.toInt() ?? 0;
+        final existingCalories =
+            (existing?['calories_burned'] as num?)?.toDouble() ?? 0.0;
+        final existingDistance =
+            (existing?['distance_km'] as num?)?.toDouble() ?? 0.0;
         final existingWater =
             (existing?['water_intake_liters'] as num?)?.toDouble() ?? 0.0;
+
+        int? stepsToSave;
+        if (snapshot.stepsPermissionGranted) {
+          stepsToSave = snapshot.steps == 0 && existingSteps > 0
+              ? existingSteps
+              : snapshot.steps;
+        }
+
+        double? caloriesToSave;
+        if (snapshot.caloriesPermissionGranted) {
+          caloriesToSave = snapshot.activeCalories <= 0 && existingCalories > 0
+              ? existingCalories
+              : snapshot.activeCalories;
+        }
+
+        double? distanceToSave;
+        if (snapshot.distancePermissionGranted || snapshot.steps > 0) {
+          distanceToSave = snapshot.distanceKm <= 0 && existingDistance > 0
+              ? existingDistance
+              : snapshot.distanceKm;
+        }
+
         final waterToSave = snapshot.waterLiters > existingWater
             ? snapshot.waterLiters
             : existingWater;
 
+        final hasAnythingToWrite = stepsToSave != null ||
+            caloriesToSave != null ||
+            distanceToSave != null ||
+            waterToSave > 0;
+        if (!hasAnythingToWrite) continue;
+
         await metricsRepo.updateMetricsForDate(
           day,
-          steps: snapshot.steps,
-          caloriesBurned: snapshot.activeCalories,
-          distanceKm: snapshot.distanceKm,
+          steps: stepsToSave,
+          caloriesBurned: caloriesToSave,
+          distanceKm: distanceToSave,
           waterIntakeLiters: waterToSave > 0 ? waterToSave : null,
         );
         wrote++;
@@ -202,10 +249,11 @@ class MetricsSyncService {
   /// Manually trigger a sync (useful for pull-to-refresh)
   Future<void> syncNow() async {
     await _syncMetrics();
-    // Force weekly backfill on explicit refresh so Home/Insights update ASAP.
+
     try {
       final healthService = HealthTrackingService();
-      await healthService.initialize();
+      final initialized = await healthService.initialize();
+      if (!initialized) return;
       await _applyProfileHeight(healthService);
       await _backfillPriorWeekDays(
         healthService: healthService,
