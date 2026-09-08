@@ -53,10 +53,11 @@ class HealthTrackingService {
   /// Initialize Health Connect / Apple Health only (no sensor fallback).
   ///
   /// Fail closed when Android Health Connect is unavailable or when the user
-  /// has granted none of the movement permissions. This prevents callers from
-  /// treating an empty snapshot as authoritative health data.
+  /// has granted none of the movement permissions. Once initialization has
+  /// resolved unavailable/denied, background sync does not repeatedly reopen
+  /// permission UI. Explicit Connect/reinitialize resets this state.
   Future<bool> initialize() async {
-    if (_isInitialized && _activeSource != null) return true;
+    if (_isInitialized) return _activeSource != null;
 
     try {
       await _requestOsPermissions();
