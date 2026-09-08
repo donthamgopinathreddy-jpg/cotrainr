@@ -19,15 +19,18 @@ class FadeSlideIn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
     final delayMs = (80 + (index.clamp(0, 12) * 40));
-    final total = duration ??
-        Duration(milliseconds: 280 + delayMs.clamp(0, 200));
+    final total = reduceMotion
+        ? Duration.zero
+        : (duration ?? Duration(milliseconds: 280 + delayMs.clamp(0, 200)));
 
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
       duration: total,
-      curve: Curves.easeOutCubic,
+      curve: reduceMotion ? Curves.linear : Curves.easeOutCubic,
       builder: (context, t, child) {
+        if (reduceMotion) return child ?? const SizedBox.shrink();
         final opacity = Curves.easeOut.transform(t.clamp(0.0, 1.0));
         return Opacity(
           opacity: opacity,
@@ -57,10 +60,11 @@ class ContentFade extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
     return AnimatedSwitcher(
-      duration: Motion.fadeDuration,
-      switchInCurve: Curves.easeOut,
-      switchOutCurve: Curves.easeIn,
+      duration: reduceMotion ? Duration.zero : Motion.fadeDuration,
+      switchInCurve: reduceMotion ? Curves.linear : Curves.easeOut,
+      switchOutCurve: reduceMotion ? Curves.linear : Curves.easeIn,
       child: KeyedSubtree(
         key: ValueKey(loading),
         child: loading ? loadingChild : child,
