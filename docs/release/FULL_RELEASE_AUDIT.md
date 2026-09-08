@@ -52,7 +52,33 @@ LOCAL VERIFICATION REQUIRED for 01.01:
 - Reduced-animation accessibility check.
 - Cold start signed-out, signed-in and password-recovery launch check.
 
-Next single Core UI item: Login screen visual/state audit. Do not advance to category 02 until Core UI reachable screens are exhausted.
+### 01.02 Login screen — CODE AUDIT PASS AFTER FIX / LOCAL VISUAL VERIFY
+Checked:
+- SafeArea + scrollable keyboard-aware layout.
+- Email/password validation and inline error states.
+- Sign In loading, slow-network hint and success state.
+- OAuth Google / Apple / Microsoft controls.
+- Forgot-password and Sign Up secondary navigation.
+- Password visibility control.
+- Reduced-animation entry handling.
+
+Fixed during audit:
+- Forgot-password and Sign Up remained interactive during an in-flight password/OAuth login. They are now ignored and visibly dimmed while authentication is running, preventing navigation away from the active login transaction.
+- Password visibility control is now disabled while login is in progress and exposes Show password / Hide password tooltips.
+- Google, Apple and Microsoft icon-only OAuth buttons now expose explicit accessibility button labels and disabled semantics while loading.
+
+Verification:
+- Hardening-branch source read-back confirms loading locks, dimmed secondary actions, password tooltip/disabled state and OAuth semantics are present.
+- No authentication/backend behaviour was changed in this UI item.
+
+LOCAL VERIFICATION REQUIRED for 01.02:
+- Small Android phone + keyboard open.
+- Large text scaling up to app clamp.
+- TalkBack labels for Google / Apple / Microsoft and password visibility.
+- Forced light and dark mode visual pass.
+- Rapid double-tap / back navigation during loading.
+
+Next single Core UI item: Create Account / signup wizard UI and interaction-state audit.
 
 ## Current verified fixes
 - Privileged admin/verification RPC execution hardened.
@@ -69,6 +95,7 @@ Next single Core UI item: Login screen visual/state audit. Do not advance to cat
 - create-video-session live function verifies provider before Meet creation.
 - create_lead_tx now requires the target provider to be currently verified.
 - update_lead_status_tx now rechecks provider verification at acceptance time.
+- Login secondary actions now lock during authentication; OAuth icon buttons have explicit accessibility labels.
 - Global light/dark shared-widget corrections recorded.
 - Shared SwitchTheme now gives explicit ON/OFF/disabled/pressed state in light and dark mode.
 
