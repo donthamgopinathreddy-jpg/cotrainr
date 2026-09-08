@@ -151,15 +151,11 @@ class MyApp extends ConsumerWidget {
                   );
                   return AnnotatedRegion<SystemUiOverlayStyle>(
                     value: overlay,
-                    child: MediaQuery(
-                      data: MediaQuery.of(context).copyWith(
-                        textScaler: MediaQuery.of(context).textScaler.clamp(
-                          minScaleFactor: 0.8,
-                          maxScaleFactor: 1.2,
-                        ),
-                      ),
-                      child: child ?? const SizedBox.shrink(),
-                    ),
+                    // Preserve the platform's accessibility text scaling. The
+                    // previous 1.2x cap prevented users with larger Android
+                    // font settings from receiving their requested text size
+                    // and also hid responsive-layout defects during testing.
+                    child: child ?? const SizedBox.shrink(),
                   );
                 },
               ),
