@@ -38,6 +38,10 @@ void main() async {
   // Keep OS splash until Flutter paints CotrainrSplashScreen (or failsafe).
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
+  // Appearance is local-only and cheap to read. Resolve it before runApp so a
+  // user who selected Light/Dark does not see a System-theme flash on launch.
+  final savedThemeMode = await loadSavedThemeMode();
+
   try {
     _debugLog('[BOOT] Supabase init start');
     await Supabase.initialize(
@@ -75,7 +79,14 @@ void main() async {
   }
 
   _debugLog('[BOOT] runApp');
-  runApp(const ProviderScope(child: MyApp()));
+  runApp(
+    ProviderScope(
+      overrides: [
+        themeModeProvider.overrideWith((ref) => savedThemeMode),
+      ],
+      child: const MyApp(),
+    ),
+  );
 
   // If CotrainrSplashScreen never paints, do not keep the native logo forever.
   unawaited(
