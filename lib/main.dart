@@ -21,8 +21,12 @@ import 'widgets/hydration/hydration_lifecycle_refresher.dart';
 import 'widgets/privacy/privacy_preferences_sync_initializer.dart';
 import 'widgets/quest/quest_sync_initializer.dart';
 
+void _debugLog(String message) {
+  if (kDebugMode) debugPrint(message);
+}
+
 void main() async {
-  debugPrint('[BOOT] app start');
+  _debugLog('[BOOT] app start');
   if (kDebugMode) {
     // TEMP: identify debug APK vs older builds while diagnosing reconnect send.
     debugPrint(
@@ -30,19 +34,19 @@ void main() async {
     );
   }
   final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
-  debugPrint('[BOOT] widgets binding ready');
+  _debugLog('[BOOT] widgets binding ready');
   // Keep OS splash until Flutter paints CotrainrSplashScreen (or failsafe).
   FlutterNativeSplash.preserve(widgetsBinding: widgetsBinding);
 
   try {
-    debugPrint('[BOOT] Supabase init start');
+    _debugLog('[BOOT] Supabase init start');
     await Supabase.initialize(
       url: SupabaseConfig.supabaseUrl,
       anonKey: SupabaseConfig.supabaseAnonKey,
     ).timeout(const Duration(seconds: 12));
-    debugPrint('[BOOT] Supabase init complete');
+    _debugLog('[BOOT] Supabase init complete');
   } catch (e, st) {
-    debugPrint('[BOOT] Supabase init failed: $e\n$st');
+    _debugLog('[BOOT] Supabase init failed: $e\n$st');
   }
 
   // Non-blocking secondary services — do not delay first frame / splash.
@@ -51,14 +55,14 @@ void main() async {
     unawaited(
       healthService.initialize().then((initialized) {
         if (initialized) {
-          debugPrint('Health tracking service initialized successfully');
+          _debugLog('Health tracking service initialized successfully');
         } else {
-          debugPrint('Health tracking service initialization failed');
+          _debugLog('Health tracking service initialization failed');
         }
       }),
     );
   } catch (e) {
-    debugPrint('[BOOT] health init schedule failed: $e');
+    _debugLog('[BOOT] health init schedule failed: $e');
   }
 
   unawaited(_initWaterReminders());
@@ -67,22 +71,22 @@ void main() async {
       handler: WaterNotificationHandler.onNativeQuickLogApplied,
     );
   } catch (e) {
-    debugPrint('[BOOT] water notification handler failed: $e');
+    _debugLog('[BOOT] water notification handler failed: $e');
   }
 
-  debugPrint('[BOOT] runApp');
+  _debugLog('[BOOT] runApp');
   runApp(const ProviderScope(child: MyApp()));
 
   // If CotrainrSplashScreen never paints, do not keep the native logo forever.
   unawaited(
     Future<void>.delayed(const Duration(seconds: 2), () {
       FlutterNativeSplash.remove();
-      debugPrint('[BOOT] native splash failsafe remove');
+      _debugLog('[BOOT] native splash failsafe remove');
     }),
   );
 
   widgetsBinding.addPostFrameCallback((_) {
-    debugPrint('[BOOT] first frame');
+    _debugLog('[BOOT] first frame');
     unawaited(_initPushAfterFirstFrame());
   });
 }
@@ -91,7 +95,7 @@ Future<void> _initPushAfterFirstFrame() async {
   try {
     await PushNotificationService().initialize();
   } catch (e, st) {
-    debugPrint('[BOOT] push after first frame failed: $e\n$st');
+    _debugLog('[BOOT] push after first frame failed: $e\n$st');
   }
 }
 
@@ -103,7 +107,7 @@ Future<void> _initWaterReminders() async {
     // more often than their interval would never receive a reminder.
     await WaterReminderService.instance.ensureScheduleAlive();
   } catch (e) {
-    debugPrint('Water reminder init failed: $e');
+    _debugLog('Water reminder init failed: $e');
   }
 }
 
