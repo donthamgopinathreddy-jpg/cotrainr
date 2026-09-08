@@ -64,14 +64,18 @@ class _DiscoverSearchBarState extends State<DiscoverSearchBar>
 
   @override
   Widget build(BuildContext context) {
+    final surface = DesignTokens.surfaceOf(context);
+    final textPrimary = DesignTokens.textPrimaryOf(context);
+    final textSecondary = DesignTokens.textSecondaryOf(context);
+    final border = DesignTokens.borderColorOf(context);
+
     return Column(
       children: [
-        // Main Search Bar
         Container(
           decoration: BoxDecoration(
-            color: DesignTokens.surface,
+            color: surface,
             borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
-            boxShadow: DesignTokens.cardShadow,
+            boxShadow: DesignTokens.cardShadowOf(context),
           ),
           child: Row(
             children: [
@@ -80,19 +84,16 @@ class _DiscoverSearchBarState extends State<DiscoverSearchBar>
                   controller: widget.controller,
                   onChanged: widget.onSearchChanged,
                   style: TextStyle(
-                    color: DesignTokens.textPrimary,
+                    color: textPrimary,
                     fontSize: DesignTokens.fontSizeBody,
                   ),
                   decoration: InputDecoration(
                     hintText: 'Search trainers, nutritionists, centers...',
                     hintStyle: TextStyle(
-                      color: DesignTokens.textSecondary,
+                      color: textSecondary,
                       fontSize: DesignTokens.fontSizeBody,
                     ),
-                    prefixIcon: Icon(
-                      Icons.search,
-                      color: DesignTokens.textSecondary,
-                    ),
+                    prefixIcon: Icon(Icons.search, color: textSecondary),
                     border: InputBorder.none,
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: DesignTokens.spacing16,
@@ -101,7 +102,6 @@ class _DiscoverSearchBarState extends State<DiscoverSearchBar>
                   ),
                 ),
               ),
-              // Filter Button with Badge
               Container(
                 margin: const EdgeInsets.only(right: DesignTokens.spacing8),
                 decoration: BoxDecoration(
@@ -137,7 +137,7 @@ class _DiscoverSearchBarState extends State<DiscoverSearchBar>
                                   color: Colors.red,
                                   shape: BoxShape.circle,
                                   border: Border.all(
-                                    color: DesignTokens.surface,
+                                    color: surface,
                                     width: 1.5,
                                   ),
                                 ),
@@ -152,8 +152,6 @@ class _DiscoverSearchBarState extends State<DiscoverSearchBar>
             ],
           ),
         ),
-
-        // Expandable Filter Section
         SizeTransition(
           sizeFactor: _expandAnimation,
           axisAlignment: -1.0,
@@ -161,20 +159,19 @@ class _DiscoverSearchBarState extends State<DiscoverSearchBar>
             margin: const EdgeInsets.only(top: DesignTokens.spacing12),
             padding: const EdgeInsets.all(DesignTokens.spacing16),
             decoration: BoxDecoration(
-              color: DesignTokens.surface,
+              color: surface,
               borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
-              boxShadow: DesignTokens.cardShadow,
+              boxShadow: DesignTokens.cardShadowOf(context),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Quick Filter Chips
                 Text(
                   'Quick Filters',
                   style: TextStyle(
                     fontSize: DesignTokens.fontSizeBody,
                     fontWeight: FontWeight.w600,
-                    color: DesignTokens.textPrimary,
+                    color: textPrimary,
                   ),
                 ),
                 const SizedBox(height: DesignTokens.spacing12),
@@ -192,10 +189,9 @@ class _DiscoverSearchBarState extends State<DiscoverSearchBar>
                       icon: Icons.star,
                       isActive: widget.selectedSort == 'Rating',
                     ),
-                    _FilterChip(
+                    const _FilterChip(
                       label: 'Verified',
                       icon: Icons.verified,
-                      isActive: false,
                     ),
                     if (widget.maxDistance != null && widget.maxDistance! < 50)
                       _FilterChip(
@@ -260,6 +256,11 @@ class _FilterChipState extends State<_FilterChip>
 
   @override
   Widget build(BuildContext context) {
+    final surface = DesignTokens.surfaceOf(context);
+    final textPrimary = DesignTokens.textPrimaryOf(context);
+    final textSecondary = DesignTokens.textSecondaryOf(context);
+    final border = DesignTokens.borderColorOf(context);
+
     return GestureDetector(
       onTapDown: (_) => _controller.forward(),
       onTapUp: (_) {
@@ -276,12 +277,10 @@ class _FilterChipState extends State<_FilterChip>
           ),
           decoration: BoxDecoration(
             gradient: widget.isActive ? DesignTokens.primaryGradient : null,
-            color: widget.isActive ? null : DesignTokens.surface,
+            color: widget.isActive ? null : surface,
             borderRadius: BorderRadius.circular(DesignTokens.radiusChip),
             border: Border.all(
-              color: widget.isActive
-                  ? Colors.transparent
-                  : DesignTokens.borderColor,
+              color: widget.isActive ? Colors.transparent : border,
               width: 1,
             ),
           ),
@@ -291,9 +290,7 @@ class _FilterChipState extends State<_FilterChip>
               Icon(
                 widget.icon,
                 size: 16,
-                color: widget.isActive
-                    ? Colors.white
-                    : DesignTokens.textSecondary,
+                color: widget.isActive ? Colors.white : textSecondary,
               ),
               const SizedBox(width: DesignTokens.spacing8),
               Text(
@@ -301,9 +298,7 @@ class _FilterChipState extends State<_FilterChip>
                 style: TextStyle(
                   fontSize: DesignTokens.fontSizeMeta,
                   fontWeight: FontWeight.w600,
-                  color: widget.isActive
-                      ? Colors.white
-                      : DesignTokens.textPrimary,
+                  color: widget.isActive ? Colors.white : textPrimary,
                 ),
               ),
             ],

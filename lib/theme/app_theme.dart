@@ -13,11 +13,11 @@ class AppTheme {
   // Light Theme - Clean, bright, modern
   static ThemeData get lightTheme {
     final textTheme = GoogleFonts.poppinsTextTheme();
-    
+
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.light,
-      
+
       // Color Scheme
       colorScheme: ColorScheme.fromSeed(
         seedColor: const Color(0xFF111111),
@@ -33,50 +33,48 @@ class AppTheme {
         onBackground: DesignTokens.lightTextPrimary,
         onError: Colors.white,
       ),
-      
+
       // Typography - Use colorScheme for theme-aware colors
       textTheme: textTheme.copyWith(
         displayLarge: textTheme.displayLarge?.copyWith(
           fontSize: DesignTokens.fontSizeH1,
           fontWeight: DesignTokens.fontWeightBold,
-          color: null, // Use default from colorScheme
+          color: null,
         ),
         displayMedium: textTheme.displayMedium?.copyWith(
           fontSize: DesignTokens.fontSizeH2,
           fontWeight: DesignTokens.fontWeightBold,
-          color: null, // Use default from colorScheme
+          color: null,
         ),
         displaySmall: textTheme.displaySmall?.copyWith(
           fontSize: DesignTokens.fontSizeH3,
           fontWeight: DesignTokens.fontWeightSemiBold,
-          color: null, // Use default from colorScheme
+          color: null,
         ),
         bodyLarge: textTheme.bodyLarge?.copyWith(
           fontSize: DesignTokens.fontSizeBody,
           fontWeight: DesignTokens.fontWeightRegular,
-          color: null, // Use default from colorScheme
+          color: null,
         ),
         bodyMedium: textTheme.bodyMedium?.copyWith(
           fontSize: DesignTokens.fontSizeBodySmall,
           fontWeight: DesignTokens.fontWeightRegular,
-          color: null, // Use default from colorScheme
+          color: null,
         ),
         bodySmall: textTheme.bodySmall?.copyWith(
           fontSize: DesignTokens.fontSizeMeta,
           fontWeight: DesignTokens.fontWeightRegular,
-          color: null, // Use default from colorScheme
+          color: null,
         ),
         labelLarge: textTheme.labelLarge?.copyWith(
           fontSize: DesignTokens.fontSizeBody,
           fontWeight: DesignTokens.fontWeightSemiBold,
-          color: null, // Use default from colorScheme
+          color: null,
         ),
       ),
-      
-      // Scaffold
+
       scaffoldBackgroundColor: DesignTokens.lightBackground,
-      
-      // Cards - Rounded, no shadows
+
       cardTheme: CardThemeData(
         elevation: 0,
         shadowColor: Colors.transparent,
@@ -89,8 +87,7 @@ class AppTheme {
           vertical: DesignTokens.spacing8,
         ),
       ),
-      
-      // App Bar - Clean, minimal
+
       appBarTheme: AppBarTheme(
         elevation: 0,
         centerTitle: false,
@@ -107,8 +104,7 @@ class AppTheme {
           size: DesignTokens.iconSizeMedium,
         ),
       ),
-      
-      // Input Fields — rounded rectangle (not pill)
+
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: DesignTokens.lightSurface,
@@ -146,8 +142,7 @@ class AppTheme {
           fontSize: DesignTokens.fontSizeBody,
         ),
       ),
-      
-      // Buttons - Rounded, gradient-ready
+
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           elevation: 0,
@@ -184,14 +179,12 @@ class AppTheme {
           ),
         ),
       ),
-      
-      // Icon Theme
+
       iconTheme: IconThemeData(
         color: DesignTokens.lightTextPrimary,
         size: DesignTokens.iconSizeMedium,
       ),
-      
-      // Divider
+
       dividerTheme: DividerThemeData(
         color: DesignTokens.borderColorLight,
         thickness: 1,
@@ -205,12 +198,14 @@ class AppTheme {
   // Dark Theme - Deep, rich, modern
   static ThemeData get darkTheme {
     final textTheme = GoogleFonts.poppinsTextTheme(ThemeData.dark().textTheme);
-    
+
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
-      
-      // Color Scheme
+
+      // White/grey are intentionally the dark palette's primary/secondary
+      // surfaces. Their corresponding foregrounds must therefore be dark;
+      // using white here produced white-on-white/low-contrast Material states.
       colorScheme: ColorScheme.fromSeed(
         seedColor: DesignTokens.darkSurface,
         brightness: Brightness.dark,
@@ -219,56 +214,53 @@ class AppTheme {
         surface: DesignTokens.darkSurface,
         background: DesignTokens.darkBackground,
         error: DesignTokens.accentRed,
-        onPrimary: Colors.white,
-        onSecondary: Colors.white,
+        onPrimary: DesignTokens.darkBackground,
+        onSecondary: DesignTokens.darkBackground,
         onSurface: DesignTokens.darkTextPrimary,
         onBackground: DesignTokens.darkTextPrimary,
         onError: Colors.white,
       ),
-      
-      // Typography - Use colorScheme for theme-aware colors
+
       textTheme: textTheme.copyWith(
         displayLarge: textTheme.displayLarge?.copyWith(
           fontSize: DesignTokens.fontSizeH1,
           fontWeight: DesignTokens.fontWeightBold,
-          color: null, // Use default from colorScheme
+          color: null,
         ),
         displayMedium: textTheme.displayMedium?.copyWith(
           fontSize: DesignTokens.fontSizeH2,
           fontWeight: DesignTokens.fontWeightBold,
-          color: null, // Use default from colorScheme
+          color: null,
         ),
         displaySmall: textTheme.displaySmall?.copyWith(
           fontSize: DesignTokens.fontSizeH3,
           fontWeight: DesignTokens.fontWeightSemiBold,
-          color: null, // Use default from colorScheme
+          color: null,
         ),
         bodyLarge: textTheme.bodyLarge?.copyWith(
           fontSize: DesignTokens.fontSizeBody,
           fontWeight: DesignTokens.fontWeightRegular,
-          color: null, // Use default from colorScheme
+          color: null,
         ),
         bodyMedium: textTheme.bodyMedium?.copyWith(
           fontSize: DesignTokens.fontSizeBodySmall,
           fontWeight: DesignTokens.fontWeightRegular,
-          color: null, // Use default from colorScheme
+          color: null,
         ),
         bodySmall: textTheme.bodySmall?.copyWith(
           fontSize: DesignTokens.fontSizeMeta,
           fontWeight: DesignTokens.fontWeightRegular,
-          color: null, // Use default from colorScheme
+          color: null,
         ),
         labelLarge: textTheme.labelLarge?.copyWith(
           fontSize: DesignTokens.fontSizeBody,
           fontWeight: DesignTokens.fontWeightSemiBold,
-          color: null, // Use default from colorScheme
+          color: null,
         ),
       ),
-      
-      // Scaffold
+
       scaffoldBackgroundColor: DesignTokens.darkBackground,
-      
-      // Cards - Rounded, no shadows, black/grey mix
+
       cardTheme: CardThemeData(
         elevation: 0,
         shadowColor: Colors.transparent,
@@ -281,8 +273,7 @@ class AppTheme {
           vertical: DesignTokens.spacing8,
         ),
       ),
-      
-      // App Bar - Clean, minimal
+
       appBarTheme: AppBarTheme(
         elevation: 0,
         centerTitle: false,
@@ -299,8 +290,7 @@ class AppTheme {
           size: DesignTokens.iconSizeMedium,
         ),
       ),
-      
-      // Input Fields — rounded rectangle (not pill)
+
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: DesignTokens.darkSurface,
@@ -338,8 +328,7 @@ class AppTheme {
           fontSize: DesignTokens.fontSizeBody,
         ),
       ),
-      
-      // Buttons - Rounded, gradient-ready
+
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           elevation: 0,
@@ -376,14 +365,12 @@ class AppTheme {
           ),
         ),
       ),
-      
-      // Icon Theme
+
       iconTheme: IconThemeData(
         color: DesignTokens.darkTextPrimary,
         size: DesignTokens.iconSizeMedium,
       ),
-      
-      // Divider
+
       dividerTheme: DividerThemeData(
         color: Colors.white.withValues(alpha: 0.12),
         thickness: 1,

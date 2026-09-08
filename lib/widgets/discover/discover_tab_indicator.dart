@@ -17,7 +17,7 @@ class DiscoverTabIndicator extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: DesignTokens.spacing16),
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: DesignTokens.surface,
+        color: DesignTokens.surfaceOf(context),
         borderRadius: BorderRadius.circular(DesignTokens.radiusChip),
       ),
       child: TabBar(
@@ -28,7 +28,7 @@ class DiscoverTabIndicator extends StatelessWidget {
           borderRadius: BorderRadius.circular(DesignTokens.radiusChip),
         ),
         labelColor: Colors.white,
-        unselectedLabelColor: DesignTokens.textSecondary,
+        unselectedLabelColor: DesignTokens.textSecondaryOf(context),
         labelStyle: const TextStyle(
           fontWeight: FontWeight.w600,
           fontSize: DesignTokens.fontSizeBody,
@@ -42,4 +42,3 @@ class DiscoverTabIndicator extends StatelessWidget {
     );
   }
 }
-

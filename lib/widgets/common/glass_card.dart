@@ -30,7 +30,7 @@ class GlassCard extends StatelessWidget {
       margin: margin,
       padding: padding,
       decoration: BoxDecoration(
-        color: DesignTokens.glassCardColor,
+        color: DesignTokens.glassCardColorOf(context),
         borderRadius: borderRadius ?? BorderRadius.circular(20.0),
         border: Border.all(
           color: DesignTokens.borderColorOf(context),
@@ -40,22 +40,19 @@ class GlassCard extends StatelessWidget {
       child: ClipRRect(
         borderRadius: borderRadius ?? BorderRadius.circular(20.0),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: DesignTokens.glassBlur, sigmaY: DesignTokens.glassBlur),
+          filter: ImageFilter.blur(
+            sigmaX: DesignTokens.glassBlur,
+            sigmaY: DesignTokens.glassBlur,
+          ),
           child: child,
         ),
       ),
     );
 
     if (onTap != null) {
-      return GestureDetector(
-        onTap: onTap,
-        child: card,
-      );
+      return GestureDetector(onTap: onTap, child: card);
     }
 
     return card;
   }
 }
-
-
-

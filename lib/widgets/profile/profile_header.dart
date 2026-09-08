@@ -29,16 +29,20 @@ class ProfileHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final surface = DesignTokens.surfaceOf(context);
+    final textPrimary = DesignTokens.textPrimaryOf(context);
+    final textSecondary = DesignTokens.textSecondaryOf(context);
+    final border = DesignTokens.borderColorOf(context);
+
     return Container(
       margin: const EdgeInsets.all(DesignTokens.spacing16),
       decoration: BoxDecoration(
-        color: DesignTokens.surfaceOf(context),
+        color: surface,
         borderRadius: BorderRadius.circular(DesignTokens.radiusCard),
         boxShadow: DesignTokens.cardShadowOf(context),
       ),
       child: Column(
         children: [
-          // Cover Image
           ClipRRect(
             borderRadius: const BorderRadius.vertical(
               top: Radius.circular(DesignTokens.radiusCard),
@@ -48,13 +52,16 @@ class ProfileHeader extends StatelessWidget {
               decoration: BoxDecoration(
                 gradient: coverImageUrl == null
                     ? LinearGradient(
-                        colors: [DesignTokens.accentRed, DesignTokens.accentRed.withValues(alpha: 204)],
+                        colors: [
+                          DesignTokens.accentRed,
+                          DesignTokens.accentRed.withValues(alpha: 204),
+                        ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       )
                     : null,
                 border: Border.all(
-                  color: DesignTokens.surfaceOf(context).withOpacity(0.3),
+                  color: surface.withOpacity(0.3),
                   width: 1,
                 ),
               ),
@@ -70,7 +77,6 @@ class ProfileHeader extends StatelessWidget {
                         ),
                       ),
                     ),
-                  // Gradient overlay
                   Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -88,13 +94,10 @@ class ProfileHeader extends StatelessWidget {
               ),
             ),
           ),
-
-          // Avatar & Info
           Padding(
             padding: const EdgeInsets.all(DesignTokens.spacing16),
             child: Column(
               children: [
-                // Avatar (floating)
                 Transform.translate(
                   offset: const Offset(0, -60),
                   child: Container(
@@ -104,7 +107,10 @@ class ProfileHeader extends StatelessWidget {
                       shape: BoxShape.circle,
                       gradient: avatarUrl == null
                           ? LinearGradient(
-                              colors: [DesignTokens.accentRed, DesignTokens.accentRed.withValues(alpha: 204)],
+                              colors: [
+                                DesignTokens.accentRed,
+                                DesignTokens.accentRed.withValues(alpha: 204),
+                              ],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             )
@@ -115,10 +121,7 @@ class ProfileHeader extends StatelessWidget {
                               fit: BoxFit.cover,
                             )
                           : null,
-                      border: Border.all(
-                        color: DesignTokens.surfaceOf(context),
-                        width: 4,
-                      ),
+                      border: Border.all(color: surface, width: 4),
                       boxShadow: DesignTokens.cardShadowOf(context),
                     ),
                     child: avatarUrl == null
@@ -131,32 +134,23 @@ class ProfileHeader extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: -40),
-
-                // Username & Handle
-                Text(
-                  username,
-                  style: AppTextStyles.h1(context),
-                ),
+                Text(username, style: AppTextStyles.h1(context)),
                 const SizedBox(height: DesignTokens.spacing4),
-                Text(
-                  handle,
-                  style: AppTextStyles.secondary(context),
-                ),
+                Text(handle, style: AppTextStyles.secondary(context)),
                 const SizedBox(height: DesignTokens.spacing12),
-
-                // Level Badge
                 PillChip(
                   label: 'Level $level',
                   icon: Icons.star,
                   gradient: LinearGradient(
-                    colors: [DesignTokens.accentRed, DesignTokens.accentRed.withValues(alpha: 204)],
+                    colors: [
+                      DesignTokens.accentRed,
+                      DesignTokens.accentRed.withValues(alpha: 204),
+                    ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
                 ),
                 const SizedBox(height: DesignTokens.spacing16),
-
-                // Bio
                 Row(
                   children: [
                     Expanded(
@@ -170,30 +164,28 @@ class ProfileHeader extends StatelessWidget {
                     ),
                     IconButton(
                       icon: const Icon(Icons.edit, size: 18),
-                      color: DesignTokens.textSecondary,
+                      color: textSecondary,
                       onPressed: onEditProfile,
                     ),
                   ],
                 ),
                 const SizedBox(height: DesignTokens.spacing16),
-
-                // Action Buttons
                 Row(
                   children: [
                     Expanded(
                       child: ElevatedButton(
                         onPressed: onEditProfile,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: DesignTokens.surface,
-                          foregroundColor: DesignTokens.textPrimary,
+                          backgroundColor: surface,
+                          foregroundColor: textPrimary,
                           padding: const EdgeInsets.symmetric(
                             vertical: DesignTokens.spacing12,
                           ),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-                            side: BorderSide(
-                              color: DesignTokens.borderColor,
+                            borderRadius: BorderRadius.circular(
+                              DesignTokens.radiusButton,
                             ),
+                            side: BorderSide(color: border),
                           ),
                         ),
                         child: const Text('Edit Profile'),
@@ -203,14 +195,14 @@ class ProfileHeader extends StatelessWidget {
                     ElevatedButton(
                       onPressed: onSettings,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: DesignTokens.surface,
-                        foregroundColor: DesignTokens.textPrimary,
+                        backgroundColor: surface,
+                        foregroundColor: textPrimary,
                         padding: const EdgeInsets.all(DesignTokens.spacing12),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
-                          side: BorderSide(
-                            color: DesignTokens.borderColor,
+                          borderRadius: BorderRadius.circular(
+                            DesignTokens.radiusButton,
                           ),
+                          side: BorderSide(color: border),
                         ),
                       ),
                       child: const Icon(Icons.settings),
@@ -225,4 +217,3 @@ class ProfileHeader extends StatelessWidget {
     );
   }
 }
-
