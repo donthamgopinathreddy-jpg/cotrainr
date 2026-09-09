@@ -69,8 +69,20 @@ dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 
-// Copy APK to Flutter-expected location after build.
+// Copy APK to Flutter-expected location after build and fail closed whenever
+// either APK or Play Store AAB release packaging is requested without the
+// real upload/release keystore.
 afterEvaluate {
+    val requireReleaseSigning: Task.() -> Unit = {
+        doFirst {
+            if (!hasReleaseKeystore) {
+                throw GradleException(
+                    "Release signing is not configured. Create android/key.properties from android/key.properties.example and keep the real keystore/passwords out of Git."
+                )
+            }
+        }
+    }
+
     tasks.named("assembleDebug") {
         doLast {
             val flutterApkDir = file("../../build/app/outputs/flutter-apk")
@@ -96,13 +108,7 @@ afterEvaluate {
     }
 
     tasks.named("assembleRelease") {
-        doFirst {
-            if (!hasReleaseKeystore) {
-                throw GradleException(
-                    "Release signing is not configured. Create android/key.properties from android/key.properties.example and keep the real keystore/passwords out of Git."
-                )
-            }
-        }
+        requireReleaseSigning()
         doLast {
             val flutterApkDir = file("../../build/app/outputs/flutter-apk")
             flutterApkDir.mkdirs()
@@ -124,5 +130,9 @@ afterEvaluate {
                 println("Warning: APK not found in expected locations")
             }
         }
+    }
+
+    tasks.named("bundleRelease") {
+        requireReleaseSigning()
     }
 }
