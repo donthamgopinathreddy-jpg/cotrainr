@@ -46,6 +46,20 @@ class CoachClientAccessStatus {
   }
 }
 
+/// Thrown when the server cannot authoritatively determine provider/client
+/// access. This is intentionally different from a valid `hasAcceptedLead=false`
+/// response so UI never lies that a client is disconnected during an outage.
+class CoachClientAccessLookupException implements Exception {
+  final String message;
+
+  const CoachClientAccessLookupException([
+    this.message = 'Could not verify client access',
+  ]);
+
+  @override
+  String toString() => message;
+}
+
 class CoachClientAccessService {
   final SupabaseClient _supabase;
 
@@ -58,13 +72,20 @@ class CoachClientAccessService {
         'coach_client_access_status',
         params: {'p_client_id': clientId},
       );
-      final data = Map<String, dynamic>.from(raw as Map);
+      if (raw is! Map) {
+        throw const CoachClientAccessLookupException();
+      }
+      final data = Map<String, dynamic>.from(raw);
       if (data['error'] != null) {
-        return const CoachClientAccessStatus(hasAcceptedLead: false);
+        throw CoachClientAccessLookupException(
+          data['error']?.toString() ?? 'Could not verify client access',
+        );
       }
       return CoachClientAccessStatus.fromJson(data);
+    } on CoachClientAccessLookupException {
+      rethrow;
     } catch (_) {
-      return const CoachClientAccessStatus(hasAcceptedLead: false);
+      throw const CoachClientAccessLookupException();
     }
   }
 }
