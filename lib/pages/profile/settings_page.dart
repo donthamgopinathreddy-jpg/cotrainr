@@ -49,6 +49,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   late final ProfileRepository _profileRepo;
   Map<String, dynamic>? _profile;
   bool _isLoadingProfile = true;
+  bool _profileLoadError = false;
   String _appVersion = '';
 
   @override
@@ -60,16 +61,26 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   Future<void> _loadProfile() async {
+    if (mounted) {
+      setState(() {
+        _isLoadingProfile = true;
+        _profileLoadError = false;
+      });
+    }
     try {
       final profile = await _profileRepo.fetchMyProfile();
-      if (mounted) {
-        setState(() {
-          _profile = profile;
-          _isLoadingProfile = false;
-        });
-      }
+      if (!mounted) return;
+      setState(() {
+        _profile = profile;
+        _isLoadingProfile = false;
+        _profileLoadError = profile == null;
+      });
     } catch (_) {
-      if (mounted) setState(() => _isLoadingProfile = false);
+      if (!mounted) return;
+      setState(() {
+        _isLoadingProfile = false;
+        _profileLoadError = true;
+      });
     }
   }
 
@@ -137,6 +148,31 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ),
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
           children: [
+            if (_profileLoadError) ...[
+              HubSectionCard(
+                title: 'Account status unavailable',
+                animationDelayMs: 0,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Cotrainr could not confirm your account role. Provider-only settings are hidden until this check succeeds.',
+                      style: AccountHubTheme.rowSubtitle(context),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _isLoadingProfile ? null : _loadProfile,
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('Retry'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             HubSectionCard(
               title: 'Account',
               animationDelayMs: 0,
@@ -209,25 +245,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             HubSectionCard(
               title: 'Subscription',
               animationDelayMs: 120,
-              child: Column(
-                children: [
-                  HubActionRow(
-                    icon: Icons.star_outline_rounded,
-                    title: 'Manage Plan',
-                    iconColor: AccountHubTheme.subscriptionAmber,
-                    onTap: () => _push(context, const SubscriptionPage()),
-                  ),
-                  const Divider(height: 1),
-                  HubActionRow(
-                    icon: Icons.receipt_long_outlined,
-                    title: 'Billing History',
-                    trailing: const ComingSoonBadge(),
-                    onTap: () => showHubSnackBar(
-                      context,
-                      'Billing history coming soon',
-                    ),
-                  ),
-                ],
+              child: HubActionRow(
+                icon: Icons.star_outline_rounded,
+                title: 'Manage Plan',
+                iconColor: AccountHubTheme.subscriptionAmber,
+                onTap: () => _push(context, const SubscriptionPage()),
               ),
             ),
             const SizedBox(height: 12),
