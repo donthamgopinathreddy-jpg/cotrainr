@@ -72,6 +72,44 @@ async function requireOk(
   }
 }
 
+async function revokeGoogleIntegration(
+  admin: ReturnType<typeof createClient>,
+  uid: string,
+): Promise<void> {
+  const { data: integration, error } = await admin
+    .from("user_integrations_google")
+    .select("access_token,refresh_token")
+    .eq("user_id", uid)
+    .maybeSingle()
+
+  if (error) {
+    console.error(JSON.stringify({
+      event: "delete_account_google_lookup_failed",
+      code: error.code ?? "unknown",
+    }))
+    return
+  }
+
+  const token = integration?.refresh_token ?? integration?.access_token
+  if (!token) return
+
+  try {
+    const response = await fetch("https://oauth2.googleapis.com/revoke", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ token }),
+    })
+    if (!response.ok) {
+      console.warn(JSON.stringify({
+        event: "delete_account_google_revoke_failed",
+        status: response.status,
+      }))
+    }
+  } catch (_) {
+    console.warn(JSON.stringify({ event: "delete_account_google_revoke_failed" }))
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders })
@@ -96,6 +134,11 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     )
     const uid = user.id
+
+    // Revoke the external Google integration before its DB row disappears via
+    // auth.users CASCADE. Revocation is best-effort: an unavailable Google
+    // endpoint must not make a user unable to delete their Cotrainr account.
+    await revokeGoogleIntegration(admin, uid)
 
     // Storage objects are not deleted by auth.users cascades.
     for (const bucket of [
