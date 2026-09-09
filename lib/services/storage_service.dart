@@ -45,8 +45,7 @@ class StorageService {
       // Get public URL
       final url = _supabase.storage.from('avatars').getPublicUrl(filePath);
       return url;
-    } catch (e) {
-      print('Error uploading avatar: $e');
+    } catch (_) {
       rethrow;
     }
   }
@@ -81,8 +80,7 @@ class StorageService {
       // profile CachedNetworkImage picks up the new bytes.
       final url = _supabase.storage.from('avatars').getPublicUrl(filePath);
       return cacheBustedMediaUrl(url);
-    } catch (e) {
-      print('Error uploading cover image: $e');
+    } catch (_) {
       rethrow;
     }
   }
@@ -99,12 +97,12 @@ class StorageService {
         // Format: /storage/v1/object/public/bucket/path
         final bucket = pathSegments[2];
         final filePath = pathSegments.sublist(3).join('/');
-        
+
         await _supabase.storage.from(bucket).remove([filePath]);
       }
-    } catch (e) {
-      print('Error deleting old avatar: $e');
-      // Don't throw - deletion is best effort
+    } catch (_) {
+      // Deleting the superseded object is best effort; upload success remains
+      // authoritative and callers should not fail because cleanup did not.
     }
   }
 
@@ -120,12 +118,12 @@ class StorageService {
         // Format: /storage/v1/object/public/bucket/path
         final bucket = pathSegments[2];
         final filePath = pathSegments.sublist(3).join('/');
-        
+
         await _supabase.storage.from(bucket).remove([filePath]);
       }
-    } catch (e) {
-      print('Error deleting old cover image: $e');
-      // Don't throw - deletion is best effort
+    } catch (_) {
+      // Deleting the superseded object is best effort; upload success remains
+      // authoritative and callers should not fail because cleanup did not.
     }
   }
 
@@ -318,7 +316,6 @@ class StorageService {
       final contentType = isVideo ? 'video/mp4' : 'image/jpeg';
 
       // Upload to Supabase Storage
-      // Use 'posts' bucket (you may need to create this bucket in Supabase)
       await _supabase.storage.from('posts').uploadBinary(
         filePath,
         bytes,
@@ -331,8 +328,7 @@ class StorageService {
       // Get public URL
       final url = _supabase.storage.from('posts').getPublicUrl(filePath);
       return url;
-    } catch (e) {
-      print('Error uploading post media: $e');
+    } catch (_) {
       rethrow;
     }
   }
