@@ -79,12 +79,7 @@ This order is now the governing V1 requirement. Do not revert to the earlier rec
 - Added reusable provider review preview component:
   - `lib/widgets/provider/provider_reviews_home_section.dart`
   - Commit: `0aa78d3be7e422557aa2c2c81885659bafa10efa`
-- Home shows:
-  - rating summary
-  - review count for the loaded review set
-  - latest review previews
-  - explicit no-review state
-  - explicit load-error + Retry state
+- Home shows rating summary, review count for the loaded set, latest review previews, explicit no-review state, and load-error + Retry state.
 
 ### LIVE SUPABASE REVIEW VERIFICATION
 
@@ -99,15 +94,34 @@ Verified `submit_provider_review` requires an authenticated client with an accep
 
 No review schema migration was required for the Home preview integration.
 
+### FIXED BY ME — CLIENT ACCESS FAILURE TRUTHFULNESS
+
+- File: `lib/services/coach_client_access_service.dart`
+- Commit: `5de86952137424488828d4a434dc5b816295c65c`
+- RPC/network/server failures now throw `CoachClientAccessLookupException` rather than being converted to `hasAcceptedLead=false`.
+- A real RPC result with no accepted lead still returns `hasAcceptedLead=false`.
+- Result: client-detail UI can distinguish a backend outage from a genuinely disconnected client and no longer falsely tells the provider the relationship is gone.
+
+Production `coach_client_access_status(uuid)` was inspected live. It is `SECURITY DEFINER`, executable by `authenticated`, derives the provider from `auth.uid()`, checks an accepted lead for the exact provider/client pair, and returns the client sharing flags. The three sharing columns are `NOT NULL` and currently default to `true` in production.
+
+### FIXED BY ME — COACH NOTES ROLE + ERROR STATES
+
+- File: `lib/pages/trainer/trainer_coach_notes_page.dart`
+- Commit: `232d4ad4ee447838544ce47a2589a451731521b9`
+- Removed provider classification from `auth.currentUser.userMetadata['role']`.
+- Provider type now comes from authoritative `get_my_profile` data through `ProfileRepository.fetchMyProfile()`.
+- Client-list failure now shows a persistent error state with Retry instead of `No clients yet`.
+- Notes-load failure now shows a persistent error state with Retry instead of `No notes yet`.
+- Accepted clients are de-duplicated by client id.
+- Open-profile routing uses the resolved authoritative provider type.
+- Note send flow now isolates exceptions, prevents duplicate submits, keeps user-safe error copy, and adds a 1000-character input limit.
+
 ### OPEN AREA 21 FINDINGS
 
-- `CoachClientAccessService` still maps RPC/network errors to `hasAcceptedLead=false`; this can incorrectly show `This client is not connected` during backend failure.
-- Client monitoring still swallows independent notes/session/metrics/meals subsection errors and can render false empty/zero states.
+- Client monitoring still swallows independent notes/session/metrics/meals subsection errors and can render false empty/zero states. Add per-section degraded/error state without blocking the rest of the client screen.
 - My Clients still needs a persistent Error + Retry state instead of falling back to normal empty UI after load failure.
-- Trainer Coach Notes can show false `No clients yet` / empty notes after backend failure.
-- Coach Notes role classification must stop relying on user-editable/stale `userMetadata.role`; use authoritative profile/server role truth.
 - Reviews Home count/average currently derives from the loaded review list. Before providers can accumulate more than the RPC preview limit, add a server-authoritative review-summary/count endpoint or use the canonical provider aggregate.
-- Decide whether V1 needs a dedicated `View all reviews` screen. The Home preview itself is now present.
+- Decide whether V1 needs a dedicated `View all reviews` screen. The Home preview itself is present.
 
 ---
 
@@ -121,15 +135,19 @@ No review schema migration was required for the Home preview integration.
 - Nutritionist receives the same locked Home hierarchy as Trainer while retaining nutritionist-specific client routing and provider-practice counts.
 - Personal metrics, BMI, water, goals, personal Meal Tracker and Health Connect remain available for V1.
 - Reviews & Ratings uses the same provider review surface and live review RPC.
+- Shared Coach Notes now resolves `nutritionist` from authoritative profile role instead of JWT user metadata, so nutritionist client filtering and Open profile routing follow server truth.
+
+### VERIFIED — NUTRITIONIST CLIENT SHARING ACCESS PATH
+
+Live `coach_client_access_status(uuid)` returns `provider_type` from the accepted lead and returns `share_nutrition_with_nutritionist` from the client profile. Flutter `CoachClientAccessStatus.canViewMeals` only permits nutritionist meal access when the relationship is accepted and `share_nutrition_with_nutritionist` is true.
 
 ### AREA 22 AUDIT REQUIREMENTS STILL OPEN
 
 Audit Nutritionist specifically for:
-- My Clients and Requests role filtering
+- My Clients persistent error/retry and request action states
 - client detail route `/nutritionist/clients/:id`
-- `share_nutrition_with_nutritionist` enforcement
-- client meal-log monitoring states
-- notes ownership/access
+- client meal-log monitoring partial/error/offline states
+- notes ownership/access adversarial tests
 - messaging entitlement and accepted-connection requirement
 - video-session scheduling/joining and Google Meet integration
 - verification, professional profile, certifications, service locations
@@ -152,7 +170,7 @@ flutter analyze
 flutter test
 ```
 
-Then validate Trainer and Nutritionist Home on Android at minimum:
+Then validate Trainer and Nutritionist on Android at minimum:
 - 320dp, 360dp, 393–412dp widths
 - default and large text scale
 - light and dark mode
@@ -160,11 +178,13 @@ Then validate Trainer and Nutritionist Home on Android at minimum:
 - metrics unavailable / Health Connect not granted
 - pull-to-refresh with metrics sync failure
 - zero clients / clients present / requests present
+- client-list backend failure and Retry
 - no reviews / reviews present / review RPC failure
+- Coach Notes client-list failure, notes failure, Retry and send failure
 - long provider and client names
 - no upcoming session / upcoming session
 - offline / slow network / interrupted refresh
 - TalkBack semantics and touch targets
 - predictive/system Back
 
-No GitHub Actions status checks were attached to the latest Home commit, so these local checks remain mandatory before the change can be marked production-verified.
+No local Flutter analyze/test/build or physical device verification has been run by the assistant. Do not mark Areas 21 or 22 production-verified until those gates pass.
