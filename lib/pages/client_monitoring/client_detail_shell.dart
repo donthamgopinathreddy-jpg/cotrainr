@@ -83,8 +83,17 @@ class _ClientDetailShellState extends State<ClientDetailShell>
   DayMealsData? _meals;
   List<CoachNote> _notes = [];
   VideoSession? _upcoming;
+  bool _notesLoadFailed = false;
+  bool _sessionLoadFailed = false;
+  bool _metricsLoadFailed = false;
+  bool _mealsLoadFailed = false;
 
   bool get _isTrainer => !widget.isNutritionist;
+  bool get _hasPartialFailure =>
+      _notesLoadFailed ||
+      _sessionLoadFailed ||
+      _metricsLoadFailed ||
+      _mealsLoadFailed;
 
   @override
   void initState() {
@@ -139,8 +148,7 @@ class _ClientDetailShellState extends State<ClientDetailShell>
     try {
       final access = widget.loadAccess != null
           ? await widget.loadAccess!(id)
-          : await (_accessService ??=
-                  CoachClientAccessService())
+          : await (_accessService ??= CoachClientAccessService())
               .getClientAccess(id);
       if (!mounted) return;
       if (!access.hasAcceptedLead) {
@@ -169,46 +177,61 @@ class _ClientDetailShellState extends State<ClientDetailShell>
       final username = (profile['username'] as String?)?.trim();
       final avatar = (profile['avatar_url'] as String?)?.trim();
 
-      List<CoachNote> notes = const [];
-      VideoSession? upcoming;
-      Map<String, dynamic>? metrics;
-      DayMealsData? meals;
+      var notes = List<CoachNote>.from(_notes);
+      var upcoming = _upcoming;
+      var metrics = _metrics;
+      var meals = _meals;
+      var notesFailed = false;
+      var sessionFailed = false;
+      var metricsFailed = false;
+      var mealsFailed = false;
 
+      try {
+        notes = widget.loadNotes != null
+            ? await widget.loadNotes!(id)
+            : await (_notesRepo ??= CoachNotesRepository()).getNotesForClient(id);
+      } catch (_) {
+        notesFailed = true;
+      }
+      if (!mounted) return;
+
+      try {
+        upcoming = widget.loadUpcoming != null
+            ? await widget.loadUpcoming!(id)
+            : await (_sessionsRepo ??= VideoSessionsRepository())
+                .upcomingSessionForClient(id);
+      } catch (_) {
+        sessionFailed = true;
+      }
+      if (!mounted) return;
+
+      if (_isTrainer && access.canViewMetrics) {
         try {
-          notes = widget.loadNotes != null
-              ? await widget.loadNotes!(id)
-              : await (_notesRepo ??= CoachNotesRepository())
-                  .getNotesForClient(id);
-        } catch (_) {}
+          metrics = widget.loadMetrics != null
+              ? await widget.loadMetrics!(id)
+              : await (_metricsRepo ??= MetricsRepository())
+                  .getClientMetricsForDate(id, DateTime.now());
+        } catch (_) {
+          metricsFailed = true;
+        }
         if (!mounted) return;
+      } else {
+        metrics = null;
+      }
 
+      if (access.canViewMeals) {
         try {
-          upcoming = widget.loadUpcoming != null
-              ? await widget.loadUpcoming!(id)
-              : await (_sessionsRepo ??= VideoSessionsRepository())
-                  .upcomingSessionForClient(id);
-        } catch (_) {}
+          meals = widget.loadMeals != null
+              ? await widget.loadMeals!(id)
+              : await (_mealRepo ??= MealRepository())
+                  .getClientDayMeals(id, DateTime.now());
+        } catch (_) {
+          mealsFailed = true;
+        }
         if (!mounted) return;
-
-        if (_isTrainer && access.canViewMetrics) {
-          try {
-            metrics = widget.loadMetrics != null
-                ? await widget.loadMetrics!(id)
-                : await (_metricsRepo ??= MetricsRepository())
-                    .getClientMetricsForDate(id, DateTime.now());
-          } catch (_) {}
-          if (!mounted) return;
-        }
-
-        if (access.canViewMeals) {
-          try {
-            meals = widget.loadMeals != null
-                ? await widget.loadMeals!(id)
-                : await (_mealRepo ??= MealRepository())
-                    .getClientDayMeals(id, DateTime.now());
-          } catch (_) {}
-          if (!mounted) return;
-        }
+      } else {
+        meals = null;
+      }
 
       setState(() {
         _access = access;
@@ -222,7 +245,17 @@ class _ClientDetailShellState extends State<ClientDetailShell>
         _notes = List<CoachNote>.from(notes)
           ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
         _upcoming = upcoming;
+        _notesLoadFailed = notesFailed;
+        _sessionLoadFailed = sessionFailed;
+        _metricsLoadFailed = metricsFailed;
+        _mealsLoadFailed = mealsFailed;
         _loading = false;
+      });
+    } on CoachClientAccessLookupException {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'Could not verify access to this client. Please try again.';
       });
     } catch (_) {
       if (!mounted) return;
@@ -275,9 +308,12 @@ class _ClientDetailShellState extends State<ClientDetailShell>
         setState(() {
           _notes = List<CoachNote>.from(notes)
             ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          _notesLoadFailed = false;
         });
       }
-    } catch (_) {}
+    } catch (_) {
+      if (mounted) setState(() => _notesLoadFailed = true);
+    }
   }
 
   @override
@@ -316,11 +352,17 @@ class _ClientDetailShellState extends State<ClientDetailShell>
                         onNotes: _openNotes,
                       ),
                     ),
+                    if (_hasPartialFailure)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                        child: _MonitoringDegradedBanner(onRetry: _load),
+                      ),
                     const SizedBox(height: 8),
                     TabBar(
                       controller: _tabs,
                       labelColor: DesignTokens.videoSessionsAccent,
-                      unselectedLabelColor: ClientMonitoringUi.secondary(context),
+                      unselectedLabelColor:
+                          ClientMonitoringUi.secondary(context),
                       indicatorColor: DesignTokens.videoSessionsAccent,
                       indicatorWeight: 2.5,
                       tabs: const [
@@ -343,6 +385,11 @@ class _ClientDetailShellState extends State<ClientDetailShell>
                               notes: _notes,
                               upcoming: _upcoming,
                               loading: _loading,
+                              notesFailed: _notesLoadFailed,
+                              sessionFailed: _sessionLoadFailed,
+                              metricsFailed: _metricsLoadFailed,
+                              mealsFailed: _mealsLoadFailed,
+                              onRetry: _load,
                               onViewMeals: () => _tabs.animateTo(1),
                               onViewNotes: _openNotes,
                               onViewSession: _upcoming == null
@@ -357,12 +404,45 @@ class _ClientDetailShellState extends State<ClientDetailShell>
                             meals: _meals,
                             richMacros: widget.isNutritionist,
                             loading: _loading,
+                            loadFailed: _mealsLoadFailed,
+                            onRetry: _load,
                           ),
                         ],
                       ),
                     ),
                   ],
                 ),
+    );
+  }
+}
+
+class _MonitoringDegradedBanner extends StatelessWidget {
+  const _MonitoringDegradedBanner({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+      decoration: BoxDecoration(
+        color: cs.errorContainer.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.sync_problem_rounded, color: cs.onErrorContainer, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Some client data couldn’t refresh. Last loaded data is shown where available.',
+              style: TextStyle(color: cs.onErrorContainer, fontSize: 12.5),
+            ),
+          ),
+          TextButton(onPressed: onRetry, child: const Text('Retry')),
+        ],
+      ),
     );
   }
 }
@@ -402,7 +482,8 @@ class _Header extends StatelessWidget {
                   name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: ClientMonitoringUi.title(context).copyWith(fontSize: 18),
+                  style:
+                      ClientMonitoringUi.title(context).copyWith(fontSize: 18),
                 ),
                 if (handle.isNotEmpty) ...[
                   const SizedBox(height: 2),
@@ -511,7 +592,8 @@ class _ActionButton extends StatelessWidget {
                   elevation: 0,
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(ClientMonitoringUi.radius),
+                    borderRadius:
+                        BorderRadius.circular(ClientMonitoringUi.radius),
                   ),
                 ),
                 child: _Content(icon: icon, label: label, compact: true),
@@ -523,7 +605,8 @@ class _ActionButton extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   side: BorderSide(color: ClientMonitoringUi.border(context)),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(ClientMonitoringUi.radius),
+                    borderRadius:
+                        BorderRadius.circular(ClientMonitoringUi.radius),
                   ),
                 ),
                 child: _Content(icon: icon, label: label, compact: false),
@@ -574,6 +657,11 @@ class _OverviewTab extends StatelessWidget {
   final List<CoachNote> notes;
   final VideoSession? upcoming;
   final bool loading;
+  final bool notesFailed;
+  final bool sessionFailed;
+  final bool metricsFailed;
+  final bool mealsFailed;
+  final VoidCallback onRetry;
   final VoidCallback onViewMeals;
   final VoidCallback onViewNotes;
   final VoidCallback? onViewSession;
@@ -586,6 +674,11 @@ class _OverviewTab extends StatelessWidget {
     required this.notes,
     required this.upcoming,
     required this.loading,
+    required this.notesFailed,
+    required this.sessionFailed,
+    required this.metricsFailed,
+    required this.mealsFailed,
+    required this.onRetry,
     required this.onViewMeals,
     required this.onViewNotes,
     required this.onViewSession,
@@ -595,16 +688,33 @@ class _OverviewTab extends StatelessWidget {
   Widget build(BuildContext context) {
     if (loading && access == null) {
       return const Center(
-        child: CircularProgressIndicator(color: DesignTokens.videoSessionsAccent),
+        child: CircularProgressIndicator(
+          color: DesignTokens.videoSessionsAccent,
+        ),
       );
     }
 
     final children = <Widget>[];
     if (upcoming != null) {
       children.add(_UpcomingCard(session: upcoming!, onView: onViewSession));
+    } else if (sessionFailed) {
+      children.add(
+        _SectionLoadError(
+          title: 'Upcoming session',
+          message: 'Could not refresh upcoming sessions.',
+          onRetry: onRetry,
+        ),
+      );
     }
     if (isTrainer) {
-      children.add(_ActivityCard(access: access, metrics: metrics));
+      children.add(
+        _ActivityCard(
+          access: access,
+          metrics: metrics,
+          loadFailed: metricsFailed,
+          onRetry: onRetry,
+        ),
+      );
     }
     if (access?.canViewMeals == true || access?.hasAcceptedLead == true) {
       children.add(
@@ -612,12 +722,22 @@ class _OverviewTab extends StatelessWidget {
           access: access,
           meals: meals,
           rich: !isTrainer,
+          loadFailed: mealsFailed,
+          onRetry: onRetry,
           onView: onViewMeals,
         ),
       );
     }
     if (notes.isNotEmpty) {
       children.add(_NotePreviewCard(note: notes.first, onView: onViewNotes));
+    } else if (notesFailed) {
+      children.add(
+        _SectionLoadError(
+          title: 'Coach notes',
+          message: 'Could not refresh coach notes.',
+          onRetry: onRetry,
+        ),
+      );
     }
 
     if (children.isEmpty) {
@@ -669,7 +789,10 @@ class _UpcomingCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Upcoming session', style: ClientMonitoringUi.sectionLabel(context)),
+          Text(
+            'Upcoming session',
+            style: ClientMonitoringUi.sectionLabel(context),
+          ),
           const SizedBox(height: 8),
           Text(session.title, style: ClientMonitoringUi.title(context)),
           const SizedBox(height: 4),
@@ -688,7 +811,10 @@ class _UpcomingCard extends StatelessWidget {
                   minimumSize: const Size(44, 44),
                   padding: EdgeInsets.zero,
                 ),
-                child: const Text('View', style: TextStyle(fontWeight: FontWeight.w700)),
+                child: const Text(
+                  'View',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
               ),
             ),
           ],
@@ -701,14 +827,30 @@ class _UpcomingCard extends StatelessWidget {
 class _ActivityCard extends StatelessWidget {
   final CoachClientAccessStatus? access;
   final Map<String, dynamic>? metrics;
-  const _ActivityCard({required this.access, required this.metrics});
+  final bool loadFailed;
+  final VoidCallback onRetry;
+
+  const _ActivityCard({
+    required this.access,
+    required this.metrics,
+    required this.loadFailed,
+    required this.onRetry,
+  });
 
   @override
   Widget build(BuildContext context) {
     if (access?.canViewMetrics != true) {
-      return _PrivacyCard(
+      return const _PrivacyCard(
         title: 'Activity today',
-        message: 'Activity sharing is off. This client has chosen not to share activity metrics.',
+        message:
+            'Activity sharing is off. This client has chosen not to share activity metrics.',
+      );
+    }
+    if (metrics == null && loadFailed) {
+      return _SectionLoadError(
+        title: 'Activity today',
+        message: 'Could not refresh activity metrics.',
+        onRetry: onRetry,
       );
     }
     if (metrics == null) {
@@ -719,7 +861,10 @@ class _ActivityCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Activity today', style: ClientMonitoringUi.sectionLabel(context)),
+            Text(
+              'Activity today',
+              style: ClientMonitoringUi.sectionLabel(context),
+            ),
             const SizedBox(height: 8),
             Text(
               'No activity logged today',
@@ -735,7 +880,10 @@ class _ActivityCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Activity today', style: ClientMonitoringUi.sectionLabel(context)),
+          Text(
+            'Activity today',
+            style: ClientMonitoringUi.sectionLabel(context),
+          ),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -777,7 +925,7 @@ class _ActivityCard extends StatelessWidget {
 
   String _num(dynamic raw, {bool asInt = false}) {
     if (raw == null) return '—';
-    final n = (raw as num);
+    final n = raw as num;
     if (asInt) return NumberFormat('#,###').format(n.round());
     return n.toString();
   }
@@ -802,12 +950,16 @@ class _MealSummaryCard extends StatelessWidget {
   final CoachClientAccessStatus? access;
   final DayMealsData? meals;
   final bool rich;
+  final bool loadFailed;
+  final VoidCallback onRetry;
   final VoidCallback onView;
 
   const _MealSummaryCard({
     required this.access,
     required this.meals,
     required this.rich,
+    required this.loadFailed,
+    required this.onRetry,
     required this.onView,
   });
 
@@ -819,6 +971,13 @@ class _MealSummaryCard extends StatelessWidget {
         message: 'Meal sharing is off',
       );
     }
+    if (meals == null && loadFailed) {
+      return _SectionLoadError(
+        title: 'Meals today',
+        message: 'Could not refresh meal data.',
+        onRetry: onRetry,
+      );
+    }
     final data = meals ?? DayMealsData.empty();
     return Container(
       padding: const EdgeInsets.all(16),
@@ -826,7 +985,10 @@ class _MealSummaryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Meals today', style: ClientMonitoringUi.sectionLabel(context)),
+          Text(
+            'Meals today',
+            style: ClientMonitoringUi.sectionLabel(context),
+          ),
           const SizedBox(height: 8),
           if (!data.hasLoggedMeals)
             Text(
@@ -883,7 +1045,10 @@ class _NotePreviewCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Latest coach note', style: ClientMonitoringUi.sectionLabel(context)),
+          Text(
+            'Latest coach note',
+            style: ClientMonitoringUi.sectionLabel(context),
+          ),
           const SizedBox(height: 8),
           Text(
             note.content,
@@ -914,6 +1079,48 @@ class _NotePreviewCard extends StatelessWidget {
               'View notes',
               style: TextStyle(fontWeight: FontWeight.w700),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionLoadError extends StatelessWidget {
+  const _SectionLoadError({
+    required this.title,
+    required this.message,
+    required this.onRetry,
+  });
+
+  final String title;
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: ClientMonitoringUi.cardBox(context),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: ClientMonitoringUi.sectionLabel(context)),
+          const SizedBox(height: 8),
+          Text(
+            message,
+            style: TextStyle(color: ClientMonitoringUi.secondary(context)),
+          ),
+          const SizedBox(height: 4),
+          TextButton(
+            onPressed: onRetry,
+            style: TextButton.styleFrom(
+              foregroundColor: DesignTokens.videoSessionsAccent,
+              minimumSize: const Size(44, 44),
+              padding: EdgeInsets.zero,
+            ),
+            child: const Text('Retry'),
           ),
         ],
       ),
@@ -970,19 +1177,25 @@ class _MealsTab extends StatelessWidget {
   final DayMealsData? meals;
   final bool richMacros;
   final bool loading;
+  final bool loadFailed;
+  final VoidCallback onRetry;
 
   const _MealsTab({
     required this.access,
     required this.meals,
     required this.richMacros,
     required this.loading,
+    required this.loadFailed,
+    required this.onRetry,
   });
 
   @override
   Widget build(BuildContext context) {
     if (loading && meals == null && access?.canViewMeals == true) {
       return const Center(
-        child: CircularProgressIndicator(color: DesignTokens.videoSessionsAccent),
+        child: CircularProgressIndicator(
+          color: DesignTokens.videoSessionsAccent,
+        ),
       );
     }
     if (access?.canViewMeals != true) {
@@ -991,6 +1204,16 @@ class _MealsTab extends StatelessWidget {
         child: _PrivacyCard(
           title: 'Meals',
           message: 'Meal sharing is off',
+        ),
+      );
+    }
+    if (meals == null && loadFailed) {
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: _SectionLoadError(
+          title: 'Meals',
+          message: 'Could not refresh this client’s meals.',
+          onRetry: onRetry,
         ),
       );
     }
