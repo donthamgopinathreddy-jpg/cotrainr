@@ -35,6 +35,8 @@ class _NotificationsPageState extends State<NotificationsPage>
   VideoSessionNotificationPrefs _videoPrefs = const VideoSessionNotificationPrefs();
   bool _loading = true;
   bool _saving = false;
+  bool _loadError = false;
+  bool _videoPrefsLoadError = false;
   OsNotificationAccessLabel _osLabel = OsNotificationAccessLabel.notDetermined;
 
   @override
@@ -64,31 +66,77 @@ class _NotificationsPageState extends State<NotificationsPage>
   }
 
   Future<void> _load() async {
-    final prefs = await _service.load();
-    VideoSessionNotificationPrefs videoPrefs =
-        const VideoSessionNotificationPrefs();
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _loadError = false;
+        _videoPrefsLoadError = false;
+      });
+    }
+
     try {
-      videoPrefs = await _videoPrefsStore.load();
-    } catch (_) {}
-    final osLabel = await _osPermission.readLabel();
-    if (!mounted) return;
-    setState(() {
-      _prefs = prefs;
-      _videoPrefs = videoPrefs;
-      _osLabel = osLabel;
-      _loading = false;
-    });
+      final prefs = await _service.load();
+      final osLabel = await _osPermission.readLabel();
+
+      VideoSessionNotificationPrefs videoPrefs = _videoPrefs;
+      var videoPrefsLoadError = false;
+      try {
+        videoPrefs = await _videoPrefsStore.load();
+      } catch (_) {
+        videoPrefsLoadError = true;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _prefs = prefs;
+        _videoPrefs = videoPrefs;
+        _osLabel = osLabel;
+        _videoPrefsLoadError = videoPrefsLoadError;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _loadError = true;
+      });
+    }
+  }
+
+  Future<void> _retryVideoPrefs() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      final videoPrefs = await _videoPrefsStore.load();
+      if (!mounted) return;
+      setState(() {
+        _videoPrefs = videoPrefs;
+        _videoPrefsLoadError = false;
+      });
+    } catch (_) {
+      if (mounted) {
+        showHubSnackBar(context, 'Could not load video session preferences');
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   Future<void> _refreshOsPermission() async {
-    final previous = _osLabel;
-    final osLabel = await _osPermission.readLabel();
-    if (!mounted) return;
-    setState(() => _osLabel = osLabel);
-    final nowGranted = osLabel == OsNotificationAccessLabel.allowed;
-    final wasNotGranted = previous != OsNotificationAccessLabel.allowed;
-    if (nowGranted && wasNotGranted) {
-      await PushNotificationService.instance.registerToken();
+    try {
+      final previous = _osLabel;
+      final osLabel = await _osPermission.readLabel();
+      if (!mounted) return;
+      setState(() => _osLabel = osLabel);
+      final nowGranted = osLabel == OsNotificationAccessLabel.allowed;
+      final wasNotGranted = previous != OsNotificationAccessLabel.allowed;
+      if (nowGranted && wasNotGranted) {
+        await PushNotificationService.instance.registerToken();
+      }
+    } catch (_) {
+      if (mounted) {
+        showHubSnackBar(context, 'Could not refresh notification permission');
+      }
     }
   }
 
@@ -112,7 +160,7 @@ class _NotificationsPageState extends State<NotificationsPage>
   }
 
   Future<void> _persistVideo(VideoSessionNotificationPrefs next) async {
-    if (_saving) return;
+    if (_saving || _videoPrefsLoadError) return;
     final previous = _videoPrefs;
     setState(() {
       _videoPrefs = next;
@@ -146,115 +194,168 @@ class _NotificationsPageState extends State<NotificationsPage>
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-              children: [
-                HubSectionCard(
-                  title: 'Device permission',
-                  animationDelayMs: 0,
-                  child: HubActionRow(
-                    icon: Icons.notifications_outlined,
-                    title: 'System notifications',
-                    subtitle:
-                        '${osNotificationAccessLabelText(_osLabel)} · Controlled by your device settings',
-                    trailing: TextButton(
-                      onPressed: () async {
-                        HapticFeedback.lightImpact();
-                        await _osPermission.manage();
-                        await _refreshOsPermission();
-                      },
-                      child: Text(
-                        'Manage',
-                        style: TextStyle(
-                          color: DesignTokens.accentOrange,
-                          fontWeight: FontWeight.w600,
-                        ),
+          : _loadError
+              ? ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    HubSectionCard(
+                      title: 'Could not load notifications',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Your current notification preferences could not be confirmed. No settings have been changed.',
+                            style: AccountHubTheme.rowSubtitle(context),
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: _load,
+                              icon: const Icon(Icons.refresh_rounded),
+                              label: const Text('Retry'),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    showChevron: false,
-                  ),
-                ),
-                if (osDenied) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    'App switches cannot override system notification permission while it is denied.',
-                    style: AccountHubTheme.rowSubtitle(context),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                HubSectionCard(
-                  title: 'Push notifications',
-                  animationDelayMs: 40,
-                  child: Column(
-                    children: [
-                      HubToggleRow(
-                        title: 'All notifications',
+                  ],
+                )
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                  children: [
+                    HubSectionCard(
+                      title: 'Device permission',
+                      animationDelayMs: 0,
+                      child: HubActionRow(
+                        icon: Icons.notifications_outlined,
+                        title: 'System notifications',
                         subtitle:
-                            'Master switch for push notifications from Cotrainr',
-                        value: _prefs.all,
-                        enabled: !_saving,
-                        onChanged: (v) => _persist(_prefs.copyWith(all: v)),
-                      ),
-                      const Divider(height: 1),
-                      HubToggleRow(
-                        title: 'Message notifications',
-                        subtitle: 'Alerts when you receive a chat message',
-                        value: _prefs.messageNotifications,
-                        enabled: dependentsEnabled,
-                        onChanged: (v) => _persist(
-                          _prefs.copyWith(
-                            messageNotifications: v,
-                            trainerMessages: v,
-                            nutritionistMessages: v,
+                            '${osNotificationAccessLabelText(_osLabel)} · Controlled by your device settings',
+                        trailing: TextButton(
+                          onPressed: () async {
+                            HapticFeedback.lightImpact();
+                            await _osPermission.manage();
+                            await _refreshOsPermission();
+                          },
+                          child: Text(
+                            'Manage',
+                            style: TextStyle(
+                              color: DesignTokens.accentOrange,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
+                        showChevron: false,
+                      ),
+                    ),
+                    if (osDenied) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'App switches cannot override system notification permission while it is denied.',
+                        style: AccountHubTheme.rowSubtitle(context),
                       ),
                     ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                HubSectionCard(
-                  title: 'Reminders',
-                  animationDelayMs: 80,
-                  child: HubToggleRow(
-                    title: 'Water reminders',
-                    subtitle: 'Hydration reminders',
-                    value: _prefs.waterReminders,
-                    enabled: dependentsEnabled,
-                    onChanged: (v) =>
-                        _persist(_prefs.copyWith(waterReminders: v)),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                HubSectionCard(
-                  title: 'Video sessions',
-                  animationDelayMs: 120,
-                  child: Column(
-                    children: [
-                      HubToggleRow(
-                        title: 'Video session notifications',
-                        subtitle:
-                            'Created, changed, cancelled, and participant responses',
-                        value: _videoPrefs.sessions,
-                        enabled: !_saving,
-                        onChanged: (v) =>
-                            _persistVideo(_videoPrefs.copyWith(sessions: v)),
+                    const SizedBox(height: 12),
+                    HubSectionCard(
+                      title: 'Push notifications',
+                      animationDelayMs: 40,
+                      child: Column(
+                        children: [
+                          HubToggleRow(
+                            title: 'All notifications',
+                            subtitle:
+                                'Master switch for push notifications from Cotrainr',
+                            value: _prefs.all,
+                            enabled: !_saving,
+                            onChanged: (v) => _persist(_prefs.copyWith(all: v)),
+                          ),
+                          const Divider(height: 1),
+                          HubToggleRow(
+                            title: 'Message notifications',
+                            subtitle: 'Alerts when you receive a chat message',
+                            value: _prefs.messageNotifications,
+                            enabled: dependentsEnabled,
+                            onChanged: (v) => _persist(
+                              _prefs.copyWith(
+                                messageNotifications: v,
+                                trainerMessages: v,
+                                nutritionistMessages: v,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      const Divider(height: 1),
-                      HubToggleRow(
-                        title: 'Session reminders',
-                        subtitle:
-                            '5-minute reminder and session-start reminder',
-                        value: _videoPrefs.reminders,
-                        enabled: !_saving,
+                    ),
+                    const SizedBox(height: 12),
+                    HubSectionCard(
+                      title: 'Reminders',
+                      animationDelayMs: 80,
+                      child: HubToggleRow(
+                        title: 'Water reminders',
+                        subtitle: 'Hydration reminders',
+                        value: _prefs.waterReminders,
+                        enabled: dependentsEnabled,
                         onChanged: (v) =>
-                            _persistVideo(_videoPrefs.copyWith(reminders: v)),
+                            _persist(_prefs.copyWith(waterReminders: v)),
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (_videoPrefsLoadError) ...[
+                      HubSectionCard(
+                        title: 'Video session preferences unavailable',
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Cotrainr could not confirm your saved video-session notification settings.',
+                              style: AccountHubTheme.rowSubtitle(context),
+                            ),
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: _saving ? null : _retryVideoPrefs,
+                                icon: const Icon(Icons.refresh_rounded),
+                                label: const Text('Retry'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ] else
+                      HubSectionCard(
+                        title: 'Video sessions',
+                        animationDelayMs: 120,
+                        child: Column(
+                          children: [
+                            HubToggleRow(
+                              title: 'Video session notifications',
+                              subtitle:
+                                  'Created, changed, cancelled, and participant responses',
+                              value: _videoPrefs.sessions,
+                              enabled: !_saving,
+                              onChanged: (v) => _persistVideo(
+                                _videoPrefs.copyWith(sessions: v),
+                              ),
+                            ),
+                            const Divider(height: 1),
+                            HubToggleRow(
+                              title: 'Session reminders',
+                              subtitle:
+                                  '5-minute reminder and session-start reminder',
+                              value: _videoPrefs.reminders,
+                              enabled: !_saving,
+                              onChanged: (v) => _persistVideo(
+                                _videoPrefs.copyWith(reminders: v),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
                 ),
-              ],
-            ),
     );
   }
 }
