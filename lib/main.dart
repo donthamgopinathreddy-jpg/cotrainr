@@ -27,12 +27,6 @@ void _debugLog(String message) {
 
 void main() async {
   _debugLog('[BOOT] app start');
-  if (kDebugMode) {
-    // TEMP: identify debug APK vs older builds while diagnosing reconnect send.
-    debugPrint(
-      '[COTRAINR_DEBUG_BUILD] marker=messaging-reconnect-debug-20260905',
-    );
-  }
   final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
   _debugLog('[BOOT] widgets binding ready');
   // Keep OS splash until Flutter paints CotrainrSplashScreen (or failsafe).
