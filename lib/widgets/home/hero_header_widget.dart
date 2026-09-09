@@ -26,8 +26,6 @@ class HeroHeaderWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    print('HeroHeader: Building with username: "$username", avatarUrl: "$avatarUrl", coverImageUrl: "$coverImageUrl"');
-    
     return Container(
       height: 320,
       clipBehavior: Clip.none,
@@ -40,14 +38,8 @@ class HeroHeaderWidget extends StatelessWidget {
                 ? CachedNetworkImage(
                     imageUrl: coverImageUrl!,
                     fit: BoxFit.cover,
-                    placeholder: (context, url) {
-                      print('HeroHeader: Loading cover image from: $url');
-                      return _buildGradientFallback();
-                    },
-                    errorWidget: (context, url, error) {
-                      print('HeroHeader: Error loading cover image from "$url": $error');
-                      return _buildGradientFallback();
-                    },
+                    placeholder: (context, url) => _buildGradientFallback(),
+                    errorWidget: (context, url, error) => _buildGradientFallback(),
                   )
                 : _buildGradientFallback(),
           ),
@@ -76,7 +68,10 @@ class HeroHeaderWidget extends StatelessWidget {
             height: 140,
             child: ClipRect(
               child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: DesignTokens.glassBlur, sigmaY: DesignTokens.glassBlur),
+                filter: ImageFilter.blur(
+                  sigmaX: DesignTokens.glassBlur,
+                  sigmaY: DesignTokens.glassBlur,
+                ),
                 child: Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
@@ -97,38 +92,39 @@ class HeroHeaderWidget extends StatelessWidget {
           Positioned(
             left: DesignTokens.spacing16,
             bottom: -28,
-            child: GestureDetector(
-              onTap: () {
-                HapticFeedback.lightImpact();
-                onAvatarTap?.call();
-                context.push('/home/profile');
-              },
-              child: Container(
-                width: 76,
-                height: 76,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: Colors.white,
-                    width: 3,
+            child: Semantics(
+              button: true,
+              label: 'Open profile',
+              child: GestureDetector(
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  if (onAvatarTap != null) {
+                    onAvatarTap!.call();
+                  } else {
+                    context.push('/home/profile');
+                  }
+                },
+                child: Container(
+                  width: 76,
+                  height: 76,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Colors.white,
+                      width: 3,
+                    ),
+                    boxShadow: DesignTokens.glowShadowOf(context),
                   ),
-                  boxShadow: DesignTokens.glowShadowOf(context),
-                ),
-                child: ClipOval(
-                  child: avatarUrl != null && avatarUrl!.isNotEmpty
-                      ? CachedNetworkImage(
-                          imageUrl: avatarUrl!,
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) {
-                            print('HeroHeader: Loading avatar from: $url');
-                            return _buildAvatarPlaceholder();
-                          },
-                          errorWidget: (context, url, error) {
-                            print('HeroHeader: Error loading avatar from "$url": $error');
-                            return _buildAvatarPlaceholder();
-                          },
-                        )
-                      : _buildAvatarPlaceholder(),
+                  child: ClipOval(
+                    child: avatarUrl != null && avatarUrl!.isNotEmpty
+                        ? CachedNetworkImage(
+                            imageUrl: avatarUrl!,
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) => _buildAvatarPlaceholder(),
+                            errorWidget: (context, url, error) => _buildAvatarPlaceholder(),
+                          )
+                        : _buildAvatarPlaceholder(),
+                  ),
                 ),
               ),
             ),
@@ -170,38 +166,54 @@ class HeroHeaderWidget extends StatelessWidget {
           Positioned(
             top: MediaQuery.of(context).padding.top + DesignTokens.spacing16,
             right: DesignTokens.spacing16,
-            child: GestureDetector(
-              onTap: () {
-                HapticFeedback.lightImpact();
-                onNotificationTap?.call();
-                context.push('/home/notifications');
-              },
-              child: GlassCard(
-                padding: const EdgeInsets.all(10),
-                borderRadius: BorderRadius.circular(22),
-                onTap: null,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    Icon(
-                      Icons.notifications_outlined,
-                      color: DesignTokens.textPrimaryOf(context),
-                      size: DesignTokens.iconSizeNavBar,
-                    ),
-                    if (notificationCount > 0)
-                      Positioned(
-                        top: 6,
-                        right: 6,
-                        child: Container(
-                          width: 8,
-                          height: 8,
-                          decoration: const BoxDecoration(
-                            color: Colors.red,
-                            shape: BoxShape.circle,
+            child: Semantics(
+              button: true,
+              label: notificationCount > 0
+                  ? 'Notifications, $notificationCount unread'
+                  : 'Notifications',
+              child: Tooltip(
+                message: 'Notifications',
+                child: GestureDetector(
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    if (onNotificationTap != null) {
+                      onNotificationTap!.call();
+                    } else {
+                      context.push('/home/notifications');
+                    }
+                  },
+                  child: SizedBox(
+                    width: 48,
+                    height: 48,
+                    child: GlassCard(
+                      padding: const EdgeInsets.all(12),
+                      borderRadius: BorderRadius.circular(24),
+                      onTap: null,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Icon(
+                            Icons.notifications_outlined,
+                            color: DesignTokens.textPrimaryOf(context),
+                            size: DesignTokens.iconSizeNavBar,
                           ),
-                        ),
+                          if (notificationCount > 0)
+                            Positioned(
+                              top: 4,
+                              right: 4,
+                              child: Container(
+                                width: 8,
+                                height: 8,
+                                decoration: const BoxDecoration(
+                                  color: Colors.red,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
-                  ],
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -232,6 +244,3 @@ class HeroHeaderWidget extends StatelessWidget {
     );
   }
 }
-
-
-
