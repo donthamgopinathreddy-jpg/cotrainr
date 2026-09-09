@@ -24,6 +24,7 @@ class _HealthDevicesPageState extends ConsumerState<HealthDevicesPage>
   HealthConnectSettingsInfo? _info;
   bool _loading = true;
   bool _busy = false;
+  bool _loadError = false;
 
   @override
   void initState() {
@@ -46,10 +47,22 @@ class _HealthDevicesPageState extends ConsumerState<HealthDevicesPage>
   }
 
   Future<void> _load({bool silent = false}) async {
-    if (!silent) setState(() => _loading = true);
+    if (!silent && mounted) {
+      setState(() {
+        _loading = true;
+        _loadError = false;
+      });
+    }
     try {
       final info = await _healthService.getHealthConnectSettingsInfo();
-      if (mounted) setState(() => _info = info);
+      if (!mounted) return;
+      setState(() {
+        _info = info;
+        _loadError = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadError = true);
     } finally {
       if (mounted && !silent) setState(() => _loading = false);
     }
@@ -73,7 +86,6 @@ class _HealthDevicesPageState extends ConsumerState<HealthDevicesPage>
 
     setState(() => _busy = true);
     try {
-      // Opens the native Health Connect permission sheet on tap.
       final granted = await _healthService.requestHealthConnectPermissions();
 
       if (!mounted) return;
@@ -118,8 +130,10 @@ class _HealthDevicesPageState extends ConsumerState<HealthDevicesPage>
       }
 
       await _load(silent: true);
-    } catch (e) {
-      if (mounted) showHubSnackBar(context, 'Could not open permissions: $e');
+    } catch (_) {
+      if (mounted) {
+        showHubSnackBar(context, 'Could not open health permissions. Try again.');
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -130,6 +144,10 @@ class _HealthDevicesPageState extends ConsumerState<HealthDevicesPage>
     setState(() => _busy = true);
     try {
       await _healthService.installHealthConnectApp();
+    } catch (_) {
+      if (mounted) {
+        showHubSnackBar(context, 'Could not open Health Connect installation');
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -165,137 +183,183 @@ class _HealthDevicesPageState extends ConsumerState<HealthDevicesPage>
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                HubSectionCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
+          : _loadError && info == null
+              ? ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    HubSectionCard(
+                      title: 'Health connection unavailable',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Container(
-                            width: 10,
-                            height: 10,
-                            decoration: BoxDecoration(
-                              color: _statusColor(context),
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
                           Text(
-                            info?.statusLabel ?? 'Loading…',
-                            style: AccountHubTheme.rowTitle(context),
+                            'Cotrainr could not read the current health-device status. Your existing permissions have not been changed.',
+                            style: AccountHubTheme.rowSubtitle(context),
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: _busy ? null : () => _load(),
+                              icon: const Icon(Icons.refresh_rounded),
+                              label: const Text('Retry'),
+                            ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _statusDescription(info),
-                        style: AccountHubTheme.rowSubtitle(context),
-                      ),
-                      if (info != null) ...[
-                        const SizedBox(height: 12),
-                        Text(
-                          'Metrics source: ${info.activeSourceLabel}',
-                          style: AccountHubTheme.rowSubtitle(context),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                if (info != null && info.typePermissions.isNotEmpty)
-                  HubSectionCard(
-                    title: 'Permissions',
-                    child: Column(
-                      children: info.typePermissions.entries.map((entry) {
-                        final granted = entry.value;
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 6),
-                          child: Row(
-                            children: [
-                              Icon(
-                                granted
-                                    ? Icons.check_circle_rounded
-                                    : Icons.radio_button_unchecked_rounded,
-                                size: 20,
-                                color: granted
-                                    ? AccountHubTheme.goalsGreen
-                                    : Theme.of(context)
-                                        .colorScheme
-                                        .onSurface
-                                        .withValues(alpha: 0.35),
+                    ),
+                  ],
+                )
+              : ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    if (_loadError) ...[
+                      HubSectionCard(
+                        title: 'Status may be out of date',
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'The last known health-device status is shown below.',
+                                style: AccountHubTheme.rowSubtitle(context),
                               ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  entry.key,
-                                  style: AccountHubTheme.rowTitle(context),
+                            ),
+                            TextButton(
+                              onPressed: _busy ? null : () => _load(),
+                              child: const Text('Retry'),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    HubSectionCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                width: 10,
+                                height: 10,
+                                decoration: BoxDecoration(
+                                  color: _statusColor(context),
+                                  shape: BoxShape.circle,
                                 ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                info?.statusLabel ?? 'Status unavailable',
+                                style: AccountHubTheme.rowTitle(context),
                               ),
                             ],
                           ),
-                        );
-                      }).toList(),
-                    ),
-                  ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: _busy ? null : _connect,
-                    icon: _busy
-                        ? SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: filledBtnFg,
+                          const SizedBox(height: 8),
+                          Text(
+                            _statusDescription(info),
+                            style: AccountHubTheme.rowSubtitle(context),
+                          ),
+                          if (info != null) ...[
+                            const SizedBox(height: 12),
+                            Text(
+                              'Metrics source: ${info.activeSourceLabel}',
+                              style: AccountHubTheme.rowSubtitle(context),
                             ),
-                          )
-                        : const Icon(Icons.link_rounded),
-                    label: Text(
-                      _connectButtonLabel(info, title),
-                    ),
-                    style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
+                          ],
+                        ],
                       ),
                     ),
-                  ),
-                ),
-                if (Platform.isAndroid &&
-                    info != null &&
-                    (!info.isAvailable || info.needsInstall)) ...[
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: _busy ? null : _install,
-                      icon: const Icon(Icons.download_rounded),
-                      label: const Text('Install Health Connect'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                    const SizedBox(height: 12),
+                    if (info != null && info.typePermissions.isNotEmpty)
+                      HubSectionCard(
+                        title: 'Permissions',
+                        child: Column(
+                          children: info.typePermissions.entries.map((entry) {
+                            final granted = entry.value;
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    granted
+                                        ? Icons.check_circle_rounded
+                                        : Icons.radio_button_unchecked_rounded,
+                                    size: 20,
+                                    color: granted
+                                        ? AccountHubTheme.goalsGreen
+                                        : Theme.of(context)
+                                            .colorScheme
+                                            .onSurface
+                                            .withValues(alpha: 0.35),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      entry.key,
+                                      style: AccountHubTheme.rowTitle(context),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: _busy ? null : _connect,
+                        icon: _busy
+                            ? SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: filledBtnFg,
+                                ),
+                              )
+                            : const Icon(Icons.link_rounded),
+                        label: Text(_connectButtonLabel(info, title)),
+                        style: FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
-                const SizedBox(height: 16),
-                HubSectionCard(
-                  child: Text(
-                    'Cotrainr reads steps, calories, distance, and water only '
-                    'from $title. Phone sensors are never used — connect $title '
-                    'and allow Steps, Active/Total Calories, Distance, and Water.',
-                    style: AccountHubTheme.rowSubtitle(context),
-                  ),
+                    if (Platform.isAndroid &&
+                        info != null &&
+                        (!info.isAvailable || info.needsInstall)) ...[
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: _busy ? null : _install,
+                          icon: const Icon(Icons.download_rounded),
+                          label: const Text('Install Health Connect'),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    HubSectionCard(
+                      child: Text(
+                        'Cotrainr reads steps, calories, distance, and water only '
+                        'from $title. Phone sensors are never used — connect $title '
+                        'and allow Steps, Active/Total Calories, Distance, and Water.',
+                        style: AccountHubTheme.rowSubtitle(context),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
     );
   }
 
@@ -311,7 +375,7 @@ class _HealthDevicesPageState extends ConsumerState<HealthDevicesPage>
   }
 
   String _statusDescription(HealthConnectSettingsInfo? info) {
-    if (info == null) return '';
+    if (info == null) return 'Current health-device status is unavailable.';
     final label = info.platformLabel;
     if (info.isConnected) {
       return 'Your home metrics, goals, and insights sync from $label.';
