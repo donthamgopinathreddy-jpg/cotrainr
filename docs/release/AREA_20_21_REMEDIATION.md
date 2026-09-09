@@ -35,25 +35,12 @@ Meal Tracker remains the same personal food-recording experience used by Client 
 1. Cover / Hero
 2. Events
 3. `My Fitness` — collapsed by default
-   - Steps
-   - Active calories
-   - Water
-   - Distance
-   - BMI
-   - existing streak / fitness insight behavior
-   - Add Water and detailed metric navigation remain functional
 4. Professional overview
-   - Active clients
-   - Requests
-   - Client notes
-   - next video session
 5. Recent clients
 6. Reviews & Ratings
 7. Explore
 8. Messages / personal Meal Tracker hints
 9. Existing bottom navigation remains unchanged: Home / Clients / Messages / Meals / Profile
-
-This order is now the governing V1 requirement. Do not revert to the earlier recommendation that removed provider personal fitness features.
 
 ---
 
@@ -61,57 +48,48 @@ This order is now the governing V1 requirement. Do not revert to the earlier rec
 
 ### FIXED BY ME — HOME ARCHITECTURE
 
-- Added shared provider Home implementation: `lib/pages/provider/provider_role_home_page.dart` — `1d97103de568c1cc1baca1b8128ce920c77742a2`
+- Shared provider Home: `lib/pages/provider/provider_role_home_page.dart` — `1d97103de568c1cc1baca1b8128ce920c77742a2`
 - Trainer wrapper: `lib/pages/trainer/trainer_home_page.dart` — `067b593e9273c06980cf2058e53045cac6e4c047`
-- `My Fitness` is collapsed by default, provider personal metrics remain available, metrics sync failure no longer aborts unrelated Home refresh work, and reduced-motion behavior is respected.
+- `My Fitness` collapsed by default; metrics remain available; metrics sync no longer aborts unrelated Home refresh work; reduced-motion honored.
 
-### FIXED BY ME — REVIEWS & RATINGS HOME SURFACE
+### FIXED BY ME — REVIEWS & RATINGS
 
-- Reusable provider review preview: `lib/widgets/provider/provider_reviews_home_section.dart` — `0aa78d3be7e422557aa2c2c81885659bafa10efa`
-- Explicit loading, no-review, review-present and load-error + Retry states.
+- Initial Home preview: `0aa78d3be7e422557aa2c2c81885659bafa10efa`
+- Repository now exposes server-authoritative `providers.rating` + `providers.total_reviews` summary and configurable review limit: `8d1557e1ca86cd43a2e2a88885aa03a242ac5d69`
+- Added full provider reviews screen with loading/error/empty/refresh states and latest-50 behavior: `fd0cc1b25d1429eb26e56c043113a728b679e78b`
+- Home review card now uses authoritative aggregate when available, shows degraded summary warning if aggregate refresh fails, and provides `See all reviews`: `bb8976090e35841fb9b92415cac556ae221a5af6`
 
-### LIVE SUPABASE REVIEW VERIFICATION
-
-Production review infrastructure already exists: `public.reviews`, compatibility `public.provider_reviews`, `list_provider_reviews(uuid, int)`, `submit_provider_review(uuid, smallint, text)`, and rating recalculation functions. `submit_provider_review` requires an authenticated client with an accepted provider relationship and upserts one review per client/provider pair. `list_provider_reviews` returns visible reviews only.
+Production verification:
+- `providers.rating` and `providers.total_reviews` exist and are maintained by `recalculate_provider_rating` from visible canonical `reviews` rows.
+- `list_provider_reviews` returns visible reviews ordered newest-first and clamps `p_limit` to 50.
+- No schema migration was needed.
 
 ### FIXED BY ME — CLIENT ACCESS FAILURE TRUTHFULNESS
 
 - `lib/services/coach_client_access_service.dart` — `5de86952137424488828d4a434dc5b816295c65c`
-- RPC/network/server failures now throw `CoachClientAccessLookupException` rather than being converted to `hasAcceptedLead=false`.
-- A genuine server result with no accepted lead still returns `hasAcceptedLead=false`.
-
-Production `coach_client_access_status(uuid)` was inspected live. It is `SECURITY DEFINER`, derives provider identity from `auth.uid()`, checks the exact accepted provider/client relationship, and returns the sharing flags. The three sharing columns are `NOT NULL` in production.
+- RPC/network/server failures no longer masquerade as disconnected relationships.
 
 ### FIXED BY ME — COACH NOTES ROLE + ERROR STATES
 
 - `lib/pages/trainer/trainer_coach_notes_page.dart` — `232d4ad4ee447838544ce47a2589a451731521b9`
-- Provider role comes from authoritative profile data instead of `userMetadata.role`.
-- Client-list and note-list failures show persistent Error + Retry instead of false empty states.
-- Accepted clients are de-duplicated, routing uses the authoritative provider type, duplicate note submit is blocked, and note input is capped.
+- Authoritative provider role, persistent client/note error states, dedupe, safe routing, duplicate-submit protection.
 
 ### FIXED BY ME — MY CLIENTS LOAD TRUTHFULNESS
 
 - `lib/pages/provider/provider_my_clients_page.dart` — `07af60639511c1b694562fe3bb4ee028d30561d9`
-- Initial/backend/auth load failure no longer becomes `No clients yet` or `No requests right now`.
-- Added dedicated persistent load error + Retry.
-- Refresh failure with already loaded clients preserves the last loaded data and shows a degraded-state warning + Retry.
-- Genuine successful empty results still use the normal empty states.
+- Persistent Error + Retry, stale-data preservation on refresh failure, genuine empty states preserved.
 
 ### FIXED BY ME — CLIENT MONITORING PARTIAL / DEGRADED STATES
 
 - `lib/pages/client_monitoring/client_detail_shell.dart` — `5eab033510d2f5266b085b1e44f6c6f0a3ef5694`
-- Notes, upcoming session, activity metrics and meals now track independent load failures.
-- A single subsection failure no longer blocks the complete client screen.
-- Refresh failures preserve last loaded subsection data where available and show a degraded-state banner.
-- If no prior data exists, the affected section shows explicit load error + Retry instead of false `No activity`, `No meals`, no-session or no-notes states.
-- Client access lookup outage is explicitly mapped to an access-verification error rather than a disconnected-client message.
-- Meal sharing/privacy behavior remains authoritative: Trainer uses trainer meal sharing; Nutritionist uses `share_nutrition_with_nutritionist`.
+- Notes/session/metrics/meals track independent failures with per-section truthfulness and retry.
 
 ### OPEN AREA 21 FINDINGS
 
-- Reviews Home count/average currently derives from the loaded review set. Before providers can exceed the RPC preview limit, use a server-authoritative summary/count endpoint or canonical aggregate.
-- Decide whether V1 needs a dedicated `View all reviews` screen.
-- Run static analysis/tests to catch any layout or compile regression introduced by the shared provider Home and client-monitoring changes.
+- Re-check trainer messaging entitlement/accepted-connection path end-to-end.
+- Re-check trainer video-session schedule/join permissions and Meet integration.
+- Verify professional profile, verification, certifications, service locations and public-profile consistency.
+- Run static analysis/tests and physical-device matrix before closure.
 
 ---
 
@@ -119,17 +97,16 @@ Production `coach_client_access_status(uuid)` was inspected live. It is `SECURIT
 
 ### FIXED BY ME — HOME ARCHITECTURE
 
-- Nutritionist Home delegates to the shared provider Home: `lib/pages/nutritionist/nutritionist_home_page.dart` — `03a4ae26cfe48eb47df5036c943178da9e64203a`
-- Nutritionist keeps personal metrics, BMI, water, goals, personal Meal Tracker and Health Connect in V1.
-- Reviews & Ratings uses the same provider review surface.
+- Nutritionist shared Home wrapper: `03a4ae26cfe48eb47df5036c943178da9e64203a`
+- Personal metrics/BMI/water/goals/Meal Tracker/Health Connect retained.
+- Reviews use the same authoritative aggregate + See all implementation as Trainer.
 
 ### VERIFIED — NUTRITIONIST CLIENT SHARING ACCESS PATH
 
-Live `coach_client_access_status(uuid)` returns `provider_type` from the accepted lead and `share_nutrition_with_nutritionist` from the client profile. Flutter `CoachClientAccessStatus.canViewMeals` permits nutritionist meal access only when the relationship is accepted and `share_nutrition_with_nutritionist` is true.
+Live `coach_client_access_status(uuid)` returns `provider_type` from the accepted lead and `share_nutrition_with_nutritionist` from the client profile. Flutter permits nutritionist meal access only when both conditions are true.
 
 ### FIXED BY ME — SHARED PROVIDER CLIENT SURFACES
 
-The My Clients and client-detail fixes above apply to Nutritionist as well because both roles use the shared provider implementations:
 - My Clients Error/Retry + stale-data warning: `07af60639511c1b694562fe3bb4ee028d30561d9`
 - Client monitoring partial/degraded section states: `5eab033510d2f5266b085b1e44f6c6f0a3ef5694`
 - Coach Notes authoritative provider role + error states: `232d4ad4ee447838544ce47a2589a451731521b9`
@@ -137,20 +114,18 @@ The My Clients and client-detail fixes above apply to Nutritionist as well becau
 ### AREA 22 AUDIT REQUIREMENTS STILL OPEN
 
 - notes ownership/access adversarial backend tests
-- messaging entitlement and accepted-connection requirement re-check for nutritionist flows
-- video-session scheduling/joining and Google Meet integration re-check
-- verification, professional profile, certifications and service locations
+- messaging entitlement and accepted-connection re-check
+- video-session scheduling/joining and Google Meet re-check
+- verification, professional profile, certifications, service locations
 - Discover/public profile truth
 - notifications
 - Settings role gating
 - subscription/connection allowance behavior
-- 10-state UI, responsive/overflow, light/dark, accessibility, offline and stale-data physical validation
+- 10-state UI, responsive/overflow, light/dark, accessibility, offline/stale-data physical validation
 
 ---
 
 ## CURSOR / LOCAL QUALITY GATE — REQUIRED BEFORE MARKING AREAS 21/22 CLOSED
-
-Run from the current `security/pre-release-hardening` branch:
 
 ```bash
 flutter clean
@@ -159,24 +134,6 @@ flutter analyze
 flutter test
 ```
 
-Then validate Trainer and Nutritionist on Android at minimum:
-- 320dp, 360dp, 393–412dp widths
-- default and large text scale
-- light and dark mode
-- `My Fitness` collapsed and expanded
-- metrics unavailable / Health Connect not granted
-- pull-to-refresh with metrics sync failure
-- zero clients / clients present / requests present
-- client-list initial failure, stale refresh failure and Retry
-- client detail: access lookup failure vs genuinely disconnected relationship
-- client detail: notes/session/metrics/meals independent failures and Retry
-- nutritionist meal sharing on/off
-- no reviews / reviews present / review RPC failure
-- Coach Notes client-list failure, notes failure, Retry and send failure
-- long provider and client names
-- no upcoming session / upcoming session
-- offline / slow network / interrupted refresh
-- TalkBack semantics and touch targets
-- predictive/system Back
+Then validate Trainer and Nutritionist on Android at minimum: 320dp/360dp/393–412dp, large text, light/dark, collapsed/expanded My Fitness, no Health permission, clients/request states, review aggregate/load failure/See all, access lookup failure vs real disconnect, partial client-monitoring failures, nutritionist meal sharing on/off, Coach Notes failures, long names, offline/slow/interrupted network, TalkBack/touch targets, and predictive/system Back.
 
-No local Flutter analyze/test/build or physical device verification has been run by the assistant. Do not mark Areas 21 or 22 production-verified until those gates pass.
+No local Flutter analyze/test/build or physical-device verification has been run by the assistant. Do not mark Areas 21 or 22 production-verified until those gates pass.
