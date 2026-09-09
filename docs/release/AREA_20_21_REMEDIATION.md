@@ -1,4 +1,4 @@
-# Areas 20–21 ReadyForge Remediation Record
+# Areas 20–22 ReadyForge Remediation Record
 
 Branch: `security/pre-release-hardening`
 
@@ -6,144 +6,165 @@ Branch: `security/pre-release-hardening`
 
 ### FIXED BY ME
 
-1. Settings role/profile load truthfulness
-   - File: `lib/pages/profile/settings_page.dart`
-   - Commit: `4eb41440fa1c8f96363f8ee93c50377f44f8b411`
-   - Added persistent account-role load failure state with Retry.
-   - Provider-only rows are no longer silently hidden without explanation when role lookup fails.
-   - Removed the release-facing `Billing History` Coming Soon row.
+- Settings role/profile load truthfulness: `4eb41440fa1c8f96363f8ee93c50377f44f8b411`
+- Notification settings load/error/retry truthfulness: `79cef8d95a3cb1e2065e8edbdb1622d9497d3e9e`
+- Health Connect / Apple Health load/error/retry hardening: `e505457b73cede07e03e22f9d800b8e1b9bc11a2`
+- Privacy & Security load/error/retry hardening: `0e4138587b9e90e0083b6e888ebce130df4dbc95`
+- Release-facing `Billing History` and `Download My Data` Coming Soon placeholders removed.
 
-2. Notification settings load truthfulness
-   - File: `lib/pages/profile/settings/notifications_page.dart`
-   - Commit: `79cef8d95a3cb1e2065e8edbdb1622d9497d3e9e`
-   - Added top-level load error + Retry instead of rendering default values after a failed load.
-   - Added a dedicated video-session preference failure state + Retry.
-   - Prevents video-session toggles being edited while their authoritative values are unavailable.
-   - Added permission refresh failure feedback.
-
-3. Health Connect / Apple Health load state
-   - File: `lib/pages/profile/settings/health_devices_page.dart`
-   - Commit: `e505457b73cede07e03e22f9d800b8e1b9bc11a2`
-   - Added initial load error + Retry.
-   - Added stale/last-known degraded-state banner when a later refresh fails.
-   - Replaced raw exception text in user-facing permission error copy.
-   - Added install failure feedback.
-
-4. Privacy & Security load state
-   - File: `lib/pages/profile/settings/privacy_security_page.dart`
-   - Commit: `0e4138587b9e90e0083b6e888ebce130df4dbc95`
-   - Added initial load error + Retry and disabled Save while source state is unavailable.
-   - Added location permission refresh failure feedback.
-   - Removed the release-facing `Download My Data` Coming Soon row.
-
-### LIVE SUPABASE VERIFICATION
-
-Production project: `nvtozwtuyhwqkqvftpyi`
-
-Verified `public.profiles` contains:
-- `role`
-- `share_metrics_with_trainer`
-- `share_meals_with_trainer`
-- `share_nutrition_with_nutritionist`
-
-No schema or policy change was required for the Area 20 UI-state fixes above.
+Production Supabase project `nvtozwtuyhwqkqvftpyi` was verified to contain the authoritative profile fields `role`, `share_metrics_with_trainer`, `share_meals_with_trainer`, and `share_nutrition_with_nutritionist`.
 
 ### OPEN / CURSOR OR LOCAL VERIFICATION REQUIRED
 
-- `PrivacyPreferencesService.load()` can deliberately fall back to SharedPreferences/default values after a Supabase read failure. The current store interface does not expose whether returned values are authoritative or cached. Add a source/degraded signal without breaking existing test fakes, then render a clear cached/offline state before allowing a server-affecting Save.
-- Verify Change Password against the actual hosted Supabase password policy and improve server error mapping where required.
-- Run `flutter analyze` and focused widget tests for Settings, Notifications, Privacy/Security and Health Devices.
-- Physical Android: 320dp width, large font, offline, permission-denied/permanently-denied, background/resume, system Back/predictive Back, double-tap while saving.
+- Expose authoritative-vs-cached source state from `PrivacyPreferencesService` before treating fallback values as server truth.
+- Verify Change Password against hosted Supabase password policy and improve server error mapping where required.
+- Run `flutter analyze`, `flutter test`, and physical Android Settings tests including 320dp, large text, offline, permission denied/permanently denied, resume, predictive Back, and duplicate taps.
 
-## Area 21 — Trainer role / Provider device-preference audit
+---
 
-### CONFIRMED PROVIDER-ESSENTIAL SURFACES
+## FINAL V1 PRODUCT DECISION FOR AREAS 21 AND 22
 
-Keep for Trainer and Nutritionist roles:
-- Account / Edit Profile
-- Privacy & Security
-- Change Password
-- Provider verification
-- Professional profile / certifications
-- Service locations and location permission needed for discoverability/service areas
-- Notifications for messages, connection events and video sessions
-- Google Meet integration
-- My Clients / Requests
-- Coach Notes
-- Messaging
-- Video Sessions
-- Discover/public provider profile
-- Account deletion / legal / support
+Trainer and Nutritionist remain full Cotrainr users in V1. Their personal fitness metrics, BMI, water, goals, Health Connect / Apple Health, water reminders, and normal personal Meal Tracker remain available.
 
-### PERSONAL DEVICE/FITNESS SURFACES NOT REQUIRED TO OPERATE AS A PROVIDER
+Do **not** remove the provider personal fitness stack. Instead, reduce its Home-screen priority by putting it inside a collapsed `My Fitness` section.
 
-The current Trainer and Nutritionist experiences both initialize and display the user's personal fitness stack. This is not required for provider practice management and creates unnecessary Health Connect/device permission pressure for users who only use Cotrainr professionally.
+Meal Tracker remains the same personal food-recording experience used by Client for V1. Client meal/nutrition monitoring stays inside the provider's client-detail flow and is subject to the existing client sharing permissions.
 
-Current examples:
-- `lib/pages/trainer/trainer_home_page.dart`
-- `lib/pages/nutritionist/nutritionist_home_page.dart`
-- `lib/pages/profile/profile_page.dart`
-- `lib/pages/profile/settings_page.dart`
+### LOCKED HOME ORDER — BOTH TRAINER AND NUTRITIONIST
 
-Provider-role personal surfaces currently include:
-- Health Connect / Apple Health connection
-- automatic health metrics initialization/sync
-- personal Steps / Active Calories / Water / Distance tiles
-- personal BMI card
-- personal streak
-- personal fitness goals
-- personal protein/coaching insight calculations
-- Add Water action
-- Water reminder preference
-- personal Progress Snapshot / Goals cards in Profile
+1. Cover / Hero
+2. Events
+3. `My Fitness` — collapsed by default
+   - Steps
+   - Active calories
+   - Water
+   - Distance
+   - BMI
+   - existing streak / fitness insight behavior
+   - Add Water and detailed metric navigation remain functional
+4. Professional overview
+   - Active clients
+   - Requests
+   - Client notes
+   - next video session
+5. Recent clients
+6. Reviews & Ratings
+7. Explore
+8. Messages / personal Meal Tracker hints
+9. Existing bottom navigation remains unchanged: Home / Clients / Messages / Meals / Profile
 
-### RECOMMENDED PRODUCT CLEANUP
+This order is now the governing V1 requirement. Do not revert to the earlier recommendation that removed provider personal fitness features.
 
-For Trainer/Nutritionist role, default the main provider experience to professional/practice data, not personal-device fitness data.
+---
 
-Recommended provider Home hierarchy:
-1. Provider identity / verification state
-2. Active clients + pending requests
-3. Next video session
-4. Messages / unread work
-5. Coach notes / client actions
-6. Community event / nearby partner centres if retained
-7. Professional quick actions
+## Area 21 — Trainer role end-to-end
 
-Recommended provider Settings:
-- Keep Account, Security, Notifications, Integrations, Service Locations, Legal/Support.
-- Hide personal `Fitness` section (Goals & Preferences + Health Connect) from Trainer/Nutritionist unless Cotrainr intentionally supports a separate "use Cotrainr for my own fitness" mode.
-- Hide `Water reminders` for provider-only users under the same rule.
+### FIXED BY ME — HOME ARCHITECTURE
 
-Recommended provider Profile:
-- Replace personal Goals / Progress Snapshot emphasis with professional profile completeness, verification, specialties, locations, certifications, client count and provider-plan/allowance status.
+- Added shared provider Home implementation:
+  - `lib/pages/provider/provider_role_home_page.dart`
+  - Commit: `1d97103de568c1cc1baca1b8128ce920c77742a2`
+- Replaced duplicated Trainer Home implementation with a thin role wrapper:
+  - `lib/pages/trainer/trainer_home_page.dart`
+  - Commit: `067b593e9273c06980cf2058e53045cac6e4c047`
+- Trainer Home now uses the locked V1 ordering above.
+- `My Fitness` is collapsed by default with a compact Steps + BMI summary.
+- Metrics/BMI/water/Health Connect behavior is retained rather than removed.
+- Metrics sync failure is isolated from the rest of pull-to-refresh so provider/practice refresh work still proceeds.
+- Goal loading no longer leaves the fitness section in a permanent loading state if local goal storage fails.
+- Reduced-motion preference is respected by the provider Home section entrance animations.
 
-### DO NOT DELETE YET
+### FIXED BY ME — REVIEWS & RATINGS HOME SURFACE
 
-Do not delete Health Connect, goals, BMI, metrics, water, meal or related backend code. Client role still uses them, and a future provider-as-client/self-fitness mode may reuse them. First hide/gate them by authoritative role and verify navigation/deep-link access.
+- Added reusable provider review preview component:
+  - `lib/widgets/provider/provider_reviews_home_section.dart`
+  - Commit: `0aa78d3be7e422557aa2c2c81885659bafa10efa`
+- Home shows:
+  - rating summary
+  - review count for the loaded review set
+  - latest review previews
+  - explicit no-review state
+  - explicit load-error + Retry state
 
-### AREA 21 OPEN FINDINGS ALREADY CONFIRMED
+### LIVE SUPABASE REVIEW VERIFICATION
 
-- `TrainerHomePage._loadGoals()` lacks exception isolation; `_goalsReady` can remain false indefinitely.
-- Trainer Home refresh can abort all unrelated refresh operations if metrics sync fails first.
-- `CoachClientAccessService` maps RPC/network errors to `hasAcceptedLead=false`, which can incorrectly show `This client is not connected` instead of a backend error.
-- Client monitoring swallows notes/session/metrics/meals subsection failures and can render false empty/zero states.
-- My Clients can show its normal empty state after load failure; needs persistent Error + Retry.
+Production review infrastructure was inspected and already exists:
+- canonical `public.reviews`
+- compatibility `public.provider_reviews`
+- `list_provider_reviews(uuid, int)`
+- `submit_provider_review(uuid, smallint, text)`
+- provider rating recalculation functions
+
+Verified `submit_provider_review` requires an authenticated client with an accepted provider connection and upserts one review per client/provider pair. `list_provider_reviews` returns visible reviews only.
+
+No review schema migration was required for the Home preview integration.
+
+### OPEN AREA 21 FINDINGS
+
+- `CoachClientAccessService` still maps RPC/network errors to `hasAcceptedLead=false`; this can incorrectly show `This client is not connected` during backend failure.
+- Client monitoring still swallows independent notes/session/metrics/meals subsection errors and can render false empty/zero states.
+- My Clients still needs a persistent Error + Retry state instead of falling back to normal empty UI after load failure.
 - Trainer Coach Notes can show false `No clients yet` / empty notes after backend failure.
-- Coach Notes derives provider type from user-editable/stale `userMetadata.role`; authorization/role truth must come from the authoritative server/profile model.
+- Coach Notes role classification must stop relying on user-editable/stale `userMetadata.role`; use authoritative profile/server role truth.
+- Reviews Home count/average currently derives from the loaded review list. Before providers can accumulate more than the RPC preview limit, add a server-authoritative review-summary/count endpoint or use the canonical provider aggregate.
+- Decide whether V1 needs a dedicated `View all reviews` screen. The Home preview itself is now present.
 
-### REQUIRED ACCEPTANCE TESTS FOR PROVIDER DEVICE-PREFERENCE CLEANUP
+---
 
-Trainer and Nutritionist accounts with Health Connect never granted must be able to:
-- complete login/onboarding
-- open Home
-- manage clients/requests
-- message accepted clients
-- schedule/join video sessions
-- manage verification/professional profile/service locations
-- receive required notifications
-- use Settings
+## Area 22 — Nutritionist role end-to-end
 
-without being prompted for Health Connect or depending on personal metrics sync.
+### FIXED BY ME — HOME ARCHITECTURE
 
-Client role must retain the existing health, goals, BMI, water and meal functionality.
+- Nutritionist Home now delegates to the same shared provider Home implementation:
+  - `lib/pages/nutritionist/nutritionist_home_page.dart`
+  - Commit: `03a4ae26cfe48eb47df5036c943178da9e64203a`
+- Nutritionist receives the same locked Home hierarchy as Trainer while retaining nutritionist-specific client routing and provider-practice counts.
+- Personal metrics, BMI, water, goals, personal Meal Tracker and Health Connect remain available for V1.
+- Reviews & Ratings uses the same provider review surface and live review RPC.
+
+### AREA 22 AUDIT REQUIREMENTS STILL OPEN
+
+Audit Nutritionist specifically for:
+- My Clients and Requests role filtering
+- client detail route `/nutritionist/clients/:id`
+- `share_nutrition_with_nutritionist` enforcement
+- client meal-log monitoring states
+- notes ownership/access
+- messaging entitlement and accepted-connection requirement
+- video-session scheduling/joining and Google Meet integration
+- verification, professional profile, certifications, service locations
+- Discover/public profile truth
+- notifications
+- Settings role gating
+- subscription/connection allowance behavior
+- 10-state UI, responsive/overflow, light/dark, accessibility, offline and stale data
+
+---
+
+## CURSOR / LOCAL QUALITY GATE — REQUIRED BEFORE MARKING AREAS 21/22 CLOSED
+
+Run from the current `security/pre-release-hardening` branch:
+
+```bash
+flutter clean
+flutter pub get
+flutter analyze
+flutter test
+```
+
+Then validate Trainer and Nutritionist Home on Android at minimum:
+- 320dp, 360dp, 393–412dp widths
+- default and large text scale
+- light and dark mode
+- `My Fitness` collapsed and expanded
+- metrics unavailable / Health Connect not granted
+- pull-to-refresh with metrics sync failure
+- zero clients / clients present / requests present
+- no reviews / reviews present / review RPC failure
+- long provider and client names
+- no upcoming session / upcoming session
+- offline / slow network / interrupted refresh
+- TalkBack semantics and touch targets
+- predictive/system Back
+
+No GitHub Actions status checks were attached to the latest Home commit, so these local checks remain mandatory before the change can be marked production-verified.
