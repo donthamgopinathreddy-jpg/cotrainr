@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../repositories/provider_reviews_repository.dart';
-import '../../theme/design_tokens.dart';
 import '../home_v3/home_premium_theme.dart';
 
 class ProviderReviewsHomeSection extends StatelessWidget {
@@ -59,8 +58,11 @@ class ProviderReviewsHomeSection extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.star_rounded,
-                          size: 20, color: Color(0xFFFFB020)),
+                      const Icon(
+                        Icons.star_rounded,
+                        size: 20,
+                        color: Color(0xFFFFB020),
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         '${average.toStringAsFixed(1)} (${reviews.length})',
@@ -146,7 +148,8 @@ class _ReviewPreview extends StatelessWidget {
     final secondary = HomePremiumTheme.secondaryText(isLight);
     final body = review.body?.trim() ?? '';
     return Semantics(
-      label: '${review.reviewerName}, ${review.rating} out of 5 stars${body.isEmpty ? '' : ', $body'}',
+      label:
+          '${review.reviewerName}, ${review.rating} out of 5 stars${body.isEmpty ? '' : ', $body'}',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -157,7 +160,10 @@ class _ReviewPreview extends StatelessWidget {
                   review.reviewerName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontWeight: FontWeight.w700, color: primary),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: primary,
+                  ),
                 ),
               ),
               Row(
