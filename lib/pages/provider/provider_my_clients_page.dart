@@ -73,9 +73,12 @@ class _ProviderMyClientsPageState extends ConsumerState<ProviderMyClientsPage> {
 
   int _selectedTabIndex = 0;
   bool _loading = true;
+  String? _loadError;
   String? _busyLeadId;
   final List<ClientItem> _myClients = [];
   final List<ClientItem> _requests = [];
+
+  bool get _hasLoadedData => _myClients.isNotEmpty || _requests.isNotEmpty;
 
   @override
   void initState() {
@@ -100,21 +103,23 @@ class _ProviderMyClientsPageState extends ConsumerState<ProviderMyClientsPage> {
   }
 
   Future<void> _loadLeads({bool silent = false}) async {
-    if (!silent) {
-      setState(() => _loading = true);
+    if (!silent && mounted) {
+      setState(() {
+        _loading = true;
+        _loadError = null;
+      });
     }
     try {
       final service = _leadsService;
       if (service == null) {
-        if (mounted) setState(() => _loading = false);
-        return;
+        throw StateError('Missing leads service');
       }
-      final leads = await service.getMyLeads();
       final uid = Supabase.instance.client.auth.currentUser?.id;
       if (uid == null) {
-        if (mounted) setState(() => _loading = false);
-        return;
+        throw StateError('User not authenticated');
       }
+
+      final leads = await service.getMyLeads();
       final filtered = leads
           .where(
             (l) => l.providerId == uid && l.providerType == widget.providerType,
@@ -124,7 +129,7 @@ class _ProviderMyClientsPageState extends ConsumerState<ProviderMyClientsPage> {
         ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
       final pending = filtered.where((l) => l.status == 'requested').toList()
         ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      // One active card per client (ignore corrupt duplicate accepted rows).
+
       final seenClients = <String>{};
       final acceptedUnique = <Lead>[];
       for (final l in accepted) {
@@ -144,11 +149,16 @@ class _ProviderMyClientsPageState extends ConsumerState<ProviderMyClientsPage> {
           ..clear()
           ..addAll(pendingUnique.map(mapLeadToClientItem));
         _loading = false;
+        _loadError = null;
       });
     } catch (_) {
-      if (mounted) {
-        setState(() => _loading = false);
-        showHubSnackBar(context, 'Could not load clients. Pull to retry.');
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _loadError = 'Could not load clients. Check your connection and try again.';
+      });
+      if (_hasLoadedData) {
+        showHubSnackBar(context, 'Could not refresh clients. Showing last loaded data.');
       }
     }
   }
@@ -302,44 +312,57 @@ class _ProviderMyClientsPageState extends ConsumerState<ProviderMyClientsPage> {
                 },
               ),
             ),
+            if (_loadError != null && _hasLoadedData)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: _InlineLoadWarning(
+                  message: 'Could not refresh. Showing last loaded data.',
+                  onRetry: () => _loadLeads(silent: true),
+                ),
+              ),
             const SizedBox(height: 16),
             Expanded(
               child: _loading
                   ? const _ListSkeleton()
-                  : RefreshIndicator(
-                      color: DesignTokens.videoSessionsAccent,
-                      onRefresh: () async {
-                        await _loadLeads(silent: true);
-                        _invalidateCounts();
-                      },
-                      child: _selectedTabIndex == 0
-                          ? _ClientsList(
-                              items: _myClients,
-                              controller: _clientsScroll,
-                              isLight: isLight,
-                              textPrimary: textPrimary,
-                              textSecondary: textSecondary,
-                              emptyTitle: 'No clients yet',
-                              emptyBody:
-                                  'New client connections will appear here.',
-                              busyLeadId: _busyLeadId,
-                              onOpen: _openClient,
-                              onEndRelationship: _showEndRelationshipSheet,
-                            )
-                          : _ClientsList(
-                              items: _requests,
-                              controller: _requestsScroll,
-                              isLight: isLight,
-                              textPrimary: textPrimary,
-                              textSecondary: textSecondary,
-                              emptyTitle: 'No requests right now',
-                              emptyBody:
-                                  'Pending client requests will appear here.',
-                              busyLeadId: _busyLeadId,
-                              onAccept: (c) => _updateLead(c, 'accepted'),
-                              onDecline: (c) => _updateLead(c, 'declined'),
-                            ),
-                    ),
+                  : (_loadError != null && !_hasLoadedData)
+                      ? _ClientsLoadError(
+                          message: _loadError!,
+                          onRetry: _loadLeads,
+                        )
+                      : RefreshIndicator(
+                          color: DesignTokens.videoSessionsAccent,
+                          onRefresh: () async {
+                            await _loadLeads(silent: true);
+                            _invalidateCounts();
+                          },
+                          child: _selectedTabIndex == 0
+                              ? _ClientsList(
+                                  items: _myClients,
+                                  controller: _clientsScroll,
+                                  isLight: isLight,
+                                  textPrimary: textPrimary,
+                                  textSecondary: textSecondary,
+                                  emptyTitle: 'No clients yet',
+                                  emptyBody:
+                                      'New client connections will appear here.',
+                                  busyLeadId: _busyLeadId,
+                                  onOpen: _openClient,
+                                  onEndRelationship: _showEndRelationshipSheet,
+                                )
+                              : _ClientsList(
+                                  items: _requests,
+                                  controller: _requestsScroll,
+                                  isLight: isLight,
+                                  textPrimary: textPrimary,
+                                  textSecondary: textSecondary,
+                                  emptyTitle: 'No requests right now',
+                                  emptyBody:
+                                      'Pending client requests will appear here.',
+                                  busyLeadId: _busyLeadId,
+                                  onAccept: (c) => _updateLead(c, 'accepted'),
+                                  onDecline: (c) => _updateLead(c, 'declined'),
+                                ),
+                        ),
             ),
           ],
         ),
@@ -350,6 +373,84 @@ class _ProviderMyClientsPageState extends ConsumerState<ProviderMyClientsPage> {
   void _openClient(ClientItem client) {
     if (client.id.isEmpty) return;
     context.push('${widget.clientPathPrefix}/${client.id}', extra: client);
+  }
+}
+
+class _ClientsLoadError extends StatelessWidget {
+  const _ClientsLoadError({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(24, 56, 24, 24),
+      children: [
+        Icon(
+          Icons.cloud_off_rounded,
+          size: 48,
+          color: DesignTokens.textSecondaryOf(context),
+        ),
+        const SizedBox(height: 14),
+        Text(
+          'Couldn’t load My Clients',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            color: DesignTokens.textPrimaryOf(context),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          message,
+          textAlign: TextAlign.center,
+          style: TextStyle(color: DesignTokens.textSecondaryOf(context)),
+        ),
+        const SizedBox(height: 18),
+        Center(
+          child: FilledButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('Retry'),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _InlineLoadWarning extends StatelessWidget {
+  const _InlineLoadWarning({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+      decoration: BoxDecoration(
+        color: cs.errorContainer.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.sync_problem_rounded, color: cs.onErrorContainer, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(color: cs.onErrorContainer, fontSize: 13),
+            ),
+          ),
+          TextButton(onPressed: onRetry, child: const Text('Retry')),
+        ],
+      ),
+    );
   }
 }
 
