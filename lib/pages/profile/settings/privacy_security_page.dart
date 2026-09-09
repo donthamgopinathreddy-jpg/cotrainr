@@ -36,6 +36,7 @@ class _PrivacySecurityPageState extends State<PrivacySecurityPage>
   late final AccountDeletionService _accountDeletion;
   PrivacyPreferences _prefs = const PrivacyPreferences();
   bool _loading = true;
+  bool _loadError = false;
   bool _saving = false;
   bool _deletingAccount = false;
   LocationAccessLabel _locationLabel = LocationAccessLabel.notRequested;
@@ -65,24 +66,44 @@ class _PrivacySecurityPageState extends State<PrivacySecurityPage>
   }
 
   Future<void> _load() async {
-    final prefs = await _service.load();
-    final locationLabel = await _location.readLabel();
-    if (!mounted) return;
-    setState(() {
-      _prefs = prefs;
-      _locationLabel = locationLabel;
-      _loading = false;
-    });
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _loadError = false;
+      });
+    }
+    try {
+      final prefs = await _service.load();
+      final locationLabel = await _location.readLabel();
+      if (!mounted) return;
+      setState(() {
+        _prefs = prefs;
+        _locationLabel = locationLabel;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _loadError = true;
+      });
+    }
   }
 
   Future<void> _refreshLocation() async {
-    final locationLabel = await _location.readLabel();
-    if (!mounted) return;
-    setState(() => _locationLabel = locationLabel);
+    try {
+      final locationLabel = await _location.readLabel();
+      if (!mounted) return;
+      setState(() => _locationLabel = locationLabel);
+    } catch (_) {
+      if (mounted) {
+        showHubSnackBar(context, 'Could not refresh location permission');
+      }
+    }
   }
 
   Future<void> _save() async {
-    if (_deletingAccount) return;
+    if (_deletingAccount || _loadError) return;
     setState(() => _saving = true);
     HapticFeedback.lightImpact();
     try {
@@ -138,7 +159,9 @@ class _PrivacySecurityPageState extends State<PrivacySecurityPage>
         backgroundColor: bg,
         actions: [
           TextButton(
-            onPressed: _saving || _loading || _deletingAccount ? null : _save,
+            onPressed: _saving || _loading || _loadError || _deletingAccount
+                ? null
+                : _save,
             child: _saving
                 ? SizedBox(
                     width: 18,
@@ -154,174 +177,197 @@ class _PrivacySecurityPageState extends State<PrivacySecurityPage>
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-              children: [
-                HubSectionCard(
-                  title: 'Security',
-                  animationDelayMs: 0,
-                  child: HubActionRow(
-                    icon: Icons.lock_outline_rounded,
-                    title: 'Change Password',
-                    onTap: _deletingAccount
-                        ? null
-                        : () {
-                            HapticFeedback.lightImpact();
-                            Navigator.push(
-                              context,
-                              PageTransitions.slideRoute(
-                                const ChangePasswordPage(),
-                              ),
-                            );
-                          },
-                  ),
-                ),
-                const SizedBox(height: 12),
-                HubSectionCard(
-                  title: 'Data Sharing',
-                  animationDelayMs: 40,
-                  child: Column(
-                    children: [
-                      HubToggleRow(
-                        title: 'Share Activity Data with Trainer',
-                        subtitle:
-                            'Steps, calories, distance, and water from your daily metrics.',
-                        value: _prefs.shareActivityWithTrainer,
-                        enabled: !_deletingAccount,
-                        onChanged: (v) => setState(
-                          () => _prefs = _prefs.copyWith(
-                            shareActivityWithTrainer: v,
+          : _loadError
+              ? ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    HubSectionCard(
+                      title: 'Could not load privacy settings',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Cotrainr could not confirm your current privacy and permission settings. Nothing has been changed.',
+                            style: AccountHubTheme.rowSubtitle(context),
                           ),
-                        ),
-                      ),
-                      const Divider(height: 1),
-                      HubToggleRow(
-                        title: 'Share Meal Data with Trainer',
-                        subtitle: 'Meals you log in Meal Tracker.',
-                        value: _prefs.shareMealsWithTrainer,
-                        enabled: !_deletingAccount,
-                        onChanged: (v) => setState(
-                          () => _prefs = _prefs.copyWith(
-                            shareMealsWithTrainer: v,
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: _load,
+                              icon: const Icon(Icons.refresh_rounded),
+                              label: const Text('Retry'),
+                            ),
                           ),
-                        ),
+                        ],
                       ),
-                      const Divider(height: 1),
-                      HubToggleRow(
-                        title: 'Share Meal Logs with Nutritionist',
-                        subtitle:
-                            'Logged meals only. Calorie and planner targets stay private.',
-                        value: _prefs.shareNutritionWithNutritionist,
-                        enabled: !_deletingAccount,
-                        onChanged: (v) => setState(
-                          () => _prefs = _prefs.copyWith(
-                            shareNutritionWithNutritionist: v,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                HubSectionCard(
-                  title: 'Permissions',
-                  animationDelayMs: 80,
-                  child: HubActionRow(
-                    icon: Icons.location_on_outlined,
-                    title: 'Location',
-                    subtitle:
-                        '${locationAccessLabelText(_locationLabel)} · Nearby trainers, nutritionists, and fitness services',
-                    trailing: TextButton(
-                      onPressed: _deletingAccount
-                          ? null
-                          : () async {
-                              HapticFeedback.lightImpact();
-                              await _location.manage();
-                              await _refreshLocation();
-                            },
-                      child: const Text('Manage'),
                     ),
-                    showChevron: false,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                HubSectionCard(
-                  title: 'Legal & Data',
-                  animationDelayMs: 120,
-                  child: Column(
-                    children: [
-                      HubActionRow(
-                        icon: Icons.privacy_tip_outlined,
-                        title: 'Privacy Policy',
+                  ],
+                )
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                  children: [
+                    HubSectionCard(
+                      title: 'Security',
+                      animationDelayMs: 0,
+                      child: HubActionRow(
+                        icon: Icons.lock_outline_rounded,
+                        title: 'Change Password',
                         onTap: _deletingAccount
                             ? null
-                            : () => Navigator.push(
+                            : () {
+                                HapticFeedback.lightImpact();
+                                Navigator.push(
                                   context,
-                                  MaterialPageRoute(
-                                    builder: (_) => const PrivacyPolicyPage(),
+                                  PageTransitions.slideRoute(
+                                    const ChangePasswordPage(),
                                   ),
-                                ),
+                                );
+                              },
                       ),
-                      const Divider(height: 1),
-                      HubActionRow(
-                        icon: Icons.description_outlined,
-                        title: 'Terms of Service',
-                        onTap: _deletingAccount
-                            ? null
-                            : () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => const TermsOfServicePage(),
-                                  ),
-                                ),
+                    ),
+                    const SizedBox(height: 12),
+                    HubSectionCard(
+                      title: 'Data Sharing',
+                      animationDelayMs: 40,
+                      child: Column(
+                        children: [
+                          HubToggleRow(
+                            title: 'Share Activity Data with Trainer',
+                            subtitle:
+                                'Steps, calories, distance, and water from your daily metrics.',
+                            value: _prefs.shareActivityWithTrainer,
+                            enabled: !_deletingAccount,
+                            onChanged: (v) => setState(
+                              () => _prefs = _prefs.copyWith(
+                                shareActivityWithTrainer: v,
+                              ),
+                            ),
+                          ),
+                          const Divider(height: 1),
+                          HubToggleRow(
+                            title: 'Share Meal Data with Trainer',
+                            subtitle: 'Meals you log in Meal Tracker.',
+                            value: _prefs.shareMealsWithTrainer,
+                            enabled: !_deletingAccount,
+                            onChanged: (v) => setState(
+                              () => _prefs = _prefs.copyWith(
+                                shareMealsWithTrainer: v,
+                              ),
+                            ),
+                          ),
+                          const Divider(height: 1),
+                          HubToggleRow(
+                            title: 'Share Meal Logs with Nutritionist',
+                            subtitle:
+                                'Logged meals only. Calorie and planner targets stay private.',
+                            value: _prefs.shareNutritionWithNutritionist,
+                            enabled: !_deletingAccount,
+                            onChanged: (v) => setState(
+                              () => _prefs = _prefs.copyWith(
+                                shareNutritionWithNutritionist: v,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      const Divider(height: 1),
-                      const HubActionRow(
-                        icon: Icons.download_outlined,
-                        title: 'Download My Data',
-                        trailing: ComingSoonBadge(),
+                    ),
+                    const SizedBox(height: 12),
+                    HubSectionCard(
+                      title: 'Permissions',
+                      animationDelayMs: 80,
+                      child: HubActionRow(
+                        icon: Icons.location_on_outlined,
+                        title: 'Location',
+                        subtitle:
+                            '${locationAccessLabelText(_locationLabel)} · Nearby trainers, nutritionists, and fitness services',
+                        trailing: TextButton(
+                          onPressed: _deletingAccount
+                              ? null
+                              : () async {
+                                  HapticFeedback.lightImpact();
+                                  await _location.manage();
+                                  await _refreshLocation();
+                                },
+                          child: const Text('Manage'),
+                        ),
                         showChevron: false,
                       ),
-                      const Divider(height: 1),
-                      if (_deletingAccount)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 14),
-                          child: Center(
-                            child: SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: CircularProgressIndicator(strokeWidth: 2.2),
-                            ),
+                    ),
+                    const SizedBox(height: 12),
+                    HubSectionCard(
+                      title: 'Legal & Data',
+                      animationDelayMs: 120,
+                      child: Column(
+                        children: [
+                          HubActionRow(
+                            icon: Icons.privacy_tip_outlined,
+                            title: 'Privacy Policy',
+                            onTap: _deletingAccount
+                                ? null
+                                : () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => const PrivacyPolicyPage(),
+                                      ),
+                                    ),
                           ),
-                        )
-                      else
-                        HubDangerButton(
-                          label: 'Delete Account',
-                          onTap: _deleteAccount,
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                HubSectionCard(
-                  title: 'Contact',
-                  animationDelayMs: 160,
-                  child: HubActionRow(
-                    icon: Icons.email_outlined,
-                    title: 'Contact Support',
-                    subtitle: LaunchUtils.supportEmail,
-                    showChevron: false,
-                    onTap: _deletingAccount
-                        ? null
-                        : () => LaunchUtils.sendEmail(
-                              context,
-                              to: LaunchUtils.supportEmail,
-                              subject: 'Privacy & Security',
+                          const Divider(height: 1),
+                          HubActionRow(
+                            icon: Icons.description_outlined,
+                            title: 'Terms of Service',
+                            onTap: _deletingAccount
+                                ? null
+                                : () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => const TermsOfServicePage(),
+                                      ),
+                                    ),
+                          ),
+                          const Divider(height: 1),
+                          if (_deletingAccount)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 14),
+                              child: Center(
+                                child: SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.2,
+                                  ),
+                                ),
+                              ),
+                            )
+                          else
+                            HubDangerButton(
+                              label: 'Delete Account',
+                              onTap: _deleteAccount,
                             ),
-                  ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    HubSectionCard(
+                      title: 'Contact',
+                      animationDelayMs: 160,
+                      child: HubActionRow(
+                        icon: Icons.email_outlined,
+                        title: 'Contact Support',
+                        subtitle: LaunchUtils.supportEmail,
+                        showChevron: false,
+                        onTap: _deletingAccount
+                            ? null
+                            : () => LaunchUtils.sendEmail(
+                                  context,
+                                  to: LaunchUtils.supportEmail,
+                                  subject: 'Privacy & Security',
+                                ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
     );
   }
 }
