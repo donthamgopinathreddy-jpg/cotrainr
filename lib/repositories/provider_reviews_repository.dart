@@ -26,21 +26,54 @@ class ProviderReview {
   }
 }
 
+class ProviderReviewSummary {
+  final double rating;
+  final int totalReviews;
+
+  const ProviderReviewSummary({
+    required this.rating,
+    required this.totalReviews,
+  });
+
+  factory ProviderReviewSummary.fromJson(Map<String, dynamic> json) {
+    return ProviderReviewSummary(
+      rating: (json['rating'] as num?)?.toDouble() ?? 0,
+      totalReviews: (json['total_reviews'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
 class ProviderReviewsRepository {
   final SupabaseClient _supabase;
 
   ProviderReviewsRepository({SupabaseClient? supabase})
       : _supabase = supabase ?? Supabase.instance.client;
 
-  Future<List<ProviderReview>> listForProvider(String providerId) async {
+  Future<List<ProviderReview>> listForProvider(
+    String providerId, {
+    int limit = 20,
+  }) async {
     final response = await _supabase.rpc(
       'list_provider_reviews',
-      params: {'p_provider_id': providerId, 'p_limit': 20},
+      params: {'p_provider_id': providerId, 'p_limit': limit},
     );
     return (response as List)
         .cast<Map<String, dynamic>>()
         .map(ProviderReview.fromJson)
         .toList();
+  }
+
+  /// Server-authoritative aggregate maintained by review recalculation logic.
+  Future<ProviderReviewSummary> getSummary(String providerId) async {
+    final row = await _supabase
+        .from('providers')
+        .select('rating, total_reviews')
+        .eq('user_id', providerId)
+        .maybeSingle();
+    if (row == null) {
+      return const ProviderReviewSummary(rating: 0, totalReviews: 0);
+    }
+    return ProviderReviewSummary.fromJson(row);
   }
 
   /// Current client's review for [providerId], if any.
