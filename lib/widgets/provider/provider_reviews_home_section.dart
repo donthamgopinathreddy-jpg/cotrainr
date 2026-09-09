@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../pages/provider/provider_reviews_page.dart';
 import '../../repositories/provider_reviews_repository.dart';
 import '../home_v3/home_premium_theme.dart';
 
-class ProviderReviewsHomeSection extends StatelessWidget {
+class ProviderReviewsHomeSection extends StatefulWidget {
   const ProviderReviewsHomeSection({
     super.key,
     required this.reviews,
@@ -16,15 +18,62 @@ class ProviderReviewsHomeSection extends StatelessWidget {
   final VoidCallback onRetry;
 
   @override
+  State<ProviderReviewsHomeSection> createState() =>
+      _ProviderReviewsHomeSectionState();
+}
+
+class _ProviderReviewsHomeSectionState
+    extends State<ProviderReviewsHomeSection> {
+  final _repository = ProviderReviewsRepository();
+  ProviderReviewSummary? _summary;
+  bool _summaryFailed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSummary();
+  }
+
+  Future<void> _loadSummary() async {
+    final providerId = Supabase.instance.client.auth.currentUser?.id;
+    if (providerId == null) return;
+    try {
+      final summary = await _repository.getSummary(providerId);
+      if (!mounted) return;
+      setState(() {
+        _summary = summary;
+        _summaryFailed = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _summaryFailed = true);
+    }
+  }
+
+  void _retryAll() {
+    widget.onRetry();
+    _loadSummary();
+  }
+
+  Future<void> _openAllReviews() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const ProviderReviewsPage()),
+    );
+    if (mounted) _retryAll();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final isLight = Theme.of(context).brightness == Brightness.light;
     final primary = HomePremiumTheme.primaryText(isLight);
     final secondary = HomePremiumTheme.secondaryText(isLight);
-    final visible = reviews.take(3).toList();
-    final average = reviews.isEmpty
+    final visible = widget.reviews.take(3).toList();
+    final fallbackAverage = widget.reviews.isEmpty
         ? 0.0
-        : reviews.fold<int>(0, (sum, review) => sum + review.rating) /
-            reviews.length;
+        : widget.reviews.fold<int>(0, (sum, review) => sum + review.rating) /
+            widget.reviews.length;
+    final average = _summary?.rating ?? fallbackAverage;
+    final totalReviews = _summary?.totalReviews ?? widget.reviews.length;
 
     return Container(
       width: double.infinity,
@@ -51,10 +100,10 @@ class ProviderReviewsHomeSection extends StatelessWidget {
                   ),
                 ),
               ),
-              if (!loading && reviews.isNotEmpty)
+              if (!widget.loading && totalReviews > 0)
                 Semantics(
                   label:
-                      '${average.toStringAsFixed(1)} out of 5, ${reviews.length} reviews',
+                      '${average.toStringAsFixed(1)} out of 5, $totalReviews reviews',
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -65,7 +114,7 @@ class ProviderReviewsHomeSection extends StatelessWidget {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        '${average.toStringAsFixed(1)} (${reviews.length})',
+                        '${average.toStringAsFixed(1)} ($totalReviews)',
                         style: TextStyle(
                           fontWeight: FontWeight.w800,
                           color: primary,
@@ -76,26 +125,41 @@ class ProviderReviewsHomeSection extends StatelessWidget {
                 ),
             ],
           ),
+          if (_summaryFailed) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Rating summary could not refresh. Recent reviews are shown below.',
+              style: TextStyle(color: secondary, fontSize: 12),
+            ),
+          ],
           const SizedBox(height: 12),
-          if (loading)
+          if (widget.loading)
             const Center(
               child: Padding(
                 padding: EdgeInsets.symmetric(vertical: 16),
                 child: CircularProgressIndicator(strokeWidth: 2.2),
               ),
             )
-          else if (reviews.isEmpty)
+          else if (widget.reviews.isEmpty)
             Text(
               'No reviews yet. Reviews from your clients will appear here.',
               style: TextStyle(color: secondary, height: 1.35),
             )
-          else
+          else ...[
             ...visible.map(
               (review) => Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: _ReviewPreview(review: review),
               ),
             ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: _openAllReviews,
+                child: const Text('See all reviews'),
+              ),
+            ),
+          ],
         ],
       ),
     );
