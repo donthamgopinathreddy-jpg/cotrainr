@@ -112,6 +112,7 @@ class _LoginPageState extends State<LoginPage>
           .signInWithOAuth(
             provider,
             redirectTo: AuthDeepLink.callback,
+            scopes: provider == OAuthProvider.azure ? 'email' : null,
           )
           .timeout(const Duration(seconds: 15));
     } catch (e) {
