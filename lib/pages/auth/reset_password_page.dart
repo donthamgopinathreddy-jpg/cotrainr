@@ -66,7 +66,6 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
     try {
       session = Supabase.instance.client.auth.currentSession;
     } catch (_) {
-      // Supabase not initialized (tests / startup race) → treat as invalid.
       if (!mounted) return;
       setState(() => _phase = _ResetPhase.invalid);
       return;
@@ -112,7 +111,6 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
         UserAttributes(password: _password.text.trim()),
       );
       if (!mounted) return;
-      // Leave recovery session so router does not treat this as a normal login.
       try {
         await Supabase.instance.client.auth.signOut();
       } catch (_) {}
@@ -160,7 +158,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
             title: _phase == _ResetPhase.success
                 ? 'Password updated'
                 : 'Set new password',
-            fallbackRoute: '/login',
+            fallbackRoute: '/auth/login',
             backgroundColor: Colors.transparent,
             foregroundColor: textPrimary,
           ),
