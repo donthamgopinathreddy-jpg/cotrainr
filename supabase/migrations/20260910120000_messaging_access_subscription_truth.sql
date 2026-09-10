@@ -95,11 +95,15 @@ BEGIN
   SELECT role INTO v_my_role FROM public.profiles WHERE id = v_uid;
   SELECT role INTO v_other_role FROM public.profiles WHERE id = p_other_user_id;
 
+  IF v_my_role IS NULL OR v_other_role IS NULL THEN
+    RETURN 'invalid_participants';
+  END IF;
+
   IF v_my_role IN ('trainer', 'nutritionist')
-     AND COALESCE(v_other_role, '') NOT IN ('trainer', 'nutritionist') THEN
+     AND v_other_role NOT IN ('trainer', 'nutritionist') THEN
     v_provider := v_uid;
     v_client := p_other_user_id;
-  ELSIF COALESCE(v_my_role, '') NOT IN ('trainer', 'nutritionist')
+  ELSIF v_my_role NOT IN ('trainer', 'nutritionist')
         AND v_other_role IN ('trainer', 'nutritionist') THEN
     v_client := v_uid;
     v_provider := p_other_user_id;
@@ -170,11 +174,15 @@ BEGIN
   SELECT role INTO v_my_role FROM public.profiles WHERE id = v_uid;
   SELECT role INTO v_other_role FROM public.profiles WHERE id = p_other_user_id;
 
+  IF v_my_role IS NULL OR v_other_role IS NULL THEN
+    RAISE EXCEPTION 'invalid_participants';
+  END IF;
+
   IF v_my_role IN ('trainer', 'nutritionist')
-     AND COALESCE(v_other_role, '') NOT IN ('trainer', 'nutritionist') THEN
+     AND v_other_role NOT IN ('trainer', 'nutritionist') THEN
     v_provider := v_uid;
     v_client := p_other_user_id;
-  ELSIF COALESCE(v_my_role, '') NOT IN ('trainer', 'nutritionist')
+  ELSIF v_my_role NOT IN ('trainer', 'nutritionist')
         AND v_other_role IN ('trainer', 'nutritionist') THEN
     v_client := v_uid;
     v_provider := p_other_user_id;
@@ -205,7 +213,10 @@ BEGIN
   WHERE l.client_id = v_client
     AND l.provider_id = v_provider
     AND l.status = 'accepted'
-  ORDER BY l.created_at DESC
+  ORDER BY
+    l.accepted_at DESC NULLS LAST,
+    l.created_at DESC,
+    l.id DESC
   LIMIT 1;
 
   IF v_lead_id IS NULL THEN
@@ -248,7 +259,17 @@ BEGIN
         AND c.provider_id = v_provider
         AND c.other_user_id IS NULL
       LIMIT 1;
+      IF v_id IS NOT NULL THEN
+        UPDATE public.conversations
+        SET lead_id = v_lead_id
+        WHERE id = v_id
+          AND lead_id IS DISTINCT FROM v_lead_id;
+      END IF;
   END;
+
+  IF v_id IS NULL THEN
+    RAISE EXCEPTION 'conversation_unavailable';
+  END IF;
 
   RETURN v_id;
 END;
