@@ -6,6 +6,7 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/auth/auth_deep_link.dart';
 import '../../core/auth/auth_error_mapper.dart';
 import '../../theme/account_hub_theme.dart';
 import '../../theme/auth_theme.dart';
@@ -110,7 +111,7 @@ class _LoginPageState extends State<LoginPage>
       await Supabase.instance.client.auth
           .signInWithOAuth(
             provider,
-            redirectTo: 'cotrainr://auth-callback',
+            redirectTo: AuthDeepLink.callback,
           )
           .timeout(const Duration(seconds: 15));
     } catch (e) {
@@ -157,7 +158,6 @@ class _LoginPageState extends State<LoginPage>
       });
       await Future<void>.delayed(const Duration(milliseconds: 320));
       if (!mounted) return;
-      // Authoritative gate: Home / Verification / complete-profile.
       context.go('/auth/continue');
     } on TimeoutException {
       if (!mounted) return;
@@ -420,62 +420,30 @@ class _LoginPageState extends State<LoginPage>
                                   AuthSectionCard(
                                     compact: true,
                                     title: 'Or continue with',
-                                    child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
                                       children: [
-                                        Semantics(
-                                          button: true,
+                                        _OAuthProviderButton(
                                           label: 'Continue with Google',
-                                          enabled: !_isLoading,
-                                          child: AuthSocialButton(
-                                            isLoading: _isLoading,
-                                            onTap: () => _signInWithOAuth(
-                                              OAuthProvider.google,
-                                            ),
-                                            icon: FaIcon(
-                                              FontAwesomeIcons.google,
-                                              size: 22,
-                                              color:
-                                                  AuthTheme.primaryText(context),
-                                            ),
+                                          semanticLabel:
+                                              'Continue with Google',
+                                          isLoading: _isLoading,
+                                          onPressed: () => _signInWithOAuth(
+                                            OAuthProvider.google,
                                           ),
+                                          icon: FontAwesomeIcons.google,
                                         ),
-                                        const SizedBox(width: 12),
-                                        Semantics(
-                                          button: true,
-                                          label: 'Continue with Apple',
-                                          enabled: !_isLoading,
-                                          child: AuthSocialButton(
-                                            isLoading: _isLoading,
-                                            onTap: () => _signInWithOAuth(
-                                              OAuthProvider.apple,
-                                            ),
-                                            icon: FaIcon(
-                                              FontAwesomeIcons.apple,
-                                              size: 24,
-                                              color:
-                                                  AuthTheme.primaryText(context),
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Semantics(
-                                          button: true,
+                                        const SizedBox(height: 10),
+                                        _OAuthProviderButton(
                                           label: 'Continue with Microsoft',
-                                          enabled: !_isLoading,
-                                          child: AuthSocialButton(
-                                            isLoading: _isLoading,
-                                            onTap: () => _signInWithOAuth(
-                                              OAuthProvider.azure,
-                                            ),
-                                            icon: FaIcon(
-                                              FontAwesomeIcons.microsoft,
-                                              size: 22,
-                                              color:
-                                                  AuthTheme.primaryText(context),
-                                            ),
+                                          semanticLabel:
+                                              'Continue with Microsoft',
+                                          isLoading: _isLoading,
+                                          onPressed: () => _signInWithOAuth(
+                                            OAuthProvider.azure,
                                           ),
+                                          icon: FontAwesomeIcons.microsoft,
                                         ),
                                       ],
                                     ),
@@ -514,6 +482,57 @@ class _LoginPageState extends State<LoginPage>
                   ),
                 ),
               ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _OAuthProviderButton extends StatelessWidget {
+  const _OAuthProviderButton({
+    required this.label,
+    required this.semanticLabel,
+    required this.icon,
+    required this.isLoading,
+    required this.onPressed,
+  });
+
+  final String label;
+  final String semanticLabel;
+  final IconData icon;
+  final bool isLoading;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = AuthTheme.primaryText(context);
+
+    return Semantics(
+      button: true,
+      label: semanticLabel,
+      enabled: !isLoading,
+      child: SizedBox(
+        width: double.infinity,
+        height: 50,
+        child: OutlinedButton.icon(
+          onPressed: isLoading ? null : onPressed,
+          icon: FaIcon(icon, size: 20, color: foreground),
+          label: Text(
+            label,
+            style: TextStyle(
+              color: foreground,
+              fontSize: 14.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: foreground,
+            backgroundColor: AuthTheme.backSurface(context),
+            side: BorderSide(color: AuthTheme.fieldBorder(context)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
             ),
           ),
         ),
