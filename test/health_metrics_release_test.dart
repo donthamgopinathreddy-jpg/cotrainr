@@ -232,14 +232,15 @@ void main() {
     test('Home water add uses WaterIntakeService and is not goal-clamped', () {
       for (final path in [
         'lib/pages/home/home_page_v3.dart',
-        'lib/pages/trainer/trainer_home_page.dart',
-        'lib/pages/nutritionist/nutritionist_home_page.dart',
+        'lib/pages/provider/provider_role_home_page.dart',
       ]) {
         final src = File(path).readAsStringSync();
         final idx = src.indexOf('onAddWater:');
         expect(idx, greaterThan(0), reason: path);
         final block = src.substring(idx, idx + 700);
-        expect(block.contains('WaterIntakeService.instance.addWater'), isTrue);
+        final compact = block.replaceAll(RegExp(r'\s+'), '');
+        expect(compact.contains('WaterIntakeService.instance.addWater'), isTrue,
+            reason: path);
         expect(block.contains('clamp'), isFalse, reason: path);
         expect(block.contains('updateTodayMetrics'), isFalse, reason: path);
       }

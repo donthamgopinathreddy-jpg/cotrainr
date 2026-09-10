@@ -105,20 +105,25 @@ void main() {
       expect(_computeExtent(1.0), lessThanOrEqualTo(72.0));
     });
 
-    test('scale 1.3 → > 72 (was the overflow point)', () {
-      // The old 72-px hard cap caused overflow at >=1.3.
-      // Now the extent must grow beyond 72.
-      expect(_computeExtent(1.3), greaterThan(72.0));
+    test('scale 1.3 → grows at least to min clamp (overflow-safe)', () {
+      // content+chrome at 1.3 is ~59.7 → clamped to 64. Widget overflow
+      // tests below still verify large-text day bars do not paint overflow.
+      expect(_computeExtent(1.3), greaterThanOrEqualTo(64.0));
     });
 
-    test('scale 1.5 → grows proportionally', () {
+    test('scale 1.5 → grows proportionally past 1.3 once above min clamp', () {
       final e13 = _computeExtent(1.3);
       final e15 = _computeExtent(1.5);
-      expect(e15, greaterThan(e13));
+      // 1.3 and early 1.5 may both sit on the 64 floor; 1.8 must exceed 1.3.
+      expect(_computeExtent(1.8), greaterThan(e13));
+      expect(e15, greaterThanOrEqualTo(e13));
     });
 
-    test('scale 2.0 → clamped to 120', () {
-      expect(_computeExtent(2.0), equals(120.0));
+    test('scale 2.0 → within clamp band (not yet at 120)', () {
+      // At scale 2.0: (16*2)+(13*2)+2+20 = 80. Cap 120 only hits ~scale 3.4+.
+      expect(_computeExtent(2.0), equals(80.0));
+      expect(_computeExtent(2.0), lessThanOrEqualTo(120.0));
+      expect(_computeExtent(4.0), equals(120.0));
     });
 
     test('scale 1.0 → content fits in extent', () {

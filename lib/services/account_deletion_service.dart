@@ -9,10 +9,14 @@ import 'water_reminder_service.dart';
 /// destructive cleanup with service-role privileges. The Flutter client never
 /// supplies a user id.
 class AccountDeletionService {
-  AccountDeletionService({SupabaseClient? client})
-      : _client = client ?? Supabase.instance.client;
+  AccountDeletionService({SupabaseClient? client}) : _clientOverride = client;
 
-  final SupabaseClient _client;
+  final SupabaseClient? _clientOverride;
+
+  /// Lazily resolved so constructing the service (e.g. Settings open) does not
+  /// require Supabase to already be initialized in widget tests.
+  SupabaseClient get _client =>
+      _clientOverride ?? Supabase.instance.client;
 
   Future<void> deleteCurrentAccount() async {
     final session = _client.auth.currentSession;

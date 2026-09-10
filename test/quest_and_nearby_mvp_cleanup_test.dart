@@ -77,10 +77,15 @@ void main() {
     test('real partner centers preview is still what Home renders', () {
       for (final path in const [
         'lib/pages/home/home_page_v3.dart',
+        'lib/pages/provider/provider_role_home_page.dart',
+      ]) {
+        expect(_read(path).contains('HomeCentersPreview'), isTrue);
+      }
+      for (final path in const [
         'lib/pages/trainer/trainer_home_page.dart',
         'lib/pages/nutritionist/nutritionist_home_page.dart',
       ]) {
-        expect(_read(path).contains('HomeCentersPreview'), isTrue);
+        expect(_read(path).contains('ProviderRoleHomePage'), isTrue);
       }
     });
   });

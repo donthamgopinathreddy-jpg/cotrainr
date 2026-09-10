@@ -6,7 +6,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../repositories/coach_notes_repository.dart';
 import '../../repositories/profile_repository.dart';
 import '../../services/leads_service.dart';
-import '../../services/leads_models.dart' show Lead;
 import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/common/pressable_card.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';

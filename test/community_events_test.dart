@@ -228,8 +228,7 @@ void main() {
     test('three homes place HomeCommunityEventCard after HeroHeaderV3', () {
       for (final path in [
         'lib/pages/home/home_page_v3.dart',
-        'lib/pages/trainer/trainer_home_page.dart',
-        'lib/pages/nutritionist/nutritionist_home_page.dart',
+        'lib/pages/provider/provider_role_home_page.dart',
       ]) {
         final src = File(path).readAsStringSync();
         expect(src.contains('HomeCommunityEventCard'), isTrue, reason: path);
@@ -242,6 +241,16 @@ void main() {
         expect(heroIdx, greaterThanOrEqualTo(0), reason: path);
         expect(eventIdx, greaterThan(heroIdx), reason: path);
         expect(metricsIdx, greaterThan(eventIdx), reason: path);
+      }
+      for (final path in [
+        'lib/pages/trainer/trainer_home_page.dart',
+        'lib/pages/nutritionist/nutritionist_home_page.dart',
+      ]) {
+        expect(
+          File(path).readAsStringSync().contains('ProviderRoleHomePage'),
+          isTrue,
+          reason: path,
+        );
       }
     });
 

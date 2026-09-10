@@ -75,10 +75,10 @@ class _ProviderMyClientsPageState extends ConsumerState<ProviderMyClientsPage> {
   bool _loading = true;
   String? _loadError;
   String? _busyLeadId;
+  /// True after a successful load or seeded initial data — empty lists still count.
+  bool _loadSucceeded = false;
   final List<ClientItem> _myClients = [];
   final List<ClientItem> _requests = [];
-
-  bool get _hasLoadedData => _myClients.isNotEmpty || _requests.isNotEmpty;
 
   @override
   void initState() {
@@ -89,6 +89,7 @@ class _ProviderMyClientsPageState extends ConsumerState<ProviderMyClientsPage> {
       _myClients.addAll(widget.initialClients ?? const []);
       _requests.addAll(widget.initialRequests ?? const []);
       _loading = false;
+      _loadSucceeded = true;
     } else {
       _leadsService ??= LeadsService();
       _loadLeads();
@@ -103,6 +104,17 @@ class _ProviderMyClientsPageState extends ConsumerState<ProviderMyClientsPage> {
   }
 
   Future<void> _loadLeads({bool silent = false}) async {
+    final service = _leadsService;
+    if (service == null) {
+      // No remote source (e.g. widget tests with seeded lists only).
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          if (!silent) _loadError = null;
+        });
+      }
+      return;
+    }
     if (!silent && mounted) {
       setState(() {
         _loading = true;
@@ -110,10 +122,6 @@ class _ProviderMyClientsPageState extends ConsumerState<ProviderMyClientsPage> {
       });
     }
     try {
-      final service = _leadsService;
-      if (service == null) {
-        throw StateError('Missing leads service');
-      }
       final uid = Supabase.instance.client.auth.currentUser?.id;
       if (uid == null) {
         throw StateError('User not authenticated');
@@ -150,6 +158,7 @@ class _ProviderMyClientsPageState extends ConsumerState<ProviderMyClientsPage> {
           ..addAll(pendingUnique.map(mapLeadToClientItem));
         _loading = false;
         _loadError = null;
+        _loadSucceeded = true;
       });
     } catch (_) {
       if (!mounted) return;
@@ -157,7 +166,7 @@ class _ProviderMyClientsPageState extends ConsumerState<ProviderMyClientsPage> {
         _loading = false;
         _loadError = 'Could not load clients. Check your connection and try again.';
       });
-      if (_hasLoadedData) {
+      if (_loadSucceeded) {
         showHubSnackBar(context, 'Could not refresh clients. Showing last loaded data.');
       }
     }
@@ -254,7 +263,11 @@ class _ProviderMyClientsPageState extends ConsumerState<ProviderMyClientsPage> {
                 _busyLeadId = null;
               });
               _invalidateCounts();
-              await _loadLeads(silent: true);
+              // Refresh from server when a leads service exists; skip for
+              // injected endConnection-only tests / offline overrides.
+              if (_leadsService != null) {
+                await _loadLeads(silent: true);
+              }
               if (!mounted) return true;
               showHubSnackBar(context, 'Relationship ended');
               return true;
@@ -312,7 +325,7 @@ class _ProviderMyClientsPageState extends ConsumerState<ProviderMyClientsPage> {
                 },
               ),
             ),
-            if (_loadError != null && _hasLoadedData)
+            if (_loadError != null && _loadSucceeded)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                 child: _InlineLoadWarning(
@@ -324,7 +337,7 @@ class _ProviderMyClientsPageState extends ConsumerState<ProviderMyClientsPage> {
             Expanded(
               child: _loading
                   ? const _ListSkeleton()
-                  : (_loadError != null && !_hasLoadedData)
+                  : (_loadError != null && !_loadSucceeded)
                       ? _ClientsLoadError(
                           message: _loadError!,
                           onRetry: _loadLeads,

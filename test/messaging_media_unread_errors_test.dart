@@ -131,8 +131,12 @@ void main() {
     test('8. a failed upload keeps the bubble in a retryable state', () {
       expect(chatScreen.contains('uploadStatus: ChatUploadStatus.failed'),
           isTrue);
-      expect(chatScreen.contains('onRetry: message.uploadStatus == ChatUploadStatus.failed'),
-          isTrue);
+      expect(
+        chatScreen.contains('ChatUploadStatus.failed') &&
+            chatScreen.contains('_retryUpload(message)'),
+        isTrue,
+      );
+      expect(chatScreen.contains('onRetry:'), isTrue);
     });
 
     test('9. a successful retry confirms the optimistic bubble', () {

@@ -141,8 +141,7 @@ void main() {
   test('fake nearby data is not used by shipping Home', () {
     for (final path in [
       'lib/pages/home/home_page_v3.dart',
-      'lib/pages/trainer/trainer_home_page.dart',
-      'lib/pages/nutritionist/nutritionist_home_page.dart',
+      'lib/pages/provider/provider_role_home_page.dart',
     ]) {
       final src = File(path).readAsStringSync();
       expect(src.contains('nearby_fitness_places_data'), isFalse);
@@ -151,6 +150,12 @@ void main() {
       expect(src.contains('Zen Yoga Studio'), isFalse);
       expect(src.contains('HomeCentersPreview'), isTrue);
       expect(src.contains('HomeCommunityEventCard'), isTrue);
+    }
+    for (final path in [
+      'lib/pages/trainer/trainer_home_page.dart',
+      'lib/pages/nutritionist/nutritionist_home_page.dart',
+    ]) {
+      expect(File(path).readAsStringSync().contains('ProviderRoleHomePage'), isTrue);
     }
   });
 
@@ -169,8 +174,7 @@ void main() {
 
   test('provider first-load health sync uses metricsSyncService.syncNow', () {
     for (final path in [
-      'lib/pages/trainer/trainer_home_page.dart',
-      'lib/pages/nutritionist/nutritionist_home_page.dart',
+      'lib/pages/provider/provider_role_home_page.dart',
       'lib/pages/home/home_page_v3.dart',
     ]) {
       final src = File(path).readAsStringSync();
@@ -182,8 +186,7 @@ void main() {
   test('goal loading does not start from confirmed default UI', () {
     for (final path in [
       'lib/pages/home/home_page_v3.dart',
-      'lib/pages/trainer/trainer_home_page.dart',
-      'lib/pages/nutritionist/nutritionist_home_page.dart',
+      'lib/pages/provider/provider_role_home_page.dart',
     ]) {
       final src = File(path).readAsStringSync();
       expect(src.contains('goalsLoading: !_goalsReady'), isTrue);
@@ -191,13 +194,11 @@ void main() {
   });
 
   test('provider name does not use Trainer/Nutritionist placeholder while loading', () {
-    final trainer = File('lib/pages/trainer/trainer_home_page.dart').readAsStringSync();
-    final nutritionist =
-        File('lib/pages/nutritionist/nutritionist_home_page.dart').readAsStringSync();
-    expect(trainer.contains("String _trainerName = 'Trainer'"), isFalse);
-    expect(nutritionist.contains("String _nutritionistName = 'Nutritionist'"), isFalse);
-    expect(trainer.contains('usernameLoading: _nameLoading'), isTrue);
-    expect(nutritionist.contains('usernameLoading: _nameLoading'), isTrue);
+    final provider =
+        File('lib/pages/provider/provider_role_home_page.dart').readAsStringSync();
+    expect(provider.contains("String _trainerName = 'Trainer'"), isFalse);
+    expect(provider.contains("String _nutritionistName = 'Nutritionist'"), isFalse);
+    expect(provider.contains('usernameLoading: _nameLoading'), isTrue);
   });
 
   test('request accept/decline invalidates Home counts', () {

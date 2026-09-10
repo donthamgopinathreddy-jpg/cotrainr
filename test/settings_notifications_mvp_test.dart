@@ -104,6 +104,7 @@ void main() {
           home: NotificationsPage(
             preferencesService: store,
             osPermissionGateway: os,
+            videoSessionPrefsStore: _FakeVideoPrefsStore(),
           ),
         ),
       );
@@ -145,6 +146,7 @@ void main() {
           home: NotificationsPage(
             preferencesService: store,
             osPermissionGateway: os,
+            videoSessionPrefsStore: _FakeVideoPrefsStore(),
           ),
         ),
       );
@@ -179,6 +181,7 @@ void main() {
           home: NotificationsPage(
             preferencesService: _FakeNotifStore(),
             osPermissionGateway: os,
+            videoSessionPrefsStore: _FakeVideoPrefsStore(),
           ),
         ),
       );

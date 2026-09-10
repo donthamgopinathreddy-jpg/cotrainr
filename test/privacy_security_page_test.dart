@@ -88,9 +88,11 @@ void main() {
 
     expect(find.text('Privacy Policy'), findsOneWidget);
     expect(find.text('Terms of Service'), findsOneWidget);
-    expect(find.text('Download My Data'), findsOneWidget);
-    expect(find.text('Coming soon'), findsOneWidget);
-    expect(find.text('Request Account Deletion'), findsOneWidget);
+    // Area 20: Download My Data placeholder removed; real delete is live.
+    expect(find.text('Download My Data'), findsNothing);
+    expect(find.text('Coming soon'), findsNothing);
+    expect(find.text('Request Account Deletion'), findsNothing);
+    expect(find.text('Delete Account'), findsOneWidget);
 
     await tester.scrollUntilVisible(
       find.text('support@cotrainr.com'),
@@ -112,17 +114,14 @@ void main() {
     expect(location.manageCalls, 1);
 
     await tester.scrollUntilVisible(
-      find.text('Request Account Deletion'),
+      find.text('Delete Account'),
       200,
       scrollable: find.byType(Scrollable).first,
     );
-    await tester.tap(find.text('Request Account Deletion'));
+    await tester.tap(find.text('Delete Account'));
     await tester.pumpAndSettle();
-    expect(find.text('Request Account Deletion'), findsWidgets);
-    expect(
-      find.textContaining('not available in the app yet'),
-      findsOneWidget,
-    );
-    expect(find.textContaining('cannot be undone'), findsNothing);
+    expect(find.text('Permanently Delete Account?'), findsOneWidget);
+    expect(find.textContaining('cannot be undone'), findsOneWidget);
+    expect(find.textContaining('not available in the app yet'), findsNothing);
   });
 }
