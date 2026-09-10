@@ -107,11 +107,21 @@ BEGIN
     RETURN 'unsupported_pairing';
   END IF;
 
-  IF public.users_are_blocked(v_client, v_provider) THEN
+  -- Match live can_send_message_in_conversation moderation probe.
+  IF EXISTS (
+    SELECT 1
+    FROM public.user_blocks ub
+    WHERE ub.is_active = true
+      AND ub.user_id IN (v_client, v_provider)
+  ) THEN
     RETURN 'users_blocked';
   END IF;
 
-  IF NOT public.account_may_use_messaging(v_uid) THEN
+  -- Match live can_send: both accounts must be effectively active.
+  IF public.effective_account_status(v_uid)
+       IS DISTINCT FROM 'active'
+     OR public.effective_account_status(p_other_user_id)
+       IS DISTINCT FROM 'active' THEN
     RETURN 'messaging_disabled';
   END IF;
 
@@ -172,11 +182,21 @@ BEGIN
     RAISE EXCEPTION 'unsupported_pairing';
   END IF;
 
-  IF public.users_are_blocked(v_client, v_provider) THEN
+  -- Match live can_send_message_in_conversation moderation probe.
+  IF EXISTS (
+    SELECT 1
+    FROM public.user_blocks ub
+    WHERE ub.is_active = true
+      AND ub.user_id IN (v_client, v_provider)
+  ) THEN
     RAISE EXCEPTION 'users_blocked';
   END IF;
 
-  IF NOT public.account_may_use_messaging(v_uid) THEN
+  -- Match live can_send: both accounts must be effectively active.
+  IF public.effective_account_status(v_uid)
+       IS DISTINCT FROM 'active'
+     OR public.effective_account_status(p_other_user_id)
+       IS DISTINCT FROM 'active' THEN
     RAISE EXCEPTION 'messaging_disabled';
   END IF;
 
