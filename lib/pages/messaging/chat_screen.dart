@@ -90,6 +90,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   BlockState _blockState = BlockState.none;
   bool _safetyBusy = false;
   Map<String, dynamic>? _conversationRow;
+  MessagingAccessStatus? _sendDenialStatus;
 
   final List<_ChatMessage> _messages = [];
   final ChatMessageReconciler _reconciler = ChatMessageReconciler();
@@ -172,7 +173,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   }
 
   /// True when messaging is locked because the accepted relationship ended
-  /// (not because of block/report safety locks).
+  /// (not because of block/report safety locks or subscription).
   bool get _isEndedConnection =>
       MessagingPolicyService.shouldShowEndedConnectionBanner(
         hasConversationRow: _conversationRow != null,
@@ -183,6 +184,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             ),
         canSend: _canSend,
         eitherBlocked: _blockState.eitherBlocked,
+        denialStatus: _sendDenialStatus,
+      );
+
+  bool get _isSubscriptionLocked =>
+      MessagingPolicyService.shouldShowSubscriptionRequiredBanner(
+        hasConversationRow: _conversationRow != null,
+        isProviderClient:
+            _conversationRow != null &&
+            MessagingPolicyService.isProviderClientConversation(
+              _conversationRow!,
+            ),
+        canSend: _canSend,
+        eitherBlocked: _blockState.eitherBlocked,
+        denialStatus: _sendDenialStatus,
       );
 
   bool get _showComposer => MessagingPolicyService.shouldShowMessageComposer(
@@ -190,22 +205,45 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     eitherBlocked: _blockState.eitherBlocked,
   );
 
-  /// After a failed/null send: refresh eligibility; if ended, lock the UI.
+  /// After a failed/null send: refresh eligibility; if ended/sub-locked, lock UI.
   Future<bool> _handleSendDeniedMaybeEnded({Object? error}) async {
     await _loadConversationAccess();
     if (!mounted) return false;
+    if (MessagingErrorMessages.looksLikeSubscriptionDenial(error)) {
+      setState(() {
+        _canSend = false;
+        _sendDenialStatus = MessagingAccessStatus.subscriptionRequired;
+      });
+      _clearPreview();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(MessagingErrorMessages.subscriptionRequired),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return true;
+    }
     final ended =
         _isEndedConnection ||
         MessagingErrorMessages.looksLikeEndedConnectionDenial(error);
     if (ended) {
       if (_canSend) {
-        // Force read-only if heuristic matched but RPC briefly lagged.
         setState(() => _canSend = false);
       }
       _clearPreview();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(MessagingErrorMessages.connectionEnded),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return true;
+    }
+    if (_isSubscriptionLocked) {
+      _clearPreview();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(MessagingErrorMessages.subscriptionRequired),
           duration: Duration(seconds: 3),
         ),
       );
@@ -225,6 +263,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         _otherUserId = null;
         _canSend = false;
         _blockState = BlockState.none;
+        _sendDenialStatus = MessagingAccessStatus.unavailable;
       });
       return;
     }
@@ -238,6 +277,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             conversation: row,
           )
         : false;
+    MessagingAccessStatus? denial;
+    if (!canSend && me != null) {
+      denial = await MessagingPolicyService.classifySendDenial(
+        supabase: _supabase,
+        conversation: row,
+      );
+    }
     BlockState block = BlockState.none;
     if (other != null) {
       block = await _safetyService.getBlockState(other);
@@ -248,6 +294,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       _otherUserId = other;
       _blockState = block;
       _canSend = canSend && !block.eitherBlocked;
+      _sendDenialStatus = denial;
     });
   }
 
@@ -2047,6 +2094,55 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                 ),
               ),
             )
+          else if (_isSubscriptionLocked)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.workspace_premium_outlined,
+                        color: cs.onSurfaceVariant,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Membership required',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: cs.onSurface,
+                                height: 1.3,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              MessagingErrorMessages.subscriptionRequired,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: cs.onSurfaceVariant,
+                                height: 1.35,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
           else if (_isEndedConnection || !_showComposer)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
@@ -2071,7 +2167,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Connection ended',
+                              _sendDenialStatus ==
+                                      MessagingAccessStatus.unavailable
+                                  ? 'Messaging unavailable'
+                                  : 'Connection ended',
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
@@ -2081,7 +2180,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              'You can still view your previous messages.',
+                              _sendDenialStatus ==
+                                      MessagingAccessStatus.unavailable
+                                  ? MessagingErrorMessages
+                                        .messagingAccessUnavailable
+                                  : 'You can still view your previous messages.',
                               style: TextStyle(
                                 fontSize: 13,
                                 color: cs.onSurfaceVariant,

@@ -27,6 +27,11 @@ abstract final class MessagingErrorMessages {
   static const generic = 'Something went wrong. Please try again.';
   static const connectionEnded =
       'This connection has ended. You can still view previous messages.';
+  static const subscriptionRequired =
+      'An active Cotrainr membership is required to send messages. '
+      'You can still view previous messages.';
+  static const messagingAccessUnavailable =
+      "Couldn't verify messaging access. Try again.";
   static const micDenied =
       'Microphone access is needed to send voice messages.';
   static const cameraDenied =
@@ -35,15 +40,19 @@ abstract final class MessagingErrorMessages {
   static const recordingFailed = 'Could not record audio. Try again.';
   static const playbackFailed = 'Unable to play this voice message.';
 
-  /// Heuristic for RLS/policy denials when an accepted lead is gone.
-  /// Never returns exception text — callers use [connectionEnded] for UI.
+  /// Heuristic for RLS/policy denials that specifically mean the accepted
+  /// relationship is gone. Subscription / generic can_send denials must NOT
+  /// be mapped here — callers classify via MessagingPolicyService.
   static bool looksLikeEndedConnectionDenial(Object? error) {
     if (error == null) return false;
     final s = error.toString().toLowerCase();
-    return s.contains('no_accepted_lead') ||
-        s.contains('can_send_message') ||
-        (s.contains('row-level security') &&
-            (s.contains('messages') || s.contains('policy')));
+    return s.contains('no_accepted_lead');
+  }
+
+  static bool looksLikeSubscriptionDenial(Object? error) {
+    if (error == null) return false;
+    final s = error.toString().toLowerCase();
+    return s.contains('subscription_required');
   }
 
   /// Copy for a failed attachment send, falling back to the network message

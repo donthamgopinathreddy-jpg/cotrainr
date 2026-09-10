@@ -173,13 +173,15 @@ void main() {
         ),
         isTrue,
       );
+      // Generic RLS / can_send denials are NOT auto-mapped to "connection ended"
+      // (subscription denials share those signals). Classify via policy instead.
       expect(
         MessagingErrorMessages.looksLikeEndedConnectionDenial(
           Exception(
             'new row violates row-level security policy for table messages',
           ),
         ),
-        isTrue,
+        isFalse,
       );
       expect(
         MessagingErrorMessages.looksLikeEndedConnectionDenial(

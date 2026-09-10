@@ -84,26 +84,40 @@ Verification:
 Git record:
 `supabase/migrations/20260908230616_pre_release_lock_metrics_and_messaging_subscription.sql`
 
-### CURSOR / LOCAL ACTION REQUIRED — frontend subscription state must match server
+### FIXED BY ME — frontend subscription state matches server
 File: `lib/services/messaging_policy_service.dart`
 
 Issue:
-`clientMayUseMessagingWithProvider()` currently checks only block state + accepted lead. `PublicProfileReadonlyPage` uses this to decide whether the Message CTA is enabled. After the server hardening, an accepted client with an expired/inactive subscription can therefore still see a Message CTA and enter chat, even though the server correctly rejects sending.
+`clientMayUseMessagingWithProvider()` previously checked only block state + accepted lead. Public profile and provider client detail Message CTAs could open chat when send would be rejected for inactive subscription; denials were mislabeled as ended connections.
 
-Required change:
-- make `clientMayUseMessagingWithProvider()` require the same active client subscription rule as the server;
-- make fallback logic in `canCurrentUserSendMessage()` fail closed on subscription state if the authoritative RPC is unavailable;
-- do not weaken or bypass the live RPC/RLS gate;
-- present an explicit read-only/subscription-required UI rather than a generic send failure.
+Fix (Wave 2):
+- Added SECURITY DEFINER RPC `provider_client_messaging_access(uuid)` returning machine codes (`allowed` / `no_accepted_lead` / `subscription_required` / …) using the same accepted-lead + active client subscription predicates as `can_send_message_in_conversation`.
+- Recorded live `conversation_has_accepted_lead(uuid, uuid)` with `auth.uid()` binding.
+- `create_or_find_provider_client_conversation` still reuses existing history threads without subscription, but blocks **new** conversation creation with `subscription_required`.
+- Frontend CTAs (public provider profile, trainer/nutritionist client detail) evaluate access before enabling Message; duplicate taps gated; typed create/find results.
+- ChatScreen distinguishes membership-required vs connection-ended vs unavailable.
+- Failures / unknown lookups are **not** treated as allowed or as fake “not connected”.
 
-Acceptance:
-- accepted + active subscription -> Message/send enabled;
-- accepted + inactive/expired/no subscription -> history may remain readable but composer/send is disabled with correct subscription explanation;
-- provider side obeys the client's subscription state;
-- reconnect after subscription becomes active restores composer without recreating history.
+Git record:
+- `supabase/migrations/20260910120000_messaging_access_subscription_truth.sql`
+- `lib/services/messaging_policy_service.dart`
+- `lib/repositories/messages_repository.dart`
+- `lib/pages/profile/public_profile_readonly_page.dart`
+- `lib/pages/client_monitoring/client_detail_shell.dart`
+- `lib/pages/messaging/chat_screen.dart`
+- `lib/utils/messaging_error_messages.dart`
+- `test/messaging_entitlement_truthfulness_test.dart`
+
+Verification:
+- `flutter test test/messaging_entitlement_truthfulness_test.dart` (+ related messaging tests)
+- Physical-device messaging E2E: **CURSOR / LOCAL ACTION REQUIRED** (not claimed passed)
+
+### CURSOR / LOCAL ACTION REQUIRED — apply Wave 2 messaging migration on production
+Migration `20260910120000_messaging_access_subscription_truth.sql` must be applied to project `nvtozwtuyhwqkqvftpyi` before CTA RPC is live. Until then, Flutter falls back to local checks (providers fail closed when they cannot read client subscription under RLS).
 
 ### CURSOR / LOCAL ACTION REQUIRED — duplicate realtime reloads
 File: `lib/pages/messaging/messaging_page.dart`
+
 
 Current architecture listens to both conversation changes and message INSERT/UPDATE and each callback can trigger a complete conversation refetch. One logical message can therefore produce multiple concurrent reloads.
 

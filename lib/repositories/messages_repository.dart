@@ -624,14 +624,31 @@ class MessagesRepository {
   /// Create or find a **provider–client** conversation only (MVP).
   /// Prefers RPC `create_or_find_provider_client_conversation`.
   Future<String?> createOrFindConversation(String otherUserId) async {
+    final result = await createOrFindConversationDetailed(otherUserId);
+    return result.conversationId;
+  }
+
+  /// Same as [createOrFindConversation] with typed access status for CTA UX.
+  Future<CreateConversationResult> createOrFindConversationDetailed(
+    String otherUserId,
+  ) async {
     if (kDebugMode) {
       debugPrint(
         '[MSG_OPEN_START] authUid=$_currentUserId '
         'p_other_user_id=$otherUserId',
       );
     }
-    if (_currentUserId == null) return null;
-    if (_currentUserId == otherUserId) return null;
+    if (_currentUserId == null) {
+      return const CreateConversationResult.denied(
+        MessagingAccessStatus.unavailable,
+      );
+    }
+    if (_currentUserId == otherUserId) {
+      return const CreateConversationResult.denied(
+        MessagingAccessStatus.unsupportedPairing,
+        backendCode: 'invalid_participants',
+      );
+    }
 
     try {
       final result = await _supabase.rpc(
@@ -652,7 +669,12 @@ class MessagesRepository {
           'parsedConversationId=$parsed',
         );
       }
-      return parsed;
+      if (parsed == null || parsed.isEmpty) {
+        return const CreateConversationResult.denied(
+          MessagingAccessStatus.unavailable,
+        );
+      }
+      return CreateConversationResult.ok(parsed);
     } on PostgrestException catch (e, s) {
       if (kDebugMode) {
         debugPrint(
@@ -660,15 +682,19 @@ class MessagesRepository {
           'details=${e.details} hint=${e.hint}\n$s',
         );
       }
-      return null;
+      return CreateConversationResult.denied(
+        MessagingPolicyService.statusFromPostgrestException(e),
+        backendCode: e.message,
+      );
     } catch (e, s) {
       if (kDebugMode) {
         debugPrint(
           '[MSG_OPEN_ERROR] runtimeType=${e.runtimeType} exception=$e\n$s',
         );
-        debugPrint('createOrFindConversation: failed (need accepted lead): $e');
       }
-      return null;
+      return const CreateConversationResult.denied(
+        MessagingAccessStatus.unavailable,
+      );
     }
   }
 }

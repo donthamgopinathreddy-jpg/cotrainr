@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../repositories/coach_notes_repository.dart';
 import '../../repositories/meal_repository.dart';
@@ -10,6 +11,7 @@ import '../../repositories/metrics_repository.dart';
 import '../../repositories/profile_repository.dart';
 import '../../repositories/video_sessions_repository.dart';
 import '../../services/coach_client_access_service.dart';
+import '../../services/messaging_policy_service.dart';
 import '../../theme/design_tokens.dart';
 import '../../widgets/common/cotrainr_back_button.dart';
 import '../../widgets/profile/account_hub_widgets.dart';
@@ -78,6 +80,8 @@ class _ClientDetailShellState extends State<ClientDetailShell>
   CoachClientAccessStatus? _access;
   String? _name;
   String? _username;
+  MessagingAccessStatus _messagingAccess = MessagingAccessStatus.unavailable;
+  bool _messagingBusy = false;
   String? _avatarUrl;
   Map<String, dynamic>? _metrics;
   DayMealsData? _meals;
@@ -233,6 +237,21 @@ class _ClientDetailShellState extends State<ClientDetailShell>
         meals = null;
       }
 
+      MessagingAccessStatus messagingAccess =
+          MessagingAccessStatus.unavailable;
+      try {
+        messagingAccess =
+            await MessagingPolicyService.evaluateMessagingWithOtherUser(
+          supabase: Supabase.instance.client,
+          otherUserId: id,
+        );
+      } catch (_) {
+        // Widget tests / missing Supabase: leave unavailable (deny Message),
+        // but do not fail the whole client detail load.
+        messagingAccess = MessagingAccessStatus.unavailable;
+      }
+      if (!mounted) return;
+
       setState(() {
         _access = access;
         _name = (name != null && name.isNotEmpty)
@@ -249,6 +268,7 @@ class _ClientDetailShellState extends State<ClientDetailShell>
         _sessionLoadFailed = sessionFailed;
         _metricsLoadFailed = metricsFailed;
         _mealsLoadFailed = mealsFailed;
+        _messagingAccess = messagingAccess;
         _loading = false;
       });
     } on CoachClientAccessLookupException {
@@ -267,19 +287,48 @@ class _ClientDetailShellState extends State<ClientDetailShell>
   }
 
   Future<void> _openChat() async {
+    if (_messagingBusy) return;
     HapticFeedback.lightImpact();
-    final convId = await (_messagesRepo ??= MessagesRepository())
-        .createOrFindConversation(widget.clientId);
-    if (!mounted) return;
-    if (convId == null) {
-      showHubSnackBar(context, 'Unable to open chat. Please try again.');
-      return;
+
+    if (_messagingAccess != MessagingAccessStatus.allowed) {
+      // Re-check in case subscription/relationship changed since load.
+      final status =
+          await MessagingPolicyService.evaluateMessagingWithOtherUser(
+        supabase: Supabase.instance.client,
+        otherUserId: widget.clientId,
+      );
+      if (!mounted) return;
+      setState(() => _messagingAccess = status);
+      if (status != MessagingAccessStatus.allowed) {
+        showHubSnackBar(
+          context,
+          MessagingPolicyService.userMessageFor(status),
+        );
+        return;
+      }
     }
-    context.push('/messaging/chat/$convId', extra: {
-      'userName': _name ?? 'Client',
-      'isOnline': true,
-      'avatarUrl': _avatarUrl,
-    });
+
+    setState(() => _messagingBusy = true);
+    try {
+      final result = await (_messagesRepo ??= MessagesRepository())
+          .createOrFindConversationDetailed(widget.clientId);
+      if (!mounted) return;
+      if (!result.isOk) {
+        setState(() => _messagingAccess = result.status);
+        showHubSnackBar(
+          context,
+          MessagingPolicyService.userMessageFor(result.status),
+        );
+        return;
+      }
+      context.push('/messaging/chat/${result.conversationId}', extra: {
+        'userName': _name ?? 'Client',
+        'isOnline': true,
+        'avatarUrl': _avatarUrl,
+      });
+    } finally {
+      if (mounted) setState(() => _messagingBusy = false);
+    }
   }
 
   void _openVideo() {
@@ -350,6 +399,16 @@ class _ClientDetailShellState extends State<ClientDetailShell>
                         onMessage: _openChat,
                         onVideo: _openVideo,
                         onNotes: _openNotes,
+                        messageEnabled:
+                            !_messagingBusy &&
+                            _messagingAccess == MessagingAccessStatus.allowed,
+                        messageBusy: _messagingBusy,
+                        messageHint: _messagingAccess ==
+                                MessagingAccessStatus.allowed
+                            ? null
+                            : MessagingPolicyService.userMessageFor(
+                                _messagingAccess,
+                              ),
                       ),
                     ),
                     if (_hasPartialFailure)
@@ -521,43 +580,75 @@ class _ActionRow extends StatelessWidget {
   final VoidCallback onMessage;
   final VoidCallback onVideo;
   final VoidCallback onNotes;
+  final bool messageEnabled;
+  final bool messageBusy;
+  final String? messageHint;
 
   const _ActionRow({
     required this.onMessage,
     required this.onVideo,
     required this.onNotes,
+    this.messageEnabled = true,
+    this.messageBusy = false,
+    this.messageHint,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(
-          child: _ActionButton(
-            icon: Icons.chat_bubble_outline_rounded,
-            label: 'Message',
-            primary: false,
-            onTap: onMessage,
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: _ActionButton(
+                icon: Icons.chat_bubble_outline_rounded,
+                label: messageBusy ? 'Opening…' : 'Message',
+                primary: false,
+                onTap: messageEnabled
+                    ? onMessage
+                    : () {
+                        if (messageHint != null && messageHint!.isNotEmpty) {
+                          showHubSnackBar(context, messageHint!);
+                        }
+                      },
+                visuallyDisabled: !messageEnabled,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _ActionButton(
+                icon: Icons.videocam_rounded,
+                label: 'Video Session',
+                primary: true,
+                onTap: onVideo,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _ActionButton(
+                icon: Icons.edit_note_rounded,
+                label: 'Client Notes',
+                primary: false,
+                onTap: onNotes,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _ActionButton(
-            icon: Icons.videocam_rounded,
-            label: 'Video Session',
-            primary: true,
-            onTap: onVideo,
+        if (messageHint != null &&
+            messageHint!.isNotEmpty &&
+            !messageEnabled) ...[
+          const SizedBox(height: 8),
+          Text(
+            messageHint!,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: ClientMonitoringUi.secondary(context),
+              height: 1.3,
+            ),
           ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _ActionButton(
-            icon: Icons.edit_note_rounded,
-            label: 'Client Notes',
-            primary: false,
-            onTap: onNotes,
-          ),
-        ),
+        ],
       ],
     );
   }
@@ -568,49 +659,55 @@ class _ActionButton extends StatelessWidget {
   final String label;
   final bool primary;
   final VoidCallback onTap;
+  final bool visuallyDisabled;
 
   const _ActionButton({
     required this.icon,
     required this.label,
     required this.primary,
     required this.onTap,
+    this.visuallyDisabled = false,
   });
 
   @override
   Widget build(BuildContext context) {
     return Semantics(
       button: true,
+      enabled: !visuallyDisabled,
       label: label,
       child: SizedBox(
         height: ClientMonitoringUi.actionHeight,
-        child: primary
-            ? ElevatedButton(
-                onPressed: onTap,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: DesignTokens.videoSessionsAccent,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  shape: RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.circular(ClientMonitoringUi.radius),
+        child: Opacity(
+          opacity: visuallyDisabled ? 0.45 : 1,
+          child: primary
+              ? ElevatedButton(
+                  onPressed: onTap,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: DesignTokens.videoSessionsAccent,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    shape: RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(ClientMonitoringUi.radius),
+                    ),
                   ),
-                ),
-                child: _Content(icon: icon, label: label, compact: true),
-              )
-            : OutlinedButton(
-                onPressed: onTap,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: DesignTokens.textPrimaryOf(context),
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  side: BorderSide(color: ClientMonitoringUi.border(context)),
-                  shape: RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.circular(ClientMonitoringUi.radius),
+                  child: _Content(icon: icon, label: label, compact: true),
+                )
+              : OutlinedButton(
+                  onPressed: onTap,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: DesignTokens.textPrimaryOf(context),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    side: BorderSide(color: ClientMonitoringUi.border(context)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(ClientMonitoringUi.radius),
+                    ),
                   ),
+                  child: _Content(icon: icon, label: label, compact: false),
                 ),
-                child: _Content(icon: icon, label: label, compact: false),
-              ),
+        ),
       ),
     );
   }

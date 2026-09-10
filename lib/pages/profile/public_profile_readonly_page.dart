@@ -71,8 +71,9 @@ class _PublicProfileReadonlyPageState
   List<ProviderCertification> _certs = [];
   String _relationship = 'none';
   String? _pendingLeadId;
-  bool _canMessage = false;
+  MessagingAccessStatus _messagingAccess = MessagingAccessStatus.unavailable;
   bool _actionBusy = false;
+  bool _messageBusy = false;
   String _clientPlan = SubscriptionPlans.free;
   int? _connectionLimit;
   bool _connectionUnlimited = false;
@@ -265,7 +266,7 @@ class _PublicProfileReadonlyPageState
 
       var relationship = 'none';
       String? pendingLeadId;
-      var canMessage = false;
+      var messagingAccess = MessagingAccessStatus.notAccepted;
       final me = _supabase.auth.currentUser?.id;
       if (me != null) {
         try {
@@ -299,20 +300,27 @@ class _PublicProfileReadonlyPageState
               case CurrentRelationshipKind.none:
                 relationship = 'none';
             }
+          } else {
+            messagingAccess = MessagingAccessStatus.unavailable;
           }
-        } catch (_) {}
+        } catch (_) {
+          messagingAccess = MessagingAccessStatus.unavailable;
+        }
 
         if (relationship == 'accepted') {
-          canMessage =
+          messagingAccess =
               await _withTimeout(
-                MessagingPolicyService.clientMayUseMessagingWithProvider(
+                MessagingPolicyService.evaluateMessagingWithOtherUser(
                   supabase: _supabase,
-                  clientId: me,
-                  providerId: widget.userId,
+                  otherUserId: widget.userId,
                 ),
-                label: 'canMessage',
+                label: 'messagingAccess',
               ) ??
-              false;
+              MessagingAccessStatus.unavailable;
+        } else if (relationship == 'pending') {
+          messagingAccess = MessagingAccessStatus.notAccepted;
+        } else if (messagingAccess != MessagingAccessStatus.unavailable) {
+          messagingAccess = MessagingAccessStatus.notAccepted;
         }
       }
 
@@ -359,7 +367,7 @@ class _PublicProfileReadonlyPageState
         _myReview = myReview;
         _relationship = relationship;
         _pendingLeadId = pendingLeadId;
-        _canMessage = canMessage;
+        _messagingAccess = messagingAccess;
         _clientPlan = clientPlan;
         _connectionLimit = connectionLimit;
         _connectionUnlimited = connectionUnlimited;
@@ -482,6 +490,7 @@ class _PublicProfileReadonlyPageState
   }
 
   Future<void> _openMessage() async {
+    if (_messageBusy) return;
     if (_isNutritionist && _nutritionistAllowed == false) {
       await showNutritionistUpgradeSheet(context);
       return;
@@ -492,44 +501,77 @@ class _PublicProfileReadonlyPageState
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Connect to message and work together.')),
-      );
-      return;
-    }
-    if (!_canMessage) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text(
-            'Messaging is available after your connection is accepted.',
+            MessagingPolicyService.userMessageFor(
+              MessagingAccessStatus.notAccepted,
+            ),
           ),
         ),
       );
       return;
     }
+    if (_messagingAccess != MessagingAccessStatus.allowed) {
+      final status =
+          await MessagingPolicyService.evaluateMessagingWithOtherUser(
+        supabase: _supabase,
+        otherUserId: widget.userId,
+      );
+      if (!mounted) return;
+      setState(() => _messagingAccess = status);
+      if (status != MessagingAccessStatus.allowed) {
+        if (status == MessagingAccessStatus.subscriptionRequired) {
+          // Prefer plan sheet when nutritionist upgrade already applies;
+          // otherwise show membership copy.
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(MessagingPolicyService.userMessageFor(status)),
+            ),
+          );
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(MessagingPolicyService.userMessageFor(status)),
+          ),
+        );
+        return;
+      }
+    }
     if (kDebugMode) {
       debugPrint(
         '[PROFILE_MESSAGE_OPEN] authUid=${_supabase.auth.currentUser?.id} '
         'widget.userId=${widget.userId} '
-        'relationship=$_relationship canMessage=$_canMessage',
+        'relationship=$_relationship messagingAccess=$_messagingAccess',
       );
     }
-    final convId = await MessagesRepository().createOrFindConversation(
-      widget.userId,
-    );
-    if (!mounted) return;
-    if (convId == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Unable to open chat')));
-      return;
+    setState(() => _messageBusy = true);
+    try {
+      final result = await MessagesRepository().createOrFindConversationDetailed(
+        widget.userId,
+      );
+      if (!mounted) return;
+      if (!result.isOk) {
+        setState(() => _messagingAccess = result.status);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              MessagingPolicyService.userMessageFor(result.status),
+            ),
+          ),
+        );
+        return;
+      }
+      context.push(
+        '/messaging/chat/${result.conversationId}',
+        extra: {
+          'userName': _profile.fullName ?? widget.titleFallback ?? 'Provider',
+          'avatarUrl': _profile.avatarUrl,
+        },
+      );
+    } finally {
+      if (mounted) setState(() => _messageBusy = false);
     }
-    context.push(
-      '/messaging/chat/$convId',
-      extra: {
-        'userName': _profile.fullName ?? widget.titleFallback ?? 'Provider',
-        'avatarUrl': _profile.avatarUrl,
-      },
-    );
   }
 
   Future<void> _openUpgrade() async {
@@ -655,8 +697,15 @@ class _PublicProfileReadonlyPageState
                 child: _ActionRow(
                   relationship: _relationship,
                   accepting: p.acceptingNewClients,
-                  busy: _actionBusy,
-                  canMessage: _canMessage,
+                  busy: _actionBusy || _messageBusy,
+                  canMessage:
+                      _messagingAccess == MessagingAccessStatus.allowed,
+                  messagingHint: _messagingAccess ==
+                          MessagingAccessStatus.allowed
+                      ? null
+                      : MessagingPolicyService.userMessageFor(
+                          _messagingAccess,
+                        ),
                   canRate: _canRate,
                   roleLabel: p.roleLabel,
                   isNutritionist: _isNutritionist,
@@ -790,6 +839,7 @@ class _ActionRow extends StatelessWidget {
   final bool accepting;
   final bool busy;
   final bool canMessage;
+  final String? messagingHint;
   final bool canRate;
   final String roleLabel;
   final bool isNutritionist;
@@ -805,6 +855,7 @@ class _ActionRow extends StatelessWidget {
     required this.accepting,
     required this.busy,
     required this.canMessage,
+    this.messagingHint,
     required this.canRate,
     required this.roleLabel,
     required this.isNutritionist,
@@ -833,15 +884,44 @@ class _ActionRow extends StatelessWidget {
 
     Widget primary;
     if (relationship == 'accepted') {
-      primary = _TranslucentActionButton(
-        onPressed: busy ? null : (requiresUpgrade ? onUpgrade : onMessage),
-        icon: requiresUpgrade
-            ? Icons.lock_outline_rounded
-            : Icons.chat_bubble_outline_rounded,
-        label: requiresUpgrade ? 'Upgrade to Message' : 'Message',
-        accent: messagePal.accent,
-        shape: shape,
-      );
+      if (requiresUpgrade) {
+        primary = _TranslucentActionButton(
+          onPressed: busy ? null : onUpgrade,
+          icon: Icons.lock_outline_rounded,
+          label: 'Upgrade to Message',
+          accent: messagePal.accent,
+          shape: shape,
+        );
+      } else if (!canMessage) {
+        primary = _TranslucentActionButton(
+          onPressed: busy
+              ? null
+              : () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        messagingHint ??
+                            MessagingPolicyService.userMessageFor(
+                              MessagingAccessStatus.unavailable,
+                            ),
+                      ),
+                    ),
+                  );
+                },
+          icon: Icons.chat_bubble_outline_rounded,
+          label: 'Message',
+          accent: messagePal.accent.withValues(alpha: 0.55),
+          shape: shape,
+        );
+      } else {
+        primary = _TranslucentActionButton(
+          onPressed: busy ? null : onMessage,
+          icon: Icons.chat_bubble_outline_rounded,
+          label: busy ? 'Opening…' : 'Message',
+          accent: messagePal.accent,
+          shape: shape,
+        );
+      }
     } else if (relationship == 'pending') {
       primary = OutlinedButton(
         onPressed: busy ? null : onCancel,
@@ -947,6 +1027,22 @@ class _ActionRow extends StatelessWidget {
             ],
           ],
         ),
+        if (relationship == 'accepted' &&
+            !canMessage &&
+            !requiresUpgrade &&
+            messagingHint != null &&
+            messagingHint!.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            messagingHint!,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: textSecondary,
+              height: 1.3,
+            ),
+          ),
+        ],
         if (showUpgradeCta) ...[
           const SizedBox(height: 8),
           TextButton(
