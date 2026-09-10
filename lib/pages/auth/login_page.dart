@@ -502,7 +502,7 @@ class _OAuthProviderButton extends StatelessWidget {
 
   final String label;
   final String semanticLabel;
-  final IconData icon;
+  final FaIconData icon;
   final bool isLoading;
   final VoidCallback onPressed;
 
