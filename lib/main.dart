@@ -30,8 +30,13 @@ void main() async {
     }
   });
 
-  await WaterReminderService.instance.ensureInitialized();
-  await WaterReminderService.instance.rescheduleIfEnabled();
+  try {
+    await WaterReminderService.instance.ensureInitialized();
+    await WaterReminderService.instance.rescheduleIfEnabled();
+  } catch (error, stackTrace) {
+    debugPrint('Water reminder initialization skipped: $error');
+    debugPrint('$stackTrace');
+  }
 
   runApp(const ProviderScope(child: MyApp()));
 }

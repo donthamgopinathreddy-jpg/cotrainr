@@ -37,6 +37,11 @@ class WaterReminderService {
 
   Future<void> ensureInitialized() async {
     if (_initialized) return;
+    // dart:io Platform throws on web, and this plugin has no web implementation.
+    if (kIsWeb) {
+      _initialized = true;
+      return;
+    }
 
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
     const darwinInit = DarwinInitializationSettings(
@@ -44,10 +49,14 @@ class WaterReminderService {
       requestBadgePermission: false,
       requestSoundPermission: false,
     );
+    const linuxInit = LinuxInitializationSettings(
+      defaultActionName: 'Open notification',
+    );
     const initSettings = InitializationSettings(
       android: androidInit,
       iOS: darwinInit,
       macOS: darwinInit,
+      linux: linuxInit,
     );
 
     await _plugin.initialize(
@@ -210,6 +219,7 @@ class WaterReminderService {
   Future<void> disable() => setIntervalMinutes(0);
 
   Future<void> rescheduleIfEnabled() async {
+    if (kIsWeb) return;
     final minutes = await getIntervalMinutes();
     if (minutes <= 0) return;
 
