@@ -277,6 +277,12 @@ class _ScheduleSessionPageState extends State<ScheduleSessionPage> {
     } catch (e, s) {
       VideoSessionErrorMessages.log('createSession', e, s);
       if (!mounted) return;
+      final code = e is VideoSessionCreateException ? e.code : null;
+      _requestId = clientRequestIdAfterCreateFailure(
+        current: _requestId,
+        failureCode: code,
+        mint: () => _requestId ?? '',
+      );
       showHubSnackBar(context, VideoSessionErrorMessages.forCreate(e));
     } finally {
       if (mounted) setState(() => _loading = false);

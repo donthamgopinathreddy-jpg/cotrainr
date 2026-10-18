@@ -23,6 +23,8 @@ abstract final class VideoSessionErrorMessages {
   static const loadSession = 'Could not load this session. Try again.';
   static const loadSessions = 'Could not load sessions. Pull to retry.';
   static const createSession = 'Could not create the session. Try again.';
+  static const creationUncertain =
+      'This session could not be confirmed. Submit the same details again from this screen.';
   static const updateSession = 'Could not update the session. Try again.';
   static const cancelSession = 'Could not cancel the session. Try again.';
   static const saveResponse = 'Could not save your response. Try again.';
@@ -57,8 +59,12 @@ abstract final class VideoSessionErrorMessages {
   static String forLoadSessions(Object? error) =>
       isNetwork(error) ? network : loadSessions;
 
-  static String forCreate(Object? error) =>
-      isNetwork(error) ? network : createSession;
+  static String forCreate(Object? error) {
+    if (isNetwork(error)) return network;
+    final code = error is VideoSessionResponseCode ? error.responseCode : null;
+    if (code == 'CREATION_UNCERTAIN') return creationUncertain;
+    return createSession;
+  }
 
   static String forUpdate(Object? error) =>
       isNetwork(error) ? network : updateSession;

@@ -24,6 +24,21 @@ void _logPostgrestError(String operation, Object error) {
   debugPrint('[VideoSessionsRepository] $operation error=$error');
 }
 
+/// Maps cancel_my_video_session failures to client codes.
+///
+/// The server message is matched only for these fixed exception texts.
+/// Anything else stays a failed cancel and is not treated as success.
+String cancelSessionFailureCode({String? sqlState, required String message}) {
+  final text = message.toLowerCase();
+  if (text.contains('not_authenticated')) return 'UNAUTHORIZED';
+  if (text.contains('account_restricted')) return 'ACCOUNT_RESTRICTED';
+  if (text.contains('not_session_host')) return 'FORBIDDEN';
+  if (sqlState == '42501' && text.contains('not_authenticated')) {
+    return 'UNAUTHORIZED';
+  }
+  return 'CANCEL_NOT_APPLIED';
+}
+
 bool isVideoSessionUuid(String value) {
   final v = value.trim();
   return RegExp(
@@ -377,6 +392,25 @@ class GoogleMeetIntegrationStatus {
       phase == GoogleMeetStatusPhase.ready && needsConnect;
 }
 
+/// Keeps the id that already identified a create.
+///
+/// [CREATION_UNCERTAIN] means Meet may already have allocated a space.
+/// A newly minted id would hide that attempt. Other failures also keep a
+/// caller-supplied id so a confirmed rejection can be retried.
+String clientRequestIdAfterCreateFailure({
+  required String? current,
+  required String? failureCode,
+  required String Function() mint,
+}) {
+  if (current != null && current.isNotEmpty) return current;
+  if (failureCode == 'CREATION_UNCERTAIN') {
+    throw ArgumentError(
+      'CREATION_UNCERTAIN requires the original client_request_id',
+    );
+  }
+  return mint();
+}
+
 class VideoSessionCreateException
     implements Exception, VideoSessionResponseCode {
   final String message;
@@ -396,6 +430,7 @@ class VideoSessionsRepository {
       : _supabase = client ?? Supabase.instance.client;
 
   final SupabaseClient _supabase;
+  String? _retainedUncertainRequestId;
 
   /// Server-authoritative Google Meet connection state.
   ///
@@ -665,8 +700,14 @@ class VideoSessionsRepository {
     List<String> participantIds = const [],
     String? clientRequestId,
   }) async {
-    final requestId = clientRequestId ??
-        '${DateTime.now().millisecondsSinceEpoch}-${_supabase.auth.currentUser?.id ?? 'anon'}';
+    final requestId = clientRequestIdAfterCreateFailure(
+      current: clientRequestId ?? _retainedUncertainRequestId,
+      failureCode: clientRequestId == null && _retainedUncertainRequestId != null
+          ? 'CREATION_UNCERTAIN'
+          : null,
+      mint: () =>
+          '${DateTime.now().millisecondsSinceEpoch}-${_supabase.auth.currentUser?.id ?? 'anon'}',
+    );
 
     final res = await _supabase.functions.invoke(
       'create-video-session',
@@ -687,8 +728,12 @@ class VideoSessionsRepository {
       final map = res.data is Map ? Map<String, dynamic>.from(res.data as Map) : null;
       final err = map?['error']?.toString() ?? 'Failed to create session';
       final code = map?['code']?.toString();
+      if (code == 'CREATION_UNCERTAIN') {
+        _retainedUncertainRequestId = requestId;
+      }
       throw VideoSessionCreateException(err, code: code);
     }
+    _retainedUncertainRequestId = null;
 
     final data = Map<String, dynamic>.from(res.data as Map);
     return VideoSession.fromJson({
@@ -704,10 +749,8 @@ class VideoSessionsRepository {
 
   /// Cancels a session the caller hosts.
   ///
-  /// The `host_id` filter is defence-in-depth only; RLS is the real gate. An
-  /// RLS denial or a non-existent id updates zero rows and returns no error,
-  /// so the affected rows are checked explicitly rather than reporting success
-  /// for a write that never happened.
+  /// Status is not writable by the client. The RPC binds the row to auth.uid()
+  /// and is a no-op when the session is already cancelled.
   Future<void> cancelSession(String sessionId) async {
     final me = _supabase.auth.currentUser?.id;
     if (me == null) {
@@ -716,21 +759,22 @@ class VideoSessionsRepository {
         code: 'UNAUTHORIZED',
       );
     }
-
-    final rows = await _supabase
-        .from('video_sessions')
-        .update({
-          'status': 'cancelled',
-          'updated_at': DateTime.now().toUtc().toIso8601String(),
-        })
-        .eq('id', sessionId)
-        .eq('host_id', me)
-        .select('id');
-
-    if (rows is! List || rows.isEmpty) {
+    if (!isVideoSessionUuid(sessionId)) {
       throw VideoSessionCreateException(
         'cancel_not_applied',
         code: 'CANCEL_NOT_APPLIED',
+      );
+    }
+
+    try {
+      await _supabase.rpc(
+        'cancel_my_video_session',
+        params: {'p_session_id': sessionId},
+      );
+    } on PostgrestException catch (e) {
+      throw VideoSessionCreateException(
+        'cancel_not_applied',
+        code: cancelSessionFailureCode(sqlState: e.code, message: e.message),
       );
     }
   }
@@ -756,10 +800,11 @@ class VideoSessionsRepository {
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     };
 
-    if (!preserveJoinUrl && joinUrl != null) {
-      final linkError = MeetingLinkRules.validateHttpsMeetingLink(joinUrl);
-      if (linkError != null) throw Exception(linkError);
-      updates['join_url'] = joinUrl.trim();
+    if (!preserveJoinUrl || joinUrl != null) {
+      throw VideoSessionCreateException(
+        'join_url_locked',
+        code: 'JOIN_URL_LOCKED',
+      );
     }
 
     final res = await _supabase

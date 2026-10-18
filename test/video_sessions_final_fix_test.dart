@@ -153,6 +153,33 @@ void main() {
       expect(shown, isNot(contains('meet_api_failed')));
     });
 
+    test('uncertain create keeps the same client request id and copy', () {
+      const current = 'vs-1760780000000000-12345';
+      final kept = clientRequestIdAfterCreateFailure(
+        current: current,
+        failureCode: 'CREATION_UNCERTAIN',
+        mint: () => 'minted-id',
+      );
+      expect(kept, current);
+      expect(
+        () => clientRequestIdAfterCreateFailure(
+          current: null,
+          failureCode: 'CREATION_UNCERTAIN',
+          mint: () => 'minted-id',
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        VideoSessionErrorMessages.forCreate(
+          VideoSessionCreateException('raw', code: 'CREATION_UNCERTAIN'),
+        ),
+        VideoSessionErrorMessages.creationUncertain,
+      );
+      final src = _source('lib/pages/video_sessions/schedule_session_page.dart');
+      expect(src.contains('clientRequestIdAfterCreateFailure'), isTrue);
+      expect(src.contains("clientRequestId: _requestId"), isTrue);
+    });
+
     test('create failure on a dropped connection asks about connectivity', () {
       final shown = VideoSessionErrorMessages.forCreate(
         const SocketException('Failed host lookup: supabase.co'),
@@ -499,22 +526,21 @@ void main() {
   // -------------------------------------------------------------------------
 
   group('cancelSession result', () {
-    // A no-row update (RLS denial or wrong id) returns success from PostgREST,
-    // so the repository must inspect the affected rows. That path needs a live
-    // PostgREST response to exercise end to end; the contract is asserted here
-    // and verified on device via the deployment checklist.
-    test('the update is verified instead of assumed', () {
+    test('cancel uses the host RPC and does not write status directly', () {
       final src = _source('lib/repositories/video_sessions_repository.dart');
       final start = src.indexOf('Future<void> cancelSession');
       expect(start, greaterThan(-1));
-      final method = src.substring(start, src.indexOf('}', src.indexOf('CANCEL_NOT_APPLIED')));
+      final method = src.substring(
+        start,
+        src.indexOf('Future<VideoSession> updateSession'),
+      );
 
-      expect(method.contains(".select('id')"), isTrue);
-      expect(method.contains('rows is! List || rows.isEmpty'), isTrue);
+      expect(method.contains("'cancel_my_video_session'"), isTrue);
+      expect(method.contains("'p_session_id': sessionId"), isTrue);
+      expect(method.contains("code: 'UNAUTHORIZED'"), isTrue);
       expect(method.contains('CANCEL_NOT_APPLIED'), isTrue);
-      // The authorization model is unchanged: still id + host_id, RLS enforced.
-      expect(method.contains(".eq('id', sessionId)"), isTrue);
-      expect(method.contains(".eq('host_id', me)"), isTrue);
+      expect(method.contains(".update("), isFalse);
+      expect(method.contains("'status': 'cancelled'"), isFalse);
     });
 
     test('a failed cancel cannot report success in the UI', () {
