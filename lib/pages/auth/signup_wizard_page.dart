@@ -2276,47 +2276,16 @@ class _PasswordChip extends StatelessWidget {
             width: isValid ? 1.5 : 1,
           ),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 250),
-              transitionBuilder: (child, animation) {
-                return ScaleTransition(
-                  scale: Tween<double>(begin: 0.0, end: 1.0).animate(
-                    CurvedAnimation(
-                      parent: animation,
-                      curve: Curves.easeOutBack,
-                    ),
-                  ),
-                  child: FadeTransition(
-                    opacity: animation,
-                    child: child,
-                  ),
-                );
-              },
-              child: Icon(
-                isValid ? Icons.check_circle : Icons.close,
-                key: ValueKey(isValid),
-                size: 14,
-                color: isValid
-                  ? AuthTheme.success(context)
-                  : AuthTheme.mutedText(context),
-              ),
-            ),
-            const SizedBox(width: 4),
-            AnimatedDefaultTextStyle(
-              duration: const Duration(milliseconds: 300),
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: isValid ? FontWeight.w600 : FontWeight.w500,
-                color: isValid
-                  ? AuthTheme.success(context)
-                  : AuthTheme.mutedText(context),
-              ),
-              child: Text(label),
-            ),
-          ],
+        child: AnimatedDefaultTextStyle(
+          duration: const Duration(milliseconds: 300),
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: isValid ? FontWeight.w600 : FontWeight.w500,
+            color: isValid
+                ? AuthTheme.success(context)
+                : AuthTheme.mutedText(context),
+          ),
+          child: Text(label),
         ),
       ),
     );

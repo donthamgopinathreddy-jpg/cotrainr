@@ -53,7 +53,19 @@ class MemberPlanView {
       state == MemberPlanUiState.cancelledActive;
 
   /// Maps canonical [SubscriptionRow] (or null = no row → Free).
-  static MemberPlanView fromSubscription(SubscriptionRow? row) {
+  ///
+  /// [now] is the comparison clock. Production callers omit it. Tests pass a
+  /// fixed instant so status does not depend on the wall clock.
+  ///
+  /// `expires_at` is a timestamptz. A plan is past that instant when
+  /// `expires_at` is not strictly after [now], matching
+  /// `expires_at > now()` in subscription SQL. [DateTime.isAfter] compares
+  /// absolute instants, so a UTC value from PostgREST and a local clock
+  /// refer to the same moment.
+  static MemberPlanView fromSubscription(
+    SubscriptionRow? row, {
+    DateTime? now,
+  }) {
     if (row == null) {
       return const MemberPlanView(
         state: MemberPlanUiState.free,
@@ -66,8 +78,9 @@ class MemberPlanView {
     final planId = row.plan.toLowerCase().trim();
     final display = SubscriptionPlans.displayName(planId);
     final status = row.status.toLowerCase().trim();
+    final clock = now ?? DateTime.now();
     final expiredByDate =
-        row.expiresAt != null && !row.expiresAt!.isAfter(DateTime.now());
+        row.expiresAt != null && !row.expiresAt!.isAfter(clock);
 
     if (planId == SubscriptionPlans.free || planId.isEmpty) {
       return MemberPlanView(

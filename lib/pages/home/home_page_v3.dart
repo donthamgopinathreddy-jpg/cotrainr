@@ -97,16 +97,16 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
       curve: Curves.easeOut,
     );
     _fadeController.forward();
-    
+
     UserGoalsService.revision.addListener(_onGoalsRevisionChanged);
     WaterIntakeService.revision.addListener(_onWaterIntakeRevision);
-    
+
     // Load profile data first
     _loadProfileData();
     _loadStreak();
     _loadGoals();
     _loadCoachingData();
-    
+
     // Initialize health tracking + sync, then load week series.
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
@@ -117,12 +117,12 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
       if (mounted) await _loadMetrics();
     });
   }
-  
+
   Future<void> _loadProfileData() async {
     try {
       final supabase = Supabase.instance.client;
       final currentUser = supabase.auth.currentUser;
-      
+
       if (currentUser == null) {
         if (mounted) {
           setState(() {
@@ -133,19 +133,20 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
         }
         return;
       }
-      
-      final list = (await supabase.rpc('get_my_profile') as List).cast<Map<String, dynamic>>();
+
+      final list = (await supabase.rpc('get_my_profile') as List)
+          .cast<Map<String, dynamic>>();
       final profile = list.isNotEmpty ? list.first : null;
-      
+
       if (!mounted) return;
-      
+
       if (profile != null) {
         final fullName = profile['full_name'] as String?;
         final username = profile['username'] as String?;
         final avatarUrl = profile['avatar_url'] as String?;
         final coverUrl = profile['cover_url'] as String?;
-        final heightCm = (profile['height_cm'] as num?)?.toDouble();
-        final weightKg = (profile['weight_kg'] as num?)?.toDouble();
+        final heightCm = parseMetricDouble(profile['height_cm']);
+        final weightKg = parseMetricDouble(profile['weight_kg']);
         final gender = profile['gender'] as String?;
         final dobStr = profile['date_of_birth'] as String?;
         int? age;
@@ -154,25 +155,27 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
             final dob = DateTime.parse(dobStr);
             final now = DateTime.now();
             age = now.year - dob.year;
-            if (now.month < dob.month || (now.month == dob.month && now.day < dob.day)) {
+            if (now.month < dob.month ||
+                (now.month == dob.month && now.day < dob.day)) {
               age = age - 1;
             }
           } catch (_) {}
         }
-        
+
         final newUsername = fullName != null && fullName.trim().isNotEmpty
             ? fullName.trim()
-            : (username != null && username.isNotEmpty
-                ? username
-                : '');
-        
+            : (username != null && username.isNotEmpty ? username : '');
+
         double newBmi = 0.0;
         String newBmiStatus = '';
-        if (heightCm != null && heightCm > 0 && weightKg != null && weightKg > 0) {
+        if (heightCm != null &&
+            heightCm > 0 &&
+            weightKg != null &&
+            weightKg > 0) {
           newBmi = ProfileRepository.calculateBMI(heightCm, weightKg);
           newBmiStatus = ProfileRepository.getBMIStatus(newBmi);
         }
-        
+
         setState(() {
           _username = newUsername;
           _avatarUrl = avatarUrl;
@@ -188,9 +191,11 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
         });
 
         ref.read(healthTrackingServiceProvider).setUserHeightCm(heightCm);
-        
+
         if (avatarUrl != null && avatarUrl.isNotEmpty) {
-          ref.read(profileImagesProvider.notifier).updateProfileImage(avatarUrl);
+          ref
+              .read(profileImagesProvider.notifier)
+              .updateProfileImage(avatarUrl);
         }
         if (coverUrl != null && coverUrl.isNotEmpty) {
           ref.read(profileImagesProvider.notifier).updateCoverImage(coverUrl);
@@ -218,7 +223,7 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
       }
     }
   }
-  
+
   Future<void> _refreshNotificationBadge() async {
     ref.invalidate(unreadNotificationsCountProvider);
   }
@@ -305,13 +310,9 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
         );
       }
       // Same source as notification quick-actions / Insights water metric.
-      final todayWater =
-          await WaterIntakeService.instance.getTodayLiters();
+      final todayWater = await WaterIntakeService.instance.getTodayLiters();
 
-      List<double> seriesFromRows(
-        List<Map<String, dynamic>> rows,
-        String key,
-      ) {
+      List<double> seriesFromRows(List<Map<String, dynamic>> rows, String key) {
         final now = DateTime.now();
         final dates = List.generate(7, (i) {
           final d = now.subtract(Duration(days: 6 - i));
@@ -323,7 +324,7 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
           if (dateStr == null) continue;
           // Normalize date keys (handle timestamp or date-only).
           final keyDate = dateStr.split('T').first;
-          map[keyDate] = ((row[key] as num?) ?? 0).toDouble();
+          map[keyDate] = parseMetricDoubleOrZero(row[key]);
         }
         return dates
             .map((d) => map[d.toIso8601String().split('T')[0]] ?? 0.0)
@@ -335,11 +336,13 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
       setState(() {
         _metricsError = false;
         if (todayMetrics != null) {
-          _currentSteps = (todayMetrics['steps'] as int?) ?? 0;
-          _currentCalories =
-              (todayMetrics['calories_burned'] as num?)?.toDouble() ?? 0.0;
-          _currentDistance =
-              (todayMetrics['distance_km'] as num?)?.toDouble() ?? 0.0;
+          _currentSteps = parseMetricIntOrZero(todayMetrics['steps']);
+          _currentCalories = parseMetricDoubleOrZero(
+            todayMetrics['calories_burned'],
+          );
+          _currentDistance = parseMetricDoubleOrZero(
+            todayMetrics['distance_km'],
+          );
           _currentWater = todayWater;
         } else {
           _currentWater = todayWater;
@@ -368,7 +371,8 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
         }
         if (_caloriesWeeklyData.isNotEmpty &&
             _currentCalories > _caloriesWeeklyData.last) {
-          _caloriesWeeklyData[_caloriesWeeklyData.length - 1] = _currentCalories;
+          _caloriesWeeklyData[_caloriesWeeklyData.length - 1] =
+              _currentCalories;
         }
         if (_waterWeeklyData.isNotEmpty &&
             _currentWater > _waterWeeklyData.last) {
@@ -493,326 +497,334 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
               parent: BouncingScrollPhysics(),
             ),
             slivers: [
-          SliverToBoxAdapter(
-            child: _animated(
-              HeroHeaderV3(
-                username: _username,
-                usernameLoading: _profileLoading,
-                notificationCount: ref.watch(unreadNotificationsCountProvider).maybeWhen(
-                      data: (c) => c,
-                      orElse: () => 0,
-                    ),
-                // Prefer provider: it updates immediately on edit profile (crop + upload).
-                // `_coverImageUrl` / `_avatarUrl` are one-shot RPC cache and would stay stale.
-                coverImageUrl: ref.watch(profileImagesProvider).coverImagePath ??
-                    _coverImageUrl,
-                avatarUrl: ref.watch(profileImagesProvider).profileImagePath ??
-                    _avatarUrl,
-                streakDays: _streakDays,
-                coachingInsights: coachingInsights,
-                onNotificationTap: () async {
-                  await context.push('/notifications');
-                  if (mounted) _refreshNotificationBadge();
-                },
-              ),
-              0,
-            ),
-          ),
-          if (_profileError)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: HomeSectionError(
-                  message: 'Couldn’t load profile',
-                  onRetry: _loadProfileData,
+              SliverToBoxAdapter(
+                child: _animated(
+                  HeroHeaderV3(
+                    username: _username,
+                    usernameLoading: _profileLoading,
+                    notificationCount: ref
+                        .watch(unreadNotificationsCountProvider)
+                        .maybeWhen(data: (c) => c, orElse: () => 0),
+                    // Prefer provider: it updates immediately on edit profile (crop + upload).
+                    // `_coverImageUrl` / `_avatarUrl` are one-shot RPC cache and would stay stale.
+                    coverImageUrl:
+                        ref.watch(profileImagesProvider).coverImagePath ??
+                        _coverImageUrl,
+                    avatarUrl:
+                        ref.watch(profileImagesProvider).profileImagePath ??
+                        _avatarUrl,
+                    streakDays: _streakDays,
+                    coachingInsights: coachingInsights,
+                    onNotificationTap: () async {
+                      await context.push('/notifications');
+                      if (mounted) _refreshNotificationBadge();
+                    },
+                  ),
+                  0,
                 ),
               ),
-            ),
-          SliverToBoxAdapter(
-            child: Padding(
-              // Top 12 below strip; bottom 24 offsets Steps' Transform.translate(-8)
-              // so painted gap to Steps stays ~16 without changing Steps itself.
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-              child: _animated(
-                _safeSection(context, const HomeCommunityEventCard()),
-                40,
+              if (_profileError)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    child: HomeSectionError(
+                      message: 'Couldn’t load profile',
+                      onRetry: _loadProfileData,
+                    ),
+                  ),
+                ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  // Top 12 below strip; bottom 24 offsets Steps' Transform.translate(-8)
+                  // so painted gap to Steps stays ~16 without changing Steps itself.
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                  child: _animated(
+                    _safeSection(context, const HomeCommunityEventCard()),
+                    40,
+                  ),
+                ),
               ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Transform.translate(
-              offset: const Offset(0, -8),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: _animated(
-                  _safeSection(
-                    context,
-                    UnifiedMetricsTileV3(
-                      goalsLoading: !_goalsReady,
-                      metrics: [
-                        UnifiedMetricViewModel(
-                          label: 'STEPS',
-                          icon: Icons.directions_walk_outlined,
-                          selectedIcon: Icons.directions_walk,
-                          ringGradient: AppColors.stepsGradient,
-                          barColor: AppColors.orange,
-                          progress: stepsMetric.available
-                              ? safeMetricProgress(
-                                  currentSteps.toDouble(),
-                                  _goalSteps.toDouble(),
-                                )
-                              : 0.0,
-                          mainValue: stepsMetric.available
-                              ? stepsMetric.displayInt
-                              : '—',
-                          subValue:
-                              'of ${_goalSteps >= 1000 ? '${(_goalSteps / 1000).toStringAsFixed(1)}k' : '$_goalSteps'} steps',
-                          weekly: List<double>.from(_stepsWeeklyData),
-                          todayValue: currentSteps.toDouble(),
-                          goalValue: _goalSteps.toDouble(),
-                        ),
-                        UnifiedMetricViewModel(
-                          label: 'ACTIVE CALORIES',
-                          icon: Icons.local_fire_department_outlined,
-                          selectedIcon: Icons.local_fire_department,
-                          ringGradient: AppColors.caloriesGradient,
-                          barColor: const Color(0xFFFF6B6B),
-                          progress: caloriesMetric.available
-                              ? safeMetricProgress(
-                                  currentCalories.toDouble(),
-                                  _goalCalories.toDouble(),
-                                )
-                              : 0.0,
-                          mainValue: caloriesMetric.available
-                              ? '$currentCalories'
-                              : '—',
-                          subValue: 'kcal · goal $_goalCalories',
-                          sourceNote: caloriesSourceNote,
-                          weekly: List<double>.from(_caloriesWeeklyData),
-                          todayValue: currentCalories.toDouble(),
-                          goalValue: _goalCalories.toDouble(),
-                        ),
-                        UnifiedMetricViewModel(
-                          label: 'WATER',
-                          icon: Icons.water_drop_outlined,
-                          selectedIcon: Icons.water_drop,
-                          ringGradient: AppColors.waterGradient,
-                          barColor: AppColors.cyan,
-                          progress: safeMetricProgress(
-                            _currentWater,
-                            _goalWater,
-                          ),
-                          mainValue: _currentWater.toStringAsFixed(1),
-                          subValue: 'of ${_goalWater.toStringAsFixed(1)} L',
-                          weekly: List<double>.from(_waterWeeklyData),
-                          todayValue: _currentWater,
-                          goalValue: _goalWater,
-                        ),
-                        UnifiedMetricViewModel(
-                          label: 'DISTANCE',
-                          icon: Icons.location_on_outlined,
-                          selectedIcon: Icons.location_on,
-                          ringGradient: AppColors.distanceGradient,
-                          barColor: AppColors.purple,
-                          progress: distanceMetric.available
-                              ? safeMetricProgress(
-                                  currentDistance,
-                                  _goalDistance,
-                                )
-                              : 0.0,
-                          mainValue: distanceMetric.available
-                              ? distanceMetric.displayOneDecimal
-                              : '—',
-                          subValue:
-                              'km · goal ${_goalDistance.toStringAsFixed(1)}',
-                          sourceNote: distanceSourceNote,
-                          weekly: List<double>.from(_distanceWeeklyData),
-                          todayValue: currentDistance,
-                          goalValue: _goalDistance,
-                        ),
-                      ],
-                      onMetricTap: (i) async {
-                        List<double> weekWithToday(
-                          List<double> week,
-                          double today,
-                        ) {
-                          final w = List<double>.from(week);
-                          while (w.length < 7) {
-                            w.insert(0, 0);
-                          }
-                          if (w.length > 7) {
-                            w.removeRange(0, w.length - 7);
-                          }
-                          if (today > w.last) {
-                            w[w.length - 1] = today;
-                          }
-                          return w;
-                        }
+              SliverToBoxAdapter(
+                child: Transform.translate(
+                  offset: const Offset(0, -8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: _animated(
+                      _safeSection(
+                        context,
+                        UnifiedMetricsTileV3(
+                          goalsLoading: !_goalsReady,
+                          metrics: [
+                            UnifiedMetricViewModel(
+                              label: 'STEPS',
+                              icon: Icons.directions_walk_outlined,
+                              selectedIcon: Icons.directions_walk,
+                              ringGradient: AppColors.stepsGradient,
+                              barColor: AppColors.orange,
+                              progress: stepsMetric.available
+                                  ? safeMetricProgress(
+                                      currentSteps.toDouble(),
+                                      _goalSteps.toDouble(),
+                                    )
+                                  : 0.0,
+                              mainValue: stepsMetric.available
+                                  ? stepsMetric.displayInt
+                                  : '—',
+                              subValue:
+                                  'of ${_goalSteps >= 1000 ? '${(_goalSteps / 1000).toStringAsFixed(1)}k' : '$_goalSteps'} steps',
+                              weekly: List<double>.from(_stepsWeeklyData),
+                              todayValue: currentSteps.toDouble(),
+                              goalValue: _goalSteps.toDouble(),
+                            ),
+                            UnifiedMetricViewModel(
+                              label: 'ACTIVE CALORIES',
+                              icon: Icons.local_fire_department_outlined,
+                              selectedIcon: Icons.local_fire_department,
+                              ringGradient: AppColors.caloriesGradient,
+                              barColor: const Color(0xFFFF6B6B),
+                              progress: caloriesMetric.available
+                                  ? safeMetricProgress(
+                                      currentCalories.toDouble(),
+                                      _goalCalories.toDouble(),
+                                    )
+                                  : 0.0,
+                              mainValue: caloriesMetric.available
+                                  ? '$currentCalories'
+                                  : '—',
+                              subValue: 'kcal · goal $_goalCalories',
+                              sourceNote: caloriesSourceNote,
+                              weekly: List<double>.from(_caloriesWeeklyData),
+                              todayValue: currentCalories.toDouble(),
+                              goalValue: _goalCalories.toDouble(),
+                            ),
+                            UnifiedMetricViewModel(
+                              label: 'WATER',
+                              icon: Icons.water_drop_outlined,
+                              selectedIcon: Icons.water_drop,
+                              ringGradient: AppColors.waterGradient,
+                              barColor: AppColors.cyan,
+                              progress: safeMetricProgress(
+                                _currentWater,
+                                _goalWater,
+                              ),
+                              mainValue: _currentWater.toStringAsFixed(1),
+                              subValue: 'of ${_goalWater.toStringAsFixed(1)} L',
+                              weekly: List<double>.from(_waterWeeklyData),
+                              todayValue: _currentWater,
+                              goalValue: _goalWater,
+                            ),
+                            UnifiedMetricViewModel(
+                              label: 'DISTANCE',
+                              icon: Icons.location_on_outlined,
+                              selectedIcon: Icons.location_on,
+                              ringGradient: AppColors.distanceGradient,
+                              barColor: AppColors.purple,
+                              progress: distanceMetric.available
+                                  ? safeMetricProgress(
+                                      currentDistance,
+                                      _goalDistance,
+                                    )
+                                  : 0.0,
+                              mainValue: distanceMetric.available
+                                  ? distanceMetric.displayOneDecimal
+                                  : '—',
+                              subValue:
+                                  'km · goal ${_goalDistance.toStringAsFixed(1)}',
+                              sourceNote: distanceSourceNote,
+                              weekly: List<double>.from(_distanceWeeklyData),
+                              todayValue: currentDistance,
+                              goalValue: _goalDistance,
+                            ),
+                          ],
+                          onMetricTap: (i) async {
+                            List<double> weekWithToday(
+                              List<double> week,
+                              double today,
+                            ) {
+                              final w = List<double>.from(week);
+                              while (w.length < 7) {
+                                w.insert(0, 0);
+                              }
+                              if (w.length > 7) {
+                                w.removeRange(0, w.length - 7);
+                              }
+                              if (today > w.last) {
+                                w[w.length - 1] = today;
+                              }
+                              return w;
+                            }
 
-                        switch (i) {
-                          case 0:
-                            await context.push(
-                              '/insights/steps',
-                              extra: InsightArgs(
-                                MetricType.steps,
-                                weekWithToday(
-                                  _stepsWeeklyData,
-                                  currentSteps.toDouble(),
-                                ),
-                                goal: _goalSteps.toDouble(),
-                              ),
+                            switch (i) {
+                              case 0:
+                                await context.push(
+                                  '/insights/steps',
+                                  extra: InsightArgs(
+                                    MetricType.steps,
+                                    weekWithToday(
+                                      _stepsWeeklyData,
+                                      currentSteps.toDouble(),
+                                    ),
+                                    goal: _goalSteps.toDouble(),
+                                  ),
+                                );
+                                break;
+                              case 1:
+                                await context.push(
+                                  '/insights/calories',
+                                  extra: InsightArgs(
+                                    MetricType.calories,
+                                    weekWithToday(
+                                      _caloriesWeeklyData,
+                                      currentCalories.toDouble(),
+                                    ),
+                                    goal: _goalCalories.toDouble(),
+                                    sourceNote: liveMetrics
+                                        ?.caloriesSource
+                                        .insightsNote,
+                                  ),
+                                );
+                                break;
+                              case 2:
+                                await context.push(
+                                  '/insights/water',
+                                  extra: InsightArgs(
+                                    MetricType.water,
+                                    weekWithToday(
+                                      _waterWeeklyData,
+                                      _currentWater,
+                                    ),
+                                    goal: _goalWater,
+                                  ),
+                                );
+                                break;
+                              case 3:
+                                await context.push(
+                                  '/insights/distance',
+                                  extra: InsightArgs(
+                                    MetricType.distance,
+                                    weekWithToday(
+                                      _distanceWeeklyData,
+                                      currentDistance,
+                                    ),
+                                    goal: _goalDistance,
+                                    sourceNote: liveMetrics
+                                        ?.distanceSource
+                                        .insightsNote,
+                                  ),
+                                );
+                                break;
+                            }
+                            if (mounted) await _loadGoals();
+                          },
+                          onAddWater: () async {
+                            const waterToAdd = 0.25;
+                            final oldWater = _currentWater;
+                            setState(
+                              () => _currentWater = _currentWater + waterToAdd,
                             );
-                            break;
-                          case 1:
-                            await context.push(
-                              '/insights/calories',
-                              extra: InsightArgs(
-                                MetricType.calories,
-                                weekWithToday(
-                                  _caloriesWeeklyData,
-                                  currentCalories.toDouble(),
-                                ),
-                                goal: _goalCalories.toDouble(),
-                                sourceNote: liveMetrics?.caloriesSource
-                                    .insightsNote,
-                              ),
-                            );
-                            break;
-                          case 2:
-                            await context.push(
-                              '/insights/water',
-                              extra: InsightArgs(
-                                MetricType.water,
-                                weekWithToday(
-                                  _waterWeeklyData,
-                                  _currentWater,
-                                ),
-                                goal: _goalWater,
-                              ),
-                            );
-                            break;
-                          case 3:
-                            await context.push(
-                              '/insights/distance',
-                              extra: InsightArgs(
-                                MetricType.distance,
-                                weekWithToday(
-                                  _distanceWeeklyData,
-                                  currentDistance,
-                                ),
-                                goal: _goalDistance,
-                                sourceNote: liveMetrics?.distanceSource
-                                    .insightsNote,
-                              ),
-                            );
-                            break;
-                        }
-                        if (mounted) await _loadGoals();
-                      },
-                      onAddWater: () async {
-                        const waterToAdd = 0.25;
-                        final oldWater = _currentWater;
-                        setState(
-                          () => _currentWater = _currentWater + waterToAdd,
-                        );
-                        final newWater =
-                            await WaterIntakeService.instance.addWater(
-                          waterToAdd,
-                        );
-                        if (!mounted) return;
-                        if (newWater == null) {
-                          setState(() => _currentWater = oldWater);
-                          return;
-                        }
-                        setState(() => _currentWater = newWater);
-                        ref
-                            .read(questProgressSyncServiceProvider)
-                            .onWaterUpdated(newWater);
+                            final newWater = await WaterIntakeService.instance
+                                .addWater(waterToAdd);
+                            if (!mounted) return;
+                            if (newWater == null) {
+                              setState(() => _currentWater = oldWater);
+                              return;
+                            }
+                            setState(() => _currentWater = newWater);
+                            ref
+                                .read(questProgressSyncServiceProvider)
+                                .onWaterUpdated(newWater);
+                          },
+                        ),
+                      ),
+                      100,
+                    ),
+                  ),
+                ),
+              ),
+              if (_metricsError)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    child: HomeSectionError(
+                      message: 'Couldn’t load health metrics',
+                      onRetry: () async {
+                        try {
+                          await ref.read(metricsSyncServiceProvider).syncNow();
+                        } catch (_) {}
+                        await _loadMetrics();
                       },
                     ),
                   ),
-                  100,
                 ),
-              ),
-            ),
-          ),
-          if (_metricsError)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: HomeSectionError(
-                  message: 'Couldn’t load health metrics',
-                  onRetry: () async {
-                    try {
-                      await ref.read(metricsSyncServiceProvider).syncNow();
-                    } catch (_) {}
-                    await _loadMetrics();
-                  },
-                ),
-              ),
-            ),
-          const SliverToBoxAdapter(child: SizedBox(height: 12)),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _animated(
-                _safeSection(
-                  context,
-                  InkWell(
-                    onTap: () => context.push('/bmi', extra: BmiDetailsArgs(
-                        bmi: _bmi,
-                        bmiStatus: _bmiStatus,
-                        heightCm: _heightCm,
-                        weightKg: _weightKg,
-                        gender: _gender,
-                        age: _age,
-                      )),
-                      borderRadius: BorderRadius.circular(28),
-                      child: BmiCardV3(
-                        bmi: _bmi,
-                        status: _bmiStatus,
-                        heightCm: _heightCm,
-                        weightKg: _weightKg,
+              const SliverToBoxAdapter(child: SizedBox(height: 12)),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _animated(
+                    _safeSection(
+                      context,
+                      InkWell(
+                        onTap: () => context.push(
+                          '/bmi',
+                          extra: BmiDetailsArgs(
+                            bmi: _bmi,
+                            bmiStatus: _bmiStatus,
+                            heightCm: _heightCm,
+                            weightKg: _weightKg,
+                            gender: _gender,
+                            age: _age,
+                          ),
+                        ),
+                        borderRadius: BorderRadius.circular(28),
+                        child: BmiCardV3(
+                          bmi: _bmi,
+                          status: _bmiStatus,
+                          heightCm: _heightCm,
+                          weightKg: _weightKg,
+                        ),
                       ),
                     ),
-                  ),
-                  180,
-                ),
-            ),
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 8)),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child:
-                  _animated(_safeSection(context, const QuickAccessV3()), 220),
-            ),
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 8)),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child:
-                  _animated(_safeSection(context, const HomeCentersPreview()), 260),
-            ),
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 16)),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: _animated(
-                _safeSection(
-                  context,
-                  HomeNavHintCards(
-                    onOpenMessagesTab: widget.onNavigateToMessagesTab,
-                    onOpenMealsTab: widget.onNavigateToMealsTab,
+                    180,
                   ),
                 ),
-                300,
               ),
-            ),
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 96)),
+              const SliverToBoxAdapter(child: SizedBox(height: 8)),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _animated(
+                    _safeSection(context, const QuickAccessV3()),
+                    220,
+                  ),
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 8)),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _animated(
+                    _safeSection(context, const HomeCentersPreview()),
+                    260,
+                  ),
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 16)),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _animated(
+                    _safeSection(
+                      context,
+                      HomeNavHintCards(
+                        onOpenMessagesTab: widget.onNavigateToMessagesTab,
+                        onOpenMealsTab: widget.onNavigateToMealsTab,
+                      ),
+                    ),
+                    300,
+                  ),
+                ),
+              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 96)),
             ],
           ),
         ),
@@ -822,10 +834,10 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
 
   Future<void> _onRefresh() async {
     HapticFeedback.mediumImpact();
-    
+
     // Sync metrics immediately
     await ref.read(metricsSyncServiceProvider).syncNow();
-    
+
     // Reload all data
     await Future.wait([
       _loadProfileData(),
@@ -835,7 +847,7 @@ class _HomePageV3State extends ConsumerState<HomePageV3>
       _loadMetrics(),
       _loadCoachingData(),
     ]);
-    
+
     // Refresh health tracking data
     ref.read(dailyMetricsProvider.notifier).refresh();
     ref.invalidate(homeCommunityEventProvider);

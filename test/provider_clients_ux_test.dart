@@ -52,7 +52,7 @@ Finder _tintedSurfaces(Color color) {
     if (widget is! Container) return false;
     final decoration = widget.decoration;
     if (decoration is! BoxDecoration) return false;
-    return decoration.color == color && decoration.border == null;
+    return decoration.color == color;
   });
 }
 
@@ -290,7 +290,7 @@ void main() {
     });
 
     testWidgets(
-      'light mode uses lavender tile and peach rows without borders',
+      'light mode uses lavender tile and peach rows',
       (tester) async {
         await _pumpSummary(
           tester,

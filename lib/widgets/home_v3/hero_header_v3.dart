@@ -42,10 +42,26 @@ class HeroHeaderV3 extends StatefulWidget {
 
 /// Slight desaturation to quiet busy photography behind text.
 const List<double> _kDesaturateMatrix = <double>[
-  0.88, 0.08, 0.08, 0, 0,
-  0.08, 0.82, 0.08, 0, 0,
-  0.08, 0.08, 0.88, 0, 0,
-  0, 0, 0, 1, 0,
+  0.88,
+  0.08,
+  0.08,
+  0,
+  0,
+  0.08,
+  0.82,
+  0.08,
+  0,
+  0,
+  0.08,
+  0.08,
+  0.88,
+  0,
+  0,
+  0,
+  0,
+  0,
+  1,
+  0,
 ];
 
 class _HeroHeaderV3State extends State<HeroHeaderV3>
@@ -124,26 +140,15 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
 
   Widget _brandedFallback(BuildContext context) {
     final isLight = Theme.of(context).brightness == Brightness.light;
-    final logo = CotrainrLogo(
-      height: 88,
-      variant: CotrainrLogoVariant.white,
-    );
+    final logo = CotrainrLogo(height: 88, variant: CotrainrLogoVariant.white);
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: isLight
-              ? const [
-                  Color(0xFFF8F9FB),
-                  Color(0xFFF2F2F7),
-                  Color(0xFFE8E8ED),
-                ]
-              : const [
-                  Color(0xFF1A237E),
-                  Color(0xFF4A148C),
-                  Color(0xFFBF360C),
-                ],
+              ? const [Color(0xFFF8F9FB), Color(0xFFF2F2F7), Color(0xFFE8E8ED)]
+              : const [Color(0xFF1A237E), Color(0xFF4A148C), Color(0xFFBF360C)],
         ),
       ),
       child: Center(
@@ -189,11 +194,14 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
                   children: [
                     _hasRealCover
                         ? ImageFiltered(
-                            imageFilter:
-                                ImageFilter.blur(sigmaX: 1.4, sigmaY: 1.4),
+                            imageFilter: ImageFilter.blur(
+                              sigmaX: 1.4,
+                              sigmaY: 1.4,
+                            ),
                             child: ColorFiltered(
-                              colorFilter:
-                                  ColorFilter.matrix(_kDesaturateMatrix),
+                              colorFilter: ColorFilter.matrix(
+                                _kDesaturateMatrix,
+                              ),
                               child: _buildCoverImage(context),
                             ),
                           )
@@ -313,26 +321,28 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
                             else if (widget.username.trim().isEmpty)
                               const SizedBox(height: 24)
                             else
-                            Text(
-                              widget.username,
-                              style: GoogleFonts.plusJakartaSans(
-                                fontSize: 22,
-                                fontWeight: FontWeight.w800,
-                                height: 1.15,
-                                letterSpacing: -0.5,
-                                color: Colors.white,
-                                shadows: [
-                                  Shadow(
-                                    color: Colors.black.withValues(alpha: 0.55),
-                                    offset: const Offset(0, 1),
-                                    blurRadius: 6,
-                                  ),
-                                ],
+                              Text(
+                                widget.username,
+                                style: GoogleFonts.plusJakartaSans(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w800,
+                                  height: 1.15,
+                                  letterSpacing: -0.5,
+                                  color: Colors.white,
+                                  shadows: [
+                                    Shadow(
+                                      color: Colors.black.withValues(
+                                        alpha: 0.55,
+                                      ),
+                                      offset: const Offset(0, 1),
+                                      blurRadius: 6,
+                                    ),
+                                  ],
+                                ),
+                                maxLines: 1,
+                                softWrap: true,
+                                overflow: TextOverflow.ellipsis,
                               ),
-                              maxLines: 1,
-                              softWrap: true,
-                              overflow: TextOverflow.ellipsis,
-                            ),
                           ],
                         ),
                       ),
@@ -395,12 +405,10 @@ class _HeroHeaderV3State extends State<HeroHeaderV3>
           const SizedBox(height: 12),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: CoachingInsightCarousel(
-              insights: widget.coachingInsights,
-            ),
+            child: CoachingInsightCarousel(insights: widget.coachingInsights),
           ),
         ],
-        const SizedBox(height: 18),
+        const SizedBox(height: 10),
       ],
     );
   }
@@ -446,45 +454,42 @@ class _SquircleAvatar extends StatelessWidget {
         child: DecoratedBox(
           decoration: BoxDecoration(
             borderRadius: borderRadius,
-            border: Border.all(
-              color: Colors.white,
-              width: 2.5,
-            ),
+            border: Border.all(color: Colors.white, width: 2.5),
             color: AppColors.surfaceSoft,
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(radius - 2),
             child: avatarUrl != null && avatarUrl!.isNotEmpty
                 ? (avatarUrl!.startsWith('http')
-                    ? CachedNetworkImage(
-                        imageUrl: avatarUrl!,
-                        fit: BoxFit.cover,
-                        width: size,
-                        height: size,
-                        placeholder: (_, __) => const Center(
-                          child: SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                      ? CachedNetworkImage(
+                          imageUrl: avatarUrl!,
+                          fit: BoxFit.cover,
+                          width: size,
+                          height: size,
+                          placeholder: (_, __) => const Center(
+                            child: SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
                           ),
-                        ),
-                        errorWidget: (_, __, ___) => const Icon(
-                          Icons.person_rounded,
-                          size: 36,
-                          color: AppColors.textPrimary,
-                        ),
-                      )
-                    : Image.file(
-                        File(avatarUrl!),
-                        fit: BoxFit.cover,
-                        width: size,
-                        height: size,
-                        errorBuilder: (_, __, ___) => const Icon(
-                          Icons.person_rounded,
-                          size: 36,
-                          color: AppColors.textPrimary,
-                        ),
-                      ))
+                          errorWidget: (_, __, ___) => const Icon(
+                            Icons.person_rounded,
+                            size: 36,
+                            color: AppColors.textPrimary,
+                          ),
+                        )
+                      : Image.file(
+                          File(avatarUrl!),
+                          fit: BoxFit.cover,
+                          width: size,
+                          height: size,
+                          errorBuilder: (_, __, ___) => const Icon(
+                            Icons.person_rounded,
+                            size: 36,
+                            color: AppColors.textPrimary,
+                          ),
+                        ))
                 : const Icon(
                     Icons.person_rounded,
                     size: 36,

@@ -8,6 +8,31 @@ double safeMetricProgress(double current, double goal) {
   return ratio.clamp(0.0, 1.0).toDouble();
 }
 
+/// Converts JSON/map/prefs metric values to [double] without unsafe casts.
+///
+/// Rejects [bool] (common prefs/JSON corruption) instead of casting to
+/// `num?`/`double?`, which throws: type 'bool' is not a subtype of type 'double?'.
+double? parseMetricDouble(dynamic value) {
+  if (value == null) return null;
+  if (value is bool) return null;
+  if (value is num) {
+    final d = value.toDouble();
+    return d.isFinite ? d : null;
+  }
+  if (value is String) {
+    final d = double.tryParse(value.trim());
+    if (d == null || !d.isFinite) return null;
+    return d;
+  }
+  return null;
+}
+
+double parseMetricDoubleOrZero(dynamic value) =>
+    parseMetricDouble(value) ?? 0.0;
+
+int parseMetricIntOrZero(dynamic value) =>
+    parseMetricDouble(value)?.round() ?? 0;
+
 /// Prefer live Health Connect when the permission is granted.
 /// If permission is off / source unavailable, keep last synced cache
 /// instead of presenting a fake measured zero.
@@ -38,8 +63,9 @@ ResolvedHomeMetric resolveHomeMetric({
   required bool Function(DailyMetricsSnapshot snapshot) permissionGranted,
   required double Function(DailyMetricsSnapshot snapshot) liveValue,
 }) {
-  final cachedSafe =
-      cached.isFinite ? cached.clamp(0, double.infinity).toDouble() : 0.0;
+  final cachedSafe = cached.isFinite
+      ? cached.clamp(0, double.infinity).toDouble()
+      : 0.0;
   if (live == null) {
     return ResolvedHomeMetric(value: cachedSafe, available: true);
   }
@@ -50,8 +76,9 @@ ResolvedHomeMetric resolveHomeMetric({
     return ResolvedHomeMetric.unavailable;
   }
   final liveV = liveValue(live);
-  final liveSafe =
-      liveV.isFinite ? liveV.clamp(0, double.infinity).toDouble() : 0.0;
+  final liveSafe = liveV.isFinite
+      ? liveV.clamp(0, double.infinity).toDouble()
+      : 0.0;
   final best = liveSafe >= cachedSafe ? liveSafe : cachedSafe;
   return ResolvedHomeMetric(value: best, available: true);
 }
@@ -107,7 +134,7 @@ List<double> weeklySeriesForLastSevenDays({
   for (final row in rows) {
     final dateStr = row['date'] as String?;
     if (dateStr == null) continue;
-    map[dateStr.split('T').first] = ((row[key] as num?) ?? 0).toDouble();
+    map[dateStr.split('T').first] = parseMetricDoubleOrZero(row[key]);
   }
   return dates
       .map((d) => map[d.toIso8601String().split('T')[0]] ?? 0.0)

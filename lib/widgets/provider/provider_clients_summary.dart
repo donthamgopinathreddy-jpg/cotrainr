@@ -218,6 +218,7 @@ class _SummaryTile extends StatelessWidget {
           decoration: BoxDecoration(
             color: HomePremiumTheme.clientsManagementSurface(isLight),
             borderRadius: BorderRadius.circular(16),
+            boxShadow: HomePremiumTheme.providerCardShadow(isLight),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -257,10 +258,7 @@ class _SummaryTile extends StatelessWidget {
                     label: 'Open My Clients',
                     child: IconButton(
                       onPressed: onOpenClients,
-                      icon: Icon(
-                        Icons.chevron_right_rounded,
-                        color: accent,
-                      ),
+                      icon: Icon(Icons.chevron_right_rounded, color: accent),
                       tooltip: 'Open My Clients',
                       constraints: const BoxConstraints(
                         minWidth: 44,
@@ -488,11 +486,7 @@ class _NextSessionRow extends StatelessWidget {
                     ],
                   ),
                 ),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  size: 20,
-                  color: accent,
-                ),
+                Icon(Icons.chevron_right_rounded, size: 20, color: accent),
               ],
             ),
           ),
@@ -563,11 +557,7 @@ class _ClientRow extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(
-                Icons.chevron_right_rounded,
-                color: accent,
-                size: 20,
-              ),
+              Icon(Icons.chevron_right_rounded, color: accent, size: 20),
             ],
           ),
         ),

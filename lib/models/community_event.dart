@@ -61,12 +61,17 @@ class CommunityEvent {
     );
   }
 
-  bool get isHappeningNow {
-    final now = DateTime.now();
-    return !now.isBefore(startsAt) && now.isBefore(endsAt);
-  }
+  /// True while [now] is at or after [startsAt] and still before [endsAt].
+  bool happeningAt(DateTime now) =>
+      !now.isBefore(startsAt) && now.isBefore(endsAt);
 
-  bool get hasEnded => !DateTime.now().isBefore(endsAt);
+  /// True when [now] is at or after [endsAt]. Equal to the end instant counts
+  /// as ended (`ends_at` is not still in the future).
+  bool endedAt(DateTime now) => !now.isBefore(endsAt);
+
+  bool get isHappeningNow => happeningAt(DateTime.now());
+
+  bool get hasEnded => endedAt(DateTime.now());
 
   bool get hasValidMapUrl {
     final u = mapUrl;
@@ -117,7 +122,7 @@ class CommunityEventCardData {
   EventJoinAvailability joinAvailability({DateTime? now}) {
     final n = now ?? DateTime.now();
     if (isRegistered) return EventJoinAvailability.joined;
-    if (event.hasEnded || !n.isBefore(event.endsAt)) {
+    if (event.endedAt(n)) {
       return EventJoinAvailability.ended;
     }
     if (!event.registrationEnabled) return EventJoinAvailability.disabled;

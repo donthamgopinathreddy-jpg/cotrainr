@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:cotrainr/config/feature_flags.dart';
 import 'package:cotrainr/models/community_event.dart';
 import 'package:cotrainr/providers/community_events_provider.dart';
 import 'package:cotrainr/theme/app_theme.dart';
@@ -157,6 +158,39 @@ void main() {
       );
       expect(card.joinAvailability(now: now), EventJoinAvailability.ended);
     });
+
+    test('start and end instants use the injected clock', () {
+      final starts = DateTime(2026, 9, 20, 9, 0);
+      final ends = DateTime(2026, 9, 20, 11, 0);
+      final card = _card(event: _event(startsAt: starts, endsAt: ends));
+
+      expect(
+        card.joinAvailability(now: starts.subtract(const Duration(seconds: 1))),
+        EventJoinAvailability.canJoin,
+      );
+      expect(
+        card.joinAvailability(now: starts),
+        EventJoinAvailability.canJoin,
+      );
+      expect(
+        card.joinAvailability(now: ends.subtract(const Duration(seconds: 1))),
+        EventJoinAvailability.canJoin,
+      );
+      expect(
+        card.joinAvailability(now: ends),
+        EventJoinAvailability.ended,
+      );
+      expect(card.event.happeningAt(starts), isTrue);
+      expect(
+        card.event.happeningAt(starts.subtract(const Duration(seconds: 1))),
+        isFalse,
+      );
+      expect(card.event.endedAt(ends), isTrue);
+      expect(
+        card.event.endedAt(ends.subtract(const Duration(seconds: 1))),
+        isFalse,
+      );
+    });
   });
 
   group('EventRegistrationValidation', () {
@@ -261,6 +295,22 @@ void main() {
       expect(src.contains('_openDetails'), isTrue);
       expect(src.contains('onJoin: () => _openJoin(context)'), isTrue);
       expect(src.contains("context.push('/events/"), isTrue);
+      expect(src.contains('FeatureFlags.enableCommunityEvents'), isTrue);
+    });
+
+    test('V1 hides the home card and redirects event details', () {
+      expect(FeatureFlags.enableCommunityEvents, isFalse);
+      final router = File('lib/router/app_router.dart').readAsStringSync();
+      final route = router.substring(router.indexOf("path: '/events/:eventId'"));
+      expect(route.contains('FeatureFlags.enableCommunityEvents'), isTrue);
+      expect(route.contains("return '/home'"), isTrue);
+      final card = File('lib/widgets/home_v3/home_community_event_card.dart')
+          .readAsStringSync();
+      final build = card.substring(card.indexOf('Widget build'));
+      expect(
+        build.indexOf('FeatureFlags.enableCommunityEvents'),
+        lessThan(build.indexOf('homeCommunityEventProvider')),
+      );
     });
   });
 
@@ -282,12 +332,12 @@ void main() {
       expect(find.byType(SizedBox), findsWidgets);
     });
 
-    testWidgets('shows title and Join with mock data', (tester) async {
+    testWidgets('V1 hides the card even when an event is loaded', (tester) async {
       final card = _card(
         event: _event(
           title: 'Community Fun Run',
-          startsAt: DateTime.now().add(const Duration(days: 3)),
-          endsAt: DateTime.now().add(const Duration(days: 3, hours: 2)),
+          startsAt: DateTime(2026, 9, 20, 9, 0),
+          endsAt: DateTime(2026, 9, 20, 11, 0),
         ),
       );
 
@@ -304,10 +354,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('COMMUNITY EVENT'), findsOneWidget);
-      expect(find.text('Community Fun Run'), findsOneWidget);
-      expect(find.text('Join'), findsOneWidget);
-      expect(find.text('Details'), findsOneWidget);
+      expect(FeatureFlags.enableCommunityEvents, isFalse);
+      expect(find.text('COMMUNITY EVENT'), findsNothing);
+      expect(find.text('Community Fun Run'), findsNothing);
+      expect(find.text('Join'), findsNothing);
     });
   });
 }

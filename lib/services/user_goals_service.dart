@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../utils/health_metric_display.dart';
+
 /// Service to manage user goals (steps, water, calories, distance).
 class UserGoalsService {
   static final UserGoalsService _instance = UserGoalsService._internal();
@@ -31,15 +33,14 @@ class UserGoalsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       if (prefs.containsKey(_prefsKeySteps)) {
-        return prefs.getInt(_prefsKeySteps)!;
+        final parsed = parseMetricDouble(prefs.get(_prefsKeySteps));
+        if (parsed != null) return parsed.round().clamp(1, 100000);
       }
 
       final user = _supabase.auth.currentUser;
       if (user != null && user.userMetadata != null) {
-        final goal = user.userMetadata?['goal_steps'];
-        if (goal != null) {
-          return (goal as num).toInt();
-        }
+        final parsed = parseMetricDouble(user.userMetadata?['goal_steps']);
+        if (parsed != null) return parsed.round().clamp(1, 100000);
       }
       return 10000;
     } catch (e) {
@@ -52,15 +53,15 @@ class UserGoalsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       if (prefs.containsKey(_prefsKeyWater)) {
-        return prefs.getDouble(_prefsKeyWater)!;
+        final parsed = parseMetricDouble(prefs.get(_prefsKeyWater));
+        if (parsed != null) return parsed;
       }
 
       final user = _supabase.auth.currentUser;
       if (user != null && user.userMetadata != null) {
         final goal = user.userMetadata?['goal_water'];
-        if (goal != null) {
-          return (goal as num).toDouble();
-        }
+        final parsed = parseMetricDouble(goal);
+        if (parsed != null) return parsed;
       }
       return 2.5;
     } catch (e) {
@@ -73,15 +74,14 @@ class UserGoalsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       if (prefs.containsKey(_prefsKeyCalories)) {
-        return prefs.getInt(_prefsKeyCalories)!;
+        final parsed = parseMetricDouble(prefs.get(_prefsKeyCalories));
+        if (parsed != null) return parsed.round().clamp(1, 20000);
       }
 
       final user = _supabase.auth.currentUser;
       if (user != null && user.userMetadata != null) {
-        final goal = user.userMetadata?['goal_calories'];
-        if (goal != null) {
-          return (goal as num).toInt();
-        }
+        final parsed = parseMetricDouble(user.userMetadata?['goal_calories']);
+        if (parsed != null) return parsed.round().clamp(1, 20000);
       }
       return 2000;
     } catch (e) {
@@ -94,15 +94,15 @@ class UserGoalsService {
     try {
       final prefs = await SharedPreferences.getInstance();
       if (prefs.containsKey(_prefsKeyDistance)) {
-        return prefs.getDouble(_prefsKeyDistance)!;
+        final parsed = parseMetricDouble(prefs.get(_prefsKeyDistance));
+        if (parsed != null) return parsed;
       }
 
       final user = _supabase.auth.currentUser;
       if (user != null && user.userMetadata != null) {
         final goal = user.userMetadata?['goal_distance'];
-        if (goal != null) {
-          return (goal as num).toDouble();
-        }
+        final parsed = parseMetricDouble(goal);
+        if (parsed != null) return parsed;
       }
       return 5.0;
     } catch (e) {
@@ -120,10 +120,7 @@ class UserGoalsService {
       if (user != null) {
         await _supabase.auth.updateUser(
           UserAttributes(
-            data: {
-              ...user.userMetadata ?? {},
-              'goal_steps': goal,
-            },
+            data: {...user.userMetadata ?? {}, 'goal_steps': goal},
           ),
         );
       }
@@ -152,10 +149,7 @@ class UserGoalsService {
       if (user != null) {
         await _supabase.auth.updateUser(
           UserAttributes(
-            data: {
-              ...user.userMetadata ?? {},
-              'goal_water': goal,
-            },
+            data: {...user.userMetadata ?? {}, 'goal_water': goal},
           ),
         );
       }
@@ -184,10 +178,7 @@ class UserGoalsService {
       if (user != null) {
         await _supabase.auth.updateUser(
           UserAttributes(
-            data: {
-              ...user.userMetadata ?? {},
-              'goal_calories': goal,
-            },
+            data: {...user.userMetadata ?? {}, 'goal_calories': goal},
           ),
         );
       }
@@ -216,10 +207,7 @@ class UserGoalsService {
       if (user != null) {
         await _supabase.auth.updateUser(
           UserAttributes(
-            data: {
-              ...user.userMetadata ?? {},
-              'goal_distance': goal,
-            },
+            data: {...user.userMetadata ?? {}, 'goal_distance': goal},
           ),
         );
       }

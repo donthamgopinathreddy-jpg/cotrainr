@@ -14,14 +14,26 @@ class MealTrackerTokens {
   static const Color darkBackground = Color(0xFF000000);
   static const Color darkCard = Color(0xFF0A0A0A);
 
-  // Accent
+  // Accent — brand greens. Light intake uses a medium emerald (~84% of brand
+  // green on white). CTAs use a slightly stronger mix (~92%) for separation.
   static const Color accent = Color(0xFF22C55E);
   static const Color accent2 = Color(0xFF16A34A);
+  static const Color accentDeep = Color(0xFF15803D);
 
-  static const LinearGradient primaryGradient = LinearGradient(
+  /// Softened greens blended onto white.
+  /// Default 0.84 = medium emerald (between washed 0.70 and neon 1.0).
+  static Color softAccent([double strength = 0.84]) =>
+      Color.lerp(const Color(0xFFFFFFFF), accent, strength)!;
+  static Color softAccent2([double strength = 0.84]) =>
+      Color.lerp(const Color(0xFFFFFFFF), accent2, strength)!;
+  static Color softAccentDeep([double strength = 0.84]) =>
+      Color.lerp(const Color(0xFFFFFFFF), accentDeep, strength)!;
+
+  /// CTA / Add Food — a notch stronger than the intake surface.
+  static LinearGradient get primaryGradient => LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [accent, accent2],
+    colors: [softAccent(0.92), softAccent2(0.92)],
   );
 
   // Daily hero gradient (Green -> Mint)
@@ -36,18 +48,14 @@ class MealTrackerTokens {
 
   static const Color accentMint = Color(0xFF86EFAC);
 
-  /// Daily intake hero — rich green in light mode, soft green wash in dark.
+  /// Daily intake hero — medium emerald in light mode.
   static LinearGradient intakeTileGradient(bool isLight) {
     if (isLight) {
-      return const LinearGradient(
+      return LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [
-          Color(0xFF22C55E),
-          Color(0xFF16A34A),
-          Color(0xFF15803D),
-        ],
-        stops: [0.0, 0.52, 1.0],
+        colors: [softAccent(), softAccent2(), softAccentDeep()],
+        stops: const [0.0, 0.52, 1.0],
       );
     }
     return LinearGradient(
@@ -62,7 +70,40 @@ class MealTrackerTokens {
     );
   }
 
-  /// Muted macro bar fills on the intake hero (same green family).
+  /// Primary text drawn on the intake hero.
+  static Color intakeOnPrimary(bool isLight) =>
+      isLight ? Colors.white : const Color(0xFFF2F2F4);
+
+  /// Secondary / supporting text drawn on the intake hero.
+  static Color intakeOnSecondary(bool isLight) =>
+      isLight ? Colors.white.withValues(alpha: 0.88) : const Color(0xFF9CA3AF);
+
+  /// Macro bar fills on the intake hero.
+  static Color intakeMacroBarFill(bool isLight, int index) {
+    if (isLight) {
+      switch (index) {
+        case 0:
+          return Colors.white.withValues(alpha: 0.92);
+        case 1:
+          return Colors.white.withValues(alpha: 0.78);
+        default:
+          return Colors.white.withValues(alpha: 0.65);
+      }
+    }
+    return macroBarFill(index);
+  }
+
+  static Color intakeRingColor(bool isLight) => isLight ? Colors.white : accent;
+
+  static Color intakeRingTrack(bool isLight) => isLight
+      ? Colors.white.withValues(alpha: 0.28)
+      : Colors.white.withValues(alpha: 0.45);
+
+  static Color intakeGoalsChipBg(bool isLight) => isLight
+      ? Colors.white.withValues(alpha: 0.22)
+      : Colors.white.withValues(alpha: 0.08);
+
+  /// Muted macro bar fills on the intake hero (dark / shared family).
   static Color macroBarFill(int index) {
     switch (index) {
       case 0:
@@ -92,7 +133,9 @@ class MealTrackerTokens {
   }
 
   static Color cardBgOf(BuildContext context) {
-    return Theme.of(context).brightness == Brightness.dark ? darkCard : lightCard;
+    return Theme.of(context).brightness == Brightness.dark
+        ? darkCard
+        : lightCard;
   }
 
   static Color textPrimaryOf(BuildContext context) {
@@ -138,4 +181,3 @@ class MealTrackerTokens {
     ];
   }
 }
-

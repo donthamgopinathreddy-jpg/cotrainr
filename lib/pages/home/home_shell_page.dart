@@ -130,15 +130,13 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
       ),
     );
 
-    _welcomeSlide = Tween<Offset>(
-      begin: const Offset(0, -0.3),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _welcomeController,
-        curve: const Interval(0.0, 0.6, curve: Curves.easeOutCubic),
-      ),
-    );
+    _welcomeSlide =
+        Tween<Offset>(begin: const Offset(0, -0.3), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _welcomeController,
+            curve: const Interval(0.0, 0.6, curve: Curves.easeOutCubic),
+          ),
+        );
 
     if (widget.showWelcome) {
       _showWelcomeBubble = true;
@@ -301,8 +299,8 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
         return isTrainer
             ? const TrainerMyClientsPage()
             : isNutritionist
-                ? const NutritionistMyClientsPage()
-                : const DiscoverPage();
+            ? const NutritionistMyClientsPage()
+            : const DiscoverPage();
       case 2:
         return const MessagingPage();
       case 3:
@@ -355,8 +353,9 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
                 'Check your connection and try again. We won’t guess your role.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: (isLight ? Colors.black87 : Colors.white)
-                      .withValues(alpha: 0.65),
+                  color: (isLight ? Colors.black87 : Colors.white).withValues(
+                    alpha: 0.65,
+                  ),
                 ),
               ),
               const SizedBox(height: 22),
@@ -416,15 +415,12 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
             child: IndexedStack(
               index: _currentIndex,
               sizing: StackFit.expand,
-              children: List.generate(
-                _navigationItems.length,
-                (index) {
-                  if (!_visitedTabIndexes.contains(index)) {
-                    return const SizedBox.shrink();
-                  }
-                  return _pageFor(index, user);
-                },
-              ),
+              children: List.generate(_navigationItems.length, (index) {
+                if (!_visitedTabIndexes.contains(index)) {
+                  return const SizedBox.shrink();
+                }
+                return _pageFor(index, user);
+              }),
             ),
           ),
           Positioned(
@@ -437,7 +433,9 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
                 borderRadius: BorderRadius.circular(_navBarRadius),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: isLight ? 0.08 : 0.22),
+                    color: Colors.black.withValues(
+                      alpha: isLight ? 0.08 : 0.22,
+                    ),
                     blurRadius: 16,
                     offset: const Offset(0, 4),
                   ),
@@ -448,9 +446,7 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
                 child: Row(
                   children: List.generate(
                     _navigationItems.length,
-                    (index) => Expanded(
-                      child: _buildNavItem(index),
-                    ),
+                    (index) => Expanded(child: _buildNavItem(index)),
                   ),
                 ),
               ),
@@ -467,7 +463,9 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
                   opacity: _welcomeFade,
                   child: Material(
                     elevation: 8,
-                    borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+                    borderRadius: BorderRadius.circular(
+                      DesignTokens.radiusButton,
+                    ),
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: DesignTokens.spacing20,
@@ -475,7 +473,9 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
                       ),
                       decoration: BoxDecoration(
                         gradient: DesignTokens.primaryGradient,
-                        borderRadius: BorderRadius.circular(DesignTokens.radiusButton),
+                        borderRadius: BorderRadius.circular(
+                          DesignTokens.radiusButton,
+                        ),
                       ),
                       child: Row(
                         children: [
@@ -526,64 +526,75 @@ class _HomeShellPageState extends ConsumerState<HomeShellPage>
     final isLight = Theme.of(context).brightness == Brightness.light;
     final item = _navigationItems[index];
     final isActive = _currentIndex == index;
-    final selectedColor =
-        isLight ? DesignTokens.lightTextPrimary : DesignTokens.darkTextPrimary;
+    final selectedColor = isLight
+        ? DesignTokens.lightTextPrimary
+        : DesignTokens.darkTextPrimary;
     final unselectedColor = isLight
         ? DesignTokens.lightTextSecondary
         : colorScheme.onSurface.withValues(alpha: 0.5);
 
     final badge = index == 2 ? ref.watch(unreadMessagesCountProvider) : null;
-    final showUnreadDot = badge != null && badge.maybeWhen(data: (c) => c > 0, orElse: () => false);
+    final unreadCount = badge?.maybeWhen(data: (c) => c, orElse: () => 0) ?? 0;
+    final showUnreadDot = unreadCount > 0;
 
-    return GestureDetector(
-      onTap: () {
-        if (_currentIndex != index) {
-          _goToTab(index);
-        }
-      },
-      behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Stack(
-            clipBehavior: Clip.none,
-            alignment: Alignment.center,
+    return Semantics(
+      button: true,
+      label: index == 2 && showUnreadDot
+          ? '${item.label}, unread messages'
+          : item.label,
+      child: GestureDetector(
+        onTap: () {
+          if (_currentIndex != index) {
+            _goToTab(index);
+          }
+        },
+        behavior: HitTestBehavior.opaque,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                isActive ? item.activeIcon : item.icon,
-                color: isActive ? selectedColor : unselectedColor,
-                size: 28,
-              ),
-              if (showUnreadDot)
-                Positioned(
-                  top: -2,
-                  right: -6,
-                  child: Container(
-                    width: 8,
-                    height: 8,
-                    decoration: const BoxDecoration(
-                      color: Colors.redAccent,
-                      shape: BoxShape.circle,
-                    ),
+              Stack(
+                clipBehavior: Clip.none,
+                alignment: Alignment.center,
+                children: [
+                  Icon(
+                    isActive ? item.activeIcon : item.icon,
+                    color: isActive ? selectedColor : unselectedColor,
+                    size: 28,
                   ),
+                  if (showUnreadDot)
+                    Positioned(
+                      top: -2,
+                      right: -6,
+                      child: Semantics(
+                        label: 'Unread messages indicator',
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Colors.redAccent,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                height: isActive ? 4 : 0,
+                width: double.infinity,
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                decoration: BoxDecoration(
+                  color: isActive ? selectedColor : null,
+                  borderRadius: BorderRadius.circular(2),
                 ),
+              ),
             ],
           ),
-          const SizedBox(height: 8),
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOutCubic,
-            height: isActive ? 4 : 0,
-            width: double.infinity,
-            margin: const EdgeInsets.symmetric(horizontal: 4),
-            decoration: BoxDecoration(
-              color: isActive ? selectedColor : null,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-        ],
         ),
       ),
     );

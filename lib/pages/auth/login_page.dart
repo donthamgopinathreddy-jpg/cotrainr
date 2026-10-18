@@ -61,7 +61,10 @@ class _LoginPageState extends State<LoginPage>
       parent: _entrance,
       curve: const Interval(0.4, 1.0, curve: Curves.easeOutCubic),
     );
-    if (WidgetsBinding.instance.platformDispatcher.accessibilityFeatures
+    if (WidgetsBinding
+        .instance
+        .platformDispatcher
+        .accessibilityFeatures
         .disableAnimations) {
       _entrance.value = 1;
     } else {
@@ -186,9 +189,9 @@ class _LoginPageState extends State<LoginPage>
 
   @override
   Widget build(BuildContext context) {
-    final textSecondary = AccountHubTheme.rowSubtitle(context).copyWith(
-      color: AuthTheme.secondaryText(context),
-    );
+    final textSecondary = AccountHubTheme.rowSubtitle(
+      context,
+    ).copyWith(color: AuthTheme.secondaryText(context));
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
     final pageBg = AuthUi.pageBg(context);
     final iconColor = AuthTheme.primaryText(context);
@@ -238,15 +241,17 @@ class _LoginPageState extends State<LoginPage>
                                   Text(
                                     'Welcome back',
                                     textAlign: TextAlign.center,
-                                    style: AuthUi.pageTitle(context)
-                                        .copyWith(fontSize: 24),
+                                    style: AuthUi.pageTitle(
+                                      context,
+                                    ).copyWith(fontSize: 24),
                                   ),
                                   const SizedBox(height: 6),
                                   Text(
                                     'Sign in to continue training.',
                                     textAlign: TextAlign.center,
-                                    style: AuthUi.pageSubtitle(context)
-                                        .copyWith(fontSize: 14),
+                                    style: AuthUi.pageSubtitle(
+                                      context,
+                                    ).copyWith(fontSize: 14),
                                   ),
                                 ],
                               ),
@@ -310,8 +315,8 @@ class _LoginPageState extends State<LoginPage>
                                         ],
                                         validator: (v) =>
                                             (v == null || v.length < 6)
-                                                ? 'Min 6 chars'
-                                                : null,
+                                            ? 'Min 6 chars'
+                                            : null,
                                         style: AuthUi.fieldTextStyle(
                                           context,
                                           large: true,
@@ -336,17 +341,17 @@ class _LoginPageState extends State<LoginPage>
                                               transitionBuilder:
                                                   (child, anim) =>
                                                       FadeTransition(
-                                                opacity: anim,
-                                                child: ScaleTransition(
-                                                  scale: anim,
-                                                  child: child,
-                                                ),
-                                              ),
+                                                        opacity: anim,
+                                                        child: ScaleTransition(
+                                                          scale: anim,
+                                                          child: child,
+                                                        ),
+                                                      ),
                                               child: Icon(
                                                 _obscure
                                                     ? Icons.visibility_outlined
                                                     : Icons
-                                                        .visibility_off_outlined,
+                                                          .visibility_off_outlined,
                                                 key: ValueKey(_obscure),
                                                 size: 20,
                                                 color: textSecondary.color,
@@ -355,10 +360,11 @@ class _LoginPageState extends State<LoginPage>
                                             onPressed: _isLoading
                                                 ? null
                                                 : () {
-                                                    HapticFeedback
-                                                        .selectionClick();
-                                                    setState(() =>
-                                                        _obscure = !_obscure);
+                                                    HapticFeedback.selectionClick();
+                                                    setState(
+                                                      () =>
+                                                          _obscure = !_obscure,
+                                                    );
                                                   },
                                           ),
                                         ),
@@ -420,31 +426,48 @@ class _LoginPageState extends State<LoginPage>
                                 children: [
                                   AuthSectionCard(
                                     compact: true,
-                                    title: 'Or continue with',
                                     child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.stretch,
                                       children: [
-                                        _OAuthProviderButton(
-                                          label: 'Continue with Google',
-                                          semanticLabel:
-                                              'Continue with Google',
-                                          isLoading: _isLoading,
-                                          onPressed: () => _signInWithOAuth(
-                                            OAuthProvider.google,
+                                        Text(
+                                          'Or continue with',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w700,
+                                            letterSpacing: 0.2,
+                                            color: AuthTheme.secondaryText(
+                                              context,
+                                            ),
                                           ),
-                                          icon: FontAwesomeIcons.google,
                                         ),
                                         const SizedBox(height: 10),
-                                        _OAuthProviderButton(
-                                          label: 'Continue with Microsoft',
-                                          semanticLabel:
-                                              'Continue with Microsoft',
-                                          isLoading: _isLoading,
-                                          onPressed: () => _signInWithOAuth(
-                                            OAuthProvider.azure,
-                                          ),
-                                          icon: FontAwesomeIcons.microsoft,
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            _OAuthProviderButton(
+                                              semanticLabel:
+                                                  'Continue with Google',
+                                              isLoading: _isLoading,
+                                              onPressed: () =>
+                                                  _signInWithOAuth(
+                                                OAuthProvider.google,
+                                              ),
+                                              icon: FontAwesomeIcons.google,
+                                            ),
+                                            const SizedBox(width: 14),
+                                            _OAuthProviderButton(
+                                              semanticLabel:
+                                                  'Continue with Microsoft',
+                                              isLoading: _isLoading,
+                                              onPressed: () =>
+                                                  _signInWithOAuth(
+                                                OAuthProvider.azure,
+                                              ),
+                                              icon:
+                                                  FontAwesomeIcons.microsoft,
+                                            ),
+                                          ],
                                         ),
                                       ],
                                     ),
@@ -493,14 +516,12 @@ class _LoginPageState extends State<LoginPage>
 
 class _OAuthProviderButton extends StatelessWidget {
   const _OAuthProviderButton({
-    required this.label,
     required this.semanticLabel,
     required this.icon,
     required this.isLoading,
     required this.onPressed,
   });
 
-  final String label;
   final String semanticLabel;
   final FaIconData icon;
   final bool isLoading;
@@ -515,27 +536,20 @@ class _OAuthProviderButton extends StatelessWidget {
       label: semanticLabel,
       enabled: !isLoading,
       child: SizedBox(
-        width: double.infinity,
-        height: 50,
-        child: OutlinedButton.icon(
+        width: 52,
+        height: 52,
+        child: OutlinedButton(
           onPressed: isLoading ? null : onPressed,
-          icon: FaIcon(icon, size: 20, color: foreground),
-          label: Text(
-            label,
-            style: TextStyle(
-              color: foreground,
-              fontSize: 14.5,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
           style: OutlinedButton.styleFrom(
             foregroundColor: foreground,
             backgroundColor: AuthTheme.backSurface(context),
+            padding: EdgeInsets.zero,
             side: BorderSide(color: AuthTheme.fieldBorder(context)),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(14),
             ),
           ),
+          child: FaIcon(icon, size: 20, color: foreground),
         ),
       ),
     );

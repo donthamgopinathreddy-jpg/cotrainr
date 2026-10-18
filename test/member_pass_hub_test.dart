@@ -71,6 +71,7 @@ void main() {
       final renews = DateTime(2026, 9, 14);
       final v = MemberPlanView.fromSubscription(
         SubscriptionRow(plan: 'premium', status: 'active', expiresAt: renews),
+        now: DateTime(2026, 9, 1),
       );
       expect(v.state, MemberPlanUiState.active);
       expect(v.planDisplayName, 'Ultimate');
@@ -95,16 +96,18 @@ void main() {
           status: 'trialing',
           expiresAt: DateTime(2026, 10, 1),
         ),
+        now: DateTime(2026, 9, 15),
       );
       expect(v.state, MemberPlanUiState.trial);
       expect(v.statusLabel, 'Trial');
-      expect(v.detailLine, contains('Trial ends'));
+      expect(v.detailLine, 'Trial ends 1 October 2026');
     });
 
     test('cancelled but not expired stays Cancelled with Active until', () {
-      final until = DateTime.now().add(const Duration(days: 10));
+      final until = DateTime(2026, 9, 24);
       final v = MemberPlanView.fromSubscription(
         SubscriptionRow(plan: 'premium', status: 'cancelled', expiresAt: until),
+        now: DateTime(2026, 9, 14),
       );
       expect(v.state, MemberPlanUiState.cancelledActive);
       expect(v.statusLabel, 'Cancelled');
@@ -128,9 +131,52 @@ void main() {
           status: 'active',
           expiresAt: DateTime(2020, 1, 1),
         ),
+        now: DateTime(2026, 10, 18),
       );
       expect(v.state, MemberPlanUiState.expired);
       expect(v.ctaLabel, 'Renew');
+    });
+
+    test('active and trialing stay current until the expiry instant', () {
+      final expires = DateTime.utc(2026, 9, 14, 12);
+      final active = MemberPlanView.fromSubscription(
+        SubscriptionRow(plan: 'premium', status: 'active', expiresAt: expires),
+        now: expires.subtract(const Duration(seconds: 1)),
+      );
+      final trial = MemberPlanView.fromSubscription(
+        SubscriptionRow(plan: 'basic', status: 'trialing', expiresAt: expires),
+        now: expires.subtract(const Duration(seconds: 1)),
+      );
+      expect(active.state, MemberPlanUiState.active);
+      expect(trial.state, MemberPlanUiState.trial);
+    });
+
+    test('expiry instant itself is expired for active and trialing', () {
+      final expires = DateTime.utc(2026, 9, 14, 12);
+      final active = MemberPlanView.fromSubscription(
+        SubscriptionRow(plan: 'premium', status: 'active', expiresAt: expires),
+        now: expires,
+      );
+      final trial = MemberPlanView.fromSubscription(
+        SubscriptionRow(plan: 'basic', status: 'trialing', expiresAt: expires),
+        now: expires,
+      );
+      expect(active.state, MemberPlanUiState.expired);
+      expect(trial.state, MemberPlanUiState.expired);
+    });
+
+    test('UTC expiry is compared as an instant against a local clock', () {
+      final expires = DateTime.utc(2026, 9, 14, 18);
+      final before = MemberPlanView.fromSubscription(
+        SubscriptionRow(plan: 'premium', status: 'active', expiresAt: expires),
+        now: expires.toLocal().subtract(const Duration(minutes: 1)),
+      );
+      final after = MemberPlanView.fromSubscription(
+        SubscriptionRow(plan: 'basic', status: 'trialing', expiresAt: expires),
+        now: expires.toLocal().add(const Duration(minutes: 1)),
+      );
+      expect(before.state, MemberPlanUiState.active);
+      expect(after.state, MemberPlanUiState.expired);
     });
 
     test('past_due is Billing issue not Expired', () {

@@ -590,6 +590,14 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/events/:eventId',
       name: 'communityEventDetails',
+      redirect: (context, state) {
+        if (FeatureFlags.enableCommunityEvents) return null;
+        FeatureFlags.logBlockedOnce(
+          'community-events-route',
+          'Community event details blocked (enableCommunityEvents=false)',
+        );
+        return '/home';
+      },
       pageBuilder: (context, state) {
         final eventId = state.pathParameters['eventId'];
         final extra = state.extra;

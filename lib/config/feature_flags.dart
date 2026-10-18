@@ -15,6 +15,10 @@ class FeatureFlags {
   /// AI Planner is deferred past the Android MVP (route + UI entry points off).
   static const bool enableAiPlanner = false;
 
+  /// Community events are deferred past the Android MVP. Home tiles and the
+  /// details route stay in the tree and stay unreachable while this is false.
+  static const bool enableCommunityEvents = false;
+
   static final Set<String> _loggedBlocks = {};
 
   /// Debug-only log when a disabled feature path is skipped (once per [key]).

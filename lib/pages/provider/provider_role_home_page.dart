@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../config/feature_flags.dart';
 import '../../models/coaching_insight.dart';
 import '../../models/daily_metrics_snapshot.dart';
 import '../../providers/community_events_provider.dart';
@@ -29,7 +30,6 @@ import '../../widgets/home_v3/coaching_insight_builder.dart';
 import '../../widgets/home_v3/hero_header_v3.dart';
 import '../../widgets/home_v3/home_centers_preview.dart';
 import '../../widgets/home_v3/home_community_event_card.dart';
-import '../../widgets/home_v3/home_nav_hint_cards.dart';
 import '../../widgets/home_v3/home_premium_theme.dart';
 import '../../widgets/home_v3/metrics_source_labels.dart';
 import '../../widgets/home_v3/quick_access_v3.dart';
@@ -43,7 +43,7 @@ import '../insights/insights_detail_page.dart';
 ///
 /// Locked order:
 /// Cover -> Events -> My Fitness (collapsed) -> Professional overview
-/// -> Recent clients -> Reviews & Ratings -> Explore -> Messages/Meals hints.
+/// -> Recent clients -> Reviews & Ratings -> Explore.
 ///
 /// Personal metrics and BMI remain available for providers in V1, but are
 /// intentionally collapsed so professional work has higher visual priority.
@@ -118,8 +118,10 @@ class _ProviderRoleHomePageState extends ConsumerState<ProviderRoleHomePage>
       vsync: this,
       duration: const Duration(milliseconds: 400),
     );
-    _fadeAnimation =
-        CurvedAnimation(parent: _fadeController, curve: Curves.easeOut);
+    _fadeAnimation = CurvedAnimation(
+      parent: _fadeController,
+      curve: Curves.easeOut,
+    );
     _fadeController.forward();
 
     _loadStreak();
@@ -234,13 +236,7 @@ class _ProviderRoleHomePageState extends ConsumerState<ProviderRoleHomePage>
       final weeklyRows = await metricsRepo.getWeeklyMetrics();
 
       List<double> series(String key) {
-        final list = weeklyRows
-            .map((row) => ((row[key] as num?) ?? 0).toDouble())
-            .toList();
-        while (list.length < 7) {
-          list.insert(0, 0);
-        }
-        return list.length > 7 ? list.sublist(list.length - 7) : list;
+        return weeklySeriesForLastSevenDays(rows: weeklyRows, key: key);
       }
 
       if (!mounted) return;
@@ -250,13 +246,16 @@ class _ProviderRoleHomePageState extends ConsumerState<ProviderRoleHomePage>
         _providerName = fullName.isNotEmpty ? fullName : username;
         _nameLoading = false;
 
-        _currentSteps = (todayMetrics?['steps'] as num?)?.toInt() ?? 0;
-        _currentCalories =
-            (todayMetrics?['calories_burned'] as num?)?.toDouble() ?? 0;
-        _currentWater =
-            (todayMetrics?['water_intake_liters'] as num?)?.toDouble() ?? 0;
-        _currentDistance =
-            (todayMetrics?['distance_km'] as num?)?.toDouble() ?? 0;
+        _currentSteps = parseMetricIntOrZero(todayMetrics?['steps']);
+        _currentCalories = parseMetricDoubleOrZero(
+          todayMetrics?['calories_burned'],
+        );
+        _currentWater = parseMetricDoubleOrZero(
+          todayMetrics?['water_intake_liters'],
+        );
+        _currentDistance = parseMetricDoubleOrZero(
+          todayMetrics?['distance_km'],
+        );
 
         _stepsWeeklyData
           ..clear()
@@ -271,11 +270,10 @@ class _ProviderRoleHomePageState extends ConsumerState<ProviderRoleHomePage>
           ..clear()
           ..addAll(series('distance_km'));
 
-        _bmi = (profile?['bmi'] as num?)?.toDouble() ?? 0;
-        _bmiStatus =
-            _bmi > 0 ? (profile?['bmi_status'] as String? ?? '') : '';
-        _heightCm = (profile?['height_cm'] as num?)?.toDouble();
-        _weightKg = (profile?['weight_kg'] as num?)?.toDouble();
+        _bmi = parseMetricDoubleOrZero(profile?['bmi']);
+        _bmiStatus = _bmi > 0 ? (profile?['bmi_status'] as String? ?? '') : '';
+        _heightCm = parseMetricDouble(profile?['height_cm']);
+        _weightKg = parseMetricDouble(profile?['weight_kg']);
         _gender = profile?['gender'] as String?;
 
         final dob = profile?['date_of_birth'] as String?;
@@ -388,24 +386,32 @@ class _ProviderRoleHomePageState extends ConsumerState<ProviderRoleHomePage>
   @override
   Widget build(BuildContext context) {
     final isLight = Theme.of(context).brightness == Brightness.light;
-    final bg =
-        isLight ? HomePremiumTheme.lightWarmBg : DesignTokens.darkBackground;
+    final bg = isLight
+        ? HomePremiumTheme.lightWarmBg
+        : DesignTokens.darkBackground;
 
     final liveMetrics = ref.watch(dailyMetricsProvider).valueOrNull;
-    final practice =
-        ref.watch(providerPracticeSummaryProvider(widget.providerType));
+    final practice = ref.watch(
+      providerPracticeSummaryProvider(widget.providerType),
+    );
     final summary = practice.valueOrNull ?? ProviderPracticeSummary.empty;
 
     final nextSession = nextSessionPreviewFromSessions(
       ref.watch(videoSessionsListProvider).valueOrNull,
     );
 
-    final stepsMetric =
-        resolveHomeSteps(cached: _currentSteps, live: liveMetrics);
-    final caloriesMetric =
-        resolveHomeCalories(cached: _currentCalories, live: liveMetrics);
-    final distanceMetric =
-        resolveHomeDistance(cached: _currentDistance, live: liveMetrics);
+    final stepsMetric = resolveHomeSteps(
+      cached: _currentSteps,
+      live: liveMetrics,
+    );
+    final caloriesMetric = resolveHomeCalories(
+      cached: _currentCalories,
+      live: liveMetrics,
+    );
+    final distanceMetric = resolveHomeDistance(
+      cached: _currentDistance,
+      live: liveMetrics,
+    );
 
     final currentSteps = stepsMetric.value.round();
     final currentCalories = caloriesMetric.value.round();
@@ -422,8 +428,10 @@ class _ProviderRoleHomePageState extends ConsumerState<ProviderRoleHomePage>
     ref.listen(unreadNotificationsCountProvider, (previous, next) {
       final previousCount =
           previous?.maybeWhen(data: (value) => value, orElse: () => 0) ?? 0;
-      final currentCount =
-          next.maybeWhen(data: (value) => value, orElse: () => 0);
+      final currentCount = next.maybeWhen(
+        data: (value) => value,
+        orElse: () => 0,
+      );
       if (currentCount > previousCount) {
         invalidateProviderHomeCounts(ref);
       }
@@ -451,10 +459,12 @@ class _ProviderRoleHomePageState extends ConsumerState<ProviderRoleHomePage>
                     notificationCount: ref
                         .watch(unreadNotificationsCountProvider)
                         .maybeWhen(data: (value) => value, orElse: () => 0),
-                    coverImageUrl:
-                        ref.watch(profileImagesProvider).coverImagePath,
-                    avatarUrl:
-                        ref.watch(profileImagesProvider).profileImagePath,
+                    coverImageUrl: ref
+                        .watch(profileImagesProvider)
+                        .coverImagePath,
+                    avatarUrl: ref
+                        .watch(profileImagesProvider)
+                        .profileImagePath,
                     streakDays: _streakDays,
                     coachingInsights: coachingInsights,
                     onNotificationTap: () async {
@@ -468,24 +478,20 @@ class _ProviderRoleHomePageState extends ConsumerState<ProviderRoleHomePage>
                 ),
               ),
               SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                  child: _animated(
-                    context,
-                    const HomeCommunityEventCard(),
-                    40,
-                  ),
+                child: _ProviderCommunitySlot(
+                  child: _animated(context, const HomeCommunityEventCard(), 40),
                 ),
               ),
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                   child: _animated(
                     context,
                     _ProviderFitnessExpansion(
                       expanded: _fitnessExpanded,
-                      stepsSummary:
-                          stepsMetric.available ? stepsMetric.displayInt : '—',
+                      stepsSummary: stepsMetric.available
+                          ? stepsMetric.displayInt
+                          : '—',
                       bmiSummary: _bmi > 0 ? _bmi.toStringAsFixed(1) : '—',
                       onChanged: (expanded) {
                         HapticFeedback.selectionClick();
@@ -532,10 +538,10 @@ class _ProviderRoleHomePageState extends ConsumerState<ProviderRoleHomePage>
                                     ? '$currentCalories'
                                     : '—',
                                 subValue: 'kcal · goal $_goalCalories',
-                                sourceNote:
-                                    MetricsSourceLabels.caloriesNote(liveMetrics),
-                                weekly:
-                                    List<double>.from(_caloriesWeeklyData),
+                                sourceNote: MetricsSourceLabels.caloriesNote(
+                                  liveMetrics,
+                                ),
+                                weekly: List<double>.from(_caloriesWeeklyData),
                                 todayValue: currentCalories.toDouble(),
                                 goalValue: _goalCalories.toDouble(),
                               ),
@@ -573,10 +579,10 @@ class _ProviderRoleHomePageState extends ConsumerState<ProviderRoleHomePage>
                                     : '—',
                                 subValue:
                                     'km · goal ${_goalDistance.toStringAsFixed(1)}',
-                                sourceNote:
-                                    MetricsSourceLabels.distanceNote(liveMetrics),
-                                weekly:
-                                    List<double>.from(_distanceWeeklyData),
+                                sourceNote: MetricsSourceLabels.distanceNote(
+                                  liveMetrics,
+                                ),
+                                weekly: List<double>.from(_distanceWeeklyData),
                                 todayValue: currentDistance,
                                 goalValue: _goalDistance,
                               ),
@@ -643,6 +649,8 @@ class _ProviderRoleHomePageState extends ConsumerState<ProviderRoleHomePage>
                   child: _SectionTitle(
                     title: 'Professional overview',
                     isLight: isLight,
+                    icon: Icons.work_outline_rounded,
+                    accent: DesignTokens.videoSessionsAccent,
                   ),
                 ),
               ),
@@ -664,13 +672,11 @@ class _ProviderRoleHomePageState extends ConsumerState<ProviderRoleHomePage>
                       onOpenNextSession: nextSession == null
                           ? null
                           : () => context.push(
-                                '/video/session/${nextSession.sessionId}',
-                              ),
+                              '/video/session/${nextSession.sessionId}',
+                            ),
                       onOpenClient: (client) {
                         if (client.id.isEmpty) return;
-                        context.push(
-                          '${widget.clientPathPrefix}/${client.id}',
-                        );
+                        context.push('${widget.clientPathPrefix}/${client.id}');
                       },
                     ),
                     140,
@@ -695,54 +701,15 @@ class _ProviderRoleHomePageState extends ConsumerState<ProviderRoleHomePage>
               ),
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
-                  child: _SectionTitle(
-                    title: 'Explore',
-                    isLight: isLight,
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                  child: _animated(
-                    context,
-                    const QuickAccessV3(),
-                    220,
-                  ),
+                  child: _animated(context, const QuickAccessV3(), 220),
                 ),
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 8)),
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: _animated(
-                    context,
-                    const HomeCentersPreview(),
-                    260,
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
-                  child: _SectionTitle(
-                    title: 'Messages',
-                    isLight: isLight,
-                  ),
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                  child: _animated(
-                    context,
-                    HomeNavHintCards(
-                      onOpenMessagesTab: widget.onNavigateToMessagesTab,
-                      onOpenMealsTab: widget.onNavigateToMealsTab,
-                    ),
-                    300,
-                  ),
+                  child: _animated(context, const HomeCentersPreview(), 260),
                 ),
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 96)),
@@ -798,6 +765,30 @@ class _ProviderRoleHomePageState extends ConsumerState<ProviderRoleHomePage>
   }
 }
 
+/// Only reserves vertical space when a community event is actually present.
+class _ProviderCommunitySlot extends ConsumerWidget {
+  const _ProviderCommunitySlot({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (!FeatureFlags.enableCommunityEvents) {
+      return const SizedBox.shrink();
+    }
+    final async = ref.watch(homeCommunityEventProvider);
+    final hasEvent = async.maybeWhen(
+      data: (data) => data != null,
+      orElse: () => false,
+    );
+    if (!hasEvent) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      child: child,
+    );
+  }
+}
+
 class _ProviderFitnessExpansion extends StatelessWidget {
   const _ProviderFitnessExpansion({
     required this.expanded,
@@ -817,43 +808,87 @@ class _ProviderFitnessExpansion extends StatelessWidget {
   Widget build(BuildContext context) {
     final isLight = Theme.of(context).brightness == Brightness.light;
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
-      child: Material(
-        color: isLight
-            ? HomePremiumTheme.lightCreamCard
-            : HomePremiumTheme.darkCard,
-        child: ExpansionTile(
-          key: const PageStorageKey<String>('provider-my-fitness'),
-          initiallyExpanded: false,
-          maintainState: true,
-          onExpansionChanged: onChanged,
-          tilePadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-          childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-          title: Text(
-            'My Fitness',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              color: HomePremiumTheme.primaryText(isLight),
-            ),
+    // Match Member Home metric width: page already applies 16px horizontal
+    // padding, so expanded children must not add another inset.
+    final tile = Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        key: const PageStorageKey<String>('provider-my-fitness'),
+        initiallyExpanded: false,
+        maintainState: true,
+        onExpansionChanged: onChanged,
+        // Avoid ExpansionTile painting a nested collapsed-style shell when open.
+        backgroundColor: Colors.transparent,
+        collapsedBackgroundColor: Colors.transparent,
+        tilePadding: expanded
+            ? const EdgeInsets.symmetric(horizontal: 0, vertical: 2)
+            : const EdgeInsets.fromLTRB(18, 2, 14, 2),
+        childrenPadding: expanded
+            ? const EdgeInsets.fromLTRB(0, 8, 0, 0)
+            : const EdgeInsets.fromLTRB(16, 0, 12, 12),
+        title: Text(
+          'My Fitness',
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            color: HomePremiumTheme.primaryText(isLight),
           ),
-          subtitle: Text(
-            'Steps $stepsSummary · BMI $bmiSummary',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: HomePremiumTheme.secondaryText(isLight),
-              fontSize: 12,
-            ),
-          ),
-          trailing: AnimatedRotation(
-            turns: expanded ? 0.5 : 0,
-            duration: const Duration(milliseconds: 180),
-            child: const Icon(Icons.keyboard_arrow_down_rounded),
-          ),
-          children: [child],
         ),
+        subtitle: Text(
+          'Steps $stepsSummary · BMI $bmiSummary',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: HomePremiumTheme.secondaryText(isLight),
+            fontSize: 12,
+          ),
+        ),
+        trailing: AnimatedRotation(
+          turns: expanded ? 0.5 : 0,
+          duration: const Duration(milliseconds: 180),
+          child: const Icon(Icons.keyboard_arrow_down_rounded),
+        ),
+        children: [child],
+      ),
+    );
+
+    // Keep ExpansionTile in a stable tree slot so expand/collapse state survives
+    // the collapsed-card ↔ expanded-transparent switch.
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      decoration: BoxDecoration(
+        color: expanded
+            ? Colors.transparent
+            : HomePremiumTheme.providerFitnessSurface(isLight),
+        borderRadius: expanded ? BorderRadius.zero : BorderRadius.circular(18),
+        boxShadow: expanded
+            ? const <BoxShadow>[]
+            : HomePremiumTheme.providerCardShadow(isLight),
+      ),
+      clipBehavior: expanded ? Clip.none : Clip.antiAlias,
+      child: Stack(
+        children: [
+          if (!expanded)
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: 4,
+              child: DecoratedBox(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      DesignTokens.accentOrange,
+                      DesignTokens.accentAmber,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          Material(color: Colors.transparent, child: tile),
+        ],
       ),
     );
   }
@@ -863,20 +898,47 @@ class _SectionTitle extends StatelessWidget {
   const _SectionTitle({
     required this.title,
     required this.isLight,
+    required this.icon,
+    required this.accent,
   });
 
   final String title;
   final bool isLight;
+  final IconData icon;
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      title,
-      style: TextStyle(
-        fontSize: 17,
-        fontWeight: FontWeight.w800,
-        color: HomePremiumTheme.primaryText(isLight),
-      ),
+    final titleColor = HomePremiumTheme.primaryText(isLight);
+    final barGradient = LinearGradient(
+      colors: [accent, Color.lerp(accent, Colors.white, 0.28)!],
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+    );
+    return Row(
+      children: [
+        Icon(icon, size: 22, color: accent),
+        const SizedBox(width: 8),
+        Container(
+          width: 4,
+          height: 18,
+          decoration: BoxDecoration(
+            gradient: barGradient,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            title,
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              color: titleColor,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

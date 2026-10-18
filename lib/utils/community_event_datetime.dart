@@ -7,7 +7,7 @@ abstract final class CommunityEventDateTime {
   /// Compact Home/details schedule line.
   static String scheduleLabel(CommunityEvent event, {DateTime? now}) {
     final n = now ?? DateTime.now();
-    if (event.isHappeningNow) return 'Happening now';
+    if (event.happeningAt(n)) return 'Happening now';
 
     final start = event.startsAt;
     final time = _formatTime(start);

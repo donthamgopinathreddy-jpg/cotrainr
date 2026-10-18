@@ -19,7 +19,9 @@ class HomePremiumTheme {
       case 0:
         return MetricPalette(
           accent: isLight ? const Color(0xFFE8952E) : DesignTokens.accentOrange,
-          accentSoft: isLight ? const Color(0xFFFFB347) : DesignTokens.accentAmber,
+          accentSoft: isLight
+              ? const Color(0xFFFFB347)
+              : DesignTokens.accentAmber,
           ringGradient: isLight
               ? const LinearGradient(
                   colors: [Color(0xFFE8952E), Color(0xFFFFC247)],
@@ -29,7 +31,9 @@ class HomePremiumTheme {
       case 1:
         return MetricPalette(
           accent: isLight ? const Color(0xFFE86B52) : const Color(0xFFFF6B4A),
-          accentSoft: isLight ? const Color(0xFFFF8A70) : const Color(0xFFFF8A65),
+          accentSoft: isLight
+              ? const Color(0xFFFF8A70)
+              : const Color(0xFFFF8A65),
           ringGradient: isLight
               ? const LinearGradient(
                   colors: [Color(0xFFE86B52), Color(0xFFFF9B7A)],
@@ -39,7 +43,9 @@ class HomePremiumTheme {
       case 2:
         return MetricPalette(
           accent: isLight ? const Color(0xFF3BA8D4) : AppColors.cyan,
-          accentSoft: isLight ? const Color(0xFF6BC5E8) : DesignTokens.accentBlue,
+          accentSoft: isLight
+              ? const Color(0xFF6BC5E8)
+              : DesignTokens.accentBlue,
           ringGradient: isLight
               ? const LinearGradient(
                   colors: [Color(0xFF4DA8D4), Color(0xFF7DD3FC)],
@@ -49,7 +55,9 @@ class HomePremiumTheme {
       default:
         return MetricPalette(
           accent: isLight ? const Color(0xFF7C6AE6) : DesignTokens.accentPurple,
-          accentSoft: isLight ? const Color(0xFF9B8CF0) : const Color(0xFF9B8CFF),
+          accentSoft: isLight
+              ? const Color(0xFF9B8CF0)
+              : const Color(0xFF9B8CFF),
           ringGradient: isLight
               ? const LinearGradient(
                   colors: [Color(0xFF7C6AE6), Color(0xFFB4A7FF)],
@@ -67,7 +75,9 @@ class HomePremiumTheme {
   ) {
     final i0 = phase.floor() % 4;
     final i1 = (i0 + 1) % 4;
-    final t = Curves.easeInOut.transform((phase - phase.floor()).clamp(0.0, 1.0));
+    final t = Curves.easeInOut.transform(
+      (phase - phase.floor()).clamp(0.0, 1.0),
+    );
     final top = Color.lerp(metricAccents[i0], metricAccents[i1], t)!;
     final bot = Color.lerp(
       metricPalette(i0, isLight).accentSoft,
@@ -125,8 +135,9 @@ class HomePremiumTheme {
     );
   }
 
-  static Color weeklyTrackColor(bool isLight) =>
-      isLight ? const Color(0xFF2A2D33).withValues(alpha: 0.10) : Colors.white.withValues(alpha: 0.10);
+  static Color weeklyTrackColor(bool isLight) => isLight
+      ? const Color(0xFF2A2D33).withValues(alpha: 0.10)
+      : Colors.white.withValues(alpha: 0.10);
 
   static List<BoxShadow> softCardShadow(bool isLight) {
     if (isLight) {
@@ -154,19 +165,60 @@ class HomePremiumTheme {
       isLight ? const Color(0xFF6F7683) : const Color(0xFF9CA3AF);
 
   /// Soft lavender for provider Clients management tile (not a saturated fill).
-  static Color clientsManagementSurface(bool isLight) => isLight
-      ? const Color(0xFFF3F0FB)
-      : const Color(0xFF1A1724);
+  /// Light mode is intentionally a touch stronger so the tile separates from
+  /// a white page without becoming neon.
+  static Color clientsManagementSurface(bool isLight) =>
+      isLight ? const Color(0xFFE9E3F6) : const Color(0xFF1C1828);
 
   /// Soft peach for Recent clients rows.
-  static Color recentClientSurface(bool isLight) => isLight
-      ? const Color(0xFFFFF4EB)
-      : const Color(0xFF241A14);
+  static Color recentClientSurface(bool isLight) =>
+      isLight ? const Color(0xFFFFF0E4) : const Color(0xFF281C16);
 
   static Color clientsManagementAccent(bool isLight) =>
       DesignTokens.videoSessionsAccent;
 
   static Color recentClientAccent(bool isLight) => DesignTokens.accentOrange;
+
+  /// Collapsed / expanded My Fitness shell on provider Home.
+  static Color providerFitnessSurface(bool isLight) =>
+      isLight ? const Color(0xFFF1F3F7) : const Color(0xFF141418);
+
+  /// Outer Reviews & Ratings shell (kept quiet so cards carry the weight).
+  static Color providerReviewsSurface(bool isLight) =>
+      isLight ? const Color(0xFFF3F4F8) : const Color(0xFF121218);
+
+  /// Individual review carousel cards.
+  static Color providerReviewCardSurface(bool isLight) =>
+      isLight ? const Color(0xFFF0F1F4) : const Color(0xFF1A1A22);
+
+  /// Subtle hairline used across provider Home cards.
+  static Color providerCardBorder(bool isLight) => isLight
+      ? const Color(0xFF2A2D33).withValues(alpha: 0.10)
+      : Colors.white.withValues(alpha: 0.10);
+
+  /// Lavender-tinted border for the Clients management tile.
+  static Color clientsManagementBorder(bool isLight) => isLight
+      ? DesignTokens.videoSessionsAccent.withValues(alpha: 0.22)
+      : DesignTokens.videoSessionsAccent.withValues(alpha: 0.28);
+
+  static List<BoxShadow> providerCardShadow(bool isLight) {
+    if (isLight) {
+      return [
+        BoxShadow(
+          color: const Color(0xFF2A2D33).withValues(alpha: 0.08),
+          blurRadius: 18,
+          offset: const Offset(0, 6),
+        ),
+      ];
+    }
+    return [
+      BoxShadow(
+        color: Colors.black.withValues(alpha: 0.40),
+        blurRadius: 22,
+        offset: const Offset(0, 10),
+      ),
+    ];
+  }
 }
 
 class MetricPalette {

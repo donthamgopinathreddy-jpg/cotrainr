@@ -47,11 +47,8 @@ class _FixedUser extends CurrentUserNotifier {
   Future<CurrentUser?> build() async => user;
 }
 
-CurrentUser _user(String role) => CurrentUser(
-      id: 'u1',
-      role: UserRoleParser.parse(role),
-      fullName: 'Ada',
-    );
+CurrentUser _user(String role) =>
+    CurrentUser(id: 'u1', role: UserRoleParser.parse(role), fullName: 'Ada');
 
 class _EmptyTrainers extends AcceptedClientTrainersNotifier {
   @override
@@ -76,23 +73,18 @@ List<Override> _exploreOverrides(CurrentUser user) {
 
 List<UnifiedMetricViewModel> _dummyMetrics() {
   UnifiedMetricViewModel m(String label) => UnifiedMetricViewModel(
-        label: label,
-        icon: Icons.directions_walk,
-        ringGradient: const LinearGradient(colors: [Colors.orange, Colors.red]),
-        barColor: Colors.orange,
-        progress: 0.4,
-        mainValue: '4000',
-        subValue: 'of 10000 steps',
-        weekly: const [0, 0, 0, 0, 0, 0, 0],
-        todayValue: 4000,
-        goalValue: 10000,
-      );
-  return [
-    m('STEPS'),
-    m('ACTIVE CALORIES'),
-    m('WATER'),
-    m('DISTANCE'),
-  ];
+    label: label,
+    icon: Icons.directions_walk,
+    ringGradient: const LinearGradient(colors: [Colors.orange, Colors.red]),
+    barColor: Colors.orange,
+    progress: 0.4,
+    mainValue: '4000',
+    subValue: 'of 10000 steps',
+    weekly: const [0, 0, 0, 0, 0, 0, 0],
+    todayValue: 4000,
+    goalValue: 10000,
+  );
+  return [m('STEPS'), m('ACTIVE CALORIES'), m('WATER'), m('DISTANCE')];
 }
 
 Future<void> _pumpPreview(
@@ -119,7 +111,10 @@ Future<void> _pumpPreview(
       child: MaterialApp(
         theme: theme ?? AppTheme.lightTheme,
         home: MediaQuery(
-          data: MediaQueryData(size: size, textScaler: TextScaler.linear(textScale)),
+          data: MediaQueryData(
+            size: size,
+            textScaler: TextScaler.linear(textScale),
+          ),
           child: Scaffold(
             body: HomeCentersPreview(
               onSeeAll: onSeeAll ?? () {},
@@ -155,22 +150,32 @@ void main() {
       'lib/pages/trainer/trainer_home_page.dart',
       'lib/pages/nutritionist/nutritionist_home_page.dart',
     ]) {
-      expect(File(path).readAsStringSync().contains('ProviderRoleHomePage'), isTrue);
+      expect(
+        File(path).readAsStringSync().contains('ProviderRoleHomePage'),
+        isTrue,
+      );
     }
   });
 
   test('hero has no Unsplash fallback URL', () {
-    final src = File('lib/widgets/home_v3/hero_header_v3.dart').readAsStringSync();
+    final src = File(
+      'lib/widgets/home_v3/hero_header_v3.dart',
+    ).readAsStringSync();
     expect(src.toLowerCase().contains('unsplash'), isFalse);
     expect(src.contains('_kDefaultHeroImageUrl'), isFalse);
   });
 
-  test('canonical role drives Explore; provider video copy is not client copy', () {
-    final explore = File('lib/widgets/home_v3/quick_access_v3.dart').readAsStringSync();
-    expect(explore.contains("userMetadata?['role']"), isFalse);
-    expect(explore.contains('currentUserProvider'), isTrue);
-    expect(explore.contains('Schedule and manage video sessions'), isTrue);
-  });
+  test(
+    'canonical role drives Explore; provider video copy is not client copy',
+    () {
+      final explore = File(
+        'lib/widgets/home_v3/quick_access_v3.dart',
+      ).readAsStringSync();
+      expect(explore.contains("userMetadata?['role']"), isFalse);
+      expect(explore.contains('currentUserProvider'), isTrue);
+      expect(explore.contains('Schedule and manage video sessions'), isTrue);
+    },
+  );
 
   test('provider first-load health sync uses metricsSyncService.syncNow', () {
     for (final path in [
@@ -193,20 +198,79 @@ void main() {
     }
   });
 
-  test('provider name does not use Trainer/Nutritionist placeholder while loading', () {
-    final provider =
-        File('lib/pages/provider/provider_role_home_page.dart').readAsStringSync();
-    expect(provider.contains("String _trainerName = 'Trainer'"), isFalse);
-    expect(provider.contains("String _nutritionistName = 'Nutritionist'"), isFalse);
-    expect(provider.contains('usernameLoading: _nameLoading'), isTrue);
+  test(
+    'provider name does not use Trainer/Nutritionist placeholder while loading',
+    () {
+      final provider = File(
+        'lib/pages/provider/provider_role_home_page.dart',
+      ).readAsStringSync();
+      expect(provider.contains("String _trainerName = 'Trainer'"), isFalse);
+      expect(
+        provider.contains("String _nutritionistName = 'Nutritionist'"),
+        isFalse,
+      );
+      expect(provider.contains('usernameLoading: _nameLoading'), isTrue);
+    },
+  );
+
+  test('provider Home My Fitness uses premium surface tokens', () {
+    final provider = File(
+      'lib/pages/provider/provider_role_home_page.dart',
+    ).readAsStringSync();
+    expect(provider.contains('providerFitnessSurface'), isTrue);
+    expect(provider.contains('_fitnessExpanded = false'), isTrue);
+  });
+
+  test(
+    'provider My Fitness expanded shell is transparent with Member metric width',
+    () {
+      final provider = File(
+        'lib/pages/provider/provider_role_home_page.dart',
+      ).readAsStringSync();
+      expect(provider.contains('Colors.transparent'), isTrue);
+      expect(
+        provider.contains('? const EdgeInsets.fromLTRB(0, 8, 0, 0)'),
+        isTrue,
+      );
+      expect(provider.contains('boxShadow: expanded'), isTrue);
+      expect(provider.contains('UnifiedMetricsTileV3('), isTrue);
+      expect(provider.contains('BmiCardV3('), isTrue);
+      expect(provider.contains('const SizedBox(height: 12)'), isTrue);
+    },
+  );
+
+  test('provider Home reviews use in-place carousel without See all', () {
+    final reviews = File(
+      'lib/widgets/provider/provider_reviews_home_section.dart',
+    ).readAsStringSync();
+    expect(reviews.contains('ProviderReviewsPage'), isFalse);
+    expect(reviews.contains('See all reviews'), isFalse);
+    expect(reviews.contains('PageView'), isTrue);
+    expect(reviews.contains('Icons.star_rounded'), isTrue);
+    expect(reviews.contains('Icons.bolt_rounded'), isFalse);
+  });
+
+  test('provider Home drops duplicate Explore heading above QuickAccess', () {
+    final provider = File(
+      'lib/pages/provider/provider_role_home_page.dart',
+    ).readAsStringSync();
+    expect(provider.contains("title: 'Explore'"), isFalse);
+    expect(provider.contains('QuickAccessV3()'), isTrue);
+    expect(provider.contains("title: 'Professional overview'"), isTrue);
+    expect(provider.contains('Icons.work_outline_rounded'), isTrue);
   });
 
   test('request accept/decline invalidates Home counts', () {
-    final notes =
-        File('lib/pages/notifications/notification_page.dart').readAsStringSync();
-    final clients =
-        File('lib/pages/provider/provider_my_clients_page.dart').readAsStringSync();
-    expect('invalidateProviderHomeCounts'.allMatches(notes).length, greaterThanOrEqualTo(2));
+    final notes = File(
+      'lib/pages/notifications/notification_page.dart',
+    ).readAsStringSync();
+    final clients = File(
+      'lib/pages/provider/provider_my_clients_page.dart',
+    ).readAsStringSync();
+    expect(
+      'invalidateProviderHomeCounts'.allMatches(notes).length,
+      greaterThanOrEqualTo(2),
+    );
     expect(clients.contains('invalidateProviderHomeCounts'), isTrue);
   });
 
@@ -235,8 +299,9 @@ void main() {
     expect(find.textContaining('4.7'), findsNothing);
   });
 
-  testWidgets('real center renders on Trainer and Nutritionist Home preview',
-      (tester) async {
+  testWidgets('real center renders on Trainer and Nutritionist Home preview', (
+    tester,
+  ) async {
     for (final role in ['trainer', 'nutritionist']) {
       await _pumpPreview(
         tester,
@@ -249,10 +314,7 @@ void main() {
   });
 
   testWidgets('max preview count is respected', (tester) async {
-    final six = List.generate(
-      6,
-      (i) => _center(id: '$i', name: 'Center $i'),
-    );
+    final six = List.generate(6, (i) => _center(id: '$i', name: 'Center $i'));
     await _pumpPreview(tester, centers: six, size: const Size(320, 640));
     expect(find.text('Center 0'), findsOneWidget);
     expect(find.text('Center 2'), findsOneWidget);
@@ -327,8 +389,9 @@ void main() {
     expect(find.byIcon(Icons.apartment_rounded), findsWidgets);
   });
 
-  testWidgets('centers preview light, dark, small screen, large text',
-      (tester) async {
+  testWidgets('centers preview light, dark, small screen, large text', (
+    tester,
+  ) async {
     final centers = [_center(id: 'c1', name: 'Very Long Wellness Center Name')];
     await _pumpPreview(
       tester,
@@ -375,8 +438,9 @@ void main() {
     expect(find.byType(CachedNetworkImage), findsNothing);
   });
 
-  testWidgets('goal loading shows skeleton not default 10000 target',
-      (tester) async {
+  testWidgets('goal loading shows skeleton not default 10000 target', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -417,8 +481,9 @@ void main() {
     expect(find.text('Clients'), findsNothing);
   });
 
-  testWidgets('Trainer Explore uses provider copy and hides member tiles',
-      (tester) async {
+  testWidgets('Trainer Explore uses provider copy and hides member tiles', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(412, 1200);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -447,37 +512,40 @@ void main() {
     );
   });
 
-  testWidgets('Nutritionist Explore uses provider copy and hides member tiles',
-      (tester) async {
-    tester.view.physicalSize = const Size(412, 1200);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: _exploreOverrides(_user('nutritionist')),
-        child: MaterialApp(
-          theme: AppTheme.lightTheme,
-          home: const Scaffold(
-            body: SingleChildScrollView(child: QuickAccessV3()),
+  testWidgets(
+    'Nutritionist Explore uses provider copy and hides member tiles',
+    (tester) async {
+      tester.view.physicalSize = const Size(412, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: _exploreOverrides(_user('nutritionist')),
+          child: MaterialApp(
+            theme: AppTheme.lightTheme,
+            home: const Scaffold(
+              body: SingleChildScrollView(child: QuickAccessV3()),
+            ),
           ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('Trainers & Nutritionists'), findsNothing);
-    expect(find.text('Subscription'), findsNothing);
-    expect(find.text('Member Pass'), findsNothing);
-    expect(find.text('Schedule and manage video sessions'), findsOneWidget);
-    expect(find.text('Centres'), findsOneWidget);
-    expect(
-      find.text('Find fitness and wellness centres nearby'),
-      findsOneWidget,
-    );
-  });
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Trainers & Nutritionists'), findsNothing);
+      expect(find.text('Subscription'), findsNothing);
+      expect(find.text('Member Pass'), findsNothing);
+      expect(find.text('Schedule and manage video sessions'), findsOneWidget);
+      expect(find.text('Centres'), findsOneWidget);
+      expect(
+        find.text('Find fitness and wellness centres nearby'),
+        findsOneWidget,
+      );
+    },
+  );
 
-  testWidgets('provider loading does not display fake Trainer name',
-      (tester) async {
+  testWidgets('provider loading does not display fake Trainer name', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: Scaffold(

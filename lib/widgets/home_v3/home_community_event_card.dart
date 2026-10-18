@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../config/feature_flags.dart';
 import '../../models/community_event.dart';
 import '../../pages/events/join_event_sheet.dart';
 import '../../providers/community_events_provider.dart';
@@ -20,6 +21,13 @@ class HomeCommunityEventCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (!FeatureFlags.enableCommunityEvents) {
+      FeatureFlags.logBlockedOnce(
+        'community-events-home',
+        'Community events hidden (enableCommunityEvents=false)',
+      );
+      return const SizedBox.shrink();
+    }
     final async = ref.watch(homeCommunityEventProvider);
     return async.when(
       loading: () => const SizedBox.shrink(),
@@ -45,10 +53,12 @@ class _CommunityEventCardBody extends StatelessWidget {
   final VoidCallback onRegistered;
 
   void _openDetails(BuildContext context) {
+    if (!FeatureFlags.enableCommunityEvents) return;
     context.push('/events/${data.event.id}', extra: data);
   }
 
   Future<void> _openJoin(BuildContext context) async {
+    if (!FeatureFlags.enableCommunityEvents) return;
     await showJoinEventSheet(
       context,
       data: data,
